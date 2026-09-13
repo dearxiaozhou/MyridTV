@@ -310,7 +310,29 @@
         "smart.shortcutDropMedia": { zh: "把图片、视频或文件拖入画布/节点", en: "Drop images, videos or files onto the canvas or a node" },
         "smart.shortcutUngroup": { zh: "拆分选中的图片组", en: "Ungroup the selected image group" },
         "smart.justNow": { zh: "刚刚", en: "Just now" },
-        "smart.createFailed": { zh: "创建失败", en: "Create failed" }
+        "smart.createFailed": { zh: "创建失败", en: "Create failed" },
+        "smart.modeConnections": { zh: "连线", en: "Wired" },
+        "smart.modeWireless": { zh: "无线", en: "Wireless" },
+        "smart.modeConnectionsTip": { zh: "画布输入模式：连线模式（拖线传递输入）", en: "Canvas input mode: wired (inputs travel along links)" },
+        "smart.modeWirelessTip": { zh: "画布输入模式：无线模式（设为 Set / 引用结果）", en: "Canvas input mode: wireless (Set / reference results)" },
+        "smart.modeConnectionsOn": { zh: "已切回连线模式", en: "Switched back to wired mode" },
+        "smart.modeWirelessOn": { zh: "已切到无线模式：端口与连线已隐藏，结果节点可“设为 Set”，其它节点用“引用结果”无线引用", en: "Wireless mode on: ports and links are hidden; results can be Set and referenced wirelessly" },
+        "smart.setNode": { zh: "设为 Set", en: "Set as shared result" },
+        "smart.unsetNode": { zh: "取消 Set", en: "Unset" },
+        "smart.setNodeDone": { zh: "已设为 Set，可在“引用结果”里被引用", en: "Set. Other nodes can reference it now" },
+        "smart.unsetNodeDone": { zh: "已取消 Set", en: "Unset" },
+        "smart.unsetNodeDoneWithRefs": { zh: "已取消 Set，并移除 {n} 条无线引用", en: "Unset and removed {n} wireless reference(s)" },
+        "smart.setNeedResult": { zh: "该节点还没有可用结果，无法设为 Set", en: "This node has no usable result yet" },
+        "smart.setBadgeTip": { zh: "已设为 Set，可被本画布其它节点无线引用", en: "Set: other nodes on this canvas can reference it" },
+        "smart.objectRef": { zh: "引用结果", en: "Reference result" },
+        "smart.objectRefTip": { zh: "从本画布已 Set 的结果里无线引用（不连线）", en: "Reference a Set result on this canvas without a link" },
+        "smart.objectRefEmpty": { zh: "当前画布还没有已 Set 的结果", en: "No Set result on this canvas yet" },
+        "smart.objectRefNoMatch": { zh: "没有匹配的结果", en: "No matching result" },
+        "smart.objectRefSearch": { zh: "搜索节点标题...", en: "Search node titles..." },
+        "smart.objectRefNeedSet": { zh: "该结果还没有“设为 Set”", en: "That result is not Set yet" },
+        "smart.removeObjectRef": { zh: "移除无线引用", en: "Remove wireless reference" },
+        "smart.kindFile": { zh: "文件", en: "File" },
+        "smart.close": { zh: "关闭", en: "Close" }
     });
 })();
 

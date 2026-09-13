@@ -317,6 +317,24 @@ def root_path(value, fallback):
     return path if path.is_absolute() else ROOT / path
 
 
+def write_static_app_config(raw):
+    """把生效配置镜像到 _internal/static/app_config.json —— 前端启动时读的就是这一份。
+
+    安装脚本首次只把 app_config.template.json 复制过去，里面的 proxy 端口写死 3107；
+    若本安装因端口冲突换到了别的端口（多份安装共存），不镜像就会让前端把请求发去
+    3107 上的另一个实例（表现为看到别的安装的 Agent 设置 / 对话历史 / 控制台记录）。
+    """
+    try:
+        static_config = ROOT / "static" / "app_config.json"
+        static_config.parent.mkdir(parents=True, exist_ok=True)
+        static_config.write_text(raw + "\n", encoding="utf-8")
+    except Exception as exc:
+        try:
+            append_log(LOG_FILE, f"static app_config sync failed: {exc}")
+        except Exception:
+            pass
+
+
 def write_app_config(config):
     global APP_CONFIG, SERVER_CONFIG, PROXY_CONFIG, AGENT_CONFIG, RUNNINGHUB_CONFIG, PATHS_CONFIG, ENV_FILE, APP_BASE, PORT, LOG_FILE
     merged = deep_merge(DEFAULT_CONFIG, config if isinstance(config, dict) else {})
@@ -324,11 +342,7 @@ def write_app_config(config):
     CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     raw = json.dumps(merged, ensure_ascii=False, indent=2)
     CONFIG_FILE.write_text(raw + "\n", encoding="utf-8")
-    static_config = ROOT / "static" / "app_config.json"
-    try:
-        static_config.write_text(raw + "\n", encoding="utf-8")
-    except Exception:
-        pass
+    write_static_app_config(raw)
     APP_CONFIG = merged
     SERVER_CONFIG = APP_CONFIG.get("server") or {}
     PROXY_CONFIG = APP_CONFIG.get("proxy") or {}
@@ -353,10 +367,13 @@ ENV_FILE = root_path(PATHS_CONFIG.get("env_file"), "API/.env")
 LOG_FILE = root_path(PATHS_CONFIG.get("proxy_log"), "data/logs/rh_official_proxy.log")
 APP_BASE = str(SERVER_CONFIG.get("base_url") or f"http://{SERVER_CONFIG.get('host', '127.0.0.1')}:{SERVER_CONFIG.get('port', 3000)}").rstrip("/")
 PORT = int(PROXY_CONFIG.get("port") or 3107)
+# 启动时把生效配置镜像到 _internal/static/app_config.json（前端读这份定 API 基址，
+# 端口冲突换端口后必须同步，否则前端会打到 3107 上的另一个实例）——见 write_static_app_config
+write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.12.clickpop67"
+STATIC_VERSION = "2026.09.12.clickpop73"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -1014,7 +1031,15 @@ def canvas_agent_vision_config():
             "has_key": False,
             "deleted": True,
             "deleted_at": str(v.get("deleted_at") or ""),
+            "configured": False,
         }
+    # configured：用户是否真的配过（model/base_url/api_key 任一非空）。未配过时上面的
+    # model/base_url 只是后端兜底默认值（视觉通道回退智谱免费档），前端不该显示成“已配置”。
+    configured = bool(
+        str(v.get("model") or "").strip()
+        or str(v.get("base_url") or "").strip()
+        or str(v.get("api_key") or "").strip()
+    )
     return {
         "enabled": bool(enabled) if enabled is not None else True,
         "model": str(v.get("model") or "glm-4v-flash").strip() or "glm-4v-flash",
@@ -1023,6 +1048,7 @@ def canvas_agent_vision_config():
         "has_key": bool(str(v.get("api_key") or "").strip()),
         "deleted": deleted,
         "deleted_at": str(v.get("deleted_at") or ""),
+        "configured": configured,
     }
 
 
@@ -3789,6 +3815,9 @@ def normalize_canvas_structure(canvas_id, data):
     canvas.setdefault("logs", [])
     canvas.setdefault("deleted", [])
     canvas.setdefault("artifacts", [])  # Phase 8：Agent 持久产物侧边栏（按 canvas 隔离，与 nodes 同级）
+    # 画布输入模式：connections（连线，默认，旧画布行为不变）/ objects（无线 Set-Get）
+    if canvas.get("inputMode") not in ("connections", "objects"):
+        canvas["inputMode"] = "connections"
     canvas.setdefault("viewport", {"x": 0, "y": 0, "scale": 1})
     canvas.setdefault("settings", {})
     return migrate_canvas_format(canvas_id, canvas)
@@ -4261,6 +4290,8 @@ def save_canvas_record(canvas_id, payload=None):
         "settings": payload.get("settings") if isinstance(payload.get("settings"), dict) else dict(current.get("settings") or {}),
         "deleted": _merge_node_tombstones(current.get("deleted"), payload.get("deleted")),
         "artifacts": _merge_artifacts(current.get("artifacts"), payload.get("artifacts")),
+        "inputMode": (payload.get("inputMode") if payload.get("inputMode") in ("connections", "objects")
+                      else (current.get("inputMode") if current.get("inputMode") in ("connections", "objects") else "connections")),
         "updated_at": now_ms,
     })
     saved.pop("deleted_at", None)
