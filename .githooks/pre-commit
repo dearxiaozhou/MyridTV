@@ -1,0 +1,13 @@
+#!/bin/sh
+# MyridTV 提交门禁（等价于 TDCanvas 的 CI typecheck+test）：
+# 提交前跑 tests/verify.ps1（Python 语法 / 前端 JS 语法 / i18n 键 / 单测）。
+# 想跳过（紧急情况）：git commit --no-verify
+echo "[pre-commit] MyridTV verify..."
+powershell -NoProfile -ExecutionPolicy Bypass -File tests/verify.ps1
+status=$?
+if [ $status -ne 0 ]; then
+    echo "[pre-commit] 自检未通过，提交已阻止（--no-verify 可跳过）"
+    exit 1
+fi
+echo "[pre-commit] 自检通过 ✓"
+exit 0

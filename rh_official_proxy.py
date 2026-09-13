@@ -26,6 +26,23 @@ from websockets.sync.client import connect as ws_connect
 
 import comfy_flow_service
 import agent_task_runtime as agent_runtime
+import task_store
+from myridtv_core import (
+    read_json_file,
+    write_json_file,
+    append_log,
+    parse_number,
+    parse_positive_int,
+    deep_merge,
+    unique_strings,
+    mask_secret,
+    clean_asset_name,
+    clean_prompt_name,
+    safe_agent_skill_name,
+    default_asset_library,
+    default_prompt_library,
+    _task_console_ts,
+)
 from comfy_flow_compiler import CompileError as ComfyCompileError
 from comfy_flow_compiler import compile_prompt as compile_comfy_prompt
 from comfy_flow_compiler import describe_workflow as describe_comfy_workflow
@@ -183,16 +200,6 @@ DEFAULT_CONFIG = {
 }
 
 
-def deep_merge(base, override):
-    merged = dict(base)
-    for key, value in (override or {}).items():
-        if isinstance(value, dict) and isinstance(merged.get(key), dict):
-            merged[key] = deep_merge(merged[key], value)
-        else:
-            merged[key] = value
-    return merged
-
-
 def normalize_agent_section(section):
     """归一化 agent 配置：旧单对象 -> 多 Agent map；补齐缺失 Agent 与字段。
 
@@ -288,16 +295,6 @@ def root_path(value, fallback):
     return path if path.is_absolute() else ROOT / path
 
 
-def append_log(path, message):
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        stamp = time.strftime("%Y-%m-%d %H:%M:%S")
-        with path.open("a", encoding="utf-8") as log:
-            log.write(f"[{stamp}] {message}\n")
-    except Exception:
-        pass
-
-
 def write_app_config(config):
     global APP_CONFIG, SERVER_CONFIG, PROXY_CONFIG, AGENT_CONFIG, RUNNINGHUB_CONFIG, PATHS_CONFIG, ENV_FILE, APP_BASE, PORT, LOG_FILE
     merged = deep_merge(DEFAULT_CONFIG, config if isinstance(config, dict) else {})
@@ -337,7 +334,7 @@ PORT = int(PROXY_CONFIG.get("port") or 3107)
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.12.clickpop49"
+STATIC_VERSION = "2026.09.12.clickpop52"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -357,7 +354,17 @@ CODEX_APP_SERVER_PORT_FILE = USER_DATA_DIR / "data" / "codex_app_server_port.jso
 CODEX_LOCAL_PERSIST_SESSIONS = str(os.environ.get("MYRIDTV_CODEX_PERSIST_SESSIONS") or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-TASKS = agent_runtime.load_tasks(PERSISTENT_TASKS_FILE)
+TASKS = {}
+
+# 任务表持久化：SQLite 单行 upsert（见 task_store.py）。
+# 首次启动会把老的 canvas_tasks.json 一次性导入并归档为 .migrated_<ts>，此后不再读写该 json。
+# 注意：不要把自己的 TASKS_LOCK 传给 store —— 调用方（set_task_state/recover_stale_tasks 等）
+# 已持有 TASKS_LOCK，非重入锁会自锁死。store 用独立内部锁，锁序固定为 TASKS_LOCK -> store lock。
+TASK_STORE = task_store.TaskStore(
+    USER_DATA_DIR / "data" / "canvas_tasks.db",
+    legacy_json_path=PERSISTENT_TASKS_FILE,
+)
+TASKS = TASK_STORE.load_all()
 
 
 def _agent_task_log(category, message):
@@ -398,7 +405,7 @@ def _agent_task_for_payload(payload):
     user_text = _agent_latest_user_text(payload) if "_agent_latest_user_text" in globals() else str(payload.get("message") or "")
     with TASKS_LOCK:
         task = agent_runtime.ensure_task(TASKS, conversation_id, canvas_id, user_text, task_id)
-        agent_runtime.save_tasks(PERSISTENT_TASKS_FILE, TASKS)
+        persist_tasks_locked()
     _agent_task_log("AgentTask", "task={} workflow={} step={} status={}".format(
         task.get("task_id"), task.get("workflow_type"), task.get("current_step_id"), task.get("status")))
     return task
@@ -406,7 +413,7 @@ def _agent_task_for_payload(payload):
 
 def _agent_save_tasks():
     with TASKS_LOCK:
-        return agent_runtime.save_tasks(PERSISTENT_TASKS_FILE, TASKS)
+        return persist_tasks_locked()
 
 
 def _agent_attach_runtime_result(result, task, turn=None, validation=None):
@@ -439,8 +446,6 @@ def positive_env_int(name, default, minimum=1, maximum=None):
     if maximum is not None:
         value = min(maximum, value)
     return value
-
-
 
 
 COMFY_WORKFLOW_POLL_TIMEOUT_SECONDS = positive_env_int("COMFY_WORKFLOW_POLL_TIMEOUT_SECONDS", 3600, 60, 21600)
@@ -632,14 +637,6 @@ def agents_meta_payload():
     }
 
 
-def mask_secret(value):
-    text = str(value or "").strip()
-    if not text:
-        return ""
-    tail = text[-4:] if len(text) >= 4 else text
-    return f"••••••••{tail}"
-
-
 def provider_key_env_name(provider_id):
     provider_id = str(provider_id or "").strip()
     if provider_id == "volcengine":
@@ -723,16 +720,6 @@ def persist_api_provider_keys(raw_providers):
 def canvas_agent_history_path(canvas_id=""):
     name = re.sub(r"[^A-Za-z0-9_.-]", "_", str(canvas_id or "default").strip() or "default")
     return CANVAS_AGENT_HISTORY_DIR / f"{name}.json"
-
-
-def safe_agent_skill_name(name):
-    text = str(name or "").strip()
-    if text.lower().endswith(".md"):
-        text = text[:-3]
-    text = re.sub(r"[\\/:*?\"<>|\x00-\x1f]+", "_", text).strip(" .")
-    if not text or text in (".", ".."):
-        return ""
-    return text[:80]
 
 
 def read_limited_text(path, max_chars):
@@ -1388,19 +1375,6 @@ def request_chat_json_with_retry(url, body, headers, attempts=3, timeout=120):
     raise RuntimeError(f"Agent 上游请求被中断，已重试 {attempts} 次仍失败：{last_exc}") from last_exc
 
 
-def read_json_file(path, default=None):
-    try:
-        return json.loads(Path(path).read_text(encoding="utf-8"))
-    except Exception:
-        return {} if default is None else default
-
-
-def write_json_file(path, data):
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
-
 def _codex_bridge_read_session_cache():
     data = read_json_file(CODEX_LOCAL_SESSION_CACHE_FILE, {})
     return data if isinstance(data, dict) else {}
@@ -1680,11 +1654,22 @@ def persistent_task_payload(state):
     return safe
 
 
-def persist_tasks_locked():
-    write_json_file(
-        PERSISTENT_TASKS_FILE,
-        {task_id: persistent_task_payload(state) for task_id, state in TASKS.items() if isinstance(state, dict) and state.get("persistent")}
-    )
+def persist_tasks_locked(task_id=None):
+    """写任务表：给了 task_id 只写这一行（热路径），否则整表同步一次事务。
+
+    注意：本函数自身不加锁，必须在 TASKS_LOCK 内调用。
+    """
+    if task_id is not None:
+        safe_id = str(task_id)
+        state = TASKS.get(safe_id)
+        if isinstance(state, dict) and state.get("persistent"):
+            TASK_STORE.upsert(safe_id, persistent_task_payload(state))
+        return
+    TASK_STORE.upsert_many({
+        task_id: persistent_task_payload(state)
+        for task_id, state in TASKS.items()
+        if isinstance(state, dict) and state.get("persistent")
+    })
 
 
 def set_task_state(task_id, state, persistent=False):
@@ -1697,7 +1682,7 @@ def set_task_state(task_id, state, persistent=False):
     with TASKS_LOCK:
         TASKS[safe_id] = safe_state
         if safe_state.get("persistent"):
-            persist_tasks_locked()
+            persist_tasks_locked(safe_id)
     return safe_state
 
 
@@ -1710,7 +1695,7 @@ def update_task_state(task_id, **updates):
         current.update(updates)
         TASKS[safe_id] = current
         if current.get("persistent"):
-            persist_tasks_locked()
+            persist_tasks_locked(safe_id)
     return current
 
 
@@ -1723,7 +1708,7 @@ def get_task_state(task_id):
 
 
 def load_persistent_tasks():
-    data = read_json_file(PERSISTENT_TASKS_FILE, {})
+    data = TASK_STORE.load_all()
     if not isinstance(data, dict):
         return
     with TASKS_LOCK:
@@ -1880,22 +1865,6 @@ def _task_console_origin(task_id, state):
     return str(state.get("source") or "画布节点执行")
 
 
-def _task_console_ts(value):
-    """任务时间戳统一归一到「秒」。
-
-    Agent 任务（agent_task_runtime.now_ms）写毫秒，生图/生视频任务写秒。混用会让
-    Agent 任务永远排在最前、时间显示成乱值（09-08 的任务显示成 10:44），
-    还会被误算进「今日任务」统计。
-    """
-    try:
-        v = float(value)
-    except Exception:
-        return 0.0
-    if v > 1e11:  # 毫秒量级（秒级要到公元 5138 年才可能这么大）
-        v = v / 1000.0
-    return v
-
-
 def task_console_snapshot():
     now = time.time()
     items = []
@@ -2004,38 +1973,8 @@ def _task_console_is_cancelled(task_id):
 load_persistent_tasks()
 # 本次进程刚启动，此时 TASKS 里任何 in-flight 状态都必然是上次进程的残留
 recover_stale_tasks()
-
-
-def parse_number(value, default=None):
-    try:
-        number = float(value)
-    except Exception:
-        return default
-    if number != number or number in (float("inf"), float("-inf")):
-        return default
-    return number
-
-
-def parse_positive_int(value):
-    number = parse_number(value)
-    if number is None:
-        return None
-    number = int(round(number))
-    return number if number > 0 else None
-
-
-class ApiError(RuntimeError):
-    def __init__(self, status, detail, payload=None):
-        super().__init__(detail)
-        self.status = int(status)
-        self.detail = str(detail)
-        self.payload = payload or {}
-
-
-class CanvasConflictError(ApiError):
-    def __init__(self, current_canvas):
-        super().__init__(409, "画布已被其他窗口更新，请先刷新后再保存", {"canvas": current_canvas})
-        self.current_canvas = current_canvas
+if TASK_STORE.migrated_from:
+    _agent_task_log("TaskStore", "canvas_tasks.json 已迁移到 SQLite: " + TASK_STORE.migrated_from)
 
 
 def providers_file_path():
@@ -2059,48 +1998,6 @@ def workflow_search_roots():
         (ROOT / "workflows" / "custom", False),
         (ROOT / "workflows", True),
     ]
-
-
-def default_asset_library():
-    return {
-        "active_library_id": "default",
-        "libraries": [
-            {
-                "id": "default",
-                "name": "默认资产库",
-                "type": "asset",
-                "categories": [
-                    {"id": "characters", "name": "角色", "type": "image", "items": []},
-                    {"id": "scenes", "name": "场景", "type": "image", "items": []},
-                    {"id": "workflows", "name": "工作流", "type": "workflow", "items": []},
-                ],
-            }
-        ],
-    }
-
-
-def default_prompt_library():
-    return {
-        "active_library_id": "system",
-        "libraries": [
-            {
-                "id": "system",
-                "name": "系统提示词库",
-                "type": "prompt",
-                "readonly": False,
-                "system": True,
-                "categories": [
-                    {"id": "view", "name": "视角"},
-                    {"id": "storyboard", "name": "分镜"},
-                    {"id": "character", "name": "角色"},
-                    {"id": "product", "name": "产品"},
-                    {"id": "lighting", "name": "光影"},
-                    {"id": "custom", "name": "我的"},
-                ],
-                "items": [],
-            }
-        ],
-    }
 
 
 def workflow_file_candidates(name):
@@ -2363,22 +2260,9 @@ def sanitize_api_providers(items):
     return cleaned
 
 
-def unique_strings(items):
-    seen = set()
-    result = []
-    for item in items or []:
-        text = str(item or "").strip()
-        if not text or text in seen:
-            continue
-        seen.add(text)
-        result.append(text)
-    return result
-
-
 def read_asset_library():
     data = read_json_file(asset_library_file_path(), default_asset_library())
     return data if isinstance(data, dict) else default_asset_library()
-
 
 
 def write_asset_library(library):
@@ -2390,13 +2274,6 @@ def write_asset_library(library):
 
 def asset_library_payload(library, **extra):
     return {"ok": True, "library": write_asset_library(library), **extra}
-
-
-def clean_asset_name(value, label="名称"):
-    text = str(value or "").strip()
-    if not text:
-        raise ApiError(400, f"{label}不能为空")
-    return text
 
 
 def asset_libraries_list(library):
@@ -2697,13 +2574,6 @@ def write_prompt_libraries(library):
 
 def prompt_library_payload(library, **extra):
     return {"ok": True, "library": write_prompt_libraries(library), **extra}
-
-
-def clean_prompt_name(value, label="名称"):
-    text = str(value or "").strip()
-    if not text:
-        raise ApiError(400, f"{label}不能为空")
-    return text
 
 
 def prompt_libraries_list(library):
@@ -3670,6 +3540,44 @@ def default_canvas_title(kind):
     return "Smart Canvas" if kind == "smart" else "Canvas"
 
 
+# ====== 画布格式版本与迁移入口 ======
+# 以后加/改画布字段，只在这里写迁移分支（v1 -> v2 ...），不要再往各处散落兼容代码。
+# 读画布时只做内存迁移（不改盘）；写画布时统一由本函数盖上当前版本号。
+CANVAS_FORMAT_VERSION = 1
+CANVAS_FORMAT_FIELD = "formatVersion"
+CANVAS_MIGRATION_LOGGED = set()
+
+
+def migrate_canvas_format(canvas_id, canvas):
+    """把画布数据升到当前格式版本（就地修改 canvas 并返回）。
+
+    v0 -> v1：补 formatVersion 字段（历史画布都没有），并保证基础结构存在。
+    """
+    if not isinstance(canvas, dict):
+        return canvas
+    raw = canvas.get(CANVAS_FORMAT_FIELD)
+    try:
+        version = int(str(raw).strip()) if raw is not None else 0
+    except Exception:
+        version = 0
+    if version < 1:
+        canvas.setdefault("nodes", [])
+        canvas.setdefault("connections", [])
+        canvas.setdefault("artifacts", [])
+        canvas.setdefault("deleted", [])
+        version = 1
+    if canvas.get(CANVAS_FORMAT_FIELD) != version:
+        canvas[CANVAS_FORMAT_FIELD] = version
+        key = (str(canvas_id), version)
+        if key not in CANVAS_MIGRATION_LOGGED:
+            CANVAS_MIGRATION_LOGGED.add(key)
+            try:
+                append_log(LOG_FILE, "[CanvasFormat] canvas={} 迁移到 formatVersion={}".format(canvas_id, version))
+            except Exception:
+                pass
+    return canvas
+
+
 def normalize_canvas_structure(canvas_id, data):
     now_ms = int(time.time() * 1000)
     canvas = dict(data) if isinstance(data, dict) else {}
@@ -3690,7 +3598,7 @@ def normalize_canvas_structure(canvas_id, data):
     canvas.setdefault("artifacts", [])  # Phase 8：Agent 持久产物侧边栏（按 canvas 隔离，与 nodes 同级）
     canvas.setdefault("viewport", {"x": 0, "y": 0, "scale": 1})
     canvas.setdefault("settings", {})
-    return canvas
+    return migrate_canvas_format(canvas_id, canvas)
 
 
 NODE_TOMBSTONE_LIMIT = 500
@@ -6961,7 +6869,7 @@ def submit_canvas_agent_interaction_receipt(payload):
                          and t.get("status") in {"waiting_user", "running", "paused"}), None)
             if task:
                 agent_runtime.record_decision(task, receipt)
-                agent_runtime.save_tasks(PERSISTENT_TASKS_FILE, TASKS)
+                persist_tasks_locked()
                 _agent_task_log("Decision", "task={} step={} card={} selection={} confirmed={}".format(
                     task.get("task_id"), task.get("current_step_id"), card_id, receipt_selection, receipt["confirmed"]))
     except Exception as exc:
@@ -9742,7 +9650,6 @@ def localize_generated_media_items(items, kind="image", canvas_title="", canvas_
     return localized
 
 
-
 def runninghub_api_base():
     """RH 平台地址跟随用户在 API 设置里的配置（2026-09-10 解锁）；缺省回退官方域名。"""
     base = "https://www.runninghub.ai"
@@ -10463,7 +10370,6 @@ def poll_volcengine_video_task(local_task_id):
             update_task_state(local_task_id, status="running", checked_at=time.time(), last_error=str(exc))
             append_log(LOG_FILE, f"volcengine video task poll failed local_task_id={local_task_id}: {exc}")
     update_task_state(local_task_id, status="failed", error="火山视频任务超时", completed_at=time.time())
-
 
 
 def _volcengine_canvas_title_for_output(canvas_id):

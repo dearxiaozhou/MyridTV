@@ -1,4 +1,4 @@
-# MyridTV 自检基线（②A）
+﻿# MyridTV 自检基线（②A）
 # 用法：powershell -NoProfile -ExecutionPolicy Bypass -File tests\verify.ps1
 # 改完代码先跑这个；红了就别交付。全绿 = 语法/前端/i18n/单测四道都过。
 

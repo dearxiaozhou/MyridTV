@@ -294,7 +294,14 @@
         "smart.shortcutCreateMenu": { zh: "打开快捷菜单", en: "Open the quick create menu" },
         "smart.shortcutPan": { zh: "拖动画布", en: "Drag to pan the canvas" },
         "smart.shortcutZoom": { zh: "缩放画布或预览图片", en: "Zoom canvas or preview image" },
-        "smart.shortcutDelete": { zh: "删除选中节点", en: "Delete selected nodes" }
+        "smart.shortcutDelete": { zh: "删除选中节点", en: "Delete selected nodes" },
+        "smart.shortcutMoveNode": { zh: "移动节点；拖到素材库可保存素材", en: "Move a node; drag it into the asset library to save it" },
+        "smart.shortcutConnect": { zh: "创建或重连节点连接", en: "Create or reconnect a node connection" },
+        "smart.shortcutCutConnection": { zh: "拖过连线可切断连接", en: "Drag across a link to cut the connection" },
+        "smart.shortcutDropMedia": { zh: "把图片、视频或文件拖入画布/节点", en: "Drop images, videos or files onto the canvas or a node" },
+        "smart.shortcutUngroup": { zh: "拆分选中的图片组", en: "Ungroup the selected image group" },
+        "smart.justNow": { zh: "刚刚", en: "Just now" },
+        "smart.createFailed": { zh: "创建失败", en: "Create failed" }
     });
 })();
 

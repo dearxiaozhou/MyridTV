@@ -328,6 +328,7 @@
         "canvas.videoRoleReference": { zh: "参考", en: "Ref" },
         "canvas.videoRoleFirstFrame": { zh: "首帧", en: "First" },
         "canvas.videoRoleLastFrame": { zh: "尾帧", en: "Last" },
-        "canvas.videoFailed": { zh: "视频生成失败", en: "Video generation failed" }
+        "canvas.videoFailed": { zh: "视频生成失败", en: "Video generation failed" },
+        "canvas.renameFailed": { zh: "重命名失败", en: "Rename failed" }
     });
 })();
