@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ComfyUI 生成节点 - v5 设计稿（按原稿）</title>
+<style>
+:root {
+  --page:#0f141d; --grid:rgba(148,163,184,.18); --panel:rgba(28,33,45,.95); --card:#1e2331;
+  --text:#e8ecf1; --muted:#8b96a8; --faint:#5d687a; --line:#2d3646; --soft:#1a202d;
+  --shadow:rgba(0,0,0,.32); --strong:#e8ecf1; --strong-text:#10141d;
+  --accent:#4a9eff; --accent-hover:#3d8de8;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body {
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  background:#121821; color:var(--text); min-height:100vh; display:flex; align-items:flex-start; justify-content:center; padding:40px 20px;
+}
+.node-panel {
+  width:560px; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px; box-shadow:0 20px 50px var(--shadow);
+}
+/* 上游图片输入卡片 */
+.cfv5-upstream-card { display:flex; align-items:center; gap:10px; background:var(--soft); border:1px solid var(--line); border-radius:10px; padding:8px 10px; margin-bottom:10px; }
+.cfv5-upstream-thumb { width:40px; height:40px; border-radius:8px; object-fit:cover; background:#2a3444; }
+.cfv5-upstream-meta { display:flex; flex-direction:column; gap:2px; }
+.cfv5-upstream-title { color:var(--text); font-size:12px; font-weight:800; }
+.cfv5-upstream-sub { color:var(--muted); font-size:10px; font-weight:600; }
+/* 提示词 */
+.cfv5-prompt {
+  width:100%; min-height:78px; border-radius:10px; border:1px solid var(--line); background:var(--soft); color:var(--text);
+  padding:12px; font-size:13px; line-height:1.5; resize:vertical; outline:none; margin-bottom:10px;
+}
+/* 控制条 */
+.cfv5-control-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.cfv5-pill { height:28px; padding:0 10px; border-radius:999px; display:flex; align-items:center; gap:5px; background:var(--soft); border:1px solid var(--line); color:var(--text); font-size:11px; font-weight:700; cursor:pointer; }
+.cfv5-pill .sub { color:var(--muted); font-weight:600; }
+.cfv5-pill i { width:13px; height:13px; opacity:.8; }
+.cfv5-pill .badge { min-width:18px; height:18px; padding:0 5px; border-radius:999px; background:var(--line); color:var(--text); font-size:10px; font-weight:800; display:flex; align-items:center; justify-content:center; margin-left:2px; }
+.cfv5-spacer { flex:1; }
+.cfv5-run { height:30px; padding:0 16px; border-radius:8px; border:0; background:var(--accent); color:#fff; font-size:12px; font-weight:800; display:flex; align-items:center; gap:5px; cursor:pointer; box-shadow:0 4px 12px rgba(74,158,255,.25); }
+.cfv5-run:hover { background:var(--accent-hover); }
+/* 小节标题（素材输入 / 其它暴露节点 共用） */
+.cfv5-section-title { color:var(--faint); font-size:9px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; margin:4px 2px 7px; }
+/* 素材输入 */
+.cfv5-inputs-row { display:flex; align-items:center; gap:6px 14px; padding:2px 2px 10px; flex-wrap:wrap; }
+.cfv5-mit-label { color:var(--faint); font-size:9px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; margin-right:6px; }
+.cfv5-mit { display:inline-flex; align-items:center; gap:5px; color:var(--muted); font-size:11px; font-weight:700; }
+.cfv5-mit .n { color:var(--text); font-variant-numeric:tabular-nums; }
+.cfv5-dot { width:7px; height:7px; border-radius:50%; background:var(--faint); }
+.cfv5-mit.has .cfv5-dot { background:var(--accent); }
+.cfv5-sep { color:var(--faint); font-size:10px; }
+/* 宽高 */
+.cfv5-size-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }
+.cfv5-size-cell { display:flex; align-items:center; gap:8px; background:var(--soft); border:1px solid var(--line); border-radius:8px; padding:0 10px; height:36px; }
+.cfv5-size-label { color:var(--faint); font-size:11px; font-weight:800; }
+.cfv5-size-input { flex:1; min-width:0; background:transparent; border:0; color:var(--text); font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; text-align:center; outline:none; }
+/* 底部暴露节点 */
+.cfv5-other-title { color:var(--faint); font-size:9px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; margin:2px 2px 7px; }
+.cfv5-other-grid { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+.cfv5-other-btn { height:36px; padding:0 10px; border-radius:8px; border:1px solid var(--line); background:var(--soft); color:var(--text); font-size:12px; font-weight:700; text-align:center; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.cfv5-other-btn.off { color:var(--muted); opacity:.55; text-decoration:line-through; text-decoration-color:var(--faint); }
+</style>
+</head>
+<body>
+<div class="node-panel">
+  <div class="cfv5-upstream-card">
+    <img class="cfv5-upstream-thumb" src="https://images.unsplash.com/photo-1517849845537-4d257902454a?w=120&h=120&fit=crop">
+    <div class="cfv5-upstream-meta">
+      <div class="cfv5-upstream-title">上游图片输入</div>
+      <div class="cfv5-upstream-sub">1张已连接 · 来自上传节点</div>
+    </div>
+  </div>
+  <textarea class="cfv5-prompt">写实风格，超写实摄影，巨物恐惧症，昏暗压抑，低饱和度，低亮度，冷色调，史诗感，压迫感，雾霾，能见度极低，大量阴影，大量留白，颗粒感，超广角镜头，压迫感构图，色彩统一，大师级质感，水平视角，画面一半是海面，一半是水下，</textarea>
+  <div class="cfv5-control-row">
+    <button class="cfv5-pill"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg> ComfyUI 生成</button>
+    <button class="cfv5-pill">工作流： Krea-文生图</button>
+    <button class="cfv5-pill">已暴露节点 <span class="badge">3</span></button>
+    <span class="cfv5-spacer"></span>
+    <button class="cfv5-run"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> 运行</button>
+  </div>
+  <div class="cfv5-inputs-row">
+    <span class="cfv5-mit-label">素材输入</span>
+    <span class="cfv5-mit has"><span class="cfv5-dot"></span> 图片：<span class="n">0</span></span>
+    <span class="cfv5-sep">·</span>
+    <span class="cfv5-mit"><span class="cfv5-dot"></span> 音频：<span class="n">0</span></span>
+    <span class="cfv5-sep">·</span>
+    <span class="cfv5-mit"><span class="cfv5-dot"></span> 视频：<span class="n">0</span></span>
+    <span class="cfv5-sep">·</span>
+    <span class="cfv5-mit has"><span class="cfv5-dot"></span> 提示词：</span>
+  </div>
+  <div class="cfv5-section-title">工作流参数</div>
+  <div class="cfv5-size-row">
+    <div class="cfv5-size-cell"><span class="cfv5-size-label">宽</span><input class="cfv5-size-input" value="1920"></div>
+    <div class="cfv5-size-cell"><span class="cfv5-size-label">高</span><input class="cfv5-size-input" value="1024"></div>
+  </div>
+  <div class="cfv5-other-grid">
+    <button class="cfv5-other-btn">CR Prompt Text</button>
+    <button class="cfv5-other-btn">INT Constant</button>
+    <button class="cfv5-other-btn off">VAE 解码</button>
+    <button class="cfv5-other-btn">采样算法</button>
+  </div>
+</div>
+</body>
+</html>

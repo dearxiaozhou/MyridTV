@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>MyridTV-Desktop</AssemblyName>
+    <RootNamespace>MyridTV.Desktop</RootNamespace>
+    <AssemblyTitle>MyridTV Desktop</AssemblyTitle>
+    <Product>MyridTV</Product>
+    <Company>MyridTV</Company>
+    <FileDescription>MyridTV Desktop</FileDescription>
+    <Version>0.2.13</Version>
+    <FileVersion>0.2.13</FileVersion>
+    <AssemblyVersion>0.2.13</AssemblyVersion>
+    <InformationalVersion>0.2.13</InformationalVersion>
+    <ApplicationIcon>..\..\_internal\static\images\myrid-icon.ico</ApplicationIcon>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <PublishDocumentationFiles>false</PublishDocumentationFiles>
+    <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3240.44" />
+  </ItemGroup>
+
+  <Target Name="RemoveUnusedWebView2WpfReference" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <Reference Remove="@(Reference)" Condition="'%(Reference.Filename)' == 'Microsoft.Web.WebView2.Wpf'" />
+    </ItemGroup>
+  </Target>
+</Project>
+
+

@@ -1,0 +1,72 @@
+{
+  "title": "Krea2-文生图",
+  "fields": [
+    {
+      "id": "f_8hdyuti",
+      "node": "95",
+      "input": "value",
+      "name": "宽",
+      "type": "number",
+      "default": 1080,
+      "options": [],
+      "min": 0,
+      "max": 2160,
+      "step": 1,
+      "random_enabled": false
+    },
+    {
+      "id": "f_0utsxx5",
+      "node": "96",
+      "input": "value",
+      "name": "高",
+      "type": "number",
+      "default": 1920,
+      "options": [],
+      "min": 0,
+      "max": 3840,
+      "step": 1,
+      "random_enabled": false
+    },
+    {
+      "id": "f_gofq6w4",
+      "node": "115",
+      "input": "prompt",
+      "name": "提示词",
+      "type": "textarea",
+      "default": "电影级角色设定，商业剧照质感。镜头：50mm 自然透视，平视中近景，正面微侧身，柔和框取。主体：年轻女性，五官舒展，亲和但不幼态，深色顺滑长发，微笑柔和却带危险感，眼神像在观察和引导别人，身形轻盈，姿态放松但控场能力很强，穿温和中性色干净版型服装，局部有细微非对称锋利设计，整体高信任感而非脸谱化反派。光影：柔光主光加暖橙补光，teal-orange 电影调色，逆光勾出发丝光，冷调 rim light 描边。质感：35mm 胶片颗粒，浅景深，电影级低饱和调色，照片级真实，8k，皮肤与织物细节清晰。氛围：温柔下藏锋芒。背景：低细节冷色未来公共空间，虚化光源。",
+      "options": []
+    }
+  ],
+  "mini_cards": {
+    "prompt": {
+      "x": 24,
+      "y": 30
+    },
+    "image": {
+      "x": 24,
+      "y": 210
+    },
+    "custom": {
+      "x": 280,
+      "y": 78
+    },
+    "output": {
+      "x": 540,
+      "y": 120
+    },
+    "__test_nodes": [
+      {
+        "id": "comfy_1",
+        "type": "comfy",
+        "x": 330,
+        "y": 150
+      },
+      {
+        "id": "output_1",
+        "type": "output",
+        "x": 670,
+        "y": 190
+      }
+    ]
+  }
+}

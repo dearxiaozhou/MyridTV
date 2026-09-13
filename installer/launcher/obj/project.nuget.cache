@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "dgSpecHash": "yHO/DaM4VCc=",
+  "success": true,
+  "projectFilePath": "D:\\APP\\MyridTV\\installer\\launcher\\MyridTV.Launcher.csproj",
+  "expectedPackageFiles": [
+    "<USER_HOME>\\.nuget\\packages\\microsoft.net.illink.tasks\\9.0.9\\microsoft.net.illink.tasks.9.0.9.nupkg.sha512",
+    "<USER_HOME>\\.nuget\\packages\\microsoft.netcore.app.runtime.win-x64\\9.0.9\\microsoft.netcore.app.runtime.win-x64.9.0.9.nupkg.sha512",
+    "<USER_HOME>\\.nuget\\packages\\microsoft.windowsdesktop.app.runtime.win-x64\\9.0.9\\microsoft.windowsdesktop.app.runtime.win-x64.9.0.9.nupkg.sha512",
+    "<USER_HOME>\\.nuget\\packages\\microsoft.aspnetcore.app.runtime.win-x64\\9.0.9\\microsoft.aspnetcore.app.runtime.win-x64.9.0.9.nupkg.sha512"
+  ],
+  "logs": []
+}

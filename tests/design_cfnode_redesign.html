@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>新版 ComfyUI 生成节点面板 · 设计稿</title>
+<style>
+:root {
+  --page:#0f141d;
+  --grid:rgba(148,163,184,.18);
+  --panel:rgba(23,29,41,.92);
+  --card:#171d29;
+  --text:#e5e9f0;
+  --muted:#8f9aab;
+  --faint:#657286;
+  --line:#2a3444;
+  --soft:#111722;
+  --shadow:rgba(0,0,0,.28);
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body {
+  font-family:'Inter',-apple-system,'Segoe UI',sans-serif;
+  background:var(--page);
+  color:var(--text);
+  padding:32px;
+  background-image:radial-gradient(var(--grid) 1px,transparent 1px);
+  background-size:24px 24px;
+}
+.design {
+  max-width:1080px;
+  margin:0 auto;
+}
+.title {
+  font-size:20px;
+  font-weight:800;
+  margin-bottom:6px;
+}
+.subtitle {
+  color:var(--muted);
+  font-size:13px;
+  margin-bottom:28px;
+}
+.row {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:24px;
+  margin-bottom:36px;
+}
+.col-label {
+  font-size:11px;
+  color:var(--muted);
+  font-weight:700;
+  letter-spacing:.5px;
+  text-transform:uppercase;
+  margin-bottom:10px;
+}
+.canvas-mock {
+  position:relative;
+  border-radius:18px;
+  background:linear-gradient(180deg,#0c1018,#10141d);
+  border:1px solid var(--line);
+  padding:24px;
+  min-height:560px;
+  overflow:hidden;
+}
+.canvas-mock::before {
+  content:'';
+  position:absolute; inset:0;
+  background-image:radial-gradient(var(--grid) 1px,transparent 1px);
+  background-size:18px 18px;
+  opacity:.5;
+}
+.composer {
+  position:relative;
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:14px;
+  box-shadow:0 16px 38px rgba(0,0,0,.4);
+  width:340px;
+  z-index:2;
+}
+.composer-head {
+  display:flex; align-items:center; gap:8px;
+  font-size:12px; font-weight:800;
+  color:var(--text);
+  margin-bottom:12px;
+}
+.composer-head .pill {
+  margin-left:auto;
+  background:var(--soft);
+  border:1px solid var(--line);
+  border-radius:999px;
+  padding:3px 10px;
+  font-size:10px;
+  color:var(--muted);
+  font-weight:700;
+}
+.section {
+  border-top:1px solid var(--line);
+  padding-top:10px;
+  margin-top:10px;
+}
+.section:first-of-type { border-top:0; margin-top:0; padding-top:0; }
+.section-title {
+  font-size:9px;
+  font-weight:800;
+  color:var(--faint);
+  letter-spacing:1.5px;
+  margin-bottom:8px;
+  display:flex; align-items:center; gap:6px;
+}
+.section-title::before {
+  content:'';
+  width:3px; height:10px;
+  background:linear-gradient(180deg,#5eb1ff,#a259ff);
+  border-radius:2px;
+}
+
+/* === INPUTS 卡 · 新版 === */
+.size-row {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  margin-bottom:10px;
+}
+.size-cell {
+  background:var(--soft);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:8px 10px;
+  display:flex; flex-direction:column; gap:4px;
+}
+.size-cell .lab {
+  font-size:9px;
+  color:var(--faint);
+  font-weight:700;
+  letter-spacing:.5px;
+  text-transform:uppercase;
+}
+.size-cell .val {
+  font-size:14px;
+  font-weight:700;
+  color:var(--text);
+  display:flex; align-items:center; gap:6px;
+}
+.size-cell input {
+  background:transparent;
+  border:0;
+  color:var(--text);
+  font:700 14px inherit;
+  width:80px;
+  outline:none;
+}
+.size-cell .unit {
+  font-size:10px;
+  color:var(--faint);
+  font-weight:600;
+}
+.prompt-row textarea {
+  width:100%;
+  min-height:60px;
+  background:var(--soft);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:8px 10px;
+  color:var(--text);
+  font:11px/1.5 inherit;
+  resize:vertical;
+  outline:none;
+  font-family:'Inter',sans-serif;
+}
+.prompt-row textarea:focus { border-color:#5eb1ff; }
+.input-node-row {
+  background:var(--soft);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:10px;
+  display:flex; align-items:center; gap:10px;
+  margin-bottom:8px;
+}
+.input-node-thumb {
+  width:42px; height:42px;
+  border-radius:6px;
+  background:linear-gradient(135deg,#3a4a66,#1e2a3d);
+  border:1px solid var(--line);
+  display:flex; align-items:center; justify-content:center;
+  font-size:14px;
+  flex-shrink:0;
+}
+.input-node-info { flex:1; min-width:0; }
+.input-node-info .nm {
+  font-size:11px; font-weight:700;
+  color:var(--text);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.input-node-info .meta {
+  font-size:9px; color:var(--muted);
+  display:flex; gap:6px; margin-top:2px;
+}
+.input-node-info .meta .dot {
+  display:inline-block; width:6px; height:6px; border-radius:50%;
+  background:#34d399;
+}
+.input-node-info .meta .dot.empty { background:var(--faint); }
+.input-node-info .meta .dot.warn { background:#fbbf24; }
+.btn-rebind {
+  background:var(--panel);
+  border:1px solid var(--line);
+  color:var(--muted);
+  font:700 10px inherit;
+  padding:5px 9px;
+  border-radius:6px;
+  cursor:pointer;
+}
+.input-node-row.empty .input-node-thumb {
+  border-style:dashed;
+  background:transparent;
+}
+.input-node-row.empty .input-node-info .nm { color:var(--faint); }
+.input-node-row.empty .btn-rebind { color:#5eb1ff; border-color:rgba(94,177,255,.3); }
+
+/* === 节点开关 popover · 新版 === */
+.popover {
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:10px;
+  box-shadow:0 16px 38px rgba(0,0,0,.4);
+  width:320px;
+  z-index:3;
+}
+.popover-head {
+  font-size:11px; font-weight:800;
+  color:var(--text);
+  margin-bottom:8px;
+  display:flex; align-items:center; gap:6px;
+}
+.popover-head .count {
+  margin-left:auto;
+  font-size:9px;
+  color:var(--muted);
+  font-weight:600;
+  background:var(--soft);
+  padding:2px 7px;
+  border-radius:99px;
+}
+.cfm-row {
+  display:flex; align-items:center; gap:8px;
+  padding:6px 8px;
+  border-radius:7px;
+  background:var(--soft);
+  margin-bottom:4px;
+  border:1px solid var(--line);
+}
+.cfm-row .nm {
+  flex:1; min-width:0;
+  font-size:11px; font-weight:600;
+  color:var(--text);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.cfm-row .nm .id {
+  display:inline-block;
+  background:rgba(94,177,255,.16);
+  color:#5eb1ff;
+  font:700 9px inherit;
+  padding:1px 5px;
+  border-radius:3px;
+  margin-right:5px;
+}
+.cfm-seg {
+  display:flex; gap:0;
+  border:1px solid var(--line);
+  border-radius:5px;
+  overflow:hidden;
+}
+.cfm-seg button {
+  background:transparent;
+  border:0;
+  color:var(--muted);
+  font:700 9px inherit;
+  padding:3px 8px;
+  cursor:pointer;
+}
+.cfm-seg button.active { background:#5eb1ff; color:#10141d; }
+.cfm-seg button.warn.active { background:#fbbf24; }
+.cfm-hint {
+  font-size:9px;
+  color:var(--faint);
+  margin-top:8px;
+  line-height:1.5;
+}
+.empty-note {
+  text-align:center;
+  padding:14px;
+  color:var(--faint);
+  font-size:11px;
+}
+.callout {
+  margin-top:8px;
+  font-size:10px;
+  color:var(--muted);
+  background:rgba(94,177,255,.07);
+  border-left:2px solid #5eb1ff;
+  padding:6px 8px;
+  border-radius:0 4px 4px 0;
+  line-height:1.5;
+}
+</style>
+</head>
+<body>
+<div class="design">
+
+<div class="title">新版「ComfyUI 生成」节点面板 · 设计稿</div>
+<div class="subtitle">配置：Krea-文生图-人物多角度（fields 3 个：提示词/宽/高） + Krea2-风格参考（fields 2 个：提示词/图片）</div>
+
+<div class="row">
+  <!-- INPUTS 新版 -->
+  <div>
+    <div class="col-label">① INPUTS · 新版（按 type 分组）</div>
+    <div class="canvas-mock">
+      <div class="composer">
+        <div class="composer-head">
+          <span>📦 Krea-文生图-人物多角度</span>
+          <span class="pill">INPUTS</span>
+        </div>
+
+        <!-- Krea 工作流：宽+高 横向并排 -->
+        <div class="section">
+          <div class="section-title">尺寸</div>
+          <div class="size-row">
+            <div class="size-cell">
+              <span class="lab">宽度 W</span>
+              <span class="val"><input value="1920"><span class="unit">px</span></span>
+            </div>
+            <div class="size-cell">
+              <span class="lab">高度 H</span>
+              <span class="val"><input value="1024"><span class="unit">px</span></span>
+            </div>
+          </div>
+
+          <div class="prompt-row">
+            <div class="section-title" style="margin:10px 0 6px">提示词</div>
+            <textarea>电影级角色设定，商业剧照质感。镜头：35mm 略广角，低角度微仰拍…</textarea>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">节点开关 · 3 个暴露节点</div>
+          <div class="cfm-row">
+            <span class="nm"><span class="id">309</span>CR Prompt Text</span>
+            <div class="cfm-seg"><button class="active">执</button><button>旁</button><button>禁</button></div>
+          </div>
+          <div class="cfm-row">
+            <span class="nm"><span class="id">297</span>INT Constant</span>
+            <div class="cfm-seg"><button class="active">执</button><button>旁</button><button>禁</button></div>
+          </div>
+          <div class="cfm-row">
+            <span class="nm"><span class="id">310</span>INT Constant</span>
+            <div class="cfm-seg"><button class="active">执</button><button>旁</button><button>禁</button></div>
+          </div>
+          <div class="cfm-hint">只列 config.fields 配的暴露节点。其他 26 个节点折叠收起。</div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">出图</div>
+          <button style="width:100%;padding:8px;background:linear-gradient(180deg,#5eb1ff,#3b82f6);border:0;border-radius:7px;color:#10141d;font:800 11px inherit;cursor:pointer">▶ 运行（提示词 W=1920 H=1024）</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- INPUTS 旧版对照 -->
+  <div>
+    <div class="col-label">① 旧版对比（你现在看的）</div>
+    <div class="canvas-mock">
+      <div class="composer">
+        <div class="composer-head">
+          <span>📦 Krea-文生图-人物多角度</span>
+          <span class="pill">INPUTS</span>
+        </div>
+
+        <div class="section">
+          <div class="section-title">输入字段</div>
+          <div style="font-size:11px;color:var(--text);margin-bottom:6px">提示词 <span style="color:var(--faint)">(textarea)</span></div>
+          <textarea style="width:100%;min-height:50px;background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:6px;color:var(--muted);font:10px/1.4 inherit">电影级角色设定…</textarea>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <div style="flex:1;font-size:11px;color:var(--text)">数值 <input value="1920" style="width:80px;background:var(--soft);border:1px solid var(--line);border-radius:4px;padding:3px;color:var(--text)"></div>
+            <div style="flex:1;font-size:11px;color:var(--text)">数值 <input value="1024" style="width:80px;background:var(--soft);border:1px solid var(--line);border-radius:4px;padding:3px;color:var(--text)"></div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">节点开关 · 全部 9 节点</div>
+          <div class="cfm-row"><span class="nm"><span class="id">95</span>INT Constant</span><div class="cfm-seg"><button class="active">执</button><button>旁</button><button>禁</button></div></div>
+          <div class="cfm-row"><span class="nm"><span class="id">96</span>INT Constant</span><div class="cfm-seg"><button class="active">执</button><button>旁</button><button>禁</button></div></div>
+          <div class="cfm-row"><span class="nm"><span class="id">109</span>CR Prompt Text</span><div class="cfm-seg"><button class="active">执</button><button>旁</button><button>禁</button></div></div>
+          <div class="cfm-row"><span class="nm"><span class="id">115</span>CR Prompt Text</span><div class="cfm-seg"><button class="active">执</button><button>旁</button><button>禁</button></div></div>
+          <div class="cfm-row"><span class="nm"><span class="id">2</span>采样算法 (AuraFlow)</span><div class="cfm-seg"><button class="active">执</button><button>旁</button><button>禁</button></div></div>
+          <div class="cfm-row"><span class="nm"><span class="id">4</span>VAE解码</span><div class="cfm-seg"><button class="active">执</button><button>旁</button><button>禁</button></div></div>
+          <div class="cfm-row"><span class="nm"><span class="id">5</span>CLIP文本编码</span><div class="cfm-seg"><button class="active">执</button><button>旁</button><button>禁</button></div></div>
+          <div class="cfm-row"><span class="nm"><span class="id">10</span>空latent图像</span><div class="cfm-seg"><button class="active">执</button><button>旁</button><button>禁</button></div></div>
+          <div class="cfm-row"><span class="nm"><span class="id">16</span>条件零化</span><div class="cfm-seg"><button class="active">执</button><button>旁</button><button>禁</button></div></div>
+          <div class="cfm-hint">⚠️ 列了全部节点，跟你 config 暴露的 3 个完全不一致</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Krea2 输入型字段：从画布读 -->
+<div class="row" style="grid-template-columns:1fr">
+  <div>
+    <div class="col-label">② 输入型字段 · 改成"读取画布输入节点"（Krea2-风格参考 的 image 字段）</div>
+    <div class="canvas-mock">
+      <div class="composer">
+        <div class="composer-head">
+          <span>📦 Krea2-风格参考</span>
+          <span class="pill">INPUTS</span>
+        </div>
+
+        <div class="section">
+          <div class="section-title">提示词</div>
+          <div class="prompt-row">
+            <textarea>古风少年, 白袍服饰, 高挑修长身形,</textarea>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">参考图 · 从画布读取</div>
+
+          <!-- 已连接：显示来源 -->
+          <div class="input-node-row">
+            <div class="input-node-thumb">🏞</div>
+            <div class="input-node-info">
+              <div class="nm">人物风格参考 · PixPin_2026...</div>
+              <div class="meta"><span class="dot"></span>已连接 · 1024×1536 · 节点 n_4f3a</div>
+            </div>
+            <button class="btn-rebind">更换</button>
+          </div>
+
+          <!-- 没连接：空态 -->
+          <div class="callout">
+            💡 不再是"上传文件"。点 <b>连接输入</b> 后，画布里任意 <b>image 节点</b>（image/video/audio 也支持）会变成可选来源；选中的节点值直接喂给工作流的 <code>153.image</code> 输入端。
+          </div>
+
+          <!-- 旧版的"上传"按钮占位 -->
+          <div style="margin-top:8px;font-size:10px;color:var(--faint);text-decoration:line-through;text-align:center">
+            （旧版这里显示 "📁 选择文件 / 拖拽图片" 按钮，已移除）
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">节点开关 · 2 个暴露节点</div>
+          <div class="cfm-row">
+            <span class="nm"><span class="id">138</span>CR Prompt Text</span>
+            <div class="cfm-seg"><button class="active">执</button><button>旁</button><button>禁</button></div>
+          </div>
+          <div class="cfm-row">
+            <span class="nm"><span class="id">153</span>LoadImage</span>
+            <div class="cfm-seg"><button class="active">执</button><button>旁</button><button>禁</button></div>
+          </div>
+          <div class="cfm-hint">只列 config.fields 配的 2 个暴露节点。其他 14 个折叠。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 节点开关 popover 单独放大 -->
+<div class="row" style="grid-template-columns:1fr">
+  <div>
+    <div class="col-label">③ 节点开关 popover · 放大版</div>
+    <div class="canvas-mock" style="min-height:340px">
+      <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+        <div class="popover">
+          <div class="popover-head">
+            <span>⚙ 节点开关 · Krea-文生图</span>
+            <span class="count">3 节点</span>
+          </div>
+          <div class="cfm-row">
+            <span class="nm"><span class="id">309</span>CR Prompt Text</span>
+            <div class="cfm-seg"><button class="active">执</button><button>旁</button><button>禁</button></div>
+          </div>
+          <div class="cfm-row">
+            <span class="nm"><span class="id">297</span>INT Constant</span>
+            <div class="cfm-seg"><button class="active">执</button><button>旁</button><button>禁</button></div>
+          </div>
+          <div class="cfm-row">
+            <span class="nm"><span class="id">310</span>INT Constant</span>
+            <div class="cfm-seg"><button>执</button><button class="active">旁</button><button>禁</button></div>
+          </div>
+          <div class="cfm-hint">只显示 config.json fields 里配的节点。改 config → 重启工作流 → 列表自动同步。</div>
+        </div>
+
+        <div class="popover">
+          <div class="popover-head">
+            <span>⚙ 节点开关 · Krea2-风格参考</span>
+            <span class="count">2 节点</span>
+          </div>
+          <div class="cfm-row">
+            <span class="nm"><span class="id">138</span>CR Prompt Text</span>
+            <div class="cfm-seg"><button class="active">执</button><button>旁</button><button>禁</button></div>
+          </div>
+          <div class="cfm-row">
+            <span class="nm"><span class="id">153</span>LoadImage</span>
+            <div class="cfm-seg"><button class="active">执</button><button>旁</button><button>禁</button></div>
+          </div>
+          <div class="cfm-hint">image 输入节点可以独立旁路（试纯文本生图）或禁用（与下游一起删）。</div>
+        </div>
+
+        <div class="popover">
+          <div class="popover-head">
+            <span>⚙ 节点开关 · 空配置</span>
+            <span class="count">0 节点</span>
+          </div>
+          <div class="empty-note">
+            你没在 config.fields 里配任何节点。<br>
+            <a style="color:#5eb1ff;text-decoration:none">去 settings 页暴露 →</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 设计要点 -->
+<div style="margin-top:24px;padding:16px;background:var(--card);border:1px solid var(--line);border-radius:10px">
+  <div style="font-size:11px;font-weight:800;color:var(--text);margin-bottom:8px">📌 三个改动点（确认后我改代码）</div>
+  <div style="font-size:11px;color:var(--muted);line-height:1.7">
+    <b>1. 节点开关只列暴露节点</b> — 当前 `renderComfyNodeModesControl` 列出 workflow 里全部 26 个节点，老王要的是用 `exposedNodes = new Set(config.fields.map(f => f.node))` 过滤一遍，只显示 3 个。<br>
+    <b>2. 宽高数值一行排</b> — `renderComfySettingField` 检测到 `field.type === 'number' && field.name === '数值'`（或更通用：相邻两个 number field）自动横排成 `<grid 1fr 1fr>`。<br>
+    <b>3. image/video/audio 输入字段从画布读</b> — 不再走 `pickComfyMedia` 上传，改成"输入节点绑定"：点击触发画布"连接模式"，选中任意 image 节点后，那张图作为输入喂给 `node.input`（如 `153.image`）。
+  </div>
+</div>
+
+</div>
+</body>
+</html>

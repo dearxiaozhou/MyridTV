@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>ComfyUI 生成节点面板 · 设计稿 v2</title>
+<style>
+:root {
+  --page:#0f141d;
+  --grid:rgba(148,163,184,.18);
+  --panel:rgba(23,29,41,.92);
+  --card:#171d29;
+  --text:#e5e9f0;
+  --muted:#8f9aab;
+  --faint:#657286;
+  --line:#2a3444;
+  --soft:#111722;
+  --shadow:rgba(0,0,0,.28);
+  --accent:#5eb1ff;
+  --warn:#fbbf24;
+  --ok:#34d399;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body {
+  font-family:'Inter',-apple-system,'Segoe UI',sans-serif;
+  background:var(--page);
+  color:var(--text);
+  padding:32px;
+  background-image:radial-gradient(var(--grid) 1px,transparent 1px);
+  background-size:24px 24px;
+}
+.design { max-width:1080px; margin:0 auto; }
+.title { font-size:20px; font-weight:800; margin-bottom:6px; }
+.subtitle { color:var(--muted); font-size:13px; margin-bottom:28px; }
+.section-title-bar {
+  font-size:12px; font-weight:800; color:var(--text);
+  margin:18px 0 10px;
+  padding-left:8px;
+  border-left:3px solid var(--accent);
+}
+.canvas-mock {
+  position:relative;
+  border-radius:18px;
+  background:linear-gradient(180deg,#0c1018,#10141d);
+  border:1px solid var(--line);
+  padding:32px 28px;
+  min-height:480px;
+  overflow:hidden;
+}
+.canvas-mock::before {
+  content:'';
+  position:absolute; inset:0;
+  background-image:radial-gradient(var(--grid) 1px,transparent 1px);
+  background-size:18px 18px;
+  opacity:.5;
+}
+
+/* ===== 画布上的输入节点（"上传节点"）===== */
+.input-node {
+  position:absolute;
+  top:30px; right:40px;
+  width:160px; height:84px;
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:12px;
+  display:flex; align-items:center; justify-content:center;
+  flex-direction:column; gap:6px;
+  font-size:12px; font-weight:700;
+  box-shadow:0 12px 28px rgba(0,0,0,.3);
+  z-index:3;
+}
+.input-node .lbl { color:var(--muted); font-size:10px; font-weight:700; }
+.input-node .val { color:var(--text); font-size:14px; }
+
+/* ===== Composer 面板 ===== */
+.composer {
+  position:relative;
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:14px;
+  width:660px;
+  z-index:2;
+  overflow:hidden;
+}
+.tabs {
+  display:flex; gap:0;
+  background:var(--soft);
+  border-bottom:1px solid var(--line);
+}
+.tabs .tab {
+  padding:8px 14px;
+  font-size:11px; font-weight:700;
+  color:var(--muted);
+  border-bottom:2px solid transparent;
+}
+.tabs .tab.active {
+  color:var(--text);
+  border-bottom-color:var(--accent);
+}
+.prompt-area {
+  padding:14px;
+  background:var(--card);
+  border-bottom:1px solid var(--line);
+}
+.prompt-area textarea {
+  width:100%; min-height:64px;
+  background:var(--soft);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:10px;
+  color:var(--text);
+  font:11px/1.5 inherit;
+  resize:vertical;
+  outline:none;
+}
+.prompt-area textarea:focus { border-color:var(--accent); }
+
+.control-row {
+  display:flex; gap:8px;
+  padding:10px 14px;
+  background:var(--card);
+  border-bottom:1px solid var(--line);
+  align-items:center;
+}
+.cr-pill {
+  background:var(--soft);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:6px 12px;
+  font-size:11px; font-weight:700;
+  color:var(--text);
+  display:flex; align-items:center; gap:6px;
+  cursor:pointer;
+}
+.cr-pill .sub { color:var(--muted); font-weight:600; }
+.cr-pill .badge {
+  margin-left:4px;
+  background:rgba(94,177,255,.16);
+  color:var(--accent);
+  font:700 9px inherit;
+  padding:1px 6px;
+  border-radius:99px;
+}
+.cr-pill .arrow { color:var(--faint); font-size:9px; }
+.cr-run {
+  margin-left:auto;
+  background:linear-gradient(180deg,#5eb1ff,#3b82f6);
+  border:0; color:#10141d;
+  font:800 11px inherit;
+  padding:7px 18px;
+  border-radius:8px;
+  cursor:pointer;
+}
+
+/* 素材输入计数 */
+.inputs-row {
+  display:grid;
+  grid-template-columns:auto 1fr 1fr 1fr;
+  gap:8px;
+  padding:10px 14px;
+  background:var(--card);
+  border-bottom:1px solid var(--line);
+  align-items:center;
+}
+.inputs-row .lab {
+  font-size:11px; font-weight:700; color:var(--muted);
+}
+.inputs-cell {
+  background:var(--soft);
+  border:1px solid var(--line);
+  border-radius:7px;
+  padding:5px 10px;
+  font-size:11px; font-weight:700;
+  display:flex; align-items:center; gap:6px;
+  color:var(--text);
+}
+.inputs-cell .icon {
+  display:inline-block;
+  width:14px; height:14px;
+  background:var(--line);
+  border-radius:3px;
+  position:relative;
+}
+.inputs-cell .icon.img { background:rgba(94,177,255,.25); }
+.inputs-cell .icon.vid { background:rgba(251,191,36,.25); }
+.inputs-cell .icon.aud { background:rgba(52,211,153,.25); }
+.inputs-cell .count {
+  margin-left:auto;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:99px;
+  padding:1px 7px;
+  font:700 10px inherit;
+  color:var(--muted);
+  min-width:18px;
+  text-align:center;
+}
+.inputs-cell.has .count { color:var(--accent); border-color:rgba(94,177,255,.3); background:rgba(94,177,255,.08); }
+
+/* 宽高 */
+.size-row {
+  display:grid;
+  grid-template-columns:auto 1fr auto 1fr;
+  gap:8px;
+  padding:10px 14px;
+  align-items:center;
+  background:var(--card);
+  border-bottom:1px solid var(--line);
+}
+.size-row .lab { font-size:11px; font-weight:700; color:var(--muted); text-align:right; }
+.size-input {
+  background:var(--soft);
+  border:1px solid var(--line);
+  border-radius:6px;
+  padding:5px 8px;
+  font:700 12px inherit;
+  color:var(--text);
+  outline:none;
+  text-align:center;
+}
+.size-input:focus { border-color:var(--accent); }
+
+/* 其它暴露节点 · 2 列网格 */
+.other-nodes {
+  padding:10px 14px 14px;
+  background:var(--card);
+}
+.other-grid {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px;
+}
+.other-item {
+  display:flex; align-items:center; gap:8px;
+  background:var(--soft);
+  border:1px solid var(--line);
+  border-radius:7px;
+  padding:6px 8px;
+  font-size:11px; font-weight:700;
+}
+.other-item .nm {
+  flex:1; min-width:0;
+  color:var(--text);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  padding:3px 8px;
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:5px;
+  font-size:10px;
+}
+.other-item .sw {
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:5px;
+  padding:4px 10px;
+  font:700 10px inherit;
+  color:var(--muted);
+  cursor:pointer;
+  min-width:30px;
+  text-align:center;
+}
+.other-item .sw.on {
+  color:var(--text);
+  border-color:rgba(94,177,255,.5);
+  background:rgba(94,177,255,.12);
+  box-shadow:0 0 0 1px rgba(94,177,255,.2);
+}
+.other-item .sw.off {
+  color:var(--muted);
+  background:transparent;
+  border-color:var(--faint);
+  opacity:.55;
+}
+
+/* ===== 节点开关 popover（图2）===== */
+.popover {
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:10px;
+  box-shadow:0 16px 38px rgba(0,0,0,.4);
+  width:280px;
+  z-index:3;
+}
+.popover-head {
+  font-size:11px; font-weight:800;
+  color:var(--text);
+  margin-bottom:8px;
+  display:flex; align-items:center; gap:6px;
+}
+.popover-head .count {
+  margin-left:auto;
+  font-size:9px; color:var(--muted); font-weight:600;
+  background:var(--soft);
+  padding:2px 7px; border-radius:99px;
+}
+.pv-row {
+  display:flex; align-items:center; gap:8px;
+  padding:6px 0;
+}
+.pv-row + .pv-row { border-top:1px solid var(--line); }
+.pv-row .nm {
+  flex:1; min-width:0;
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:6px;
+  padding:5px 10px;
+  font:700 10px inherit;
+  color:var(--text);
+  text-align:center;
+}
+.pv-row .sw {
+  background:var(--card);
+  border:1px solid rgba(94,177,255,.5);
+  color:var(--text);
+  font:700 10px inherit;
+  padding:5px 12px;
+  border-radius:6px;
+  cursor:pointer;
+  min-width:32px;
+  text-align:center;
+  box-shadow:0 0 0 1px rgba(94,177,255,.18);
+}
+.pv-row .sw.off {
+  color:var(--muted);
+  border-color:var(--faint);
+  box-shadow:none;
+  opacity:.55;
+}
+.pv-hint {
+  font-size:9px;
+  color:var(--faint);
+  margin-top:8px;
+  line-height:1.5;
+  border-top:1px solid var(--line);
+  padding-top:8px;
+}
+
+.callout {
+  margin-top:14px;
+  padding:12px 14px;
+  background:rgba(94,177,255,.06);
+  border:1px solid rgba(94,177,255,.2);
+  border-radius:8px;
+  font-size:11px; line-height:1.7; color:var(--muted);
+}
+.callout b { color:var(--text); }
+</style>
+</head>
+<body>
+<div class="design">
+
+<div class="title">ComfyUI 生成节点面板 · 设计稿 v2</div>
+<div class="subtitle">按老王图1/图2 完整复刻版式 · 节点开关简化为"开/关"两态 · 素材输入计数</div>
+
+<!-- 主面板 -->
+<div class="section-title-bar">① 主面板 · 完整结构（Krea-文生图 三个字段：提示词 + 宽 + 高）</div>
+<div class="canvas-mock">
+
+  <!-- 上传节点（image node 上游输入） -->
+  <div class="input-node">
+    <div class="lbl">📁 上传节点</div>
+    <div class="val">🏞️ 1 张</div>
+  </div>
+
+  <div class="composer">
+    <!-- 缩略图标签栏 -->
+    <div class="tabs">
+      <div class="tab active">缩略图</div>
+      <div class="tab" style="margin-left:auto">⋯</div>
+    </div>
+
+    <!-- 提示词区 -->
+    <div class="prompt-area">
+      <textarea>电影级角色设定，商业剧照质感。镜头：35mm 略广角，低角度微仰拍（英雄式）…</textarea>
+    </div>
+
+    <!-- 控制条 -->
+    <div class="control-row">
+      <div class="cr-pill">📦 ComfyUI 生成</div>
+      <div class="cr-pill"><span class="sub">工作流：</span>Krea-文生图</div>
+      <div class="cr-pill" style="position:relative">
+        ⚙ 已暴露节点<span class="badge">3</span>
+      </div>
+      <button class="cr-run">▶ 运行</button>
+    </div>
+
+    <!-- 素材输入计数 -->
+    <div class="inputs-row">
+      <div class="lab">素材输入</div>
+      <div class="inputs-cell has">
+        <span class="icon img"></span>图片 <span class="count">1</span>
+      </div>
+      <div class="inputs-cell">
+        <span class="icon aud"></span>音频 <span class="count">0</span>
+      </div>
+      <div class="inputs-cell">
+        <span class="icon vid"></span>视频 <span class="count">0</span>
+      </div>
+    </div>
+
+    <!-- 宽高 -->
+    <div class="size-row">
+      <div class="lab">宽</div>
+      <input class="size-input" value="1920">
+      <div class="lab">高</div>
+      <input class="size-input" value="1024">
+    </div>
+
+    <!-- 其它暴露节点 · 2 列网格 -->
+    <div class="other-nodes">
+      <div class="other-grid">
+        <div class="other-item">
+          <div class="nm">其它暴露节点</div>
+          <div class="sw on">开</div>
+        </div>
+        <div class="other-item">
+          <div class="nm">其它暴露节点</div>
+          <div class="sw on">开</div>
+        </div>
+        <div class="other-item">
+          <div class="nm">其它暴露节点</div>
+          <div class="sw off">关</div>
+        </div>
+        <div class="other-item">
+          <div class="nm">其它暴露节点</div>
+          <div class="sw on">开</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="callout">
+  <b>整体布局：</b>
+  从上到下：缩略图标签栏 → 提示词区 → 控制条（ComfyUI 生成 pill + 工作流 pill + <b>已暴露节点菜单 pill</b> + 运行）→ 素材输入（图片/音频/视频 计数）→ 宽高一行 → 其它暴露节点（2 列网格，每行 [节点名] + [开/关]）。
+</div>
+
+<!-- 节点开关 popover -->
+<div class="section-title-bar">② 节点开关 popover · 控制条 pill 点开后的内容（图2）</div>
+<div class="canvas-mock" style="min-height:300px">
+  <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
+
+    <!-- 默认全开 -->
+    <div class="popover">
+      <div class="popover-head">
+        <span>⚙ 已暴露节点</span>
+        <span class="count">3 节点</span>
+      </div>
+      <div class="pv-row">
+        <div class="nm">其它暴露节点</div>
+        <div class="sw">开</div>
+      </div>
+      <div class="pv-row">
+        <div class="nm">其它暴露节点</div>
+        <div class="sw">开</div>
+      </div>
+      <div class="pv-row">
+        <div class="nm">其它暴露节点</div>
+        <div class="sw">开</div>
+      </div>
+      <div class="pv-hint">
+        <b>开</b> = 使用节点（正常执行）<br>
+        <b>关</b> = 跳过节点（等同 ComfyUI 的 Ctrl+B 旁路）<br>
+        没有第三态；bypass 时下游自动接上游类型兼容值。
+      </div>
+    </div>
+
+    <!-- 一个被关闭 -->
+    <div class="popover">
+      <div class="popover-head">
+        <span>⚙ 已暴露节点</span>
+        <span class="count">2 开 · 1 关</span>
+      </div>
+      <div class="pv-row">
+        <div class="nm">CR Prompt Text</div>
+        <div class="sw">开</div>
+      </div>
+      <div class="pv-row">
+        <div class="nm">VAE 解码</div>
+        <div class="sw">关</div>
+      </div>
+      <div class="pv-row">
+        <div class="nm">采样算法</div>
+        <div class="sw">开</div>
+      </div>
+      <div class="pv-hint">
+        "关"状态下 VAE 解码节点被旁路，下游的输出由它上游类型兼容的节点直接接管。
+      </div>
+    </div>
+
+    <!-- 空配置 -->
+    <div class="popover">
+      <div class="popover-head">
+        <span>⚙ 已暴露节点</span>
+        <span class="count">0</span>
+      </div>
+      <div style="text-align:center;padding:18px 10px;color:var(--faint);font-size:11px">
+        你没在 config.fields 配任何节点。<br>
+        <span style="color:var(--accent)">去 settings 页暴露 →</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 关键变更 -->
+<div class="section-title-bar">③ 这次跟之前比的关键变更</div>
+<div style="padding:14px 16px;background:var(--card);border:1px solid var(--line);border-radius:10px;font-size:11px;line-height:1.85;color:var(--muted)">
+  <b style="color:var(--text)">1. 节点开关：执/旁/禁 三态 → 开/关 两态</b><br>
+  &nbsp;&nbsp;之前：<code style="color:var(--warn)">执 | 旁 | 禁</code> 三按钮（旁=短路重定向、禁=级联删除下游）<br>
+  &nbsp;&nbsp;现在：<code style="color:var(--ok)">开 | 关</code> 单开关（关=Ctrl+B bypass）<br>
+  &nbsp;&nbsp;代码层面：<code>run/bypass/mute</code> 三模 → <code>on/bypass</code> 两模；<code>mute</code> 整条删。<br><br>
+
+  <b style="color:var(--text)">2. 素材输入：上传按钮 → 上游节点计数</b><br>
+  &nbsp;&nbsp;之前：image/video/audio 字段显示"选择文件"上传按钮<br>
+  &nbsp;&nbsp;现在：去掉上传。画布里所有连入的 <code>image node</code>/<code>audio node</code>/<code>video node</code> 各自计数显示<br>
+  &nbsp;&nbsp;实现：扫画布 edges / selectedNode 连入关系，统计类型<br>
+  &nbsp;&nbsp;（"有一个就变 1"——你说的是这个意思）<br><br>
+
+  <b style="color:var(--text)">3. 其它暴露节点：popover 下拉 → 主面板内 2 列网格</b><br>
+  &nbsp;&nbsp;之前：点击 pill 弹 popover，里面一行行开关<br>
+  &nbsp;&nbsp;现在：popover（图2）保留，但主面板里也直接平铺一份 2 列网格<br>
+  &nbsp;&nbsp;（pill 上点击也能继续开 popover，两种入口并存）<br><br>
+
+  <b style="color:var(--text)">4. 整体版式：按你截图 1:1 复刻</b><br>
+  &nbsp;&nbsp;从上到下：缩略图标签 → 提示词 → 控制条 → 素材输入 → 宽高 → 其它节点 2 列
+</div>
+
+</div>
+</body>
+</html>

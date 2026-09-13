@@ -1,0 +1,313 @@
+{
+  "313": {
+    "inputs": {
+      "prompt": "你是「#Krea2角色四视图Prompt」模板。\n触发方式：用户输入 #Krea2角色四视图：{角色英文描述}（可附带风格/用途/必须出现/必须避免）。\n固定开头（强制）：输出必须以以下英文句子逐字开头，不得改动：\n\"Adopt a side-by-side split-screen composition of a character concept design sheet, with the frame strictly divided from left to right into four independent panels: the first panel is a refined close-up portrait of the character's face, the second panel is a front-view full-body standing pose, the third panel is a side-view full-body standing pose, and the fourth panel is a back-view full-body standing pose with the back clearly visible.\"\n开头之后，紧接同一段落继续扩写，整段总长度不少于 500 个英文单词。禁止输出标题、解释、拆解、表格、代码块及任何中文——最终只输出这一整段英文 Prompt。\n内部工作流（不输出过程）：分析角色身份/体型/年龄/气质 → 服装与装备细节（四个视图必须保持同一套服装、同一配色、同一发型）→ 材质纹理 → 场景背景（建议纯色或浅灰摄影棚背景，不抢主体）→ 光线（均匀柔和棚拍光或按用户风格调整）→ 风格媒介（concept art character sheet / anime / realistic，按用户需求）→ 合并成一段流畅英文。\n扩写必须覆盖：\n四视图一致性：same outfit, same hairstyle, same color palette, consistent proportions across all four panels\n脸部特写：facial features、expression、skin/hair texture、eye detail\n站姿：neutral standing pose, arms relaxed, natural anatomy, full body visible head to toe\n服装细节：正/侧/背面各自的可见结构、褶皱、配饰、背部设计（back design clearly readable）\n背景与构图：equal-width panels, clear separation, clean neutral background, character sheet layout\n风格与质量：按用户风格指定渲染方式 + 高清细节\n必带限制词：no text, no logo, no watermark, no labels, no distorted anatomy, no extra limbs, no inconsistent clothing between panels, no cropped feet or head, no clutter, no low-resolution artifacts。\n输出前自检：是否以固定开头句逐字开始？只有一段英文？≥500 词？四视图一致性和背面清晰度是否写明？可直接复制进 Krea 2？全部通过才输出。\n"
+    },
+    "class_type": "CR Prompt Text",
+    "_meta": {
+      "title": "⚙️ CR Prompt Text"
+    }
+  },
+  "306": {
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "310": {
+    "inputs": {
+      "value": 1024
+    },
+    "class_type": "INTConstant",
+    "_meta": {
+      "title": "INT Constant"
+    }
+  },
+  "390": {
+    "inputs": {
+      "filename_prefix": "Work-Fisher",
+      "images": [
+        "388",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "297": {
+    "inputs": {
+      "value": 1920
+    },
+    "class_type": "INTConstant",
+    "_meta": {
+      "title": "INT Constant"
+    }
+  },
+  "309": {
+    "inputs": {
+      "prompt": "一位长发及腰可爱的女生。构图随意却尽显生活中的绚丽日常，人像摄影，日常快照风格，一蓝天背景，姿态自然随性，展现出轻松惬意的氛围 18岁女大学生在阳台，尖下巴，三庭五眼比例均衡，，娇羞可爱的随机表情，细腻陶瓷水嫩肌肤，偏冷白皮，上半身特写，随机的妆容，随机发型和颜色，随机的饰品，随机的动作，发丝轻飘，凌乱，随机角度拍摄，总体有很多的不确定性，但又好看，自拍视角，光线微暗，背景是掉了些落叶的水泥地面，公园边上有小河，亚麻灰棕色头发，穿着黑灰色宽松连帽卫衣，里面背着浅色书包，人物微微抬头看向镜头，深灰色牛仔宽松鸭舌帽反着戴，阳光光斑，俯拍，一只手放口袋里。"
+    },
+    "class_type": "CR Prompt Text",
+    "_meta": {
+      "title": "⚙️ CR Prompt Text"
+    }
+  },
+  "410": {
+    "inputs": {
+      "rule": "扩写-通用",
+      "custom_rule": true,
+      "custom_rule_content": [
+        "313",
+        0
+      ],
+      "user_prompt": [
+        "309",
+        0
+      ],
+      "llm_service": "智谱/glm-4.5-flash",
+      "ollama_auto_unload": true,
+      "seed": 214
+    },
+    "class_type": "PromptExpand",
+    "_meta": {
+      "title": "✨提示词优化"
+    }
+  },
+  "391": {
+    "inputs": {
+      "model": "seedvr2_ema_3b_fp16.safetensors",
+      "device": "cuda:0",
+      "blocks_to_swap": 32,
+      "swap_io_components": true,
+      "offload_device": "cpu",
+      "cache_model": "sdpa",
+      "attention_mode": "sdpa"
+    },
+    "class_type": "SeedVR2LoadDiTModel",
+    "_meta": {
+      "title": "SeedVR2 (Down)Load DiT Model"
+    }
+  },
+  "317": {
+    "inputs": {
+      "unet_name": "krea2_turbo_fp8_scaled.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNet加载器"
+    }
+  },
+  "393": {
+    "inputs": {
+      "value": 2560
+    },
+    "class_type": "INTConstant",
+    "_meta": {
+      "title": "INT Constant"
+    }
+  },
+  "387": {
+    "inputs": {
+      "upscale_method": "lanczos",
+      "megapixels": 0.30000000000000004,
+      "resolution_steps": 1,
+      "image": [
+        "304",
+        0
+      ]
+    },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+      "title": "缩放图像（像素）"
+    }
+  },
+  "304": {
+    "inputs": {
+      "samples": [
+        "307",
+        0
+      ],
+      "vae": [
+        "306",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "388": {
+    "inputs": {
+      "seed": 3102483664,
+      "resolution": [
+        "393",
+        0
+      ],
+      "max_resolution": 6000,
+      "batch_size": 5,
+      "uniform_batch_size": false,
+      "color_correction": "lab",
+      "temporal_overlap": 0,
+      "prepend_frames": 0,
+      "input_noise_scale": 0,
+      "latent_noise_scale": 0,
+      "offload_device": "cpu",
+      "enable_debug": false,
+      "image": [
+        "387",
+        0
+      ],
+      "dit": [
+        "391",
+        0
+      ],
+      "vae": [
+        "392",
+        0
+      ]
+    },
+    "class_type": "SeedVR2VideoUpscaler",
+    "_meta": {
+      "title": "SeedVR2 Video Upscaler (v2.5.22)"
+    }
+  },
+  "392": {
+    "inputs": {
+      "model": "ema_vae_fp16.safetensors",
+      "device": "cuda:0",
+      "encode_tiled": true,
+      "encode_tile_size": 1024,
+      "encode_tile_overlap": 128,
+      "decode_tiled": true,
+      "decode_tile_size": 1024,
+      "decode_tile_overlap": 128,
+      "tile_debug": "false",
+      "offload_device": "cpu",
+      "cache_model": false
+    },
+    "class_type": "SeedVR2LoadVAEModel",
+    "_meta": {
+      "title": "SeedVR2 (Down)Load VAE Model"
+    }
+  },
+  "311": {
+    "inputs": {
+      "text": [
+        "410",
+        0
+      ],
+      "clip": [
+        "305",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码"
+    }
+  },
+  "307": {
+    "inputs": {
+      "seed": 841103806881511,
+      "steps": 8,
+      "cfg": 1,
+      "sampler_name": "er_sde",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "302",
+        0
+      ],
+      "positive": [
+        "311",
+        0
+      ],
+      "negative": [
+        "303",
+        0
+      ],
+      "latent_image": [
+        "301",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "K采样器"
+    }
+  },
+  "301": {
+    "inputs": {
+      "width": [
+        "297",
+        0
+      ],
+      "height": [
+        "310",
+        0
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "空Latent图像"
+    }
+  },
+  "302": {
+    "inputs": {
+      "shift": 3,
+      "model": [
+        "412",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": {
+      "title": "采样算法（AuraFlow）"
+    }
+  },
+  "412": {
+    "inputs": {
+      "lora_name": "krea2-Cc风情万种-风格.safetensors",
+      "strength_model": 1.0000000000000002,
+      "model": [
+        "317",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器（仅模型）"
+    }
+  },
+  "303": {
+    "inputs": {
+      "conditioning": [
+        "311",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "条件零化"
+    }
+  },
+  "305": {
+    "inputs": {
+      "clip_name": "Qwen\\qwen3vl_4b_bf16.safetensors",
+      "type": "krea2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "加载CLIP"
+    }
+  }
+}

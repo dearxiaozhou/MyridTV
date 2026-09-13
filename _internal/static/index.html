@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="studio-route-booting">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/static/images/myrid-icon.png" type="image/png">
+  <title>MyridTV</title>
+  <script>
+    (function () {
+      var theme = localStorage.getItem('studio_theme') || localStorage.getItem('canvas_theme') || 'dark';
+      document.documentElement.classList.toggle('studio-theme-dark', theme === 'dark');
+    })();
+  </script>
+  <script src="/static/js/theme.js?v=2026.06.21"></script>
+  <script src="/static/js/i18n.js?v=2026.08.03.i18nrestore1"></script>
+  <style>
+    :root {
+      --line: rgba(255, 255, 255, 0.1);
+      --text: #f8fafc;
+      --muted: rgba(226, 232, 240, 0.72);
+      --cyan: #7c8aa0;
+      --mint: #8a98aa;
+      --accent: #8ea2bd;
+      --bg: #070b12;
+      --dock-icon-bg: rgba(142, 162, 189, 0.18);
+      --dock-icon-fg: #d8e2ef;
+      --dock-bg: rgba(6, 10, 17, 0.94);
+      --dock-pill-bg: #172232;
+      --dock-pill-hover-bg: #223348;
+      --dock-pill-line: transparent;
+      --dock-active-bg: #50708c;
+      --dock-active-line: transparent;
+      --dock-accent: #76acc5;
+      --stage: transparent;
+    }
+
+    html.theme-light {
+      --line: rgba(0, 0, 0, 0.08);
+      --text: #0f172a;
+      --muted: rgba(71, 85, 105, 0.82);
+      --cyan: #64748b;
+      --mint: #7b8797;
+      --accent: #52657e;
+      --bg: #e6ebf2;
+      --dock-icon-bg: rgba(82, 101, 126, 0.13);
+      --dock-icon-fg: #243244;
+      --dock-bg: rgba(210, 219, 229, 0.94);
+      --dock-pill-bg: #eef3f8;
+      --dock-pill-hover-bg: #dfe9f2;
+      --dock-pill-line: transparent;
+      --dock-active-bg: #c7ddeb;
+      --dock-active-line: transparent;
+      --dock-accent: #45738c;
+      --stage: rgba(255,255,255,0.42);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    html.studio-route-booting body { visibility: hidden; }
+
+    body {
+      color: var(--text);
+      font-family: "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+    }
+
+    .app-shell {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+.stage {
+position: absolute;
+inset: 0 0 48px 0;
+overflow: hidden;
+background: var(--bg);
+transition: bottom 0.22s ease, background 0.3s ease;
+}
+
+body.dock-collapsed .stage {
+bottom: 0;
+}
+
+    iframe {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      display: none;
+      background: transparent;
+    }
+
+    iframe.active { display: block; }
+
+    button {
+      font: inherit;
+      color: inherit;
+      border: 0;
+      cursor: pointer;
+    }
+
+.bottom-dock {
+position: absolute;
+left: 50%;
+bottom: 0;
+z-index: 30;
+height: 50px;
+display: flex;
+align-items: center;
+gap: 7px;
+padding: 6px 0;
+border-radius: 0;
+background: transparent;
+border: 0;
+box-shadow: none;
+backdrop-filter: none;
+transform: translate(-50%, 0);
+transition: transform 0.22s ease, opacity 0.22s ease;
+}
+
+    body.dock-collapsed .bottom-dock {
+      transform: translate(-50%, calc(100% + 14px));
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .dock-pill {
+      height: 32px;
+      min-width: 96px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 0 12px;
+      border-radius: 8px;
+      background: var(--dock-pill-bg);
+      border: 1px solid var(--dock-pill-line);
+      color: rgba(241, 245, 249, 0.9);
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+      transition: background .15s ease, border-color .15s ease, color .15s ease, transform .15s ease;
+    }
+
+    html.theme-light .dock-pill {
+      background: var(--dock-pill-bg);
+      color: var(--text);
+      box-shadow: 0 1px 3px rgba(15,23,42,0.06), inset 0 1px 0 rgba(255,255,255,0.72);
+    }
+
+    .dock-pill:hover {
+      border-color: var(--dock-active-line);
+      background: var(--dock-pill-hover-bg);
+      transform: translateY(-1px);
+    }
+
+    html.theme-light .dock-pill:hover {
+      background: var(--dock-pill-hover-bg);
+    }
+
+    .dock-pill.active {
+      border-color: var(--dock-active-line);
+      background: var(--dock-active-bg);
+      color: var(--text);
+      box-shadow: 0 6px 14px rgba(0,0,0,0.12);
+    }
+
+    .dock-icon {
+      min-width: 23px;
+      height: 23px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      background: var(--dock-icon-bg);
+      color: var(--dock-icon-fg);
+      border: 0;
+      font-size: 10px;
+      font-weight: 950;
+    }
+
+    .dock-logo {
+      --myrid-motion-size: 48px;
+      width: 48px;
+      height: 48px;
+      padding: 3px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 9px;
+      background: rgba(14, 22, 34, 0.9);
+      overflow: visible;
+      position: relative;
+      isolation: isolate;
+    }
+
+        .dock-logo img {
+            position: relative;
+            z-index: 2;
+            width: 42px;
+            height: 42px;
+            object-fit: cover;
+            display: block;
+            border-radius: 7px;
+        }
+
+    .dock-logo::before,
+    .dock-logo::after {
+      content: none;
+      position: absolute;
+      inset: -8px;
+      border-radius: 20px;
+      pointer-events: none;
+    }
+
+    .dock-logo::before {
+      z-index: 1;
+      border: 1.5px solid rgba(0, 229, 255, 0.68);
+      opacity: 0;
+      transform: scale(0.80);
+      animation: myridDockPulseRing 1800ms ease-out infinite;
+    }
+
+    .dock-logo::after {
+      z-index: 0;
+      background:
+        radial-gradient(circle at 28% 26%, rgba(0, 229, 255, 0.30), transparent 34%),
+        radial-gradient(circle at 74% 32%, rgba(255, 45, 165, 0.20), transparent 30%),
+        radial-gradient(circle at 50% 72%, rgba(255, 215, 69, 0.16), transparent 30%);
+      filter: blur(11px);
+      opacity: 0.38;
+      animation: myridDockPulseAura 1800ms ease-in-out infinite;
+    }
+
+    @keyframes myridDockPulseIcon {
+      0%, 100% { transform: scale(1); filter: brightness(1) saturate(1); }
+      50% { transform: scale(1.075); filter: brightness(1.18) saturate(1.12); }
+    }
+
+    @keyframes myridDockPulseRing {
+      0% { opacity: 0; transform: scale(0.80); }
+      32% { opacity: 0.66; }
+      100% { opacity: 0; transform: scale(1.34); }
+    }
+
+    @keyframes myridDockPulseAura {
+      0%, 100% { opacity: 0.34; transform: scale(0.96); }
+      50% { opacity: 0.82; transform: scale(1.10); }
+    }
+
+    html.theme-light .dock-icon {
+      background: var(--dock-icon-bg);
+      color: var(--dock-icon-fg);
+    }
+
+    html.theme-light .dock-logo {
+      background: rgba(248,250,252,.92);
+      border-color: var(--dock-active-line);
+    }
+
+    html.theme-light .dock-toggle {
+      background: rgba(255,255,255,0.85);
+      border-color: rgba(0,0,0,0.08);
+      color: var(--text);
+    }
+
+    .dock-toggle {
+      position: absolute;
+      bottom: 8px;
+      z-index: 31;
+      width: 32px;
+      height: 32px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+      background: rgba(2, 8, 18, 0.9);
+      border: 1px solid var(--line);
+      transition: transform 0.22s ease;
+    }
+
+    .dock-toggle.left { left: 8px; }
+    .dock-toggle.right { right: 8px; }
+    body.dock-collapsed .dock-toggle svg { transform: rotate(180deg); }
+
+    @media (max-width: 1180px) {
+      .dock-pill { min-width: 42px; }
+      .dock-pill-label { display: none; }
+    }
+
+    /* ===== 任务控制台（task-console） ===== */
+    .tc-overlay { position: fixed; inset: 0; z-index: 40; background: rgba(2, 6, 12, 0.45); display: none; }
+    .tc-overlay.open { display: block; }
+    .tc-panel {
+      position: fixed; right: 0; top: 0; bottom: 48px; z-index: 41;
+      width: min(560px, 92vw);
+      display: none; flex-direction: column;
+      background: var(--dock-bg);
+      border-left: 1px solid var(--line);
+      box-shadow: -18px 0 40px rgba(0,0,0,0.35);
+      color: var(--text);
+      backdrop-filter: blur(14px);
+    }
+    .tc-panel.open { display: flex; }
+    .tc-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 12px 14px; border-bottom: 1px solid var(--line);
+    }
+    .tc-head-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 900; }
+    .tc-badge {
+      width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 6px; background: var(--dock-icon-bg); color: var(--dock-icon-fg);
+      font-size: 10px; font-weight: 950;
+    }
+    .tc-live-dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; margin-left: 4px; }
+    .tc-time-col { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+    .tc-time-col .tc-time { font-size: 10px; color: var(--muted); }
+    .tc-time-col .tc-locate { height: 18px; padding: 0 8px; font-size: 10px; border-radius: 5px; }
+    .tc-time-col .tc-locate:hover { color: #4ade80; border-color: #4ade80; }
+    .tc-live-dot.err { background: #f87171; }
+    .tc-head-actions { display: flex; gap: 6px; }
+    .tc-btn {
+      height: 26px; padding: 0 10px; border-radius: 7px; font-size: 11px; font-weight: 800;
+      background: var(--dock-pill-bg); color: var(--text); border: 1px solid var(--line);
+      cursor: pointer; transition: background .15s ease;
+    }
+    .tc-btn:hover { background: var(--dock-pill-hover-bg); }
+    .tc-btn:disabled { opacity: 0.45; cursor: default; }
+    .tc-btn-danger { background: rgba(239, 68, 68, 0.16); border-color: rgba(239, 68, 68, 0.45); color: #fca5a5; }
+    html.theme-light .tc-btn-danger { color: #b91c1c; }
+    .tc-btn-ghost { background: transparent; }
+    .tc-stats {
+      display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
+      padding: 10px 14px; border-bottom: 1px solid var(--line);
+    }
+    .tc-stat {
+      border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px;
+      background: rgba(255,255,255,0.02);
+    }
+    html.theme-light .tc-stat { background: rgba(255,255,255,0.5); }
+    .tc-stat-num { font-size: 15px; font-weight: 950; line-height: 1.2; }
+    .tc-stat-label { font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .tc-stat.warn .tc-stat-num { color: #fbbf24; }
+    .tc-stat.bad .tc-stat-num { color: #f87171; }
+    .tc-stat.ok .tc-stat-num { color: #4ade80; }
+    .tc-filter { display: flex; gap: 5px; padding: 8px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+    .tc-chip {
+      height: 22px; padding: 0 9px; border-radius: 999px; font-size: 10px; font-weight: 800;
+      background: transparent; color: var(--muted); border: 1px solid var(--line); cursor: pointer;
+    }
+    .tc-chip.active { background: var(--dock-active-bg); color: var(--text); }
+    .tc-list { flex: 1; overflow-y: auto; padding: 8px 14px; }
+    .tc-item {
+      border: 1px solid var(--line); border-radius: 9px; padding: 9px 10px; margin-bottom: 7px;
+      background: rgba(255,255,255,0.02); cursor: pointer;
+    }
+    html.theme-light .tc-item { background: rgba(255,255,255,0.55); }
+    .tc-item.selected { border-color: var(--dock-accent); box-shadow: inset 2px 0 0 var(--dock-accent); }
+    .tc-item-top { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+    .tc-kind { font-size: 11px; font-weight: 900; }
+    .tc-status {
+      font-size: 9px; font-weight: 900; padding: 2px 7px; border-radius: 999px; letter-spacing: 0.4px;
+    }
+    .tc-status.st-running { background: rgba(59,130,246,0.18); color: #93c5fd; }
+    .tc-status.st-queued { background: rgba(234,179,8,0.16); color: #fcd34d; }
+    .tc-status.st-failed { background: rgba(239,68,68,0.16); color: #fca5a5; }
+    .tc-status.st-succeeded { background: rgba(34,197,94,0.15); color: #86efac; }
+    .tc-status.st-cancelled { background: rgba(148,163,184,0.18); color: #cbd5e1; }
+    html.theme-light .tc-status.st-running { color: #1d4ed8; }
+    html.theme-light .tc-status.st-queued { color: #a16207; }
+    html.theme-light .tc-status.st-failed { color: #b91c1c; }
+    html.theme-light .tc-status.st-succeeded { color: #15803d; }
+    html.theme-light .tc-status.st-cancelled { color: #475569; }
+    .tc-risk {
+      font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 5px;
+      background: rgba(251,191,36,0.14); color: #fbbf24; border: 1px solid rgba(251,191,36,0.35);
+    }
+    html.theme-light .tc-risk { color: #92400e; }
+    .tc-meta { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 5px; font-size: 10px; color: var(--muted); }
+    .tc-meta b { color: var(--text); font-weight: 800; }
+    .tc-err { margin-top: 5px; font-size: 10px; color: #fca5a5; white-space: pre-wrap; word-break: break-all; }
+    html.theme-light .tc-err { color: #b91c1c; }
+    .tc-stop-one { margin-top: 6px; }
+    .tc-empty { text-align: center; color: var(--muted); font-size: 11px; padding: 26px 0; }
+    .tc-foot {
+      display: flex; justify-content: space-between; padding: 7px 14px;
+      border-top: 1px solid var(--line); font-size: 10px; color: var(--muted);
+    }
+
+  </style>
+</head>
+<body>
+  <main class="app-shell">
+    <section class="stage" aria-label="内容区域">
+  <iframe id="frame-canvas" data-page="canvas" data-src="/static/canvas.html?v=2026.09.12.clickpop49" scrolling="yes"></iframe>
+      <iframe id="frame-zimage" data-page="zimage" data-src="/static/zimage.html?v=2026.06.21" scrolling="yes"></iframe>
+      <iframe id="frame-enhance" data-page="enhance" data-src="/static/enhance.html?v=2026.06.21" scrolling="yes"></iframe>
+      <iframe id="frame-klein" data-page="klein" data-src="/static/klein.html?v=2026.06.21" scrolling="yes"></iframe>
+      <iframe id="frame-angle" data-page="angle" data-src="/static/angle.html?v=2026.06.21" scrolling="yes"></iframe>
+      <iframe id="frame-online" data-page="online" data-src="/static/online.html?v=2026.09.12.clickpop49" scrolling="yes"></iframe>
+      <iframe id="frame-asset-manager" data-page="asset-manager" data-src="/static/asset-manager.html?v=2026.09.12.clickpop49" scrolling="yes"></iframe>
+      <iframe id="frame-api-settings" data-page="api-settings" data-src="/static/api-settings.html?v=2026.09.12.clickpop49" scrolling="yes"></iframe>
+    <iframe id="frame-comfyui-settings" data-page="comfyui-settings" data-src="/static/comfyui-settings.html?v=2026.09.12.clickpop49" scrolling="yes"></iframe>
+<iframe id="frame-smart-canvas" data-page="smart-canvas" data-src="/static/smart-canvas.html?v=2026.09.12.clickpop49" scrolling="no"></iframe>
+    </section>
+
+    <button class="dock-toggle left" type="button" onclick="toggleBottomDock()" title="向下收起/显示底部菜单">
+      <svg width="17" height="17" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+    </button>
+
+    <nav class="bottom-dock" aria-label="底部菜单">
+      <button class="dock-pill" type="button" onclick="switchUI(this, 'api-settings')" title="API配置"><span class="dock-icon">API</span><span class="dock-pill-label">API配置</span></button>
+      <button class="dock-pill" type="button" onclick="switchUI(this, 'comfyui-settings')" title="本地工作流"><span class="dock-icon">WF</span><span class="dock-pill-label">本地工作流</span></button>
+      <button class="dock-pill" type="button" onclick="switchUI(this, 'asset-manager')" title="素材库"><span class="dock-icon">LIB</span><span class="dock-pill-label">素材库</span></button>
+      <button class="dock-logo" type="button" onclick="goHomeCanvas()" title="返回主页面"><img src="/static/images/myrid-icon-dock.png?v=20260629" alt="MyridTV"></button>
+      <button class="dock-pill" type="button" onclick="toggleTheme()" id="dock-theme-btn" title="切换主题"><span class="dock-icon">TH</span><span class="dock-pill-label">切换主题</span></button>
+      <button class="dock-pill" type="button" onclick="toggleTaskConsole()" id="dock-console-btn" title="任务控制台"><span class="dock-icon">TC</span><span class="dock-pill-label">控制台</span></button>
+        <button class="dock-pill dock-version" type="button" disabled title="版本"><span class="dock-icon">V</span><span class="dock-pill-label app-version">版本：V0.2.13</span></button>
+    </nav>
+
+    <button class="dock-toggle right" type="button" onclick="toggleBottomDock()" title="向下收起/显示底部菜单">
+      <svg width="17" height="17" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+    </button>
+  </main>
+
+  <!-- 任务运行控制台（task-console） -->
+  <div id="task-console-overlay" class="tc-overlay" onclick="if(event.target===this)toggleTaskConsole()"></div>
+  <aside id="task-console-panel" class="tc-panel" aria-label="任务控制台">
+    <header class="tc-head">
+      <div class="tc-head-title"><span class="tc-badge">TC</span>任务控制台<span id="tc-live-dot" class="tc-live-dot"></span></div>
+      <div class="tc-head-actions">
+        <button type="button" class="tc-btn" onclick="tcStopSelected()" id="tc-stop-selected" disabled>停止选中</button>
+        <button type="button" class="tc-btn" onclick="tcStopAllRunning()">全部停止</button>
+        <button type="button" class="tc-btn tc-btn-ghost" onclick="toggleTaskConsole()">关闭</button>
+      </div>
+    </header>
+    <div id="tc-stats" class="tc-stats"></div>
+    <div class="tc-filter" id="tc-filter">
+      <button type="button" class="tc-chip active" data-f="all">全部</button>
+      <button type="button" class="tc-chip" data-f="running">运行中</button>
+      <button type="button" class="tc-chip" data-f="queued">排队</button>
+      <button type="button" class="tc-chip" data-f="failed">失败</button>
+      <button type="button" class="tc-chip" data-f="succeeded">完成</button>
+    </div>
+    <div id="tc-list" class="tc-list"><div class="tc-empty">加载中…</div></div>
+    <footer class="tc-foot"><span id="tc-updated">—</span><span>5s 自动刷新 · 数据源 :3107</span></footer>
+  </aside>
+
+
+  <script>
+const ACTIVE_PAGE_KEY = 'studio_active_page';
+const DEFAULT_PAGE_ID = 'canvas';
+const PAGE_IDS = ['canvas', 'zimage', 'enhance', 'klein', 'angle', 'online', 'asset-manager', 'api-settings', 'comfyui-settings', 'smart-canvas'];
+
+// Remember the last canvas-type page we were on (smart-canvas or canvas)
+// plus the specific canvas ID, so the home logo can return to the exact canvas.
+// Used by the home logo button for context-aware return.
+const LAST_CANVAS_KEY = 'studio_last_canvas_page';
+const LAST_CANVAS_ID_KEY = 'studio_last_canvas_id';
+const CANVAS_PAGES = ['canvas', 'smart-canvas'];
+function isCanvasPage(pageId) { return CANVAS_PAGES.indexOf(pageId) !== -1; }
+function getLastCanvasPage() {
+    const last = localStorage.getItem(LAST_CANVAS_KEY);
+    return last && isCanvasPage(last) ? last : DEFAULT_PAGE_ID;
+}
+function getLastCanvasId() {
+    return localStorage.getItem(LAST_CANVAS_ID_KEY) || '';
+}
+function rememberCanvasPage(pageId, options) {
+    options = options || {};
+    if (isCanvasPage(pageId)) {
+        localStorage.setItem(LAST_CANVAS_KEY, pageId);
+        if (options.canvasId) {
+            localStorage.setItem(LAST_CANVAS_ID_KEY, options.canvasId);
+        }
+    }
+}
+
+function getTheme() {
+    return localStorage.getItem('studio_theme') || localStorage.getItem('canvas_theme') || 'dark';
+}
+
+function currentStudioLang() {
+    return window.StudioI18n && window.StudioI18n.lang ? window.StudioI18n.lang() : (localStorage.getItem('studio_lang') || 'zh');
+}
+
+function syncThemeToFrame(frame) {
+    try {
+        frame.contentWindow.postMessage({ type: 'studio-theme', theme: getTheme() }, '*');
+    } catch (e) { }
+}
+
+function syncLanguageToFrame(frame) {
+    try {
+        const lang = currentStudioLang();
+        frame.contentWindow.postMessage({ type: 'studio-lang', lang: lang }, '*');
+        frame.contentWindow.postMessage({ type: 'studio-language', lang: lang }, '*');
+    } catch (e) { }
+}
+
+function syncLanguageButton() {
+    const lang = currentStudioLang();
+    const btn = document.getElementById('dock-lang-btn');
+    if (!btn) return;
+    const icon = btn.querySelector('.dock-icon');
+    const label = btn.querySelector('.dock-pill-label');
+    if (icon) icon.textContent = lang === 'en' ? 'EN' : '中';
+    if (label) label.textContent = lang === 'en' ? 'Language' : '语言切换';
+    btn.title = lang === 'en' ? 'Switch language' : '语言切换';
+}
+
+function ensureFrameLoaded(frame, options) {
+    options = options || {};
+    const requestedSrc = options.src || '';
+    const defaultSrc = frame.dataset.src || '';
+    if (requestedSrc) {
+        if (frame.getAttribute('src') !== requestedSrc) frame.src = requestedSrc;
+        return;
+    }
+    if (options.resetFrame && defaultSrc) {
+        if (frame.getAttribute('src') !== defaultSrc) frame.src = defaultSrc;
+        return;
+    }
+    if (!frame.getAttribute('src')) frame.src = defaultSrc;
+}
+
+function setActiveDock(pageId, trigger) {
+    document.querySelectorAll('.bottom-dock .dock-pill').forEach(function (node) {
+        node.classList.remove('active');
+    });
+    const active = trigger && trigger.closest ? trigger.closest('.dock-pill') : document.querySelector(".bottom-dock [onclick*=\"'" + pageId + "'\"]");
+    if (active && active.classList) active.classList.add('active');
+}
+
+function switchUI(trigger, pageId, options) {
+    options = options || {};
+    if (!PAGE_IDS.includes(pageId)) pageId = DEFAULT_PAGE_ID;
+    const frame = document.getElementById('frame-' + pageId);
+    if (!frame) return;
+    if (pageId === DEFAULT_PAGE_ID && !options.src) {
+        const currentSrc = frame.getAttribute('src') || '';
+        if (!currentSrc || currentSrc.indexOf('/static/canvas.html') === -1) options.resetFrame = true;
+    }
+    document.querySelectorAll('iframe').forEach(function (node) { node.classList.remove('active'); });
+    ensureFrameLoaded(frame, options);
+    frame.classList.add('active');
+    setActiveDock(pageId, trigger);
+    if (!options.skipRemember) {
+        localStorage.setItem(ACTIVE_PAGE_KEY, pageId);
+        const rememberOpts = {};
+        // Extract canvas ID from the src URL if available
+        const srcUrl = options.src || frame.getAttribute('src') || '';
+        const idMatch = srcUrl.match(/[?&]id=([^&]+)/);
+        if (idMatch) rememberOpts.canvasId = decodeURIComponent(idMatch[1]);
+        rememberCanvasPage(pageId, rememberOpts);
+    }
+    syncThemeToFrame(frame);
+    syncLanguageToFrame(frame);
+}
+
+function goHomeCanvas() {
+    const currentPage = localStorage.getItem(ACTIVE_PAGE_KEY) || DEFAULT_PAGE_ID;
+    // If we are already on a canvas page, go back to the canvas list (main page)
+    if (isCanvasPage(currentPage)) {
+        switchUI(document.querySelector('.dock-logo'), DEFAULT_PAGE_ID, { resetFrame: true });
+        return;
+    }
+    // Otherwise, return to the last canvas page we were on
+    const target = getLastCanvasPage();
+    const options = { resetFrame: true };
+    if (target === 'smart-canvas') {
+        const lastId = getLastCanvasId();
+        if (lastId) {
+            options.src = '/static/smart-canvas.html?id=' + encodeURIComponent(lastId) + '&v=2026.09.12.clickpop14';
+        }
+    }
+    switchUI(document.querySelector('.dock-logo'), target, options);
+}
+
+function toggleBottomDock() {
+    document.body.classList.toggle('dock-collapsed');
+}
+
+function toggleTheme() {
+    const next = getTheme() === 'dark' ? 'light' : 'dark';
+    localStorage.setItem('studio_theme', next);
+    localStorage.setItem('canvas_theme', next);
+    document.documentElement.classList.toggle('studio-theme-dark', next === 'dark');
+    document.documentElement.classList.toggle('theme-dark', next === 'dark');
+    document.documentElement.classList.toggle('theme-light', next === 'light');
+    if (window.StudioTheme) window.StudioTheme.set(next);
+    document.querySelectorAll('iframe').forEach(syncThemeToFrame);
+}
+
+function toggleLanguage() {
+    if (window.StudioI18n && window.StudioI18n.toggle) window.StudioI18n.toggle();
+    else localStorage.setItem('studio_lang', currentStudioLang() === 'zh' ? 'en' : 'zh');
+    if (window.StudioI18n && window.StudioI18n.apply) window.StudioI18n.apply();
+    syncLanguageButton();
+    document.querySelectorAll('iframe').forEach(syncLanguageToFrame);
+}
+
+var studioScrollLockUntil = 0;
+function resetStudioRootScroll() {
+    var root = document.scrollingElement || document.documentElement;
+    if (root) {
+        root.scrollTop = 0;
+        root.scrollLeft = 0;
+    }
+    if (document.documentElement) {
+        document.documentElement.scrollTop = 0;
+        document.documentElement.scrollLeft = 0;
+    }
+    if (document.body) {
+        document.body.scrollTop = 0;
+        document.body.scrollLeft = 0;
+    }
+    if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+}
+
+function maintainStudioScrollLock() {
+    resetStudioRootScroll();
+    if (performance.now() < studioScrollLockUntil) requestAnimationFrame(maintainStudioScrollLock);
+}
+
+function lockStudioRootScroll() {
+    var wasInactive = performance.now() >= studioScrollLockUntil;
+    studioScrollLockUntil = Math.max(studioScrollLockUntil, performance.now() + 320);
+    resetStudioRootScroll();
+    if (wasInactive) requestAnimationFrame(maintainStudioScrollLock);
+}
+
+window.addEventListener('wheel', function (event) {
+    var active = document.querySelector('iframe.active');
+    if (active && active.id === 'frame-smart-canvas') {
+        event.preventDefault();
+        lockStudioRootScroll();
+    }
+}, { passive: false, capture: true });
+
+window.addEventListener('message', function (event) {
+    const data = event.data || {};
+    if (data.type === 'smart-canvas-lock-scroll') {
+        lockStudioRootScroll();
+        return;
+    }
+    if (data.type === 'asset_library_updated' || data.type === 'prompt_library_updated') {
+        document.querySelectorAll('iframe').forEach(function (frame) {
+            if (frame.contentWindow && frame.contentWindow !== event.source) {
+                try { frame.contentWindow.postMessage(data, '*'); } catch (e) { }
+            }
+        });
+        return;
+    }
+    if (data.type === 'canvas-current-id') {
+        // Smart canvas page reports its current canvas ID
+        const currentPage = localStorage.getItem(ACTIVE_PAGE_KEY);
+        if (currentPage === 'smart-canvas' || isCanvasPage(currentPage)) {
+            rememberCanvasPage(currentPage, { canvasId: data.id });
+        }
+        return;
+    }
+    if (data.type === 'open-page' && PAGE_IDS.includes(data.page)) {
+        const options = {};
+        if (typeof data.src === 'string') options.src = data.src;
+        if (typeof data.url === 'string') options.src = data.url;
+        if (data.resetFrame || data.page === DEFAULT_PAGE_ID) options.resetFrame = true;
+        switchUI(null, data.page, options);
+    }
+});
+
+window.addEventListener('studio-lang-change', function () {
+    syncLanguageButton();
+    document.querySelectorAll('iframe').forEach(syncLanguageToFrame);
+});
+
+document.querySelectorAll('iframe').forEach(function (frame) {
+    frame.addEventListener('load', function () {
+        syncThemeToFrame(frame);
+        syncLanguageToFrame(frame);
+    });
+});
+
+
+// ===== 任务控制台逻辑（task-console） =====
+var tcOpen = false;
+var tcData = null;
+var tcFilter = 'all';
+var tcSelected = {};
+var tcTimer = null;
+
+function toggleTaskConsole() {
+    tcOpen = !tcOpen;
+    var panel = document.getElementById('task-console-panel');
+    var overlay = document.getElementById('task-console-overlay');
+    if (!panel || !overlay) return;
+    panel.classList.toggle('open', tcOpen);
+    overlay.classList.toggle('open', tcOpen);
+    if (tcOpen) {
+        tcRefresh();
+        tcTimer = setInterval(tcRefresh, 5000);
+    } else if (tcTimer) {
+        clearInterval(tcTimer);
+        tcTimer = null;
+    }
+}
+
+function tcStatusText(s) {
+    return ({ running: '运行中', queued: '排队', succeeded: '完成', failed: '失败', cancelled: '已停止', unknown: '未知' })[s] || s;
+}
+
+function tcFmtTime(ts) {
+    if (!ts) return '—';
+    var d = new Date(ts * 1000);
+    return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+}
+
+function tcRefresh() {
+    fetch('http://127.0.0.1:3107/api/task-console?_=' + Date.now(), { cache: 'no-store' })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            tcData = data;
+            var dot = document.getElementById('tc-live-dot');
+            if (dot) dot.classList.remove('err');
+            tcRender();
+        })
+        .catch(function () {
+            var dot = document.getElementById('tc-live-dot');
+            if (dot) dot.classList.add('err');
+        });
+}
+
+function tcSetFilter(f) {
+    tcFilter = f;
+    document.querySelectorAll('#tc-filter .tc-chip').forEach(function (c) {
+        c.classList.toggle('active', c.getAttribute('data-f') === f);
+    });
+    tcRender();
+}
+
+function tcToggleSel(id) {
+    if (tcSelected[id]) delete tcSelected[id];
+    else tcSelected[id] = true;
+    tcRender();
+}
+
+function tcStopSelected() {
+    var ids = Object.keys(tcSelected);
+    if (!ids.length) return;
+    tcStop(ids);
+}
+
+function tcStopAllRunning() {
+    var ids = (tcData && tcData.tasks || []).filter(function (t) { return t.status === 'running'; }).map(function (t) { return t.task_id; });
+    if (!ids.length) return;
+    tcStop(ids);
+}
+
+function tcStop(ids) {
+    fetch('http://127.0.0.1:3107/api/task-console-stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_ids: ids })
+    }).then(function () { tcSelected = {}; tcRefresh(); }).catch(function () { });
+}
+
+function tcStopOne(ev, id) {
+    ev.stopPropagation();
+    tcStop([id]);
+}
+
+function tcLocateTask(ev, canvasId, nodeId, kind) {
+    ev.stopPropagation();
+    if (!nodeId) return;
+    if (tcOpen) toggleTaskConsole();
+    var frame = document.getElementById('frame-smart-canvas');
+    var active = frame && frame.classList.contains('active');
+    var src = frame ? (frame.getAttribute('src') || '') : '';
+    var sameCanvas = active && canvasId && src.indexOf('id=' + encodeURIComponent(canvasId)) !== -1;
+    if (sameCanvas && frame.contentWindow) {
+        try { frame.contentWindow.postMessage({ type: 'tc-locate-node', node_id: nodeId, canvas_id: canvasId }, '*'); return; } catch (e) { }
+    }
+    var page = kind === '画布' ? 'canvas' : 'smart-canvas';
+    var url = page === 'canvas'
+        ? '/static/canvas.html?id=' + encodeURIComponent(canvasId) + '&focus_node=' + encodeURIComponent(nodeId)
+        : '/static/smart-canvas.html?id=' + encodeURIComponent(canvasId) + '&focus_node=' + encodeURIComponent(nodeId);
+    switchUI(null, page, { src: url });
+}
+
+function tcRender() {
+    var list = document.getElementById('tc-list');
+    var statsEl = document.getElementById('tc-stats');
+    var updated = document.getElementById('tc-updated');
+    if (!list || !tcData) return;
+    var tasks = tcData.tasks || [];
+    var stats = tcData.stats || {};
+    if (statsEl) {
+        statsEl.innerHTML =
+            '<div class="tc-stat"><div class="tc-stat-num">' + (stats.today_total || 0) + '</div><div class="tc-stat-label">今日任务</div></div>' +
+            '<div class="tc-stat ok"><div class="tc-stat-num">' + (stats.today_success || 0) + '</div><div class="tc-stat-label">成功</div></div>' +
+            '<div class="tc-stat bad"><div class="tc-stat-num">' + (stats.today_failed || 0) + '</div><div class="tc-stat-label">失败</div></div>' +
+            '<div class="tc-stat ' + ((stats.today_failure_rate || 0) > 30 ? 'bad' : 'warn') + '"><div class="tc-stat-num">' + (stats.today_failure_rate || 0) + '%</div><div class="tc-stat-label">失败率</div></div>' +
+            '<div class="tc-stat"><div class="tc-stat-num">' + (stats.today_outputs || 0) + '</div><div class="tc-stat-label">今日产出</div></div>';
+    }
+    if (updated) updated.textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN');
+    var filtered = tasks.filter(function (t) {
+        if (tcFilter === 'all') return true;
+        if (tcFilter === 'queued') return t.status === 'queued' || t.status === 'pending';
+        return t.status === tcFilter;
+    });
+    if (!filtered.length) {
+        list.innerHTML = '<div class="tc-empty">暂无任务</div>';
+    } else {
+        list.innerHTML = filtered.map(function (t) {
+            var sel = !!tcSelected[t.task_id];
+            var risks = (t.risks || []).map(function (r) { return '<span class="tc-risk">⚠ ' + r + '</span>'; }).join('');
+            var meta = '<div class="tc-meta">' +
+                '<span>平台 <b>' + t.platform + '</b></span>' +
+                '<span>模型 <b>' + t.model + '</b></span>' +
+                '<span>模式 <b>' + (t.mode || '—') + '</b></span>' +
+                '<span>分辨率 <b>' + t.resolution + '</b></span>' +
+                '<span>数量 <b>' + t.count + '</b></span>' +
+                '<span>来源 <b>' + t.origin + '</b></span>' +
+                (t.canvas_title ? '<span>画布 <b>' + t.canvas_title + '</b></span>' : '') +
+                (t.outputs ? '<span>产出 <b>' + t.outputs + '</b></span>' : '') +
+                '</div>';
+            var canStop = t.status === 'running';
+            return '<div class="tc-item' + (sel ? ' selected' : '') + '" onclick="tcToggleSel(\'' + t.task_id + '\')">' +
+                '<div class="tc-item-top">' +
+                '<span class="tc-kind">' + t.kind + '</span>' +
+                '<span class="tc-status st-' + t.status + '">' + tcStatusText(t.status) + '</span>' +
+                risks +
+                '<span class="tc-time-col"><span class="tc-time">' + tcFmtTime(t.created_at) + '</span>' +
+                ((t.node_id && t.canvas_id) ? '<button type="button" class="tc-btn tc-btn-ghost tc-locate" title="定位到画布节点" onclick="tcLocateTask(event,\'' + t.canvas_id + '\',\'' + t.node_id + '\',\'' + t.kind + '\')">定位</button>' : '') +
+                '</span>' +
+                '</div>' + meta +
+                (t.error ? '<div class="tc-err">' + t.error + '</div>' : '') +
+                (canStop ? '<button type="button" class="tc-btn tc-btn-danger tc-stop-one" onclick="tcStopOne(event,\'' + t.task_id + '\')">停止</button>' : '') +
+                '</div>';
+        }).join('');
+    }
+    var stopBtn = document.getElementById('tc-stop-selected');
+    if (stopBtn) stopBtn.disabled = !Object.keys(tcSelected).length;
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('#tc-filter .tc-chip').forEach(function (c) {
+        c.addEventListener('click', function () { tcSetFilter(c.getAttribute('data-f')); });
+    });
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+    localStorage.removeItem(ACTIVE_PAGE_KEY);
+    const pageId = DEFAULT_PAGE_ID;
+    syncLanguageButton();
+    switchUI(null, pageId, { skipRemember: true });
+    document.documentElement.classList.remove('studio-route-booting');
+});
+</script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+

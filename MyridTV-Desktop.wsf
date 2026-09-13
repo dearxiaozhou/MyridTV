@@ -1,0 +1,13 @@
+<job>
+<script language="VBScript">
+Set WshShell = CreateObject("WScript.Shell")
+Set fso = CreateObject("Scripting.FileSystemObject")
+strDir = fso.GetParentFolderName(WScript.ScriptFullName)
+' 启动真正的程序
+WshShell.Run """" & strDir & "\MyridTV-Desktop-core.exe""", 1, False
+' 运行PowerShell修复窗口
+WScript.Sleep 500
+WshShell.Run "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File """ & strDir & "\_fix.ps1""", 0, False
+WScript.Quit
+</script>
+</job>

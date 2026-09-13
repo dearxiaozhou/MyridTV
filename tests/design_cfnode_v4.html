@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ComfyUI 生成节点 - v4 设计稿</title>
+<style>
+:root {
+  --page:#0f141d; --grid:rgba(148,163,184,.18); --panel:rgba(23,29,41,.92); --card:#171d29;
+  --text:#e5e9f0; --muted:#8f9aab; --faint:#657286; --line:#2a3444; --soft:#111722;
+  --shadow:rgba(0,0,0,.28); --strong:#d8dee9; --strong-text:#10141d;
+  --accent:#5eb1ff;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body {
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  background:#1a2030; color:var(--text); min-height:100vh; display:flex; align-items:flex-start; justify-content:center; padding:40px 20px;
+}
+.node-panel {
+  width:680px; background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:14px; box-shadow:0 24px 60px var(--shadow); backdrop-filter:blur(20px);
+}
+/* 顶部输入图 */
+.cfv4-inputs-strip { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+.cfv4-thumb { width:48px; height:48px; border-radius:10px; object-fit:cover; border:1px solid var(--line); background:var(--soft); }
+.cfv4-inputs-count { color:var(--muted); font-size:12px; font-weight:700; }
+/* 提示词 */
+.cfv4-prompt {
+  width:100%; min-height:96px; border-radius:14px; border:1px solid var(--line); background:var(--soft); color:var(--text);
+  padding:14px; font-size:14px; line-height:1.55; resize:none; outline:none; margin-bottom:12px;
+}
+.cfv4-prompt::placeholder { color:var(--faint); }
+/* 控制条 */
+.cfv4-control-row { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+.cfv4-pill { height:30px; padding:0 12px; border-radius:999px; display:flex; align-items:center; gap:6px; background:transparent; border:1px solid var(--line); color:var(--text); font-size:12px; font-weight:600; cursor:pointer; }
+.cfv4-pill .sub { color:var(--muted); }
+.cfv4-pill i { width:14px; height:14px; opacity:.7; }
+.cfv4-spacer { flex:1; }
+.cfv4-btn-secondary { height:30px; padding:0 14px; border-radius:999px; border:1px solid var(--line); background:var(--card); color:var(--text); font-size:12px; font-weight:600; display:flex; align-items:center; gap:6px; cursor:pointer; }
+.cfv4-btn-primary { height:30px; padding:0 18px; border-radius:999px; border:1px solid var(--line); background:var(--card); color:var(--text); font-size:12px; font-weight:700; display:flex; align-items:center; gap:6px; cursor:pointer; }
+/* 信息条 */
+.cfv4-info-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:4px 2px 10px; }
+.cfv4-info-pill { height:24px; padding:0 10px; border-radius:999px; display:flex; align-items:center; gap:5px; background:var(--soft); border:1px solid var(--line); color:var(--muted); font-size:11px; font-weight:700; }
+.cfv4-info-pill strong { color:var(--text); }
+.cfv4-dot { width:7px; height:7px; border-radius:50%; background:var(--faint); }
+.cfv4-dot.on { background:var(--accent); }
+.cfv4-sep { color:var(--faint); font-size:10px; }
+/* 宽高卡片 */
+.cfv4-size-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; }
+.cfv4-size-card { background:var(--soft); border:1px solid var(--line); border-radius:12px; padding:10px 12px; display:flex; flex-direction:column; gap:4px; }
+.cfv4-size-label { color:var(--faint); font-size:10px; font-weight:700; letter-spacing:.06em; }
+.cfv4-size-value { color:var(--text); font-size:16px; font-weight:800; font-variant-numeric:tabular-nums; }
+/* 底部暴露节点 */
+.cfv4-other-title { color:var(--faint); font-size:10px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; margin:4px 2px 8px; }
+.cfv4-other-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.cfv4-other-btn { min-height:40px; padding:10px 14px; border-radius:10px; border:1px solid var(--line); background:var(--soft); color:var(--text); font-size:12px; font-weight:700; text-align:center; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+</style>
+</head>
+<body>
+<div class="node-panel">
+  <div class="cfv4-inputs-strip">
+    <img class="cfv4-thumb" src="https://images.unsplash.com/photo-1517849845537-4d257902454a?w=120&h=120&fit=crop">
+    <img class="cfv4-thumb" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&h=120&fit=crop">
+    <span class="cfv4-inputs-count">2 输入图</span>
+  </div>
+  <textarea class="cfv4-prompt" placeholder="描述你想生成或编辑的图片..."></textarea>
+  <div class="cfv4-control-row">
+    <button class="cfv4-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg> ComfyUI生成</button>
+    <span class="cfv4-spacer"></span>
+    <button class="cfv4-btn-secondary"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> 一键运行</button>
+    <button class="cfv4-btn-primary"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7.794 4.5v9L12 21 4.206 16.5v-9L12 3z"/><path d="M12 8l4.5 2.598v5.196L12 18.5l-4.5-2.706v-5.196L12 8z"/></svg> 运行</button>
+  </div>
+  <div class="cfv4-info-row">
+    <span class="cfv4-info-pill"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg> Krea2参考生成...</span>
+    <span class="cfv4-info-pill"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M12 6v6l4 2"/></svg> 已暴露节点 <strong>2</strong></span>
+    <span class="cfv4-info-pill">素材输入 <span class="cfv4-dot on"></span> 图片 <strong>2</strong> <span class="cfv4-sep">·</span> <span class="cfv4-dot"></span> 音频 <strong>0</strong> <span class="cfv4-sep">·</span> <span class="cfv4-dot"></span> 视频 <strong>0</strong></span>
+  </div>
+  <div class="cfv4-size-row">
+    <div class="cfv4-size-card"><span class="cfv4-size-label">宽度</span><span class="cfv4-size-value">1920</span></div>
+    <div class="cfv4-size-card"><span class="cfv4-size-label">高度</span><span class="cfv4-size-value">1024</span></div>
+  </div>
+  <div class="cfv4-other-title">其它暴露节点（开关见上方菜单）</div>
+  <div class="cfv4-other-grid">
+    <button class="cfv4-other-btn">上传人物参考图（上半身 / 大头特写）</button>
+    <button class="cfv4-other-btn">目标画布：四格人物设定表</button>
+  </div>
+</div>
+</body>
+</html>

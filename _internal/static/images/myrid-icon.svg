@@ -1,0 +1,44 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Myrid icon</title>
+  <desc id="desc">A colorful prism M icon with connected nodes.</desc>
+  <defs>
+    <linearGradient id="bg" x1="78" y1="72" x2="438" y2="436" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#060912"/>
+      <stop offset="0.55" stop-color="#02040B"/>
+      <stop offset="1" stop-color="#111225"/>
+    </linearGradient>
+    <linearGradient id="spectrum" x1="103" y1="355" x2="409" y2="139" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#10E7FF"/>
+      <stop offset="0.28" stop-color="#35FF9B"/>
+      <stop offset="0.52" stop-color="#FFD12E"/>
+      <stop offset="0.74" stop-color="#FF2DAA"/>
+      <stop offset="1" stop-color="#9A5CFF"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="102" y1="137" x2="410" y2="377" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.9"/>
+      <stop offset="0.45" stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.64"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="18" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.20 0 0 0 0 0.90 0 0 0 0 1 0 0 0 0.62 0"/>
+      <feBlend in="SourceGraphic" mode="screen"/>
+    </filter>
+  </defs>
+  <rect x="56" y="56" width="400" height="400" rx="92" fill="url(#bg)"/>
+  <rect x="58" y="58" width="396" height="396" rx="90" stroke="#FFFFFF" stroke-opacity="0.14" stroke-width="4"/>
+  <path d="M56 154C122 86 217 73 288 116C348 152 394 149 456 92V272C392 326 332 326 265 279C207 239 143 252 56 337V154Z" fill="url(#spectrum)" opacity="0.11"/>
+  <path d="M111 368V146C111 121.8 142.1 111.9 156.3 131.5L256 269L355.7 131.5C369.9 111.9 401 121.8 401 146V368" stroke="#01030A" stroke-width="74" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
+  <path d="M111 368V146C111 121.8 142.1 111.9 156.3 131.5L256 269L355.7 131.5C369.9 111.9 401 121.8 401 146V368" stroke="url(#spectrum)" stroke-width="56" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  <path d="M111 368V146C111 121.8 142.1 111.9 156.3 131.5L256 269L355.7 131.5C369.9 111.9 401 121.8 401 146V368" stroke="url(#edge)" stroke-width="42" stroke-linecap="round" stroke-linejoin="round" opacity="0.34"/>
+  <path d="M111 368V146C111 121.8 142.1 111.9 156.3 131.5L256 269L355.7 131.5C369.9 111.9 401 121.8 401 146V368" stroke="url(#spectrum)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="111" cy="368" r="18" fill="#10E7FF"/>
+  <circle cx="149" cy="131" r="16" fill="#35FF9B"/>
+  <circle cx="256" cy="269" r="18" fill="#FFD12E"/>
+  <circle cx="363" cy="131" r="16" fill="#FF2DAA"/>
+  <circle cx="401" cy="368" r="18" fill="#9A5CFF"/>
+  <circle cx="207" cy="103" r="9" fill="#10E7FF" opacity="0.8"/>
+  <circle cx="329" cy="407" r="10" fill="#FF2DAA" opacity="0.86"/>
+  <circle cx="426" cy="240" r="8" fill="#35FF9B" opacity="0.82"/>
+  <circle cx="86" cy="241" r="8" fill="#FFD12E" opacity="0.86"/>
+</svg>

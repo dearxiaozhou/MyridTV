@@ -1,0 +1,72 @@
+{
+  "title": "Krea2文生图",
+  "fields": [
+    {
+      "id": "f_11l60dy",
+      "node": "115",
+      "input": "prompt",
+      "name": "提示词",
+      "type": "textarea",
+      "default": "极其平凡无奇且刻意的平庸感，仿佛拿手机不经意间拍下的照片，主体是超高颜值美少女。乌黑长发，拿着水杯，做可爱表情。超高颜值美女情绪氛围感，INS风，复古，低像素，高噪点，胶片粗颗粒质感，动态美学，朦胧美学，写意，前卫艺术，细节丰富，高级感，杰作，营造柔和朦胧氛围（暗色调、光影细腻）的女性人像，古早味，网感，模糊。妆容自然，网感头像，暗朦，晃朦，我的脸",
+      "options": []
+    },
+    {
+      "id": "f_bguy91j",
+      "node": "96",
+      "input": "value",
+      "name": " 高",
+      "type": "number",
+      "default": 1024,
+      "options": [],
+      "min": 0,
+      "max": 2048,
+      "step": 1,
+      "random_enabled": false
+    },
+    {
+      "id": "f_cv5j8op",
+      "node": "95",
+      "input": "value",
+      "name": "宽",
+      "type": "number",
+      "default": 1920,
+      "options": [],
+      "min": 0,
+      "max": 3840,
+      "step": 1,
+      "random_enabled": false
+    }
+  ],
+  "mini_cards": {
+    "prompt": {
+      "x": 24,
+      "y": 30
+    },
+    "image": {
+      "x": 24,
+      "y": 210
+    },
+    "custom": {
+      "x": 280,
+      "y": 78
+    },
+    "output": {
+      "x": 540,
+      "y": 120
+    },
+    "__test_nodes": [
+      {
+        "id": "comfy_1",
+        "type": "comfy",
+        "x": 330,
+        "y": 150
+      },
+      {
+        "id": "output_1",
+        "type": "output",
+        "x": 670,
+        "y": 190
+      }
+    ]
+  }
+}

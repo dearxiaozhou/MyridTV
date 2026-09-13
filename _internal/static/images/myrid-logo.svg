@@ -1,0 +1,38 @@
+<svg width="900" height="300" viewBox="0 0 900 300" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Myrid logo</title>
+  <desc id="desc">A colorful prism M mark with a clean Myrid wordmark.</desc>
+  <defs>
+    <linearGradient id="myrid-spectrum" x1="24" y1="130" x2="154" y2="38" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#24D8FF"/>
+      <stop offset="0.28" stop-color="#47F59D"/>
+      <stop offset="0.52" stop-color="#FFC84A"/>
+      <stop offset="0.74" stop-color="#FF4FB8"/>
+      <stop offset="1" stop-color="#8E6CFF"/>
+    </linearGradient>
+    <linearGradient id="myrid-word" x1="252" y1="93" x2="638" y2="217" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#111827"/>
+      <stop offset="1" stop-color="#253044"/>
+    </linearGradient>
+    <filter id="soft-glow" x="-40%" y="-40%" width="180%" height="180%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.14 0 0 0 0 0.85 0 0 0 0 1 0 0 0 0.38 0"/>
+      <feBlend in="SourceGraphic" mode="screen"/>
+    </filter>
+  </defs>
+
+  <g transform="translate(58 56)">
+    <path d="M26 136V43C26 32.8 39.1 28.6 45.1 36.9L90 99L134.9 36.9C140.9 28.6 154 32.8 154 43V136" stroke="url(#myrid-spectrum)" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" filter="url(#soft-glow)"/>
+    <path d="M26 136V43C26 32.8 39.1 28.6 45.1 36.9L90 99L134.9 36.9C140.9 28.6 154 32.8 154 43V136" stroke="url(#myrid-spectrum)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="26" cy="136" r="8" fill="#24D8FF"/>
+    <circle cx="42" cy="37" r="7" fill="#47F59D"/>
+    <circle cx="90" cy="99" r="8" fill="#FFC84A"/>
+    <circle cx="138" cy="37" r="7" fill="#FF4FB8"/>
+    <circle cx="154" cy="136" r="8" fill="#8E6CFF"/>
+    <circle cx="68" cy="26" r="4" fill="#24D8FF" opacity="0.65"/>
+    <circle cx="118" cy="154" r="4" fill="#FF4FB8" opacity="0.7"/>
+    <circle cx="166" cy="88" r="3" fill="#47F59D" opacity="0.75"/>
+    <circle cx="12" cy="82" r="3" fill="#FFC84A" opacity="0.75"/>
+  </g>
+
+  <text x="252" y="174" fill="url(#myrid-word)" font-family="Segoe UI Variable, Segoe UI, Inter, Arial, sans-serif" font-size="92" font-weight="740" letter-spacing="0">Myrid</text>
+</svg>

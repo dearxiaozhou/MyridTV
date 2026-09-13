@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>MyridTV</AssemblyName>
+    <RootNamespace>MyridTV.Launcher</RootNamespace>
+    <AssemblyTitle>MyridTV</AssemblyTitle>
+    <Product>MyridTV</Product>
+    <Company>MyridTV</Company>
+    <FileDescription>MyridTV Launcher</FileDescription>
+    <Version>0.2.13</Version>
+    <FileVersion>0.2.13</FileVersion>
+    <AssemblyVersion>0.2.13</AssemblyVersion>
+    <InformationalVersion>0.2.13</InformationalVersion>
+    <ApplicationIcon>..\..\_internal\static\images\myrid-icon.ico</ApplicationIcon>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- 与 MyridTV.Desktop.csproj 一致：发布包不带调试信息，避免把构建机绝对路径（PDB 路径）写进 exe -->
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <PublishDocumentationFiles>false</PublishDocumentationFiles>
+    <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
+  </PropertyGroup>
+</Project>

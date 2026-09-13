@@ -1,0 +1,32 @@
+# ============ 用户数据 / 运行态：绝不入库（而且打包也禁带） ============
+_internal/data/
+_internal/data
+_internal/API/.env
+_internal/assets/
+_internal/output/
+assets/
+_test_userdata/
+webview2/
+*.log
+
+# ============ 构建产物 / 打包暂存（由脚本重建） ============
+installer/build/
+installer/release-unsigned/
+release/
+__pycache__/
+*.pyc
+
+# ============ 备份与本地遗留（.bak_* 一堆） ============
+*.bak*
+*.before_*.bak
+
+# ============ 本地探针/临时脚本产物（不属于应用） ============
+gate_restart_*.py
+_cu_*.json
+_patch_*.json
+canvas_*.json
+style_*_results*.json
+_apitest_flag.txt
+proxy_restart*.log
+api-settings-runninghub-autotest.png
+verification-*.png

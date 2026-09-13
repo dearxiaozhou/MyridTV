@@ -1,0 +1,1294 @@
+:root {
+  --canvas-prism-cyan: #24d8ff;
+  --canvas-prism-mint: #47f59d;
+  --canvas-prism-amber: #ffc84a;
+  --canvas-prism-pink: #ff4fb8;
+  --canvas-prism-violet: #8e6cff;
+  --canvas-prism-shadow: 0 28px 80px rgba(0, 0, 0, 0.26);
+  --canvas-prism-line: rgba(255, 255, 255, 0.1);
+}
+
+body.prism-canvas-page {
+  background:
+    radial-gradient(circle at 10% 8%, rgba(36, 216, 255, 0.16), transparent 20%),
+    radial-gradient(circle at 88% 10%, rgba(142, 108, 255, 0.14), transparent 18%),
+    radial-gradient(circle at 90% 88%, rgba(255, 79, 184, 0.12), transparent 22%),
+    linear-gradient(145deg, #eef4ff 0%, #f7f8fc 42%, #eef2ff 100%) !important;
+}
+
+html.studio-theme-dark body.prism-canvas-page,
+body.theme-dark.prism-canvas-page {
+  background:
+    radial-gradient(circle at 10% 8%, rgba(36, 216, 255, 0.16), transparent 20%),
+    radial-gradient(circle at 88% 10%, rgba(142, 108, 255, 0.14), transparent 18%),
+    radial-gradient(circle at 90% 88%, rgba(255, 79, 184, 0.12), transparent 22%),
+    linear-gradient(145deg, #050812 0%, #07111f 42%, #05070d 100%) !important;
+}
+
+body.prism-canvas-page::before,
+body.prism-canvas-page::after {
+  content: "";
+  position: fixed;
+  z-index: 0;
+  pointer-events: none;
+  filter: blur(96px);
+  opacity: 0.58;
+}
+
+body.prism-canvas-page::before {
+  left: 8vw;
+  top: 6vh;
+  width: 26vw;
+  height: 26vw;
+  background: rgba(36, 216, 255, 0.14);
+}
+
+body.prism-canvas-page::after {
+  right: 8vw;
+  bottom: 8vh;
+  width: 28vw;
+  height: 28vw;
+  background: rgba(255, 79, 184, 0.12);
+}
+
+body.prism-canvas-page .shell {
+  position: relative;
+  z-index: 1;
+}
+
+body.prism-canvas-page .board {
+  background-color: transparent;
+  background-image:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0)),
+    radial-gradient(var(--grid) 1px, transparent 1px);
+  background-size: auto, 24px 24px;
+}
+
+body.prism-canvas-page .topbar {
+  top: 18px;
+  left: 18px;
+  right: 18px;
+  gap: 12px;
+}
+
+body.prism-canvas-page .panel,
+body.prism-canvas-page .canvas-asset-panel,
+body.prism-canvas-page .output-lightbox-shell,
+body.prism-canvas-page .prompt-template-panel,
+body.prism-canvas-page .image-edit-panel,
+body.prism-canvas-page .error-panel {
+  border-color: var(--canvas-prism-line);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.72)),
+    linear-gradient(135deg, rgba(36, 216, 255, 0.04), rgba(255, 79, 184, 0.03));
+  box-shadow: 0 24px 60px rgba(82, 95, 129, 0.12);
+  backdrop-filter: blur(20px);
+}
+
+html.studio-theme-dark body.prism-canvas-page .panel,
+html.studio-theme-dark body.prism-canvas-page .canvas-asset-panel,
+html.studio-theme-dark body.prism-canvas-page .output-lightbox-shell,
+html.studio-theme-dark body.prism-canvas-page .prompt-template-panel,
+html.studio-theme-dark body.prism-canvas-page .image-edit-panel,
+html.studio-theme-dark body.prism-canvas-page .error-panel,
+body.theme-dark.prism-canvas-page .panel,
+body.theme-dark.prism-canvas-page .canvas-asset-panel,
+body.theme-dark.prism-canvas-page .output-lightbox-shell,
+body.theme-dark.prism-canvas-page .prompt-template-panel,
+body.theme-dark.prism-canvas-page .image-edit-panel,
+body.theme-dark.prism-canvas-page .error-panel {
+  border-color: var(--canvas-prism-line);
+  background:
+    linear-gradient(180deg, rgba(9, 18, 38, 0.92), rgba(7, 13, 28, 0.9)),
+    linear-gradient(135deg, rgba(36, 216, 255, 0.06), rgba(255, 79, 184, 0.04));
+  box-shadow: var(--canvas-prism-shadow);
+}
+
+body.prism-canvas-page .canvas-nav {
+  max-width: min(460px, calc(100vw - 44px));
+  min-height: 62px;
+  padding: 10px 12px 10px 10px;
+  border-radius: 24px;
+  gap: 12px;
+}
+
+body.prism-canvas-page .toolbar {
+  min-height: 62px;
+  padding: 10px;
+  border-radius: 24px;
+  gap: 10px;
+}
+
+body.prism-canvas-page .toolbar-items,
+body.prism-canvas-page .toolbar-fixed {
+  gap: 10px;
+}
+
+body.prism-canvas-page .tool-btn,
+body.prism-canvas-page .menu-btn,
+body.prism-canvas-page .gate-icon-btn,
+body.prism-canvas-page .gate-back-link {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+body.prism-canvas-page .tool-btn:hover,
+body.prism-canvas-page .menu-btn:hover,
+body.prism-canvas-page .gate-icon-btn:hover,
+body.prism-canvas-page .gate-back-link:hover {
+  border-color: rgba(36, 216, 255, 0.24);
+  background: rgba(255, 255, 255, 0.92);
+  transform: translateY(-1px);
+}
+
+html.studio-theme-dark body.prism-canvas-page .tool-btn,
+html.studio-theme-dark body.prism-canvas-page .menu-btn,
+html.studio-theme-dark body.prism-canvas-page .gate-icon-btn,
+html.studio-theme-dark body.prism-canvas-page .gate-back-link,
+body.theme-dark.prism-canvas-page .tool-btn,
+body.theme-dark.prism-canvas-page .menu-btn,
+body.theme-dark.prism-canvas-page .gate-icon-btn,
+body.theme-dark.prism-canvas-page .gate-back-link {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+body.prism-canvas-page .canvas-gate {
+  padding: 0;
+  background-color:#0f141d !important;
+  background-image:
+    radial-gradient(circle at 10% 8%, rgba(36, 216, 255, 0.08), transparent 18%),
+    radial-gradient(circle at 90% 12%, rgba(142, 108, 255, 0.08), transparent 18%),
+    linear-gradient(145deg, rgba(6, 11, 22, 0.75), rgba(8, 15, 30, 0.62)),
+    radial-gradient(var(--grid) 1px, transparent 1px) !important;
+  background-size: auto, auto, auto, 24px 24px;
+}
+
+html.studio-theme-dark body.prism-canvas-page .canvas-gate,
+body.theme-dark.prism-canvas-page .canvas-gate {
+  background-color:#0f141d !important;
+  background-image:
+    radial-gradient(circle at 10% 8%, rgba(36, 216, 255, 0.08), transparent 18%),
+    radial-gradient(circle at 90% 12%, rgba(142, 108, 255, 0.08), transparent 18%),
+    linear-gradient(145deg, rgba(6, 11, 22, 0.75), rgba(8, 15, 30, 0.62)),
+    radial-gradient(var(--grid) 1px, transparent 1px) !important;
+  background-size: auto, auto, auto, 24px 24px;
+}
+
+body.prism-canvas-page .gate-panel {
+  position: relative;
+  overflow: hidden;
+  width:100%;
+  height:100%;
+  min-height:100%;
+  padding: 14px 22px 18px;
+  border-radius: 0;
+  border:0;
+  border-color: transparent;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+body.prism-canvas-page .gate-panel::before,
+body.prism-canvas-page .gate-panel::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  border-radius: 999px;
+}
+
+body.prism-canvas-page .gate-panel::before {
+  left: -62px;
+  bottom: -118px;
+  width: 250px;
+  height: 250px;
+  background: radial-gradient(circle, rgba(36, 216, 255, 0.18), transparent 70%);
+}
+
+body.prism-canvas-page .gate-panel::after {
+  top: -86px;
+  right: -44px;
+  width: 230px;
+  height: 230px;
+  background: radial-gradient(circle, rgba(142, 108, 255, 0.16), transparent 70%);
+}
+
+html.studio-theme-dark body.prism-canvas-page .gate-panel,
+body.theme-dark.prism-canvas-page .gate-panel {
+  border-color: transparent;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+body.prism-canvas-page .gate-head {
+gap: 18px;
+margin-bottom: 14px;
+display: grid;
+grid-template-columns: minmax(0, 1fr) auto;
+grid-template-areas:
+ "text actions"
+ "text pills";
+align-items: start;
+}
+
+body.prism-canvas-page .gate-head-text {
+grid-area:text;
+position: relative;
+display: grid;
+grid-template-columns: minmax(320px, 0.55fr) minmax(420px, 1.45fr);
+align-items: center;
+  column-gap: 34px;
+}
+
+body.prism-canvas-page .gate-back-link,
+body.prism-canvas-page .gate-title-row,
+body.prism-canvas-page .gate-subtitle {
+  grid-column: 1;
+}
+
+body.prism-canvas-page .gate-title-row {
+  display:none !important;
+}
+
+
+body.prism-canvas-page .gate-head-actions {
+grid-area:actions;
+justify-self:end;
+align-self:end;
+display:flex;
+align-items:center;
+justify-content:flex-end;
+gap:32px;
+margin-left:auto;
+flex-wrap:nowrap;
+}
+body.prism-canvas-page .gate-head-actions > * { grid-area:auto; }
+body.prism-canvas-page #gateCreateSmartBtn { order:1; }
+body.prism-canvas-page #gateRefreshBtn { order:2; }
+body.prism-canvas-page #gateTrashBtn { order:3; }
+body.prism-canvas-page #gateAssetManagerBtn { order:4; }
+
+body.prism-canvas-page .gate-status {
+  margin: 0 0 10px;
+}
+
+body.prism-canvas-page .gate-title {
+  font-size: clamp(32px, 4vw, 46px);
+  line-height: 1.04;
+  font-weight: 820;
+  letter-spacing: -0.03em;
+}
+
+body.prism-canvas-page .gate-count-pill,
+body.prism-canvas-page .gate-sort,
+.prism-canvas-mode-pill,
+.prism-canvas-nav-pill {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(180deg, rgba(10,18,34,.86), rgba(7,13,28,.78)) padding-box,
+    linear-gradient(135deg, rgba(36,216,255,.65), rgba(71,245,157,.48), rgba(142,108,255,.55)) border-box;
+  box-shadow:0 0 18px rgba(36,216,255,.12), inset 0 1px 0 rgba(255,255,255,.06);
+}
+
+.prism-canvas-hero-pill {
+  border:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  padding:0 !important;
+  min-height:24px !important;
+  color:rgba(205,245,255,.78);
+}
+
+html.studio-theme-dark body.prism-canvas-page .gate-count-pill,
+html.studio-theme-dark body.prism-canvas-page .gate-sort,
+html.studio-theme-dark .prism-canvas-mode-pill,
+html.studio-theme-dark .prism-canvas-nav-pill,
+body.theme-dark.prism-canvas-page .gate-count-pill,
+body.theme-dark.prism-canvas-page .gate-sort,
+body.theme-dark .prism-canvas-mode-pill,
+body.theme-dark .prism-canvas-nav-pill {
+  background:
+    linear-gradient(180deg, rgba(10,18,34,.86), rgba(7,13,28,.78)) padding-box,
+    linear-gradient(135deg, rgba(36,216,255,.65), rgba(71,245,157,.48), rgba(142,108,255,.55)) border-box;
+  border-color: transparent;
+}
+
+body.prism-canvas-page .gate-subtitle {
+  display:none !important;
+}
+
+.prism-canvas-gate-pills {
+grid-area:pills;
+justify-self: end;
+align-self: start;
+display: flex;
+flex-wrap: nowrap;
+justify-content: flex-end;
+gap: 12px;
+margin-top: 8px;
+}
+
+.prism-canvas-nav-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.prism-canvas-hero-pill,
+.prism-canvas-nav-pill,
+.prism-canvas-mode-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 780;
+}
+
+.prism-canvas-hero-pill::before,
+.prism-canvas-mode-pill::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--canvas-prism-cyan), var(--canvas-prism-violet));
+  box-shadow: 0 0 14px rgba(36, 216, 255, 0.55);
+}
+
+.prism-canvas-brandline {
+  grid-column: 1;
+  grid-row: 1 / span 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  width: fit-content;
+}
+
+.prism-canvas-brandline img {
+  width: 54px;
+  height: 54px;
+  border-radius: 18px;
+  filter: drop-shadow(0 0 18px rgba(36,216,255,.42));
+}
+
+.prism-canvas-brand-copy {
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+  min-width:0;
+}
+
+.prism-canvas-brand-copy strong {
+  color:#f8fafc;
+  font-size:30px;
+  line-height:1;
+  font-weight:850;
+  letter-spacing:.02em;
+  text-shadow:0 0 22px rgba(71,245,157,.42),0 0 12px rgba(36,216,255,.34);
+}
+
+.prism-canvas-brand-copy em {
+  color:rgba(205,245,255,.74);
+  font-size:13px;
+  line-height:1.25;
+  font-style:normal;
+  font-weight:700;
+  white-space:nowrap;
+}
+
+html.studio-theme-dark .prism-canvas-brandline,
+body.theme-dark .prism-canvas-brandline {
+  background: transparent;
+  color: var(--text);
+  border-color: transparent;
+}
+
+body.prism-canvas-page .gate-list {
+  padding: 16px;
+  border-radius: 24px;
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.52);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+html.studio-theme-dark body.prism-canvas-page .gate-list,
+body.theme-dark.prism-canvas-page .gate-list {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+body.prism-canvas-page .canvas-item {
+  border-radius: 20px;
+  border-color: rgba(15, 23, 42, 0.08);
+  box-shadow: 0 18px 36px rgba(82, 95, 129, 0.08);
+}
+
+body.prism-canvas-page .canvas-item:hover {
+  border-color: rgba(36, 216, 255, 0.26);
+  box-shadow: 0 24px 46px rgba(82, 95, 129, 0.14);
+  transform: translateY(-1px);
+}
+
+body.prism-canvas-page .canvas-item.active {
+  background:
+    linear-gradient(180deg, rgba(9, 18, 38, 0.94), rgba(7, 13, 28, 0.92)),
+    linear-gradient(135deg, rgba(36, 216, 255, 0.12), rgba(142, 108, 255, 0.1));
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 24px 48px rgba(8, 15, 34, 0.3);
+}
+
+body.prism-canvas-page .smart-create-btn {
+  min-height: 42px;
+  padding: 0 16px;
+  border-radius: 15px;
+  box-shadow: 0 16px 30px rgba(59, 130, 246, 0.14);
+}
+
+body.prism-canvas-page .hint {
+  left: 20px;
+  bottom: 18px;
+  transform: none;
+  max-width: min(780px, calc(100vw - 40px));
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.74)),
+    linear-gradient(135deg, rgba(36, 216, 255, 0.04), rgba(255, 79, 184, 0.03));
+  color: var(--text);
+  box-shadow: 0 16px 36px rgba(82, 95, 129, 0.12);
+}
+
+html.studio-theme-dark body.prism-canvas-page .hint,
+body.theme-dark.prism-canvas-page .hint {
+  background:
+    linear-gradient(180deg, rgba(9, 18, 38, 0.92), rgba(7, 13, 28, 0.9)),
+    linear-gradient(135deg, rgba(36, 216, 255, 0.06), rgba(255, 79, 184, 0.04));
+  color: rgba(226, 232, 240, 0.84);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: var(--canvas-prism-shadow);
+}
+
+body.prism-canvas-page .canvas-asset-panel {
+  border-radius: 24px;
+}
+
+body.prism-canvas-page .canvas-asset-drop {
+  border-color: rgba(36, 216, 255, 0.18);
+  background: rgba(36, 216, 255, 0.06);
+}
+
+
+body.prism-canvas-page .gate-list {
+  flex:1 1 auto;
+  min-height:0;
+}
+
+.theme-dark body.prism-canvas-page .gate-list,
+html.studio-theme-dark body.prism-canvas-page .gate-list,
+body.theme-dark.prism-canvas-page .gate-list {
+  background: rgba(255,255,255,0.035);
+  border-color: rgba(255,255,255,0.08);
+}
+
+body.prism-canvas-page .canvas-item {
+  background: rgba(255,255,255,0.045);
+  border-color: rgba(255,255,255,0.08);
+  color: var(--text);
+}
+
+body.prism-canvas-page .gate-icon-btn,
+body.prism-canvas-page .gate-back-link,
+body.prism-canvas-page .gate-sort,
+body.prism-canvas-page .smart-create-btn {
+  border-color: rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.055);
+  color: var(--text);
+}
+
+@media (max-width: 980px) {
+  body.prism-canvas-page .topbar {
+    left: 12px;
+    right: 12px;
+    top: 12px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  body.prism-canvas-page .canvas-nav,
+  body.prism-canvas-page .toolbar {
+    max-width: none;
+    width: 100%;
+  }
+
+  body.prism-canvas-page .gate-panel {
+    padding: 18px;
+  }
+
+  body.prism-canvas-page .gate-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body.prism-canvas-page .hint {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    max-width: none;
+  }
+}
+
+/* Bottomfix7: all framed chips/cards use theme gradient borders */
+body.prism-canvas-page .gate-icon-btn,
+body.prism-canvas-page .gate-back-link,
+body.prism-canvas-page .smart-create-btn,
+body.prism-canvas-page .canvas-item,
+body.prism-canvas-page .gate-list {
+  border:3px solid transparent !important;
+  background:
+    linear-gradient(180deg, rgba(10,18,34,.78), rgba(7,13,28,.68)) padding-box,
+    linear-gradient(135deg, rgba(36,216,255,.58), rgba(71,245,157,.34), rgba(142,108,255,.50)) border-box !important;
+  box-shadow:0 0 20px rgba(36,216,255,.10), inset 0 1px 0 rgba(255,255,255,.045);
+}
+body.prism-canvas-page .canvas-item:hover,
+body.prism-canvas-page .gate-icon-btn:hover,
+body.prism-canvas-page .gate-back-link:hover,
+body.prism-canvas-page .smart-create-btn:hover {
+background:
+linear-gradient(180deg, rgba(14,26,48,.88), rgba(8,16,34,.78)) padding-box,
+linear-gradient(135deg, rgba(36,216,255,.82), rgba(71,245,157,.52), rgba(142,108,255,.72)) border-box !important;
+}
+
+/* Full-bleed workspace: remove title/time text and let canvas content occupy the full frame. */
+body.prism-canvas-page .canvas-nav-meta,
+body.prism-canvas-page .current-canvas-title,
+body.prism-canvas-page .current-canvas-time {
+display:none !important;
+}
+
+body.prism-canvas-page .canvas-nav {
+width:auto !important;
+min-width:0 !important;
+padding:8px !important;
+}
+
+body.prism-canvas-page .gate-panel {
+height:100vh !important;
+min-height:100vh !important;
+padding:10px 16px 14px !important;
+}
+
+body.prism-canvas-page .canvas-gate {
+padding:0 !important;
+}
+
+/* UI polish 1: compact the gate header and make the canvas list the focus. */
+body.prism-canvas-page .gate-panel {
+padding:12px 18px 12px !important;
+}
+
+body.prism-canvas-page .gate-head {
+gap:12px !important;
+margin-bottom:10px !important;
+align-items:center !important;
+}
+
+body.prism-canvas-page .gate-head-text {
+column-gap:22px !important;
+}
+
+.prism-canvas-brandline {
+gap:8px !important;
+align-items:center !important;
+}
+
+.prism-canvas-brandline img {
+width:72px !important;
+height:84px !important;
+border-radius:0 !important;
+object-fit:contain !important;
+object-position:center !important;
+filter:drop-shadow(0 0 18px rgba(36,216,255,.42)) !important;
+}
+
+.prism-canvas-brand-copy {
+gap:2px !important;
+}
+
+.prism-canvas-brand-copy strong {
+font-size:24px !important;
+line-height:1 !important;
+letter-spacing:0 !important;
+}
+
+.prism-canvas-brand-copy em {
+font-size:12px !important;
+line-height:1.2 !important;
+color:rgba(205,245,255,.66) !important;
+}
+
+body.prism-canvas-page .gate-head-actions {
+gap:28px !important;
+align-self:center !important;
+}
+
+body.prism-canvas-page .gate-sort {
+min-height:34px !important;
+padding:3px !important;
+background:rgba(255,255,255,.045) !important;
+box-shadow:none !important;
+}
+
+body.prism-canvas-page .gate-sort-btn {
+height:28px !important;
+padding:0 12px !important;
+font-size:11px !important;
+letter-spacing:0 !important;
+}
+
+body.prism-canvas-page .gate-icon-btn {
+width:36px !important;
+height:36px !important;
+border-radius:11px !important;
+box-shadow:none !important;
+}
+
+body.prism-canvas-page .smart-create-btn {
+height:36px !important;
+padding:0 15px !important;
+border-radius:12px !important;
+background:
+linear-gradient(180deg, rgba(39,234,169,.96), rgba(23,184,213,.9)) padding-box,
+linear-gradient(135deg, rgba(255,255,255,.7), rgba(36,216,255,.6)) border-box !important;
+color:#04131c !important;
+box-shadow:0 10px 24px rgba(36,216,255,.18) !important;
+}
+
+body.prism-canvas-page .smart-create-btn:hover {
+background:
+linear-gradient(180deg, rgba(58,255,186,1), rgba(31,207,232,.96)) padding-box,
+linear-gradient(135deg, rgba(255,255,255,.78), rgba(71,245,157,.72)) border-box !important;
+box-shadow:0 12px 28px rgba(36,216,255,.26) !important;
+}
+
+/* UI polish 4 final: no inner window frame, only the app frame and cards remain. */
+html body.prism-canvas-page .canvas-gate,
+html.studio-theme-dark body.prism-canvas-page .canvas-gate,
+body.theme-dark.prism-canvas-page .canvas-gate {
+padding:0 !important;
+border:0 !important;
+border-radius:0 !important;
+box-shadow:none !important;
+}
+
+html body.prism-canvas-page .gate-panel,
+html.studio-theme-dark body.prism-canvas-page .gate-panel,
+body.theme-dark.prism-canvas-page .gate-panel {
+padding:18px 18px 0 !important;
+border:0 !important;
+border-radius:0 !important;
+background:transparent !important;
+background-image:none !important;
+box-shadow:none !important;
+outline:0 !important;
+}
+
+html body.prism-canvas-page .gate-panel::before,
+html body.prism-canvas-page .gate-panel::after,
+html.studio-theme-dark body.prism-canvas-page .gate-panel::before,
+html.studio-theme-dark body.prism-canvas-page .gate-panel::after,
+body.theme-dark.prism-canvas-page .gate-panel::before,
+body.theme-dark.prism-canvas-page .gate-panel::after {
+display:none !important;
+content:none !important;
+}
+
+html body.prism-canvas-page .gate-list,
+html.studio-theme-dark body.prism-canvas-page .gate-list,
+body.theme-dark.prism-canvas-page .gate-list {
+margin-top:8px !important;
+padding:14px !important;
+border:1px solid transparent !important;
+border-radius:18px !important;
+background:
+linear-gradient(180deg, rgba(9,18,38,.46), rgba(7,13,28,.38)) padding-box,
+linear-gradient(135deg, rgba(36,216,255,.30), rgba(71,245,157,.16), rgba(142,108,255,.28)) border-box !important;
+background-image:
+linear-gradient(180deg, rgba(9,18,38,.46), rgba(7,13,28,.38)),
+linear-gradient(135deg, rgba(36,216,255,.30), rgba(71,245,157,.16), rgba(142,108,255,.28)) !important;
+box-shadow:inset 0 1px 0 rgba(255,255,255,.04) !important;
+outline:0 !important;
+}
+
+/* UI polish 6 final: square the true outer canvas surface, not the inner list. */
+html body.prism-canvas-page,
+html body.prism-canvas-page .shell,
+html body.prism-canvas-page .canvas-gate,
+html.studio-theme-dark body.prism-canvas-page,
+html.studio-theme-dark body.prism-canvas-page .shell,
+html.studio-theme-dark body.prism-canvas-page .canvas-gate,
+body.theme-dark.prism-canvas-page,
+body.theme-dark.prism-canvas-page .shell,
+body.theme-dark.prism-canvas-page .canvas-gate {
+border-radius:0 !important;
+overflow:hidden !important;
+}
+
+html body.prism-canvas-page .canvas-gate,
+html.studio-theme-dark body.prism-canvas-page .canvas-gate,
+body.theme-dark.prism-canvas-page .canvas-gate {
+inset:0 !important;
+align-items:stretch !important;
+justify-content:stretch !important;
+padding:0 !important;
+}
+
+html body.prism-canvas-page .gate-panel,
+html.studio-theme-dark body.prism-canvas-page .gate-panel,
+body.theme-dark.prism-canvas-page .gate-panel {
+width:100% !important;
+height:100% !important;
+min-height:100% !important;
+border-radius:0 !important;
+}
+
+/* UI polish 3: remove the inner window frame around the canvas list. */
+body.prism-canvas-page .gate-panel {
+padding:18px 18px 0 !important;
+border:0 !important;
+border-radius:0 !important;
+background:transparent !important;
+box-shadow:none !important;
+}
+
+body.prism-canvas-page .gate-panel::before,
+body.prism-canvas-page .gate-panel::after {
+display:none !important;
+}
+
+body.prism-canvas-page .gate-list {
+margin-top:8px !important;
+padding:0 !important;
+border:0 !important;
+border-radius:18px !important;
+background:transparent !important;
+background-image:none !important;
+box-shadow:none !important;
+}
+
+body.prism-canvas-page .gate-list {
+margin-top:8px !important;
+padding:14px !important;
+gap:14px !important;
+border-radius:18px !important;
+background:
+linear-gradient(180deg, rgba(9,18,38,.46), rgba(7,13,28,.38)) padding-box,
+linear-gradient(135deg, rgba(36,216,255,.30), rgba(71,245,157,.16), rgba(142,108,255,.28)) border-box !important;
+box-shadow:inset 0 1px 0 rgba(255,255,255,.04) !important;
+}
+
+body.prism-canvas-page .canvas-item {
+border-radius:16px !important;
+box-shadow:0 10px 22px rgba(0,0,0,.12), inset 0 1px 0 rgba(255,255,255,.035) !important;
+}
+
+body.prism-canvas-page .canvas-item:hover {
+transform:translateY(-2px) !important;
+box-shadow:0 16px 30px rgba(0,0,0,.18), 0 0 18px rgba(36,216,255,.12) !important;
+}
+
+/* Restore the canvas page's own rounded content surfaces. */
+html body.prism-canvas-page .canvas-gate,
+html.studio-theme-dark body.prism-canvas-page .canvas-gate,
+body.theme-dark.prism-canvas-page .canvas-gate,
+html body.prism-canvas-page .gate-panel,
+html.studio-theme-dark body.prism-canvas-page .gate-panel,
+body.theme-dark.prism-canvas-page .gate-panel {
+border-radius:24px !important;
+}
+
+/* Compact the in-canvas floating controls so they sit closer to the edges. */
+body.prism-canvas-page .topbar {
+top:10px !important;
+left:8px !important;
+right:8px !important;
+}
+
+body.prism-canvas-page .panel.canvas-nav,
+body.prism-canvas-page .panel.toolbar {
+border-radius:12px !important;
+padding:3px !important;
+box-shadow:0 10px 24px rgba(0,0,0,.24) !important;
+}
+
+body.prism-canvas-page .canvas-nav {
+gap:5px !important;
+max-width:260px !important;
+}
+
+body.prism-canvas-page .canvas-nav-meta {
+display:none !important;
+}
+
+body.prism-canvas-page .toolbar {
+gap:4px !important;
+}
+
+body.prism-canvas-page .toolbar-items,
+body.prism-canvas-page .toolbar-fixed {
+gap:4px !important;
+}
+
+body.prism-canvas-page .tool-btn {
+height:30px !important;
+min-width:30px !important;
+padding:0 7px !important;
+border-radius:10px !important;
+font-size:10px !important;
+gap:5px !important;
+}
+
+body.prism-canvas-page .toolbar .toolbar-toggle {
+width:30px !important;
+height:30px !important;
+min-width:30px !important;
+border-radius:10px !important;
+}
+
+body.prism-canvas-page .toolbar .toolbar-log,
+body.prism-canvas-page .toolbar .toolbar-asset {
+height:30px !important;
+min-width:30px !important;
+padding:0 7px !important;
+}
+
+body.prism-canvas-page .gate-head-actions {
+margin-top:10px !important;
+}
+
+body.prism-canvas-page #quickToolbar {
+max-width:244px !important;
+border-radius:12px !important;
+}
+
+body.prism-canvas-page #quickToolbar .tool-btn span {
+display:none !important;
+}
+
+body.prism-canvas-page #quickToolbar .toolbar-items {
+max-width:188px !important;
+overflow:hidden !important;
+}
+
+body.prism-canvas-page #quickToolbar .toolbar-fixed {
+max-width:86px !important;
+overflow:hidden !important;
+}
+
+body.prism-canvas-page #createMenu {
+left:58px !important;
+width:176px !important;
+max-width:176px !important;
+padding:5px !important;
+gap:3px !important;
+border-radius:10px !important;
+box-shadow:0 10px 22px rgba(0,0,0,.24) !important;
+}
+
+body.prism-canvas-page #createMenu .menu-btn {
+min-height:30px !important;
+height:30px !important;
+padding:0 8px !important;
+border-radius:10px !important;
+gap:6px !important;
+}
+
+body.prism-canvas-page #createMenu .menu-btn i {
+width:15px !important;
+height:15px !important;
+}
+
+body.prism-canvas-page #createMenu .menu-btn span {
+font-size:11px !important;
+line-height:1 !important;
+white-space:nowrap !important;
+}
+
+body.prism-canvas-page #createMenu .menu-btn small,
+body.prism-canvas-page #createMenu .menu-btn em,
+body.prism-canvas-page #createMenu .menu-btn p {
+display:none !important;
+}
+
+body.prism-canvas-page #quickToolbar {
+left:8px !important;
+max-width:180px !important;
+padding:3px !important;
+border-radius:10px !important;
+}
+
+body.prism-canvas-page #quickToolbar .toolbar-fixed .tool-btn {
+width:34px !important;
+min-width:34px !important;
+padding:0 !important;
+}
+
+body.prism-canvas-page .gate-list-empty {
+padding:42px 16px !important;
+}
+
+@media (max-width: 980px) {
+body.prism-canvas-page .gate-panel {
+padding:12px !important;
+}
+
+body.prism-canvas-page .gate-head {
+grid-template-columns:1fr !important;
+align-items:stretch !important;
+}
+
+body.prism-canvas-page .gate-head-text {
+grid-template-columns:1fr !important;
+}
+
+body.prism-canvas-page .gate-head-actions {
+justify-items:start !important;
+}
+}
+
+/* Bottomfix7b: force gradient borders on framed canvas cards too */
+html body.prism-canvas-page .gate-list .canvas-item,
+html body.prism-canvas-page .gate-list .canvas-item.active,
+html.studio-theme-dark body.prism-canvas-page .gate-list .canvas-item,
+html.studio-theme-dark body.prism-canvas-page .gate-list .canvas-item.active,
+body.theme-dark.prism-canvas-page .gate-list .canvas-item,
+body.theme-dark.prism-canvas-page .gate-list .canvas-item.active {
+  border:3px solid transparent !important;
+  background:
+    linear-gradient(180deg, rgba(10,18,34,.78), rgba(7,13,28,.68)) padding-box,
+    linear-gradient(135deg, rgba(36,216,255,.58), rgba(71,245,157,.34), rgba(142,108,255,.50)) border-box !important;
+box-shadow:0 0 20px rgba(36,216,255,.10), inset 0 1px 0 rgba(255,255,255,.045) !important;
+}
+
+/* UI polish 1 final overrides. */
+body.prism-canvas-page .gate-list {
+margin-top:8px !important;
+padding:14px !important;
+gap:14px !important;
+border-radius:18px !important;
+background:
+linear-gradient(180deg, rgba(9,18,38,.46), rgba(7,13,28,.38)) padding-box,
+linear-gradient(135deg, rgba(36,216,255,.30), rgba(71,245,157,.16), rgba(142,108,255,.28)) border-box !important;
+box-shadow:inset 0 1px 0 rgba(255,255,255,.04) !important;
+}
+
+body.prism-canvas-page .canvas-item {
+border-radius:16px !important;
+box-shadow:0 10px 22px rgba(0,0,0,.12), inset 0 1px 0 rgba(255,255,255,.035) !important;
+}
+
+body.prism-canvas-page .canvas-item:hover {
+transform:translateY(-2px) !important;
+box-shadow:0 16px 30px rgba(0,0,0,.18), 0 0 18px rgba(36,216,255,.12) !important;
+}
+
+body.prism-canvas-page .smart-create-btn {
+background:
+linear-gradient(180deg, rgba(39,234,169,.96), rgba(23,184,213,.9)) padding-box,
+linear-gradient(135deg, rgba(255,255,255,.7), rgba(36,216,255,.6)) border-box !important;
+color:#04131c !important;
+box-shadow:0 10px 24px rgba(36,216,255,.18) !important;
+}
+
+body.prism-canvas-page .smart-create-btn:hover {
+background:
+linear-gradient(180deg, rgba(58,255,186,1), rgba(31,207,232,.96)) padding-box,
+linear-gradient(135deg, rgba(255,255,255,.78), rgba(71,245,157,.72)) border-box !important;
+box-shadow:0 12px 28px rgba(36,216,255,.26) !important;
+}
+/* Fine tune homepage hero entry pills position. */
+body.prism-canvas-page .prism-canvas-gate-pills {
+  margin-top: 14px !important;
+}
+
+/* 2026-09-07 hardline canvas nodes and controls. */
+body.prism-canvas-page {
+  --canvas-hard-page:#e4eaf1;
+  --canvas-hard-grid:rgba(71,85,105,.18);
+  --canvas-hard-node:#f8fafc;
+  --canvas-hard-node-head:#edf3f8;
+  --canvas-hard-soft:#eef3f8;
+  --canvas-hard-soft-2:#dde6ef;
+  --canvas-hard-line:rgba(71,85,105,.22);
+  --canvas-hard-line-strong:#587187;
+  --canvas-hard-text:#101720;
+  --canvas-hard-muted:#556274;
+  --canvas-hard-shadow:rgba(30,41,59,.11);
+  --canvas-hard-accent:#45738c;
+}
+
+body.prism-canvas-page.theme-dark,
+html.theme-dark body.prism-canvas-page,
+html.studio-theme-dark body.prism-canvas-page {
+  --canvas-hard-page:#060a11;
+  --canvas-hard-grid:rgba(118,172,197,.15);
+  --canvas-hard-node:#141d2a;
+  --canvas-hard-node-head:#233449;
+  --canvas-hard-soft:#0d1420;
+  --canvas-hard-soft-2:#1c2c3e;
+  --canvas-hard-line:rgba(139,158,184,.22);
+  --canvas-hard-line-strong:#76acc5;
+  --canvas-hard-text:#edf2f8;
+  --canvas-hard-muted:#a8b4c5;
+  --canvas-hard-shadow:rgba(0,0,0,.32);
+  --canvas-hard-accent:#76acc5;
+}
+
+body.prism-canvas-page .board {
+  background-color:var(--canvas-hard-page) !important;
+  background-image:
+    linear-gradient(var(--canvas-hard-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--canvas-hard-grid) 1px, transparent 1px) !important;
+  background-size:28px 28px !important;
+}
+
+body.prism-canvas-page .node {
+  border:1px solid var(--canvas-hard-line) !important;
+  border-radius:7px !important;
+  background:var(--canvas-hard-node) !important;
+  color:var(--canvas-hard-text) !important;
+  box-shadow:0 18px 42px var(--canvas-hard-shadow), inset 0 1px 0 rgba(255,255,255,.04) !important;
+}
+
+body.prism-canvas-page .node::before {
+  border-radius:7px !important;
+  background:var(--canvas-hard-node) !important;
+}
+
+body.prism-canvas-page .node-head {
+  height:40px !important;
+  flex-basis:40px !important;
+  border-radius:6px 6px 0 0 !important;
+  border-bottom:1px solid var(--canvas-hard-line) !important;
+  background:linear-gradient(180deg, var(--canvas-hard-node-head), var(--canvas-hard-node)) !important;
+  padding:0 11px !important;
+}
+
+body.prism-canvas-page .node-title {
+  color:var(--canvas-hard-muted) !important;
+  letter-spacing:.07em !important;
+  font-weight:900 !important;
+}
+
+body.prism-canvas-page .node-body {
+  padding:12px !important;
+  background:linear-gradient(180deg, rgba(255,255,255,.02), transparent) !important;
+  border-radius:0 0 6px 6px !important;
+}
+
+body.prism-canvas-page .node.selected::after {
+  inset:-2px !important;
+  border:2px solid var(--canvas-hard-accent) !important;
+  border-radius:9px !important;
+  background:none !important;
+  -webkit-mask:none !important;
+  mask:none !important;
+  filter:drop-shadow(0 0 6px rgba(118,172,197,.24)) !important;
+}
+
+body.prism-canvas-page .port::after {
+  width:12px !important;
+  height:12px !important;
+  left:16px !important;
+  top:16px !important;
+  border:2px solid var(--canvas-hard-node) !important;
+  background:var(--canvas-hard-line-strong) !important;
+  box-shadow:0 0 0 1px var(--canvas-hard-line), 0 4px 12px rgba(0,0,0,.22) !important;
+}
+
+body.prism-canvas-page .gen-settings,
+body.prism-canvas-page .llm-chat-log,
+body.prism-canvas-page .llm-output,
+body.prism-canvas-page .llm-input-area,
+body.prism-canvas-page .llm-system,
+body.prism-canvas-page .llm-chat-input,
+body.prism-canvas-page .mode-tabs,
+body.prism-canvas-page .ms-model-tabs,
+body.prism-canvas-page .seg,
+body.prism-canvas-page .field-frame,
+body.prism-canvas-page .setting-input,
+body.prism-canvas-page .select-lite,
+body.prism-canvas-page .input-list,
+body.prism-canvas-page .prompt-node textarea,
+body.prism-canvas-page .image-prompt-text {
+  border-radius:6px !important;
+  border-color:var(--canvas-hard-line) !important;
+  background:var(--canvas-hard-soft) !important;
+  color:var(--canvas-hard-text) !important;
+  box-shadow:none !important;
+}
+
+body.prism-canvas-page .input-list {
+  padding:8px !important;
+  min-height:84px !important;
+}
+
+body.prism-canvas-page .input-item,
+body.prism-canvas-page .rh-param-thumb,
+body.prism-canvas-page .media-card,
+body.prism-canvas-page .output-file-card,
+body.prism-canvas-page .blank-image,
+body.prism-canvas-page .missing-asset {
+  border-radius:6px !important;
+  border-color:var(--canvas-hard-line) !important;
+  background:var(--canvas-hard-soft-2) !important;
+}
+
+body.prism-canvas-page .input-item img,
+body.prism-canvas-page .video-input-thumb img,
+body.prism-canvas-page .rh-param-thumb img,
+body.prism-canvas-page .image-node img,
+body.prism-canvas-page .output-grid img,
+body.prism-canvas-page .output-grid video {
+  border-radius:4px !important;
+}
+
+body.prism-canvas-page .gen-btn,
+body.prism-canvas-page .comfy-run,
+body.prism-canvas-page .llm-run,
+body.prism-canvas-page .gen-cascade-btn,
+body.prism-canvas-page .tool-btn,
+body.prism-canvas-page .resize-handle,
+body.prism-canvas-page .setting-check,
+body.prism-canvas-page .mode-tabs button,
+body.prism-canvas-page .ms-model-tabs button,
+body.prism-canvas-page .seg button {
+  border-radius:6px !important;
+}
+
+body.prism-canvas-page .gen-btn,
+body.prism-canvas-page .comfy-run,
+body.prism-canvas-page .llm-run,
+body.prism-canvas-page .mode-tabs button.active,
+body.prism-canvas-page .ms-model-tabs button.active,
+body.prism-canvas-page .seg button.active,
+body.prism-canvas-page .setting-check.active {
+  background:var(--canvas-hard-line-strong) !important;
+  border-color:var(--canvas-hard-line-strong) !important;
+  color:#07101a !important;
+}
+
+body.prism-canvas-page .gen-cascade-btn {
+  border-color:var(--canvas-hard-line-strong) !important;
+  color:var(--canvas-hard-line-strong) !important;
+  background:transparent !important;
+}
+
+body.prism-canvas-page .comfy-node .comfy-images,
+body.prism-canvas-page .comfy-node .comfy-images .input-list {
+  border:0 !important;
+  outline:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  padding:2px 0 !important;
+}
+
+body.prism-canvas-page .comfy-node .comfy-images .input-item {
+  border:0 !important;
+  outline:0 !important;
+  box-shadow:none !important;
+  background:var(--canvas-hard-soft-2) !important;
+}
+
+/* Highest-specificity pass so older prism node skins cannot win. */
+html body.prism-canvas-page .node,
+html body.prism-canvas-page.theme-dark .node,
+html.theme-dark body.prism-canvas-page .node,
+html.studio-theme-dark body.prism-canvas-page .node {
+  border:1px solid var(--canvas-hard-line) !important;
+  border-radius:7px !important;
+  background:var(--canvas-hard-node) !important;
+  color:var(--canvas-hard-text) !important;
+  box-shadow:0 18px 42px var(--canvas-hard-shadow), inset 0 1px 0 rgba(255,255,255,.04) !important;
+}
+
+html body.prism-canvas-page .node::before,
+html body.prism-canvas-page.theme-dark .node::before,
+html.theme-dark body.prism-canvas-page .node::before,
+html.studio-theme-dark body.prism-canvas-page .node::before {
+  border-radius:7px !important;
+  background:var(--canvas-hard-node) !important;
+}
+
+html body.prism-canvas-page .node .node-head,
+html body.prism-canvas-page.theme-dark .node .node-head,
+html.theme-dark body.prism-canvas-page .node .node-head,
+html.studio-theme-dark body.prism-canvas-page .node .node-head {
+  height:40px !important;
+  flex-basis:40px !important;
+  border-radius:6px 6px 0 0 !important;
+  border-bottom:1px solid var(--canvas-hard-line) !important;
+  background:linear-gradient(180deg, var(--canvas-hard-node-head), var(--canvas-hard-node)) !important;
+}
+
+html body.prism-canvas-page .node.selected::after,
+html body.prism-canvas-page.theme-dark .node.selected::after,
+html.theme-dark body.prism-canvas-page .node.selected::after,
+html.studio-theme-dark body.prism-canvas-page .node.selected::after {
+  inset:-2px !important;
+  border:2px solid var(--canvas-hard-accent) !important;
+  border-radius:9px !important;
+  background:none !important;
+  -webkit-mask:none !important;
+  mask:none !important;
+  filter:drop-shadow(0 0 6px rgba(118,172,197,.24)) !important;
+}
+
+html body.prism-canvas-page .node .node-body,
+html.theme-dark body.prism-canvas-page .node .node-body,
+html.studio-theme-dark body.prism-canvas-page .node .node-body {
+  background:linear-gradient(180deg, rgba(255,255,255,.02), transparent) !important;
+  border-radius:0 0 6px 6px !important;
+}
+
+html body.prism-canvas-page .comfy-node .comfy-images,
+html body.prism-canvas-page .comfy-node .comfy-images .input-list,
+html.theme-dark body.prism-canvas-page .comfy-node .comfy-images,
+html.theme-dark body.prism-canvas-page .comfy-node .comfy-images .input-list {
+  border:0 !important;
+  outline:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  padding:2px 0 !important;
+}
+
+html body.prism-canvas-page .comfy-node .comfy-images .input-item,
+html.theme-dark body.prism-canvas-page .comfy-node .comfy-images .input-item {
+  border:0 !important;
+  outline:0 !important;
+  box-shadow:none !important;
+  background:var(--canvas-hard-soft-2) !important;
+}
+
+html body.prism-canvas-page .comfy-node .comfy-images .input-item img,
+html body.prism-canvas-page .comfy-node .comfy-images .input-item video,
+html.theme-dark body.prism-canvas-page .comfy-node .comfy-images .input-item img,
+html.theme-dark body.prism-canvas-page .comfy-node .comfy-images .input-item video {
+  border:0 !important;
+  outline:0 !important;
+  box-shadow:none !important;
+}

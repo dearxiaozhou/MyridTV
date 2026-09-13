@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MyridTV 图标动效预览</title>
+  <link rel="icon" href="/static/images/myrid-icon.png" type="image/png">
+  <link rel="stylesheet" href="/static/css/logo-motion.css?v=2026.07.11.logo1">
+</head>
+<body class="myrid-motion-stage">
+  <main class="myrid-motion-wrap">
+    <section class="myrid-motion-preview" aria-label="图标动效预览">
+      <div id="motionLogo" class="myrid-logo-motion boot">
+        <span class="motion-aura"></span>
+        <img src="/static/images/myrid-icon.png" alt="MyridTV">
+      </div>
+    </section>
+    <nav class="myrid-motion-controls" aria-label="动效模式">
+      <button type="button" data-motion="boot" class="active">启动</button>
+      <button type="button" data-motion="pulse">思考中</button>
+      <button type="button" data-motion="connected">连接成功</button>
+    </nav>
+  </main>
+  <script>
+    const logo = document.getElementById('motionLogo');
+    const buttons = document.querySelectorAll('[data-motion]');
+    function playMotion(name) {
+      buttons.forEach(btn => btn.classList.toggle('active', btn.dataset.motion === name));
+      logo.className = 'myrid-logo-motion';
+      void logo.offsetWidth;
+      logo.classList.add(name);
+    }
+    buttons.forEach(btn => btn.addEventListener('click', () => playMotion(btn.dataset.motion)));
+  </script>
+</body>
+</html>
