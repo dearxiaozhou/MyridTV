@@ -914,6 +914,23 @@ function canvasNodePorts(node){
     const reg = canvasNodeRegistry();
     return reg ? reg.nodeTypePorts(node?.type, node) : {inputs:[], outputs:[]};
 }
+// ① 端口元信息统一走注册表：DOM 上的 data-port-type / 提示都从这里来
+function canvasPortMeta(type, direction){
+    const reg = canvasNodeRegistry();
+    if(!reg) return {type:'any', label: direction === 'input' ? '输入' : '输出', tip: ''};
+    const primary = reg.nodePrimaryPort(type, direction);
+    return {
+        type: primary?.dataType || 'any',
+        label: primary?.label || (direction === 'input' ? '输入' : '输出'),
+        tip: reg.labelForNodePort(type, direction) || (direction === 'input' ? '输入' : '输出')
+    };
+}
+function canvasPortDotsHtml(node, direction){
+    const meta = canvasPortMeta(node?.type, direction);
+    const cls = direction === 'input' ? 'port-in' : 'port-out';
+    const dataPort = direction === 'input' ? 'in' : 'out';
+    return `<div class="node-port ${cls}" data-port="${dataPort}" data-port-type="${escapeAttr(meta.type)}" data-port-label="${escapeAttr(meta.label)}" title="${escapeAttr(meta.tip)}"></div>`;
+}
 function canvasNodeDescribe(node){
     const reg = canvasNodeRegistry();
     return reg ? reg.describeNode(node) : null;
@@ -11514,8 +11531,8 @@ const html = `<div class="image-node ${isEmpty ? 'empty-node' : ''} ${isGroup ? 
             <div class="node-body">${body}</div>
             <div class="node-hint">${hint}</div>
             ${isCanvasGroupNode(node) || imgs.length || node.pending || isQueued || isJimengPending || isPrompt || isLoop || isTable ? '<div class="node-resize-handle" data-resize="1"></div>' : ''}
-            <div class="node-port port-in" data-port="in" title="input"></div>
-            <div class="node-port port-out" data-port="out" title="output"></div>
+            ${canvasPortDotsHtml(node, 'input')}
+            ${canvasPortDotsHtml(node, 'output')}
         </div>`;
         return {node, html};
     });
@@ -11581,8 +11598,8 @@ const html = `<div class="image-node ${isEmpty ? 'empty-node' : ''} ${isGroup ? 
             <div class="node-body">${body}</div>
             <div class="node-hint">${isPending ? escapeHtml(tr('smart.hintPending')) : (imgs.length > 1 ? escapeHtml(tr('smart.hintMulti')) : imgs.length ? escapeHtml(tr('smart.hintSingle')) : escapeHtml(tr('smart.hintEmpty')))}</div>
             ${imgs.length || node.pending || isQueued || isPrompt || isLoop ? '<div class="node-resize-handle" data-resize="1"></div>' : ''}
-            <div class="node-port port-in" data-port="in" title="输入"></div>
-            <div class="node-port port-out" data-port="out" title="输出"></div>
+            ${canvasPortDotsHtml(node, 'input')}
+            ${canvasPortDotsHtml(node, 'output')}
         </div>`;
     }).join('');
     world.insertAdjacentHTML('beforeend', nodesHtml);
@@ -12774,7 +12791,12 @@ function rectOverlapNode(draggedId, x, y, w, h, excludeIds=[]){
 }
 function dragConnectTargetFor(sourceNode, point=lastMouseWorld){
     if(!sourceNode || (dragState?.group || []).length > 1) return null;
-    if(['smart-prompt', 'smart-loop'].includes(sourceNode.type) && point){
+    const dropByOverlap = (() => {
+        const reg = canvasNodeRegistry();
+        if(reg) return reg.nodeTypeDropByPointOverlap(sourceNode.type);
+        return ['smart-prompt', 'smart-loop'].includes(sourceNode.type);   // 回退：老硬编码行为
+    })();
+    if(dropByOverlap && point){
         return rectOverlapNode(sourceNode.id, point.x - 1, point.y - 1, 2, 2, dragState?.groupIds || []);
     }
     const r = nodeRect(sourceNode);

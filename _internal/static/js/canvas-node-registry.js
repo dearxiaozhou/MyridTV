@@ -18,6 +18,7 @@
         hasPrompt: false,   // 节点带提示词
         isGenerator: false, // 生成类节点（会跑引擎出图/出视频）
         carriesImages: false, // 节点里能装图片（但不等于"老 isSmartImageNode 认定的图片节点"）
+        dropByPointOverlap: false, // 拖拽落点按"指针矩形重叠"判定（提示词/循环节点用的老规则）
         isContainer: false  // 容器类（组、历史组），不参与连线
     };
 
@@ -121,6 +122,32 @@
         return { inputs: def.inputs.slice(), outputs: def.outputs.slice() };
     }
 
+    function nodeTypeDropByPointOverlap(type) {
+        var def = getNodeType(type);
+        return Boolean(def && def.flags.dropByPointOverlap);
+    }
+
+    // 取某个方向上"主端口"的元信息（当前画布每节点单入单出，取顺序第一个）
+    function nodePrimaryPort(type, direction) {
+        var def = getNodeType(type);
+        if (!def) return null;
+        var list = direction === 'input' ? def.inputs : def.outputs;
+        if (!list.length) return null;
+        var port = list[0];
+        return { id: port.id, label: port.label, dataType: port.dataType, multiple: port.multiple, count: list.length };
+    }
+
+    function labelForNodePort(type, direction) {
+        var def = getNodeType(type);
+        if (!def) return '';
+        var list = direction === 'input' ? def.inputs : def.outputs;
+        if (!list.length) return '';
+        var head = direction === 'input' ? '输入：' : '输出：';
+        return head + list.map(function (port) {
+            return port.label + '(' + port.dataType + (port.multiple ? '，可多' : '') + ')';
+        }).join('、');
+    }
+
     function describeNode(node) {
         var type = node && node.type;
         var def = getNodeType(type);
@@ -152,7 +179,7 @@
     });
     registerNodeType({
         type: 'smart-prompt', label: '提示词', category: 'text',
-        flags: { hasPrompt: true },
+        flags: { hasPrompt: true, dropByPointOverlap: true },
         inputs: [],
         outputs: [{ id: 'out-text', label: '文本', dataType: 'text', multiple: false }],
         defaults: { w: 340, h: 168 }
@@ -161,7 +188,7 @@
         type: 'smart-loop', label: '循环', category: 'control',
         // 注意：hasImages 必须与老 isSmartImageNode 语义一致（loop 不算图片节点），
         // 它"能装图"这件事记在 carriesImages，避免悄悄改变引用/拖放判定
-        flags: { hasImages: false, carriesImages: true },
+        flags: { hasImages: false, carriesImages: true, dropByPointOverlap: true },
         inputs: [{ id: 'in-image', label: '输入图', dataType: 'image', multiple: true }],
         outputs: [{ id: 'out-image', label: '图片', dataType: 'image', multiple: true }],
         defaults: { w: 340, h: 168 }
@@ -189,6 +216,9 @@
         nodeTypeIsContainer: nodeTypeIsContainer,
         nodeTypeIsGenerator: nodeTypeIsGenerator,
         nodeTypeLabel: nodeTypeLabel,
+        nodeTypeDropByPointOverlap: nodeTypeDropByPointOverlap,
+        nodePrimaryPort: nodePrimaryPort,
+        labelForNodePort: labelForNodePort,
         nodeTypePorts: nodeTypePorts,
         describeNode: describeNode,
         IMAGE_TYPE: IMAGE_TYPE,
