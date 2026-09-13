@@ -900,13 +900,30 @@ function clearVolcengineSelectionOutsideVolcengine(target=settings){
     if(target.videoProvider === 'volcengine') target.videoProvider = '';
     return target;
 }
+function canvasNodeRegistry(){
+    return (typeof window !== 'undefined' && window.CanvasNodeRegistry) ? window.CanvasNodeRegistry : null;
+}
 function isSmartImageNode(node){
-    return Boolean(node && (node.type === 'smart-image' || !node.type));
+    // ① 走节点注册表（类型 → 能力）；注册表未加载/未知类型时回退到老判定，行为完全等价
+    if(!node) return false;
+    const reg = canvasNodeRegistry();
+    if(reg) return node.type ? reg.nodeTypeHasImages(node.type) : true;
+    return Boolean(node.type === 'smart-image' || !node.type);
+}
+function canvasNodePorts(node){
+    const reg = canvasNodeRegistry();
+    return reg ? reg.nodeTypePorts(node?.type, node) : {inputs:[], outputs:[]};
+}
+function canvasNodeDescribe(node){
+    const reg = canvasNodeRegistry();
+    return reg ? reg.describeNode(node) : null;
 }
 function isHistoryGroupNode(node){
     return Boolean(isSmartImageNode(node) && (node.isHistoryGroup || node.historyFor));
 }
 function isCanvasGroupNode(node){
+    const reg = canvasNodeRegistry();
+    if(reg) return Boolean(node?.type && reg.nodeTypeIsContainer(node.type));
     return Boolean(node?.type === 'smart-group');
 }
 function nodeHasCompletedGeneration(node){
