@@ -208,7 +208,7 @@
     "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
   },
   "project": {
-    "version": "0.2.25",
+    "version": "0.2.26",
     "restore": {
       "projectUniqueName": "D:\\APP\\MyridTV\\installer\\desktop\\MyridTV.Desktop.csproj",
       "projectName": "MyridTV-Desktop",

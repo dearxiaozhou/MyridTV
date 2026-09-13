@@ -34,6 +34,8 @@ OutputBaseFilename={#MyOutputBaseFilename}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+; 不允许记住上次的勾选：每次安装都按默认（不勾＝普通安装，不动数据目录）
+UsePreviousTasks=no
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -45,8 +47,16 @@ RestartApplications=no
 [Languages]
 Name: "chinesesimp"; MessagesFile: "compiler:Default.isl"
 
+[Tasks]
+Name: "portable"; Description: "作为独立实例安装（自带数据目录，与其它 MyridTV 安装互不影响）"; GroupDescription: "附加选项："; Flags: unchecked
+
 [Files]
 Source: "{#MyAppSource}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[Dirs]
+; 勾选「独立实例」时才创建空 user_data\：程序看到它就用自带数据目录（便携模式），并自动使用自己的端口。
+; 卸载时绝不动这个目录（里面是用户数据）。
+Name: "{app}\user_data"; Tasks: portable; Flags: uninsneveruninstall
 
 [Icons]
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\MyridTV.exe"; WorkingDir: "{app}"; IconFilename: "{app}\MyridTV.exe"
