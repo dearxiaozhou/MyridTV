@@ -1,4 +1,4 @@
-param(
+﻿param(
     [switch]$NoDesktop
 )
 
@@ -21,6 +21,12 @@ function Resolve-UserDataRoot() {
     $envValue = [Environment]::GetEnvironmentVariable($UserDataEnv)
     if (![string]::IsNullOrWhiteSpace($envValue)) {
         return [System.IO.Path]::GetFullPath($envValue)
+    }
+    # 便携模式（多份安装各自独立，仿 ComfyUI 的 user 目录）：
+    # 安装目录下存在 user_data\ 或 .portable 标记 → 这份安装用自己的数据目录。
+    $portableDir = Join-Path $AppDir 'user_data'
+    if ((Test-Path -LiteralPath (Join-Path $AppDir '.portable')) -or (Test-Path -LiteralPath $portableDir -PathType Container)) {
+        return $portableDir
     }
     $appData = [Environment]::GetFolderPath('ApplicationData')
     if (![string]::IsNullOrWhiteSpace($appData)) {
@@ -260,17 +266,71 @@ if (Test-Path -LiteralPath $UpgradeHelperScript) {
 } else {
     Write-StartupLog "upgrade helper missing: $UpgradeHelperScript"
 }
-$Config = Read-JsonFile $ConfigFile
-$ProxyBase = 'http://127.0.0.1:3107'
-if ($Config -and $Config.proxy) {
-    if ($Config.proxy.base_url) {
-        $ProxyBase = ([string]$Config.proxy.base_url).TrimEnd('/')
-    } else {
-        $hostName = if ($Config.proxy.host) { [string]$Config.proxy.host } else { '127.0.0.1' }
-        $port = if ($Config.proxy.port) { [int]$Config.proxy.port } else { 3107 }
-        $ProxyBase = "http://$hostName`:$port"
+function Test-PortInUse([string]$HostName, [int]$Port) {
+    try {
+        $client = New-Object System.Net.Sockets.TcpClient
+        $iar = $client.BeginConnect($HostName, $Port, $null, $null)
+        $connected = $iar.AsyncWaitHandle.WaitOne(400)
+        $ok = ($connected -and $client.Connected)
+        $client.Close()
+        return $ok
+    } catch { return $false }
+}
+
+function Normalize-PathText($Value) {
+    if (!$Value) { return '' }
+    return ([string]$Value).TrimEnd([char]92, [char]47).ToLowerInvariant()
+}
+
+function Set-ProxyPortInConfig([int]$Port) {
+    # 本安装自己换端口时，把端口写回本安装的配置 —— 桌面壳从同一份配置读端口，两边自动一致
+    try {
+        $json = Read-JsonFile $ConfigFile
+        if (!$json -or !$json.proxy) { return }
+        $json.proxy.port = $Port
+        $json.proxy.base_url = "http://{0}:{1}" -f [string]$json.proxy.host, $Port
+        [System.IO.File]::WriteAllText($ConfigFile, ($json | ConvertTo-Json -Depth 12), (New-Object System.Text.UTF8Encoding($false)))
+    } catch {
+        Write-StartupLog "proxy port write-back failed: $($_.Exception.Message)"
     }
 }
+
+$Config = Read-JsonFile $ConfigFile
+$ProxyHost = '127.0.0.1'
+$ProxyPort = 3107
+if ($Config -and $Config.proxy) {
+    if ($Config.proxy.host) { $ProxyHost = [string]$Config.proxy.host }
+    if ($Config.proxy.port) { $ProxyPort = [int]$Config.proxy.port }
+    elseif ($Config.proxy.base_url) {
+        try {
+            $parsed = [uri]([string]$Config.proxy.base_url)
+            $ProxyHost = $parsed.Host
+            $ProxyPort = $parsed.Port
+        } catch {}
+    }
+}
+
+# —— 多份安装共存：目标端口上那个后端如果属于「别的安装」，换到本安装自己的空闲端口 ——
+$portHealth = Get-ProxyHealth ("http://{0}:{1}/health" -f $ProxyHost, $ProxyPort)
+if ($portHealth -and $portHealth.ok) {
+    $ownerPath = Normalize-PathText $portHealth.user_data_dir
+    $myPath = Normalize-PathText $UserDataRoot
+    if ($ownerPath -and $myPath -and $ownerPath -ne $myPath) {
+        $shifted = $false
+        for ($candidatePort = $ProxyPort + 1; $candidatePort -le $ProxyPort + 20; $candidatePort++) {
+            if (!(Test-PortInUse $ProxyHost $candidatePort)) { $ProxyPort = $candidatePort; $shifted = $true; break }
+        }
+        if ($shifted) {
+            Write-StartupLog ("proxy port conflict: port used by another MyridTV install (user_data={0}); this install switches to port {1}" -f $portHealth.user_data_dir, $ProxyPort)
+            Set-ProxyPortInConfig $ProxyPort
+        } else {
+            Write-StartupLog ("proxy port conflict: port used by another MyridTV install (user_data={0}) and no free port in +20; keeping port {0}" -f $portHealth.user_data_dir, $ProxyPort)
+        }
+    } else {
+        Write-StartupLog "proxy on port $ProxyPort belongs to this install (user_data=$($portHealth.user_data_dir))"
+    }
+}
+$ProxyBase = "http://{0}:{1}" -f $ProxyHost, $ProxyPort
 $ProxyHealthUrl = "$ProxyBase/health"
 $script:StartupLog = Resolve-InternalPath $Config.paths.startup_log 'data/logs/startup.log'
 $ProxyLog = Resolve-InternalPath $Config.paths.proxy_log 'data/logs/rh_official_proxy.log'

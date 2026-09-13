@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$PythonDir = '',
     [string]$SourceDir = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path,
     [switch]$Sign,

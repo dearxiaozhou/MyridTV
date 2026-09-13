@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$SourceDir = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path,
     [string]$StageDir = (Join-Path $PSScriptRoot 'build\MyridTV'),
     [string]$PythonDir = '',

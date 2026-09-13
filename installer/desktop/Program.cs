@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Net.Http;
+using System.Text.Json;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using Microsoft.Web.WebView2.Core;
@@ -19,8 +20,64 @@ internal static class Program
 
 internal sealed class MainWindow : Form
 {
-    private const string HealthUrl = "http://127.0.0.1:3107/health";
-    private const string StartUrl = "http://127.0.0.1:3107/static/index.html";
+    // 端口不写死：从本安装目录的 _internal\data\app_config.json 读 proxy.port
+    // （多份安装各用各的端口；start_myridtv.ps1 在端口被别的安装占用时会把新端口写回同一份配置）
+    private static readonly string ProxyBaseUrl = ResolveProxyBaseUrl();
+    private static readonly string HealthUrl = ProxyBaseUrl + "/health";
+    private static readonly string StartUrl = ProxyBaseUrl + "/static/index.html";
+
+    private static string ResolveProxyBaseUrl()
+    {
+        var appDir = Path.GetDirectoryName(Application.ExecutablePath) ?? ".";
+        var port = 0;
+        try
+        {
+            var configPath = Path.Combine(appDir, "_internal", "data", "app_config.json");
+            if (File.Exists(configPath))
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(configPath));
+                if (doc.RootElement.TryGetProperty("proxy", out var proxy))
+                {
+                    if (proxy.TryGetProperty("port", out var portElement) && portElement.TryGetInt32(out var configuredPort) && configuredPort > 0 && configuredPort < 65536)
+                    {
+                        port = configuredPort;
+                    }
+                    else if (proxy.TryGetProperty("base_url", out var baseUrlElement) && baseUrlElement.ValueKind == JsonValueKind.String &&
+                             Uri.TryCreate(baseUrlElement.GetString(), UriKind.Absolute, out var baseUri))
+                    {
+                        port = baseUri.Port;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            LogDesktop("resolve proxy port failed: " + ex.Message);
+        }
+        if (port <= 0)
+        {
+            var envPort = Environment.GetEnvironmentVariable("MYRIDTV_PROXY_PORT");
+            if (int.TryParse(envPort, out var parsedEnvPort) && parsedEnvPort > 0 && parsedEnvPort < 65536)
+            {
+                port = parsedEnvPort;
+            }
+        }
+        if (port <= 0) port = 3107;
+        LogDesktop($"proxy port resolved: {port} (config={Path.Combine(appDir, "_internal", "data", "app_config.json")})");
+        return $"http://127.0.0.1:{port}";
+    }
+
+    private static void LogDesktop(string message)
+    {
+        try
+        {
+            var appDir = Path.GetDirectoryName(Application.ExecutablePath) ?? ".";
+            var logDir = Path.Combine(appDir, "_internal", "data", "logs");
+            Directory.CreateDirectory(logDir);
+            File.AppendAllText(Path.Combine(logDir, "desktop.log"), $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}");
+        }
+        catch { }
+    }
 
     private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
 

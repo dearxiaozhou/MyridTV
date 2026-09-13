@@ -81,7 +81,7 @@
     "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
   },
   "project": {
-    "version": "0.2.24",
+    "version": "0.2.25",
     "restore": {
       "projectUniqueName": "D:\\APP\\MyridTV\\installer\\launcher\\MyridTV.Launcher.csproj",
       "projectName": "MyridTV",

@@ -5,7 +5,7 @@
   },
   "projects": {
     "D:\\APP\\MyridTV\\installer\\desktop\\MyridTV.Desktop.csproj": {
-      "version": "0.2.24",
+      "version": "0.2.25",
       "restore": {
         "projectUniqueName": "D:\\APP\\MyridTV\\installer\\desktop\\MyridTV.Desktop.csproj",
         "projectName": "MyridTV-Desktop",

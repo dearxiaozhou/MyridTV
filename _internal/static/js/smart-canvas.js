@@ -712,7 +712,7 @@ const MS_GEN_MODELS = {
     custom: { label:tr('smart.custom') || '自定义', modelId:'', acceptsImage:true, endpoint:'/api/ms/generate' }
 };
 const APP_RUNTIME_CONFIG_DEFAULTS = {
-    proxy:{base_url:'http://127.0.0.1:3107'},
+    proxy:{base_url:(typeof location!=='undefined'&&location.origin?location.origin:'http://127.0.0.1:3107')},
     agent:{provider_id:'', model:'', preferred_model_pattern:''}
 };
 let appRuntimeConfig = APP_RUNTIME_CONFIG_DEFAULTS;

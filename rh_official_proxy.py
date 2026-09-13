@@ -133,7 +133,27 @@ SCRIPT_PATH = Path(__file__).resolve()
 APP_DIR = SCRIPT_PATH.parent if (SCRIPT_PATH.parent / "_internal").exists() else SCRIPT_PATH.parent.parent
 ROOT = APP_DIR / "_internal" if (APP_DIR / "_internal").exists() else SCRIPT_PATH.parent
 CONFIG_FILE = ROOT / "data" / "app_config.json"
-USER_DATA_DIR = Path(os.environ.get("MYRIDTV_USER_DATA_DIR") or (Path(os.environ.get("APPDATA", str(APP_DIR))) / "MyridTV"))
+def _portable_user_data_dir(app_dir):
+    """便携模式（仿 ComfyUI 的 user 目录）：安装目录下存在 user_data\\ 或 .portable 标记时，
+    这份安装就用自己的数据目录，多份安装互不干扰；默认仍走 %APPDATA%\\MyridTV（现有安装行为不变）。"""
+    try:
+        if (app_dir / ".portable").exists():
+            return app_dir / "user_data"
+        candidate = app_dir / "user_data"
+        if candidate.is_dir():
+            return candidate
+    except Exception:
+        pass
+    return None
+
+_user_data_env = os.environ.get("MYRIDTV_USER_DATA_DIR")
+_portable_user_data = None if _user_data_env else _portable_user_data_dir(APP_DIR)
+if _user_data_env:
+    USER_DATA_DIR = Path(_user_data_env)
+elif _portable_user_data:
+    USER_DATA_DIR = _portable_user_data
+else:
+    USER_DATA_DIR = Path(os.environ.get("APPDATA", str(APP_DIR))) / "MyridTV"
 # 资产与输出统一放在软件安装目录下（用户要求 2026-08-16）。
 # 覆盖安装/在线升级只覆盖程序文件（installer [Files] 不删除未知目录），assets 子目录会保留。
 ASSETS_DIR = Path(os.environ.get("MYRIDTV_ASSETS_DIR") or (APP_DIR / "assets"))
@@ -336,7 +356,7 @@ PORT = int(PROXY_CONFIG.get("port") or 3107)
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.12.clickpop65"
+STATIC_VERSION = "2026.09.12.clickpop66"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
