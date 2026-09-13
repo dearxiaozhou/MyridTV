@@ -9484,6 +9484,8 @@ async function loadCanvas(){
         if(!res.ok) return;
         const data = await res.json();
         canvas = data.canvas;
+        // ③ 先看看本地有没有比服务端更新的草稿（崩溃/断网时的未同步改动）
+        try { await restoreCanvasDraftIfNewer(data.canvas); } catch(e) {}
         // Phase 8：按 canvasId 载入持久产物（Sidebar 不是全局文件列表）
         canvasAgentArtifactsState = Array.isArray(canvas.artifacts) ? canvas.artifacts.slice() : [];
         canvasAgentActiveArtifactId = '';
@@ -9537,12 +9539,79 @@ async function loadCanvas(){
         startCanvasMetaPoll();
     } catch(e) { toast(tr('smart.toastCanvasFail')); }
 }
+// ===== ③ 本地草稿层：改动先落本地（防抖），同步成功后清掉 =====
+let canvasDraftTimer = null;
+let canvasDraftSuppressed = false;   // 从草稿恢复时先别把它又写一遍
+function canvasDraftStore(){
+    return (typeof window !== 'undefined' && window.CanvasDraftStore) ? window.CanvasDraftStore : null;
+}
+function canvasDraftPayload(){
+    const payload = buildCanvasStoragePayload();   // 与保存完全同源
+    return {
+        title: payload.title,
+        nodes: payload.nodes,
+        connections: payload.connections,
+        logs: payload.logs,
+        settings: payload.settings || {},
+        viewport: payload.viewport,
+        artifacts: payload.artifacts,
+        baseUpdatedAt: Number(payload.base_updated_at || 0),
+        savedAt: Date.now(),
+        clientId: payload.client_id
+    };
+}
+function scheduleDraftWrite(){
+    const store = canvasDraftStore();
+    if(!store || !canvasId || canvasDraftSuppressed) return;
+    clearTimeout(canvasDraftTimer);
+    canvasDraftTimer = setTimeout(() => {
+        try { store.save(canvasId, canvasDraftPayload()); } catch(e) {}
+    }, 200);
+}
+function clearCanvasDraft(){
+    const store = canvasDraftStore();
+    if(!store || !canvasId) return;
+    try { store.clear(canvasId); } catch(e) {}
+}
+async function restoreCanvasDraftIfNewer(serverCanvas){
+    const store = canvasDraftStore();
+    if(!store || !canvasId || !serverCanvas) return false;
+    let draft = null;
+    try { draft = await store.read(canvasId); } catch(e) { return false; }
+    if(!draft || !Array.isArray(draft.nodes)) return false;
+    const serverUpdatedAt = Number(serverCanvas.updated_at || 0);
+    const base = Number(draft.baseUpdatedAt || 0);
+    const savedAt = Number(draft.savedAt || 0);
+    // 只在"草稿基于当前服务端版本、且比服务端那次写入更晚"时恢复，避免把老草稿当成新改动
+    const newer = savedAt > serverUpdatedAt && base >= serverUpdatedAt;
+    if(!newer) return false;
+    // 内容与服务端一致就不用恢复（避免"同步完成后又被自己恢复一次"的噪音）
+    const signature = (ns, cs) => (ns || []).map(n => String(n?.id || '')).join('|') + '#' + ((cs || []).length);
+    if(signature(draft.nodes, draft.connections) === signature(serverCanvas.nodes, serverCanvas.connections)) return false;
+    canvasDraftSuppressed = true;
+    try {
+        nodes = (draft.nodes || []).map(normalizeLegacySmartNode).filter(Boolean);
+        canvas.nodes = nodes;
+        canvas.connections = Array.isArray(draft.connections) ? draft.connections : (canvas.connections || []);
+        if(Array.isArray(draft.artifacts)) canvasAgentArtifactsState = draft.artifacts.slice();
+        if(draft.viewport) viewport = {...draft.viewport};
+        render();
+        applyViewport();
+        toast(tr('smart.draftRestored'));
+    } finally {
+        canvasDraftSuppressed = false;
+    }
+    scheduleSave();   // 立刻同步回后端，让服务端跟上
+    return true;
+}
 function scheduleSave(){
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveCanvas, 450);
+    scheduleDraftWrite();
 }
-async function saveCanvas(){
-    if(!canvasId || !canvas) return;
+// ③ 把"要发出去的画布内容"收成一个函数：保存和本地草稿共用同一份 payload，
+// 保证草稿内容永远不会比同步出去的内容旧（否则恢复草稿会丢节点）。
+function buildCanvasStoragePayload(){
     savePromptDraftForCurrent();
     nodes.forEach(node => {
         node.images = (node.images || []).map(img => mediaItemForStorage(stripImageGenerationMeta(img)));
@@ -9552,28 +9621,37 @@ async function saveCanvas(){
     canvas.settings = settingsForStorage(canvasDefaultSmartSettings || initialSmartSettings);
     canvas.viewport = {...viewport};
     const storageCanvas = canvasForStorage();
+    return {
+        title: storageCanvas.title || tr('smart.title'),
+        icon: storageCanvas.icon || 'sparkles',
+        nodes: storageCanvas.nodes || [],
+        connections: storageCanvas.connections || [],
+        viewport: storageCanvas.viewport || {x:0,y:0,scale:1},
+        logs: storageCanvas.logs || [],
+        settings: storageCanvas.settings,
+        deleted: Array.isArray(storageCanvas.deleted) ? storageCanvas.deleted : [],
+        artifacts: Array.isArray(canvasAgentArtifactsState) ? canvasAgentArtifactsState : [],
+        base_updated_at: storageCanvas.updated_at || canvas.updated_at || 0,
+        client_id: smartClientId
+    };
+}
+async function saveCanvas(){
+    if(!canvasId || !canvas) return;
+    const payload = buildCanvasStoragePayload();
+    const storageCanvas = canvasForStorage();
     canvasSyncInFlight = true;
     try {
         const res = await fetch(`/api/canvases/${encodeURIComponent(canvasId)}`, {
             method:'PUT',
             headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({
-                title:storageCanvas.title || tr('smart.title'),
-                icon:storageCanvas.icon || 'sparkles',
-                nodes:storageCanvas.nodes || [],
-                connections:storageCanvas.connections || [],
-                viewport:storageCanvas.viewport || {x:0,y:0,scale:1},
-                logs:storageCanvas.logs || [],
-                settings:storageCanvas.settings,
-                deleted:Array.isArray(storageCanvas.deleted) ? storageCanvas.deleted : [],
-                artifacts:Array.isArray(canvasAgentArtifactsState) ? canvasAgentArtifactsState : [],
-                base_updated_at:storageCanvas.updated_at || canvas.updated_at || 0,
-                client_id:smartClientId
-            })
+            body:JSON.stringify(payload)
         });
         if(res.ok){
             const data = await res.json();
             if(data.canvas && data.canvas.updated_at) canvas.updated_at = data.canvas.updated_at;
+            // 同步成功：草稿已经变成服务端内容，清掉（并取消排队中的写入，避免又被写回一份）
+            clearTimeout(canvasDraftTimer);
+            clearCanvasDraft();
         } else if(res.status === 409) {
             // 冲突：别人先保存了。合并对方的状态（节点 id 合并、图片取并集，谁都不丢），
             // 然后用对方最新的 updated_at 作为基底重存，把合并结果落盘——而不是直接覆盖对方。

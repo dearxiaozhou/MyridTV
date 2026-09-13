@@ -336,7 +336,7 @@ PORT = int(PROXY_CONFIG.get("port") or 3107)
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.12.clickpop60"
+STATIC_VERSION = "2026.09.12.clickpop64"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -471,7 +471,7 @@ STATIC_PATCHES = {
         "/static/comfyui-settings.html",
         "/static/asset-manager.html",
     ],
-    ROOT / "static" / "smart-canvas.html": ["/static/css/smart-canvas.css", "/static/js/smart-canvas.js", "/static/js/canvas-node-registry.js", "/static/js/i18n.js"],
+    ROOT / "static" / "smart-canvas.html": ["/static/css/smart-canvas.css", "/static/js/smart-canvas.js", "/static/js/canvas-node-registry.js", "/static/js/canvas-draft-store.js", "/static/js/i18n.js"],
     ROOT / "static" / "canvas.html": [
         "/static/css/canvas.css",
         "/static/css/canvas-prism.css",

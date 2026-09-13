@@ -303,6 +303,7 @@
         "smart.assetFollowed": { zh: "已设为跟最新版", en: "Now following the latest version" },
         "smart.assetPinned": { zh: "已钉住当前版本", en: "Pinned to the current version" },
         "smart.assetNoRef": { zh: "这张图还没关联素材（先存进素材库）", en: "This image is not linked to an asset yet" },
+        "smart.draftRestored": { zh: "已恢复上次未同步的本地改动", en: "Restored unsynced local changes" },
         "smart.shortcutMoveNode": { zh: "移动节点；拖到素材库可保存素材", en: "Move a node; drag it into the asset library to save it" },
         "smart.shortcutConnect": { zh: "创建或重连节点连接", en: "Create or reconnect a node connection" },
         "smart.shortcutCutConnection": { zh: "拖过连线可切断连接", en: "Drag across a link to cut the connection" },
