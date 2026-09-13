@@ -7,7 +7,7 @@
 # 作用（只做保护，不动业务数据语义）：
 #   1) 记录"程序文件指纹 + 版本号"基线：发现程序被升级/替换（指纹或版本变了）
 #   2) 升级前把用户数据（画布/配置/平台/素材库/任务库/技能）备份到
-#      <用户数据>\data\upgrade_backups\<版本>_<时间戳>\（保留最近 3 份）
+#      <用户数据>\data\upgrade_backups\<版本>_<时间戳>\（只保留最新 1 份）
 #   3) 升级后做完整性体检：关键 JSON 解析不了 → 从上面这份备份里取回该文件
 #   4) 用户数据"缩水"体检：画布/技能数量比升级前少 → 明确告警并给出备份路径
 #
@@ -20,7 +20,7 @@ Set-StrictMode -Off
 $script:WcsTvUpgradeStateDir = 'state'
 $script:WcsTvUpgradeStateFile = 'upgrade_state.json'
 $script:WcsTvUpgradeBackupDir = 'upgrade_backups'
-$script:WcsTvUpgradeKeepBackups = 3
+$script:WcsTvUpgradeKeepBackups = 1
 $script:WcsTvUpgradeBackupFiles = @(
     'app_config.json',
     'api_providers.json',
