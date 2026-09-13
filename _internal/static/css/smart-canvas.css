@@ -2804,3 +2804,11 @@ html:not(.theme-dark) .style-popover, body:not(.theme-dark) .style-popover { bac
 .canvas-agent-panel .canvas-agent-head,
 .canvas-agent-av { background-color:var(--agent-panel-solid); }
 
+
+
+/* 资产版本角标（② 版本链）：素材有多个版本时显示 vN */
+.asset-item{position:relative}
+.asset-version-badge{position:absolute;top:6px;left:6px;z-index:3;padding:2px 6px;border-radius:999px;
+    background:rgba(37,99,235,.92);color:#fff;font-size:11px;font-weight:800;line-height:1.4;letter-spacing:.2px;
+    box-shadow:0 2px 8px rgba(15,23,42,.35);pointer-events:none}
+body.studio-theme-dark .asset-version-badge{background:rgba(59,130,246,.92)}

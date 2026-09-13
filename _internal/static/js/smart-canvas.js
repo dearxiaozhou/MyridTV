@@ -1808,7 +1808,10 @@ function ensureSmartImageContextMenu(){
         'save-asset':'加入素材库',
         'copy-path':'复制路径',
         'open-folder':'打开文件夹',
-        'set-cover':'设置为封面'
+        'set-cover':'设置为封面',
+        'asset-follow-latest':tr('smart.assetFollowLatest'),
+        'asset-pin-version':tr('smart.assetPinVersion'),
+        'asset-save-version':tr('smart.assetSaveVersion')
     };
     menu.innerHTML = smartImageContextActionIds().map(action => `<button type="button" data-smart-image-menu-action="${escapeAttr(action)}">${escapeHtml(labels[action] || action)}</button>`).join('');
     menu.addEventListener('mousedown', e => {
@@ -1836,6 +1839,9 @@ function ensureSmartImageContextMenu(){
             }).catch(() => toast('设置封面失败，请重试'));
             return;
         }
+        if(btn.dataset.smartImageMenuAction === 'asset-follow-latest') return setSmartImageAssetVersionMode(nodeId, imageIndex, 'latest');
+        if(btn.dataset.smartImageMenuAction === 'asset-pin-version') return setSmartImageAssetVersionMode(nodeId, imageIndex, 'pinned');
+        if(btn.dataset.smartImageMenuAction === 'asset-save-version') return saveSmartImageAsAssetVersion(nodeId, imageIndex);
         if(btn.dataset.smartImageMenuAction === 'add-agent') return addImageNodeRefToCanvasAgent(nodeId, imageIndex);
         if(btn.dataset.smartImageMenuAction === 'duplicate-node') return duplicateSmartNodeWithConnections(nodeId);
         if(btn.dataset.smartImageMenuAction === 'view-image'){
@@ -1946,7 +1952,57 @@ updateComposer();
     const height = 108;
     menu.style.left = `${Math.max(12, Math.min(window.innerWidth - width - 12, event.clientX + 4))}px`;
     menu.style.top = `${Math.max(12, Math.min(window.innerHeight - height - 12, event.clientY + 4))}px`;
+    // 资产版本引用：只有带了 assetId 的图才显示这三项；"跟最新"和"钉这版"互斥
+    const ctxImage = (node.images || [])[Number(imageIndex)] || {};
+    const hasAssetRef = !!String(ctxImage.assetId || '').trim();
+    const ctxMode = String(ctxImage.assetVersionMode || 'latest').toLowerCase();
+    const setMenuItemVisible = (actionId, visible) => {
+        const btn = menu.querySelector(`[data-smart-image-menu-action="${actionId}"]`);
+        if(btn) btn.style.display = visible ? '' : 'none';
+    };
+    setMenuItemVisible('asset-follow-latest', hasAssetRef && ctxMode !== 'latest');
+    setMenuItemVisible('asset-pin-version', hasAssetRef && ctxMode === 'latest');
+    setMenuItemVisible('asset-save-version', hasAssetRef);
     menu.classList.add('open');
+}
+function smartImageAssetRef(nodeId, imageIndex){
+    const node = nodes.find(n => n.id === nodeId);
+    const img = (node?.images || [])[Number(imageIndex)] || null;
+    return {node, img};
+}
+async function setSmartImageAssetVersionMode(nodeId, imageIndex, mode){
+    const {img} = smartImageAssetRef(nodeId, imageIndex);
+    if(!img || !String(img.assetId || '').trim()){ toast(tr('smart.assetNoRef')); return; }
+    img.assetVersionMode = (mode === 'pinned') ? 'pinned' : 'latest';
+    await saveCanvas();
+    await loadCanvas();   // 让后端按新策略解析引用地址
+    toast(img.assetVersionMode === 'pinned' ? tr('smart.assetPinned') : tr('smart.assetFollowed'));
+}
+async function saveSmartImageAsAssetVersion(nodeId, imageIndex){
+    const {node, img} = smartImageAssetRef(nodeId, imageIndex);
+    if(!img || !img.url){ toast(tr('smart.toastUploadFail')); return; }
+    // 这张图自己没带 assetId 时，继承同节点里其它引用的素材（典型场景：节点引用着角色素材，重跑出图 → 新图登记为它的新版本）
+    let assetId = String(img.assetId || '').trim();
+    if(!assetId){
+        const sibling = (node?.images || []).find(x => String(x.assetId || '').trim());
+        assetId = String(sibling?.assetId || '').trim();
+    }
+    if(!assetId){ toast(tr('smart.assetNoRef')); return; }
+    try{
+        const res = await fetch('/api/asset-library/items/versions', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({item_id: assetId, url: img.url, name: img.name || ''})
+        });
+        const data = await res.json().catch(() => ({}));
+        if(!res.ok || data.ok === false) throw new Error(data.detail || tr('smart.assetAddFail'));
+        img.assetId = assetId;
+        img.assetVersionMode = 'latest';
+        await saveCanvas();
+        await loadAssetLibrary();
+        toast(trf('smart.assetVersionSaved', {n: Number(data.versionCount || 0)}));
+    }catch(e){
+        toast((e.message || tr('smart.assetAddFail')).slice(0, 120));
+    }
 }
 function addImageNodeRefToCanvasAgent(nodeId, imageIndex){
 const selectedForContext = selectedNodeIds();
@@ -9185,8 +9241,9 @@ function renderAssetLibrary(){
     const cat = activeAssetCategory();
     const items = cat?.items || [];
     assetGrid.innerHTML = items.length ? items.map(item => `
-        <div class="asset-item" draggable="true" data-asset-id="${escapeHtml(item.id)}" data-url="${escapeHtml(item.url)}" data-name="${escapeHtml(item.name || 'asset')}" data-kind="${escapeHtml(assetMediaKind(item))}">
+        <div class="asset-item" draggable="true" data-asset-id="${escapeHtml(item.id)}" data-url="${escapeHtml(item.url)}" data-name="${escapeHtml(item.name || 'asset')}" data-kind="${escapeHtml(assetMediaKind(item))}" data-version-count="${Array.isArray(item.versions) ? item.versions.length : 0}">
             ${assetThumbHtml(item)}
+            ${Array.isArray(item.versions) && item.versions.length > 1 ? `<span class="asset-version-badge" title="${escapeAttr(tr('smart.assetVersionBadgeTip'))}">v${item.versions.length}</span>` : ''}
             <div class="asset-meta">
                 <span class="asset-name" title="${escapeHtml(item.name || '')}">${escapeHtml(item.name || 'asset')}</span>
                 <button class="asset-mini-btn" type="button" data-rename-asset="${escapeHtml(item.id)}" title="${escapeHtml(tr('smart.assetRename'))}"><i data-lucide="pencil"></i></button>
@@ -9347,7 +9404,7 @@ function bindAssetItemEvents(){
         el.addEventListener('dragstart', e => {
             hideAssetHoverPreview();
             e.dataTransfer.effectAllowed = 'copy';
-            e.dataTransfer.setData('application/x-smart-asset', JSON.stringify({url:el.dataset.url, name:el.dataset.name, kind:el.dataset.kind}));
+            e.dataTransfer.setData('application/x-smart-asset', JSON.stringify({url:el.dataset.url, name:el.dataset.name, kind:el.dataset.kind, assetId:el.dataset.assetId || ''}));
             e.dataTransfer.setData('text/plain', el.dataset.url || '');
         });
     });
@@ -15331,6 +15388,14 @@ function smartImageNameFromUrl(url){
     }
 }
 function smartImageDropPayload(dataTransfer){
+    // 素材库拖入：带上 assetId，引用即"跟最新"，后续素材出新版会自动跟
+    try{
+        const rawAsset = dataTransfer?.getData?.('application/x-smart-asset');
+        if(rawAsset){
+            const asset = JSON.parse(rawAsset);
+            if(asset?.url) return {type:'asset', url:asset.url, name:asset.name || '', kind:asset.kind || 'image', assetId:asset.assetId || ''};
+        }
+    }catch(_){}
     const files = smartImageFilesFromDataTransfer(dataTransfer);
     if(files.length) return {type:'files', files};
     const localPaths = smartLocalImagePathsFromDataTransfer(dataTransfer);
@@ -15436,6 +15501,11 @@ async function handleSmartImageDropPayload(payload, targetId='', opts={}){
         else if(payload.type === 'localPaths') {
             if(!opts.skipUndo) pushUndo();
             appendImagesToSmartNode(await importSmartLocalImages(payload.localPaths), targetId, opts);
+        } else if(payload.type === 'asset') {
+            if(!opts.skipUndo) pushUndo();
+            const assetImage = {url:payload.url, name:payload.name || smartImageNameFromUrl(payload.url), kind:payload.kind || 'image'};
+            if(payload.assetId){ assetImage.assetId = payload.assetId; assetImage.assetVersionMode = 'latest'; }
+            appendImagesToSmartNode([assetImage], targetId, opts);
         } else if(payload.type === 'url') {
             if(!opts.skipUndo) pushUndo();
             appendImagesToSmartNode([{url:payload.url, name:smartImageNameFromUrl(payload.url), kind:'image'}], targetId, opts);
