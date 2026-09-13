@@ -1541,6 +1541,9 @@ function renderCanvasListInto(list){
                     <button class="canvas-card-copy-id" type="button" title="复制完整 ID" aria-label="复制完整 ID">
                         <i data-lucide="copy" class="w-3 h-3"></i>
                     </button>
+                    <button class="canvas-card-export" type="button" title="导出画布（.json）" aria-label="导出画布">
+                        <i data-lucide="download" class="w-3 h-3"></i>
+                    </button>
                 </div>` : ''}
                 <div class="canvas-card-meta">
                     <span class="canvas-card-meta-dot"></span>
@@ -1657,6 +1660,11 @@ function renderCanvasListInto(list){
             btn.onmousedown = e => e.stopPropagation();
             btn.onclick = e => setCanvasColorValue(item.id, btn.dataset.color || '', e);
         });
+        const exportBtn = row.querySelector('.canvas-card-export');
+        if(exportBtn){
+            exportBtn.onmousedown = e => e.stopPropagation();
+            exportBtn.onclick = e => { e.stopPropagation(); exportCanvasToFile(item.id); };
+        }
         const ownerInput = row.querySelector('.canvas-owner-input');
         if(ownerInput){
             ownerInput.onmousedown = e => e.stopPropagation();
@@ -13606,6 +13614,78 @@ function hasOutputImageDrag(dataTransfer){ return [...(dataTransfer?.types || []
 function escapeHtml(str){ return String(str == null ? '' : str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s])); }
 function escapeAttr(str){ return escapeHtml(str); }
 
+// ===== 画布导出 / 导入（带格式版本信封；后端 /api/canvases/{id}/export 与 /api/canvases/import）=====
+// 导出文件结构：{app:"myridtv", version, exportedAt, source, media, canvas}
+// 导入永远新建一张画布（不覆盖已有），并回报"有多少媒体在本机找不到"。
+async function exportCanvasToFile(canvasId){
+    if(!canvasId){ alert(tr('canvas.exportFailed')); return; }
+    try{
+        const res = await fetch(`/api/canvases/${encodeURIComponent(canvasId)}/export`, { cache:'no-store' });
+        if(!res.ok) throw new Error(`HTTP ${res.status}`);
+        const payload = await res.json();
+        const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+        const link = document.createElement('a');
+        const href = URL.createObjectURL(blob);
+        link.href = href;
+        const title = String((payload && payload.canvas && payload.canvas.title) || canvasId).replace(/[\\/:*?"<>|]/g, '_').slice(0, 48);
+        link.download = `${title}.myridtv-canvas.json`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(href), 2000);
+        const mediaCount = Number((payload && payload.media && payload.media.count) || 0);
+        setStatus(trf('canvas.exportDone', {n: mediaCount}));
+    }catch(e){
+        console.error(e);
+        alert(tr('canvas.exportFailed'));
+    }
+}
+
+async function importCanvasPayload(payload){
+    const res = await fetch('/api/canvases/import', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload || {})
+    });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok || data.ok === false) throw new Error(data.detail || tr('canvas.importFailed'));
+    return data;
+}
+
+async function importCanvasFromFile(file){
+    if(!file) return;
+    try{
+        const text = await file.text();
+        let payload;
+        try{ payload = JSON.parse(text); }
+        catch(_){ throw new Error(tr('canvas.importInvalid')); }
+        const data = await importCanvasPayload(payload);
+        const media = (data && data.media) || {};
+        const total = Number(media.count || 0);
+        const missing = Number(media.missingCount || 0);
+        await loadCanvasList(false);
+        if(missing > 0){
+            setStatus(trf('canvas.importDoneMissing', {total, missing}));
+            alert(trf('canvas.importMissingAlert', {missing}));
+        } else {
+            setStatus(trf('canvas.importDone', {total}));
+        }
+        return data;
+    }catch(e){
+        console.error(e);
+        alert(e.message || tr('canvas.importFailed'));
+    }
+}
+
+function initCanvasImportEntry(){
+    const btn = document.getElementById('gateImportBtn');
+    const input = document.getElementById('gateImportFile');
+    if(!btn || !input) return;
+    btn.onclick = e => { e.stopPropagation(); input.value = ''; input.click(); };
+    input.onchange = () => { const picked = input.files && input.files[0]; importCanvasFromFile(picked); };
+}
+
+
 window.onload = async () => {
     applyTheme(localStorage.getItem('studio_theme') || localStorage.getItem(CANVAS_THEME_KEY) || 'dark');
     applyQuickToolbarState();
@@ -13617,6 +13697,7 @@ window.onload = async () => {
     await loadConfig();
     pruneMissingComfyWorkflows();
     await loadCanvasList(false);
+    initCanvasImportEntry();
     setCanvasMode(false);
 };
 

@@ -59,7 +59,15 @@ if (Test-Path -LiteralPath $i18n) {
     else { $pass.Add("i18n: $out") }
 } else { $fail.Add('找不到 _internal\static\js\i18n\validate-i18n.js') }
 
-# --- 4) 单测（tests/test_*.py） ---
+# --- 4) 悬空名字检查（拆模块/搬函数后"用了没绑定"的名字，运行时才炸的那种） ---
+$dangling = Join-Path $root 'tests\check_dangling_names.py'
+if (Test-Path -LiteralPath $dangling) {
+    $out = & $python -B $dangling 2>&1
+    if ($LASTEXITCODE -ne 0) { $fail.Add("悬空名字检查失败:`n    $out") }
+    else { $pass.Add("悬空名字: $out") }
+} else { $fail.Add('找不到 tests\check_dangling_names.py') }
+
+# --- 5) 单测（tests/test_*.py） ---
 $testFiles = @(Get-ChildItem -LiteralPath (Join-Path $root 'tests') -Filter 'test_*.py' -File -ErrorAction SilentlyContinue)
 foreach ($t in $testFiles) {
     $out = & $python $t.FullName -v 2>&1

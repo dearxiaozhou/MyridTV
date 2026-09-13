@@ -28,6 +28,8 @@ import comfy_flow_service
 import agent_task_runtime as agent_runtime
 import task_store
 from myridtv_core import (
+    ApiError,
+    CanvasConflictError,
     read_json_file,
     write_json_file,
     append_log,
@@ -334,7 +336,7 @@ PORT = int(PROXY_CONFIG.get("port") or 3107)
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.12.clickpop52"
+STATIC_VERSION = "2026.09.12.clickpop54"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -464,20 +466,22 @@ STATIC_PATCHES = {
         "/static/online.html",
         "/static/canvas.html",
         "/static/smart-canvas.html",
+        "/static/js/i18n.js",
         "/static/api-settings.html",
         "/static/comfyui-settings.html",
         "/static/asset-manager.html",
     ],
-    ROOT / "static" / "smart-canvas.html": ["/static/css/smart-canvas.css", "/static/js/smart-canvas.js"],
+    ROOT / "static" / "smart-canvas.html": ["/static/css/smart-canvas.css", "/static/js/smart-canvas.js", "/static/js/i18n.js"],
     ROOT / "static" / "canvas.html": [
         "/static/css/canvas.css",
         "/static/css/canvas-prism.css",
         "/static/js/canvas.js",
         "/static/js/canvas-prism.js",
+        "/static/js/i18n.js",
     ],
-ROOT / "static" / "api-settings.html": ["/static/js/api-settings.js", "/static/css/api-settings.css", "/static/js/api-settings-provider-repair.js"],
-ROOT / "static" / "comfyui-settings.html": ["/static/js/comfyui-settings.js", "/static/css/comfyui-settings.css"],
-ROOT / "static" / "asset-manager.html": ["/static/js/asset-manager.js", "/static/css/asset-manager.css"],
+ROOT / "static" / "api-settings.html": ["/static/js/api-settings.js", "/static/css/api-settings.css", "/static/js/api-settings-provider-repair.js", "/static/js/i18n.js"],
+ROOT / "static" / "comfyui-settings.html": ["/static/js/comfyui-settings.js", "/static/css/comfyui-settings.css", "/static/js/i18n.js"],
+ROOT / "static" / "asset-manager.html": ["/static/js/asset-manager.js", "/static/css/asset-manager.css", "/static/js/i18n.js"],
 }
 
 
@@ -4150,6 +4154,115 @@ def purge_all_trash_records():
     return {"ok": True, "purged": len(purged_ids), "ids": purged_ids}
 
 
+# ====== 画布导出 / 导入（带格式版本的信封）======
+# 导出文件结构：{app, version, exportedAt, source, media, canvas}
+#   - version 是"导出文件格式"版本（与画布自身 formatVersion 分开：一个是文件信封，一个是数据格式）
+#   - 导入时：带信封的按版本校验（高于当前支持版本直接拒绝）；裸画布 JSON 也接受（老文件/手工文件）
+CANVAS_EXPORT_APP = "myridtv"
+CANVAS_EXPORT_VERSION = 1
+
+
+def app_version_string():
+    try:
+        return (APP_DIR / "VERSION").read_text(encoding="utf-8").strip()
+    except Exception:
+        return ""
+
+
+def collect_canvas_media_urls(value, urls=None):
+    """递归收集画布结构里引用到的 /assets/ 地址（去重）。"""
+    if urls is None:
+        urls = set()
+    if isinstance(value, str):
+        if value.startswith("/assets/"):
+            urls.add(value.split("?", 1)[0].split("#", 1)[0])
+    elif isinstance(value, dict):
+        for item in value.values():
+            collect_canvas_media_urls(item, urls)
+    elif isinstance(value, list):
+        for item in value:
+            collect_canvas_media_urls(item, urls)
+    return urls
+
+
+def missing_canvas_media(urls):
+    """哪些媒体地址在本机找不到实体文件（导入后提示用）。"""
+    missing = []
+    for url in urls:
+        try:
+            resolve_user_asset_path(url)
+        except Exception:
+            missing.append(url)
+    return missing
+
+
+def export_canvas_payload(canvas_id):
+    canvas = read_canvas_record(canvas_id, include_deleted=True)
+    payload = {key: value for key, value in canvas.items() if key != "deleted_at"}
+    media = sorted(collect_canvas_media_urls(payload))
+    return {
+        "app": CANVAS_EXPORT_APP,
+        "version": CANVAS_EXPORT_VERSION,
+        "exportedAt": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "source": {
+            "canvas_id": canvas_id,
+            "canvas_format_version": int(payload.get(CANVAS_FORMAT_FIELD) or CANVAS_FORMAT_VERSION),
+            "app_version": app_version_string(),
+        },
+        "media": {"count": len(media), "urls": media},
+        "canvas": payload,
+    }
+
+
+def import_canvas_payload(payload):
+    """导入画布：始终新建一张画布，绝不覆盖已有画布。"""
+    data = payload if isinstance(payload, dict) else {}
+    if isinstance(data.get("data"), dict):
+        data = data["data"]
+    notes = []
+    if isinstance(data.get("canvas"), dict):
+        raw_file_version = data.get("version")
+        try:
+            file_version = int(raw_file_version)
+        except Exception:
+            file_version = 0
+        if file_version > CANVAS_EXPORT_VERSION:
+            raise ApiError(400, "导出文件格式版本 {} 高于当前支持的 {}，请先升级 MyridTV 再导入".format(
+                file_version, CANVAS_EXPORT_VERSION))
+        raw = dict(data["canvas"])
+        notes.append("导出文件 v{}".format(file_version))
+    else:
+        raw = dict(data)
+        notes.append("裸画布数据（无导出信封）")
+    raw.pop("deleted_at", None)
+    media = sorted(collect_canvas_media_urls(raw))
+    new_id = uuid.uuid4().hex
+    now_ms = int(time.time() * 1000)
+    title = str(raw.get("title") or "").strip() or "导入的画布"
+    canvas = normalize_canvas_structure(new_id, {
+        **raw,
+        "id": new_id,
+        "title": title,
+        "created_at": now_ms,
+        "updated_at": now_ms,
+        "deleted": [],
+        "deleted_at": None,
+    })
+    canvas.pop("deleted_at", None)
+    write_json_file(canvas_file_path(new_id), canvas)
+    missing = missing_canvas_media(media)
+    append_log(LOG_FILE, "[CanvasImport] new={} title={} media={} missing={}".format(
+        new_id, title[:40], len(media), len(missing)))
+    if notes:
+        notes.append("画布数据格式已对齐到 formatVersion={}".format(canvas.get(CANVAS_FORMAT_FIELD, CANVAS_FORMAT_VERSION)))
+    return {
+        "ok": True,
+        "canvas": canvas,
+        "notes": notes,
+        "media": {"count": len(media), "missingCount": len(missing), "missing": missing[:50]},
+    }
+
+
 def parse_canvas_route(request_path):
     prefix = "/api/canvases"
     if request_path == prefix:
@@ -4158,10 +4271,13 @@ def parse_canvas_route(request_path):
         return ("trash", "")
     if request_path == prefix + "/trash/purge-all":
         return ("trashPurgeAll", "")
+    if request_path == prefix + "/import":
+        return ("import", "")
     if not request_path.startswith(prefix + "/"):
         return (None, "")
     tail = request_path[len(prefix) + 1:]
     for suffix, route_name in (
+        ("/export", "export"),
         ("/meta", "meta"),
         ("/touch", "touch"),
         ("/restore", "restore"),
@@ -12245,6 +12361,9 @@ class Handler(BaseHTTPRequestHandler):
                 canvas = read_canvas_record(canvas_id, include_deleted=True)
                 self._send(200, {"ok": True, **canvas_summary(canvas)})
                 return
+            if canvas_route == "export":
+                self._send(200, export_canvas_payload(canvas_id))
+                return
             prefix = "/api/canvas-image-tasks/"
             if request_path.startswith(prefix):
                 task_id = request_path[len(prefix):]
@@ -12614,6 +12733,9 @@ class Handler(BaseHTTPRequestHandler):
             if canvas_route == "collection":
                 created = create_canvas_record(payload)
                 self._send(200, {"ok": True, "canvas": created})
+                return
+            if canvas_route == "import":
+                self._send(200, import_canvas_payload(payload))
                 return
             if canvas_route == "meta":
                 updated = update_canvas_meta(canvas_id, payload)

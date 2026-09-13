@@ -1,5 +1,12 @@
 (function(){
- const VERSION = '2026.09.04.uicompact1';
+ // 词典版本号跟随本脚本自己的 ?v=（由 STATIC_VERSION 刷新），避免 i18n 改完被 WebView2 咬旧缓存
+    const VERSION = (function(){
+        try{
+            const src = (document.currentScript && document.currentScript.src) || '';
+            const m = src.match(/[?&]v=([^&#]+)/);
+            return m ? decodeURIComponent(m[1]) : 'dev';
+        }catch(_){ return 'dev'; }
+    })();
     const scripts = [
         '/static/js/i18n-core.js',
         '/static/js/i18n/common.js',

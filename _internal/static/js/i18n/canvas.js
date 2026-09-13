@@ -329,6 +329,15 @@
         "canvas.videoRoleFirstFrame": { zh: "首帧", en: "First" },
         "canvas.videoRoleLastFrame": { zh: "尾帧", en: "Last" },
         "canvas.videoFailed": { zh: "视频生成失败", en: "Video generation failed" },
+        "canvas.exportCanvas": { zh: "导出画布", en: "Export canvas" },
+        "canvas.exportDone": { zh: "已导出（引用 {n} 个媒体）", en: "Exported (references {n} media)" },
+        "canvas.exportFailed": { zh: "导出失败", en: "Export failed" },
+        "canvas.importCanvas": { zh: "导入画布", en: "Import canvas" },
+        "canvas.importDone": { zh: "已导入（媒体 {total} 个）", en: "Imported ({total} media)" },
+        "canvas.importDoneMissing": { zh: "已导入（媒体 {total} 个，{missing} 个本机缺失）", en: "Imported ({total} media, {missing} missing locally)" },
+        "canvas.importMissingAlert": { zh: "已导入，但有 {missing} 个媒体在本机找不到，需要重新生成或补素材。", en: "Imported, but {missing} media items were not found on this machine." },
+        "canvas.importFailed": { zh: "导入失败", en: "Import failed" },
+        "canvas.importInvalid": { zh: "不是合法的 JSON 文件", en: "Not a valid JSON file" },
         "canvas.renameFailed": { zh: "重命名失败", en: "Rename failed" }
     });
 })();
