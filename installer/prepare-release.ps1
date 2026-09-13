@@ -88,6 +88,7 @@ function Should-SkipRelativePath {
         '_internal\assets',
         '_internal\data',
         '_internal\output',
+        '_internal\backup-ui-compact-20260904',
         '_internal\_internal',
         '_internal\API',
         'installer',
@@ -99,6 +100,7 @@ function Should-SkipRelativePath {
         '_test_userdata',
         'MyridTV',
         '.git',
+        '.githooks',
         '.gitignore',
         '.gitattributes'
     )
