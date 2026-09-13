@@ -47,6 +47,7 @@ body.smart-node-drag .image-node { transition:none !important; filter:none !impo
 body.smart-node-drag .image-node img,
 body.smart-node-drag .image-node video { transition:none !important; }
 body.smart-node-drag .connection-layer { opacity:.35; }
+body.smart-node-drag .floating-node-set,
 body.smart-node-drag .floating-node-actions,
 body.smart-node-drag .mini-x,
 body.smart-node-drag .node-port,
@@ -57,6 +58,7 @@ body.smart-node-resize * { user-select:none !important; }
 body.smart-node-resize .image-node .node-body,
 body.smart-node-resize .image-node video,
 body.smart-node-resize .image-node img { pointer-events:none !important; }
+body.smart-node-resize .floating-node-set,
 body.smart-node-resize .floating-node-actions,
 body.smart-node-resize .mini-x,
 body.smart-node-resize .node-port,
@@ -2852,3 +2854,9 @@ body.canvas-mode-objects .node-port { display:none !important; }
 .object-ref-check { flex:0 0 auto; width:16px; color:#059669; }
 .object-ref-check i,.object-ref-check svg { width:14px; height:14px; }
 .object-ref-empty { padding:14px 8px; text-align:center; color:var(--faint); font-size:10.5px; }
+
+/* 无线模式的「设为 Set」：节点左上角独立浮层（刻意远离右上角删除按钮，避免误删） */
+.floating-node-set { position:absolute; left:7px; top:7px; z-index:9; opacity:0; pointer-events:none; transition:opacity .14s ease; }
+.image-node:hover .floating-node-set { opacity:1; pointer-events:auto; }
+.image-node.dragging .floating-node-set { opacity:0 !important; pointer-events:none !important; }
+.floating-node-set .node-set-toggle { width:28px; height:28px; border-radius:10px; }
