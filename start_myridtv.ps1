@@ -243,7 +243,12 @@ if (Test-Path -LiteralPath $UpgradeHelperScript) {
             (Join-Path $InternalDir 'static\js\canvas.js'),
             (Join-Path $InternalDir 'static\js\smart-canvas.js'),
             (Join-Path $InternalDir 'static\js\asset-manager.js'),
-            (Join-Path $InternalDir 'static\js\api-settings.js')
+            (Join-Path $InternalDir 'static\js\api-settings.js'),
+            (Join-Path $InternalDir 'static\js\canvas-node-registry.js'),
+            (Join-Path $InternalDir 'static\js\canvas-draft-store.js'),
+            (Join-Path $AppDir 'task_store.py'),
+            (Join-Path $AppDir 'myridtv_core.py'),
+            (Join-Path $AppDir 'startup_upgrade.ps1')
         )
         $upgradeResult = Invoke-WcsTvUpgradeSafety -AppDir $AppDir -UserDataRoot $UserDataRoot -ArtifactPaths $upgradeArtifacts
         foreach ($entry in @($upgradeResult.Events)) {
