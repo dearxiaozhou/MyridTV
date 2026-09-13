@@ -2369,6 +2369,175 @@ def find_asset_category(library, library_id="", category_id=""):
     return lib, cat
 
 
+# ====== 资产版本链：同一素材的 v1/v2/... + 引用可"跟最新"或"钉旧版" ======
+# 条目结构（向后兼容：老的 url/name 仍是"当前版本指针"）：
+#   item = { id, url, name, kind, created_at, updated_at,
+#            versions:[{version_id, url, name, kind, created_at, note?}], current_version_id }
+# 画布节点里引用资产时带：
+#   image = { url, name, assetId, assetVersionMode:"latest"|"pinned", assetVersionId? }
+#   - latest：读画布时解析到条目当前版本（源素材重跑出新版，引用处自动跟）
+#   - pinned：解析到 assetVersionId 指定的那一版（已出片的镜头钉住不动）
+
+ASSET_VERSION_INDEX_CACHE = {"mtime": None, "index": {}}
+
+
+def asset_item_versions(item):
+    """返回条目的版本链；老条目（没有 versions）自动把自身当作 v1 补齐。"""
+    if not isinstance(item, dict):
+        return []
+    versions = item.get("versions")
+    if not isinstance(versions, list) or not versions:
+        url = str(item.get("url") or "").strip()
+        if not url:
+            return []
+        head = {
+            "version_id": str(item.get("current_version_id") or ("v1_" + str(item.get("id") or uuid.uuid4().hex[:8]))),
+            "url": url,
+            "name": str(item.get("name") or ""),
+            "kind": str(item.get("kind") or "image"),
+            "created_at": int(item.get("created_at") or 0),
+        }
+        item["versions"] = [head]
+        item["current_version_id"] = head["version_id"]
+        return item["versions"]
+    return versions
+
+
+def append_asset_version(item, url, name="", kind="", note=""):
+    """给条目追加一个新版本。返回 (version_entry, created?)；同一地址不重复登记。"""
+    versions = asset_item_versions(item)
+    target_url = str(url or "").strip()
+    if not target_url:
+        raise ApiError(400, "新版本缺少素材地址")
+    for existing in versions:
+        if str(existing.get("url") or "") == target_url:
+            return existing, False
+    now_ms = int(time.time() * 1000)
+    entry = {
+        "version_id": "v{}_{}".format(len(versions) + 1, uuid.uuid4().hex[:8]),
+        "url": target_url,
+        "name": str(name or item.get("name") or "").strip(),
+        "kind": str(kind or item.get("kind") or "image").strip(),
+        "created_at": now_ms,
+    }
+    if note:
+        entry["note"] = str(note)[:200]
+    versions.append(entry)
+    item["versions"] = versions
+    item["current_version_id"] = entry["version_id"]
+    # 当前版本指针（老代码读 url/name/kind 依然正确）
+    item["url"] = target_url
+    if entry["name"]:
+        item["name"] = entry["name"]
+    if entry["kind"]:
+        item["kind"] = entry["kind"]
+    item["updated_at"] = now_ms
+    return entry, True
+
+
+def asset_version_index():
+    """{item_id: item} 索引，按资产库文件 mtime 缓存，避免每次读画布都解析大文件。"""
+    try:
+        path = asset_library_file_path()
+        mtime = path.stat().st_mtime
+    except Exception:
+        return {}
+    cache = ASSET_VERSION_INDEX_CACHE
+    if cache.get("mtime") == mtime:
+        return cache.get("index") or {}
+    index = {}
+    try:
+        library = read_asset_library()
+        for lib in library.get("libraries") or []:
+            for cat in lib.get("categories") or []:
+                for item in cat.get("items") or []:
+                    if isinstance(item, dict) and item.get("id"):
+                        index[str(item["id"])] = item
+    except Exception:
+        index = {}
+    ASSET_VERSION_INDEX_CACHE["mtime"] = mtime
+    ASSET_VERSION_INDEX_CACHE["index"] = index
+    return index
+
+
+def add_asset_library_version(payload):
+    """把一张图登记为某个已有素材的新版本。payload: {item_id, url, name?, kind?, note?}"""
+    payload = payload if isinstance(payload, dict) else {}
+    item_id = str(payload.get("item_id") or payload.get("assetId") or "").strip()
+    url = str(payload.get("url") or "").strip()
+    if not item_id:
+        raise ApiError(400, "缺少 item_id（要更新哪个素材）")
+    if not url:
+        raise ApiError(400, "缺少 url（新版本的素材地址）")
+    library = read_asset_library()
+    _lib, _cat, item = find_asset_item_record(library, item_id, payload.get("library_id") or "")
+    entry, created = append_asset_version(
+        item, url,
+        name=str(payload.get("name") or ""),
+        kind=str(payload.get("kind") or payload.get("mediaKind") or ""),
+        note=str(payload.get("note") or ""))
+    saved = write_asset_library(library)
+    ASSET_VERSION_INDEX_CACHE["mtime"] = None
+    append_log(LOG_FILE, "[AssetVersion] item={} version={} created={}".format(item_id, entry.get("version_id"), created))
+    return {
+        "ok": True,
+        "library": saved,
+        "item": item,
+        "version": entry,
+        "created": created,
+        "versionCount": len(item.get("versions") or []),
+    }
+
+
+def resolve_canvas_asset_versions(canvas):
+    """按引用策略把画布里的资产引用解析到目标版本（就地改 canvas，返回解析条数）。
+
+    - mode=latest：解析到条目当前版本 → 素材重跑出新版，引用处自动跟
+    - mode=pinned：解析到 assetVersionId 指定那版 → 钉住不动
+    只处理带 assetId 的引用；老的纯 url 引用一律不碰。
+    """
+    if not isinstance(canvas, dict):
+        return 0
+    refs = []
+    for node in canvas.get("nodes") or []:
+        if not isinstance(node, dict):
+            continue
+        for image in node.get("images") or []:
+            if isinstance(image, dict) and str(image.get("assetId") or "").strip():
+                refs.append(image)
+    if not refs:
+        return 0
+    index = asset_version_index()
+    if not index:
+        return 0
+    resolved = 0
+    for image in refs:
+        item = index.get(str(image.get("assetId") or "").strip())
+        if not item:
+            continue
+        versions = asset_item_versions(item)
+        if not versions:
+            continue
+        mode = str(image.get("assetVersionMode") or "latest").strip().lower()
+        target = None
+        if mode == "pinned":
+            want = str(image.get("assetVersionId") or "").strip()
+            target = next((v for v in versions if str(v.get("version_id")) == want), None)
+        if target is None:
+            want = str(item.get("current_version_id") or "").strip()
+            target = next((v for v in versions if str(v.get("version_id")) == want), versions[-1])
+        url = str(target.get("url") or "").strip()
+        if not url or url == str(image.get("url") or ""):
+            continue
+        image["url"] = url
+        # 只同步地址与类型，不改用户给这条引用起的名字
+        if target.get("kind"):
+            image["kind"] = str(target.get("kind"))
+        image["assetVersionId"] = str(target.get("version_id") or "")
+        resolved += 1
+    return resolved
+
+
 def add_asset_library_items(payload):
     payload = payload if isinstance(payload, dict) else {}
     library = read_asset_library()
@@ -3981,6 +4150,11 @@ def read_canvas_record(canvas_id, include_deleted=True):
     if not path.exists():
         raise ApiError(404, f"目标画布不存在: {canvas_id}")
     canvas = normalize_canvas_structure(canvas_id, read_json_file(path, {}))
+    try:
+        # 引用策略解析：带 assetId 的引用按 latest/pinned 解析到目标版本（无引用时零开销）
+        resolve_canvas_asset_versions(canvas)
+    except Exception as exc:
+        append_log(LOG_FILE, "[AssetVersion] resolve failed canvas={} err={}".format(canvas_id, exc))
     if canvas.get("deleted_at") and not include_deleted:
         raise ApiError(404, "目标画布已在回收站")
     return canvas
@@ -12480,6 +12654,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if request_path == "/api/asset-library/categories":
                 self._send(200, create_asset_category_record(payload))
+                return
+            if request_path == "/api/asset-library/items/versions":
+                self._send(200, add_asset_library_version(payload))
                 return
             if request_path == "/api/asset-library/items/delete":
                 self._send(200, delete_asset_items_record(payload))
