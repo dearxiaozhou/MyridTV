@@ -12541,6 +12541,8 @@ function handlePortDrop(drag, e){
     scheduleSave();
 }
 function pickMediaForSmartNode(nodeId){
+    const _pickNode = nodes.find(n => n.id === nodeId);
+    if(_pickNode) delete _pickNode.retainOutputNames;
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*,video/*,audio/*';
@@ -13088,6 +13090,7 @@ function setDropHighlight(targetId){
 function deleteNode(id){
     pushUndo();
     const deleteIds = new Set([id]);
+    nodes.forEach(node => { if(deleteIds.has(node.id)) delete node.retainOutputNames; });
     nodes.forEach(node => {
         if(isHistoryGroupNode(node) && node.historyFor === id) deleteIds.add(node.id);
     });
@@ -13229,6 +13232,8 @@ function updateLoopInsertPreview(){
     return next;
 }
 function deleteImage(id, imageIndex){
+    const _imgNode = nodes.find(n => n.id === id);
+    if(_imgNode) delete _imgNode.retainOutputNames;
     const node = nodes.find(n => n.id === id);
     if(!node || imageIndex < 0) return;
     pushUndo();
@@ -17015,7 +17020,7 @@ async function finalizePendingNode(pendingNode, urls, meta, kind='image'){
     const date = new Date();
     const outputTitle = pendingNode.title || meta?.displayPrompt || meta?.promptText || '';
     const imgs = kind === 'image'
-        ? await smartGeneratedOutputItems(urls, kind, {displayName:outputTitle, nodeId:pendingNode.id, retainNames:pendingNode._retainOutputNames})
+        ? await smartGeneratedOutputItems(urls, kind, {displayName:outputTitle, nodeId:pendingNode.id, retainNames:pendingNode.retainOutputNames || pendingNode._retainOutputNames})
         : urls.map((item, i) => {
             const url = typeof item === 'string' ? item : item?.url || '';
             const itemKind = (typeof item === 'object' && item.kind) || kind;
@@ -17038,7 +17043,7 @@ async function finalizePendingNode(pendingNode, urls, meta, kind='image'){
     if(metaTarget) attachRunMeta(metaTarget, meta);
     pendingNode.images = (pendingNode.images || []).map(img => stripImageGenerationMeta(img));
     // 覆盖重跑保留名：结果回填后，新输出沿用第一次生图的名称（防止日期流水名覆盖）
-    const _retain = Array.isArray(pendingNode._retainOutputNames) ? pendingNode._retainOutputNames : [];
+    const _retain = Array.isArray(pendingNode.retainOutputNames || pendingNode._retainOutputNames) ? (pendingNode.retainOutputNames || pendingNode._retainOutputNames) : [];
     if(_retain.length){
         pendingNode.images = (pendingNode.images || []).map((img, _i) => {
             const kept = String(_retain[_i] || '').trim();
@@ -18445,7 +18450,9 @@ async function runGeneration(){
     }
     undoSuppressed = false;
     const pendingNode = branchNode || node;
-    pendingNode._retainOutputNames = retainedOutputNames;
+    // 保留名持久化到节点：覆盖重跑=沿用第一次生图名；非覆盖（首跑/追加）=清掉
+    if(retainedOutputNames.length) pendingNode.retainOutputNames = retainedOutputNames;
+    else delete pendingNode.retainOutputNames;
     if(extracted) pendingNode._runMetaTargetId = extracted.id;
     if(!branchNode){
         pendingNode.pending = Math.max(1, Number(expectedCount) || 1);
