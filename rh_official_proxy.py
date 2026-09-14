@@ -373,7 +373,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.12.clickpop74"
+STATIC_VERSION = "2026.09.12.clickpop78"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -1073,8 +1073,20 @@ def save_canvas_agent_vision_config(vision):
         APP_CONFIG = config
         append_log(LOG_FILE, "[VisionPlatformDeleted] vision config cleared")
         return canvas_agent_vision_config()
-    base_url = str(vision.get("base_url") or "").strip() or "https://open.bigmodel.cn/api/paas/v4"
+    base_url = str(vision.get("base_url") or "").strip()
     api_key = str(vision.get("api_key") or "").strip()
+    model = str(vision.get("model") or "").strip()
+    # 已删除的视觉平台：空字段保存不得用默认值把它“救活”。
+    # 前端删除后输入框是空的，用户再点“保存视觉配置”= 仍是删除态；只有填了内容才算重新配置。
+    prev = config.get("vision") if isinstance(config.get("vision"), dict) else {}
+    if str(prev.get("deleted_at") or "").strip() and not (model or base_url or api_key):
+        config["vision"] = dict(prev)
+        config["vision"]["enabled"] = bool(vision.get("enabled", False))
+        write_app_config(config)
+        APP_CONFIG = config
+        return canvas_agent_vision_config()
+    base_url = base_url or "https://open.bigmodel.cn/api/paas/v4"
+    model = model or "glm-4v-flash"
     config["vision"] = {
         "enabled": bool(vision.get("enabled", True)),
         "model": str(vision.get("model") or "glm-4v-flash").strip() or "glm-4v-flash",

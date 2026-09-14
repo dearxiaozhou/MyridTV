@@ -11596,7 +11596,8 @@ async function smartGeneratedOutputItems(items, kind='image', options={}){
         const existingName = String(source.name || source.display_name || '').trim()
             || decodeURIComponent(String(typeof item === 'string' ? item : (item?.url || '')).split(/[?#]/)[0].split('/').pop() || '').trim();
         const isDateSeq = /^\d{2,4}-\d{2}-\d{2}([-_]\d+)?\.\w+$|^\d{8}-\d{6}[-_]\d{2}\.\w+$/i.test(existingName);
-        const name = existingName && !isDateSeq ? existingName : fallbackName;
+        const retainedName = String((options?.retainNames || [])[index] || '').trim();
+        const name = retainedName || (existingName && !isDateSeq ? existingName : fallbackName);
         source.name = name;
         source.display_name = name;
         return source;
@@ -11617,7 +11618,8 @@ async function smartGeneratedOutputItems(items, kind='image', options={}){
         // 保留 preparedItems/localize 阶段已确定的合法文件名（后端按节点标题落盘的），仅日期流水名才允许被重新预约
         const entryName = String(entry.name || entry.display_name || '').trim();
         const entryIsDateSeq = /^\d{2,4}-\d{2}-\d{2}([-_]\d+)?\.\w+$|^\d{8}-\d{6}[-_]\d{2}\.\w+$/i.test(entryName);
-        const name = (entryName && !entryIsDateSeq) ? entryName : (names[index] || generatedDateSequenceName(index, ext, date));
+        const retainedName = String((options?.retainNames || [])[index] || '').trim();
+        const name = retainedName || ((entryName && !entryIsDateSeq) ? entryName : (names[index] || generatedDateSequenceName(index, ext, date)));
         return {
             ...entry,
             url:entry.url,
@@ -17013,7 +17015,7 @@ async function finalizePendingNode(pendingNode, urls, meta, kind='image'){
     const date = new Date();
     const outputTitle = pendingNode.title || meta?.displayPrompt || meta?.promptText || '';
     const imgs = kind === 'image'
-        ? await smartGeneratedOutputItems(urls, kind, {displayName:outputTitle, nodeId:pendingNode.id})
+        ? await smartGeneratedOutputItems(urls, kind, {displayName:outputTitle, nodeId:pendingNode.id, retainNames:pendingNode._retainOutputNames})
         : urls.map((item, i) => {
             const url = typeof item === 'string' ? item : item?.url || '';
             const itemKind = (typeof item === 'object' && item.kind) || kind;
@@ -17035,6 +17037,15 @@ async function finalizePendingNode(pendingNode, urls, meta, kind='image'){
     const metaTarget = pendingNode._runMetaTargetId ? nodes.find(n => n.id === pendingNode._runMetaTargetId) : pendingNode;
     if(metaTarget) attachRunMeta(metaTarget, meta);
     pendingNode.images = (pendingNode.images || []).map(img => stripImageGenerationMeta(img));
+    // 覆盖重跑保留名：结果回填后，新输出沿用第一次生图的名称（防止日期流水名覆盖）
+    const _retain = Array.isArray(pendingNode._retainOutputNames) ? pendingNode._retainOutputNames : [];
+    if(_retain.length){
+        pendingNode.images = (pendingNode.images || []).map((img, _i) => {
+            const kept = String(_retain[_i] || '').trim();
+            return (kept && kept !== img.name) ? {...img, name:kept, display_name:kept} : img;
+        });
+    }
+    delete pendingNode._retainOutputNames;
     selectedId = pendingNode._selectAfterRunId || pendingNode.id;
     delete pendingNode._runMetaTargetId;
     delete pendingNode._selectAfterRunId;
@@ -18401,6 +18412,10 @@ async function runGeneration(){
     // History is scoped to the node itself. Input links and neighboring nodes never
     // affect whether this is the node's first generation.
     const overwriteExistingOutput = nodeHasImages && nodeHasCompletedGeneration(node) && !workflowModeRun;
+    // 覆盖重跑：新图沿用第一次生图的名称（显示名 + 磁盘文件名），不再按日期重新命名
+    const retainedOutputNames = overwriteExistingOutput
+        ? (node.images || []).map(img => String(img?.name || '').trim()).filter(Boolean)
+        : [];
     const movedOutputAssetUrls = overwriteExistingOutput ? await moveOutputImagesToHistoryForRun(node.images || []) : new Map();
     if(movedOutputAssetUrls.size){
         refs = remapRefsForMovedAssets(refs, movedOutputAssetUrls);
@@ -18430,6 +18445,7 @@ async function runGeneration(){
     }
     undoSuppressed = false;
     const pendingNode = branchNode || node;
+    pendingNode._retainOutputNames = retainedOutputNames;
     if(extracted) pendingNode._runMetaTargetId = extracted.id;
     if(!branchNode){
         pendingNode.pending = Math.max(1, Number(expectedCount) || 1);
