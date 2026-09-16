@@ -56,7 +56,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tests\verify.ps1
 
 ### 4. 发布包不许带本机信息
 
-`installer/prepare-release.ps1` 里有硬门禁，会扫描暂存目录里是否含 `C:\Users\` 之类的构建机路径，命中直接中断打包。这不是可选项。
+`installer/prepare-release.ps1` 里有硬门禁：扫描暂存目录，任何文件里出现「Windows 用户主目录的绝对路径」或「本项目开发目录的绝对路径」，直接中断打包。检测的是**路径形状**而不是某个固定用户名，所以换机器、换人打包照样拦得住。这不是可选项。
+
+> 坑：写文档时**不要原样抄这两个探测串**。README 本身也在扫描范围内，抄了就会把自己拦下（CI 上真发生过：自检全绿、打包却死在 README.md）。用中文描述即可。
 
 ## 打包
 
