@@ -52,7 +52,7 @@ run_yj_g_iter1.py
 run_yj_g_iter1_more.py
 run_yj_g_iter2.py
 研发启动说明.txt
-_internal/启动MyridTV(自动恢复窗口).bat
+_internal/启动MyridTV*.bat
 tests/agent-e2e/probe_frontend.py
 tests/agent-e2e/verify_frontend_guard.py
 tests/e2e_comfy_progress.py
