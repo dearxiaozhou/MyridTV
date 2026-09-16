@@ -158,6 +158,8 @@ if ($normalized.StartsWith('_internal' + $sep, [System.StringComparison]::Ordina
     if ($normalized.EndsWith('.ps1', [System.StringComparison]::OrdinalIgnoreCase) -and
         -not $normalized.Equals('start_myridtv.ps1', [System.StringComparison]::OrdinalIgnoreCase) -and
         -not $normalized.Equals('startup_upgrade.ps1', [System.StringComparison]::OrdinalIgnoreCase)) { return $true }
+    # *.new 是本地改前对照副本，不是应用文件，绝不能进发布包
+    if ($normalized.EndsWith('.new', [System.StringComparison]::OrdinalIgnoreCase)) { return $true }
     if ($normalized.EndsWith('.pyc', [System.StringComparison]::OrdinalIgnoreCase)) { return $true }
     if ($normalized.EndsWith('.pyo', [System.StringComparison]::OrdinalIgnoreCase)) { return $true }
     if ($normalized.EndsWith('.log', [System.StringComparison]::OrdinalIgnoreCase)) { return $true }
@@ -356,6 +358,26 @@ function Remove-StageAuthorTraces {
     }
 }
 
+function Test-FileContainsAnyNeedle {
+    param([string]$Path, [string[]]$Needles)
+
+    # 一律用「子串匹配」，不要用 Select-String 正则：
+    # 源码/JSON 里的反斜杠是转义后的双反斜杠（D:\\APP\\...），
+    # 正则 'D:\\APP\\...' 只匹配单反斜杠文本，会导致硬编码路径全部漏网。
+    try {
+        $text = [System.IO.File]::ReadAllText($Path)
+    } catch {
+        return $null
+    }
+
+    foreach ($needle in $Needles) {
+        if ($text.IndexOf($needle, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) { return $needle }
+        $escaped = $needle.Replace('\', '\\')
+        if ($text.IndexOf($escaped, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) { return $escaped }
+    }
+    return $null
+}
+
 function Assert-ReleasePrivacy {
     param([string]$TargetStageDir)
 
@@ -416,9 +438,9 @@ function Assert-ReleasePrivacy {
         throw "Release privacy check failed: sensitive file name present: $(Get-RelativePathCompat -BasePath $TargetStageDir -ChildPath $badFile.FullName)"
     }
 
-    $contentPatterns = @(
-        '<USER_HOME>',
-        'D:\\APP\\MyridTV'
+    $contentNeedles = @(
+        'C:\Users\<user>',
+        'D:\APP\MyridTV'
     )
 
     $scanFiles = Get-ChildItem -LiteralPath $TargetStageDir -Recurse -Force -File |
@@ -431,18 +453,19 @@ function Assert-ReleasePrivacy {
         }
 
     # 硬门禁：任何文件（含二进制、含 bundled Python）都不许出现构建机用户目录 C:\Users\<name>
-    $authorTrace = Get-ChildItem -LiteralPath $TargetStageDir -Recurse -Force -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Length -lt 50MB } |
-        Select-String -Pattern 'C:\\Users\\' -List -ErrorAction SilentlyContinue |
-        Select-Object -First 3
-    if ($authorTrace) {
-        throw "Release privacy check failed: build-machine user path found in $(Get-RelativePathCompat -BasePath $TargetStageDir -ChildPath $authorTrace[0].Path)"
+    $authorNeedles = @('C:\Users\')
+    foreach ($file in (Get-ChildItem -LiteralPath $TargetStageDir -Recurse -Force -File -ErrorAction SilentlyContinue |
+                       Where-Object { $_.Length -lt 50MB })) {
+        $hit = Test-FileContainsAnyNeedle -Path $file.FullName -Needles $authorNeedles
+        if ($hit) {
+            throw "Release privacy check failed: build-machine user path '$hit' found in $(Get-RelativePathCompat -BasePath $TargetStageDir -ChildPath $file.FullName)"
+        }
     }
 
-    foreach ($pattern in $contentPatterns) {
-        $match = $scanFiles | Select-String -Pattern $pattern -List | Select-Object -First 1
-        if ($match) {
-            throw "Release privacy check failed: sensitive content matched in $(Get-RelativePathCompat -BasePath $TargetStageDir -ChildPath $match.Path)"
+    foreach ($file in $scanFiles) {
+        $hit = Test-FileContainsAnyNeedle -Path $file.FullName -Needles $contentNeedles
+        if ($hit) {
+            throw "Release privacy check failed: sensitive content '$hit' matched in $(Get-RelativePathCompat -BasePath $TargetStageDir -ChildPath $file.FullName)"
         }
     }
 }

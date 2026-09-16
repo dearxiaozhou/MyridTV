@@ -1,6 +1,7 @@
 (function(){
     if(!window.StudioI18n) return;
     window.StudioI18n.register({
+        "canvas.assetNodeCount": { zh: "素材节点数（空节点不计）", en: "Asset node count (empty nodes excluded)" },
         "canvas.noApiProviders": { zh: "暂无 API 平台", en: "No API providers" },
         "canvas.noApiProvidersHint": { zh: "暂无 API 平台，请到 API 设置添加", en: "No API providers. Add one in API Settings." },
         "canvas.noImageModelsHint": { zh: "暂无生图模型，请到 API 设置添加", en: "No image models. Add some in API Settings." },

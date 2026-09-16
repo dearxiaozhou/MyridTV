@@ -1,0 +1,499 @@
+/* ============================================================
+ * MyridTV Design Tokens  —  唯一权威样式源
+ * ------------------------------------------------------------
+ * 背景：现有 11 个 CSS 文件里散落着 179 个自定义属性，按
+ *       api- / asset- / canvas- / wf- / prism- / hard- 等
+ *       9 套命名空间各自建了一套调色板，同一个"页面背景"
+ *       语义存在 11 个变量名、6~8 个不同的颜色值。
+ *       本项目把它们统一收口到 --x-* 一套语义 token。
+ *
+ * 用法：
+ *   1. 本文件必须在所有其它 CSS 之前加载（token 先定义）。
+ *   2. 业务 CSS 里的旧变量（--api-page-bg 等）改为 var(--x-page)
+ *      之类的引用，变量名与作用域保持不变，只换值的来源。
+ *   3. 禁止在本文件之外新增硬编码颜色。
+ *
+ * 命名：
+ *   --x-{语义}          颜色语义（随主题切换）
+ *   --x-{r|fs|sp|sh|z}  尺度阶梯（不随主题切换）
+ * ============================================================ */
+
+:root {
+  /* ---------- 动效 ---------- */
+  --x-ease: cubic-bezier(.4, 0, .2, 1);
+  --x-ease-out: cubic-bezier(.16, 1, .3, 1);
+  --x-dur-fast: .12s;
+  --x-dur: .16s;
+  --x-dur-slow: .24s;
+
+  /* ---------- 圆角阶梯 ---------- */
+  --x-r-xs: 6px;    /* 标签、徽标 */
+  --x-r-sm: 8px;    /* 输入框、小按钮 */
+  --x-r-md: 10px;   /* 按钮、下拉（主力） */
+  --x-r-lg: 14px;   /* 卡片、面板 */
+  --x-r-xl: 18px;   /* 节点、大容器 */
+  --x-r-full: 999px;/* 胶囊、圆形 */
+
+  /* ---------- 字号阶梯 ---------- */
+  /* 现状存在 9 / 9.5 / 10 / 10.5 / 11 / 11.5 / 12 / 12.5 / 13
+     等 45 种取值，统一收敛到 5 级 */
+  --x-fs-xs: 10px;  /* 角标、时间戳 */
+  --x-fs-sm: 11px;  /* 次级说明、紧凑控件（主力） */
+  --x-fs-md: 12px;  /* 正文 */
+  --x-fs-lg: 13px;  /* 小标题 */
+  --x-fs-xl: 15px;  /* 区块标题 */
+  --x-fs-2xl: 20px; /* 页面大标题 */
+
+  /* ---------- 间距阶梯 ---------- */
+  --x-sp-1: 4px;
+  --x-sp-2: 6px;
+  --x-sp-3: 8px;
+  --x-sp-4: 10px;
+  --x-sp-5: 12px;
+  --x-sp-6: 16px;
+  --x-sp-7: 20px;
+  --x-sp-8: 28px;
+
+  /* ---------- 控件尺度 ---------- */
+  --x-ctrl-h: 28px;
+  --x-ctrl-h-lg: 34px;
+  --x-ctrl-pad: 10px;
+
+  /* ---------- 层级 ---------- */
+  /* 现状 z-index 有 46 种取值，收敛为 5 层语义 */
+  --x-z-base: 0;
+  --x-z-raised: 10;
+  --x-z-sticky: 50;
+  --x-z-overlay: 100;
+  --x-z-modal: 200;
+  --x-z-toast: 300;
+}
+
+/* ============================================================
+ * 颜色语义 —— 亮色（默认）
+ * 取值来源：smart-canvas.css :root（主画布，同时也是
+ *          被 theme.css 复用最多的一套），缺失项由同族
+ *          "近似簇"的众数补齐（见 audit_result.txt）。
+ * ============================================================ */
+:root,
+html.theme-light,
+html.theme-light body,
+body.theme-light,
+html:not(.studio-theme-dark) body {
+  --x-page: #f8fafc;                    /* 页面 / 画布底色 */
+  --x-panel: rgba(255, 255, 255, .9);    /* 浮层面板（半透明） */
+  --x-panel-solid: #ffffff;              /* 面板实色 */
+  --x-card: #ffffff;                     /* 卡片 / 节点 */
+  --x-soft: #f1f5f9;                     /* 次级填充：hover / 输入框 */
+  --x-soft-2: #e8edf3;                   /* 更深一级填充 */
+  --x-line: #e2e8f0;                     /* 常规描边 */
+  --x-line-strong: #cbd5e1;              /* 强调描边 / 分隔线 */
+  --x-grid: #d9e1ea;                     /* 画布网格点 */
+
+  --x-text: #111827;                     /* 主文字 */
+  --x-muted: #64748b;                    /* 次要文字 */
+  --x-faint: #94a3b8;                    /* 弱化文字 / 占位符 */
+
+  --x-strong: #111827;                   /* 主按钮底色（反色） */
+  --x-strong-text: #ffffff;              /* 主按钮文字 */
+  --x-accent: #475569;                   /* 强调色 / 激活态 */
+  --x-accent-hover: #334155;
+
+  --x-ok: #16a34a;
+  --x-warn: #b45309;
+  --x-danger: #dc2626;
+  --x-info: #2563eb;
+
+  --x-ok-soft: rgba(22, 163, 74, .12);
+  --x-warn-soft: rgba(180, 83, 9, .12);
+  --x-danger-soft: rgba(220, 38, 38, .12);
+  --x-info-soft: rgba(37, 99, 235, .12);
+
+  /* 让原生表单控件 / <select> 展开弹层走亮色系统绘制，与 UI 主题一致 */
+  color-scheme: light;
+
+  --x-shadow: rgba(15, 23, 42, .08);     /* 阴影颜色（供 var() 组合） */
+  --x-sh-1: 0 2px 6px rgba(15, 23, 42, .06);
+  --x-sh-2: 0 8px 22px rgba(15, 23, 42, .08);
+  --x-sh-3: 0 18px 48px rgba(15, 23, 42, .12);
+  --x-focus: rgba(37, 99, 235, .35);
+
+  /* 滚动条（2026-09-16 新增）：亮度按主题走，见文件末尾「滚动条统一实现」 */
+  --x-sb-thumb: rgba(15, 23, 42, .24);
+  --x-sb-thumb-hover: rgba(15, 23, 42, .46);
+}
+
+/* ============================================================
+ * 颜色语义 —— 暗色
+ * 现状 4 套主题选择器（.theme-dark / html.studio-theme-dark body
+ * / html.theme-dark body / body.theme-dark）在此一次性收口，
+ * 任意一种命中都切换到同一组值。
+ * ============================================================ */
+.theme-dark,
+html.theme-dark,
+html.theme-dark body,
+html.studio-theme-dark,
+html.studio-theme-dark body,
+body.studio-theme-dark,
+body.theme-dark {
+  /* 2026-09-15：全站暗色改为中性灰黑（来源：老王提供的参考截图像素实测，
+     见工作区 color_result*.txt）。原偏蓝的 #0f141d 一族全部弃用。 */
+  /* 让原生表单控件 / <select> 展开弹层走暗色系统绘制，与 UI 主题一致。
+     此前只有 theme.css 对 html.studio-theme-dark 设过 color-scheme:dark，
+     而 smart-canvas.html 不加载 theme.css，那里的原生下拉弹层会弹白底。 */
+  color-scheme: dark;
+
+  --x-page: #000000;
+  --x-panel: rgba(31, 31, 31, .94);
+  --x-panel-solid: #1f1f1f;
+  --x-card: #1f1f1f;
+  --x-soft: #2f2f2f;
+  --x-soft-2: #313131;
+  --x-line: #404040;
+  --x-line-strong: #7a7a7a;
+  --x-grid: rgba(255, 255, 255, .11);
+
+  --x-text: #ffffff;
+  --x-muted: #c8c8c8;
+  --x-faint: #8a8a8a;
+
+  --x-strong: #ffffff;
+  --x-strong-text: #1f1f1f;
+  --x-accent: #404040;
+  --x-accent-hover: #4a4a4a;
+
+  --x-ok: #34d399;
+  --x-warn: #fbbf24;
+  --x-danger: #f87171;
+  --x-info: #60a5fa;
+
+  --x-ok-soft: rgba(52, 211, 153, .14);
+  --x-warn-soft: rgba(251, 191, 36, .14);
+  --x-danger-soft: rgba(248, 113, 113, .14);
+  --x-info-soft: rgba(96, 165, 250, .14);
+
+  --x-shadow: rgba(0, 0, 0, .28);
+  --x-sh-1: 0 2px 6px rgba(0, 0, 0, .22);
+  --x-sh-2: 0 8px 22px rgba(0, 0, 0, .30);
+  --x-sh-3: 0 18px 48px rgba(0, 0, 0, .40);
+  --x-focus: rgba(255, 255, 255, .35);
+
+  /* 滚动条（2026-09-16 新增）：深色底上用白色低透明度，避免浅灰白条刺眼 */
+  --x-sb-thumb: rgba(255, 255, 255, .18);
+  --x-sb-thumb-hover: rgba(255, 255, 255, .38);
+}
+
+/* ============================================================
+ * 兼容映射层
+ * 把 9 套旧命名空间一次性指向统一 token。
+ * 变量名与作用域保持不变，因此不会破坏任何既有选择器，
+ * 只是把"各建一套"改成"共享一套"。
+ *
+ * 注意：本层只对「没有在具体作用域里重复定义」的变量生效。
+ *       对于在原文件里被重复硬编码覆盖的变量（例如
+ *       api-settings.css 中 --api-hard-bg 被定义了 4 次），
+ *       仍需把那几处定义的值改为 var(--x-*)。
+ * ============================================================ */
+:root,
+html.theme-light,
+html.theme-light body,
+body.theme-light,
+html:not(.studio-theme-dark) body,
+.theme-dark,
+html.theme-dark,
+html.theme-dark body,
+html.studio-theme-dark,
+html.studio-theme-dark body,
+body.studio-theme-dark,
+body.theme-dark {
+  /* -- 通用语义 -- */
+  --page: var(--x-page);
+  --bg: var(--x-page);
+  --bg-base: var(--x-page);
+  --panel: var(--x-panel);
+  --card: var(--x-card);
+  --card-solid: var(--x-panel-solid);
+  --soft: var(--x-soft);
+  --soft-2: var(--x-soft-2);
+  --line: var(--x-line);
+  --line-2: var(--x-line-strong);
+  --line-strong: var(--x-line-strong);
+  --grid: var(--x-grid);
+  --text: var(--x-text);
+  --text-main: var(--x-text);
+  --muted: var(--x-muted);
+  --faint: var(--x-faint);
+  --strong: var(--x-strong);
+  --strong-text: var(--x-strong-text);
+  /* --accent 实际用法是「反色按钮底色」：background:var(--accent); color:var(--bg)
+     （见 comfyui-settings.css .run-btn / .save-btn、api-settings.css 等），
+     因此映射到 --x-strong 而非 --x-accent。--x-accent 另作 hover/激活态用。 */
+  --accent: var(--x-strong);
+  --shadow: var(--x-shadow);
+  --ease: var(--x-ease);
+
+  /* -- api-settings: 简约版 -- */
+  --api-page-bg: var(--x-page);
+  --api-panel-bg: var(--x-panel);
+  --api-surface-bg: var(--x-panel-solid);
+  --api-soft-bg: var(--x-soft);
+  --api-line: var(--x-line);
+  --api-line-strong: var(--x-line-strong);
+  --api-shadow: var(--x-sh-3);
+  --api-shadow-sm: var(--x-sh-2);
+  --api-blue: var(--x-info);
+  --api-green: var(--x-ok);
+
+  /* -- api-settings: readable 版 -- */
+  --api-readable-bg: var(--x-page);
+  --api-readable-panel: var(--x-panel-solid);
+  --api-readable-soft: var(--x-soft);
+  --api-readable-field: var(--x-soft);
+  --api-readable-line: var(--x-line);
+  --api-readable-button: var(--x-strong);
+  --api-readable-button-hover: var(--x-accent);
+
+  /* -- api-settings: dark / light / hard 三套 -- */
+  --api-dark-page: var(--x-page);
+  --api-dark-panel: var(--x-card);
+  --api-dark-soft: var(--x-soft);
+  --api-dark-raised: var(--x-soft-2);
+  --api-dark-hover: var(--x-line);
+  --api-dark-line: var(--x-line);
+  --api-dark-line-strong: var(--x-line-strong);
+  --api-dark-text: var(--x-text);
+  --api-dark-muted: var(--x-muted);
+  --api-dark-faint: var(--x-faint);
+  --api-dark-primary: var(--x-strong);
+  --api-dark-primary-hover: var(--x-accent-hover);
+
+  --api-light-page: var(--x-page);
+  --api-light-panel: var(--x-panel-solid);
+  --api-light-soft: var(--x-soft);
+  --api-light-raised: var(--x-soft-2);
+  --api-light-hover: var(--x-soft-2);
+  --api-light-line: var(--x-line);
+  --api-light-line-strong: var(--x-line-strong);
+  --api-light-text: var(--x-text);
+  --api-light-muted: var(--x-muted);
+  --api-light-faint: var(--x-faint);
+  --api-light-primary: var(--x-strong);
+  --api-light-primary-hover: var(--x-accent-hover);
+
+  --api-hard-bg: var(--x-page);
+  --api-hard-panel: var(--x-card);
+  --api-hard-soft: var(--x-soft);
+  --api-hard-line: var(--x-line);
+  --api-hard-line-strong: var(--x-line-strong);
+  --api-hard-text: var(--x-text);
+  --api-hard-muted: var(--x-muted);
+  --api-hard-faint: var(--x-faint);
+  --api-hard-ok: var(--x-ok);
+  --api-hard-warn: var(--x-warn);
+  --api-hard-shadow: var(--x-sh-3);
+  --api-hard-shadow-sm: var(--x-sh-2);
+
+  /* -- asset-manager: hard / v2 两套 -- */
+  --asset-hard-page: var(--x-page);
+  --asset-hard-panel: var(--x-card);
+  --asset-hard-card: var(--x-card);
+  --asset-hard-soft: var(--x-soft);
+  --asset-hard-soft-2: var(--x-soft-2);
+  --asset-hard-line: var(--x-line);
+  --asset-hard-line-strong: var(--x-line-strong);
+  --asset-hard-text: var(--x-text);
+  --asset-hard-muted: var(--x-muted);
+  --asset-hard-faint: var(--x-faint);
+  --asset-hard-strong: var(--x-strong);
+  --asset-hard-strong-text: var(--x-strong-text);
+
+  --asset-v2-bg: var(--x-page);
+  --asset-v2-panel: var(--x-card);
+  --asset-v2-panel-2: var(--x-panel-solid);
+  --asset-v2-panel-3: var(--x-soft);
+  --asset-v2-line: var(--x-line);
+  --asset-v2-line-mid: var(--x-line-strong);
+  --asset-v2-line-strong: var(--x-line-strong);
+  --asset-v2-text: var(--x-text);
+  --asset-v2-muted: var(--x-muted);
+  --asset-v2-faint: var(--x-faint);
+
+  /* -- comfyui-settings: wf-hard / wf-v2 两套 -- */
+  --wf-hard-bg: var(--x-page);
+  --wf-hard-panel: var(--x-card);
+  --wf-hard-soft: var(--x-soft);
+  --wf-hard-line: var(--x-line);
+  --wf-hard-line-strong: var(--x-line-strong);
+  --wf-hard-text: var(--x-text);
+  --wf-hard-muted: var(--x-muted);
+  --wf-hard-faint: var(--x-faint);
+  --wf-hard-accent: var(--x-accent);
+
+  --wf-v2-bg: var(--x-page);
+  --wf-v2-panel: var(--x-card);
+  --wf-v2-panel-2: var(--x-panel-solid);
+  --wf-v2-panel-3: var(--x-soft);
+  --wf-v2-line: var(--x-line);
+  --wf-v2-line-mid: var(--x-line-strong);
+  --wf-v2-line-strong: var(--x-line-strong);
+  --wf-v2-text: var(--x-text);
+  --wf-v2-muted: var(--x-muted);
+  --wf-v2-faint: var(--x-faint);
+
+  /* -- canvas: hard 版 -- */
+  --canvas-hard-page: var(--x-page);
+  --canvas-hard-grid: var(--x-grid);
+  --canvas-hard-node: var(--x-card);
+  --canvas-hard-node-head: var(--x-soft);
+  --canvas-hard-soft: var(--x-soft);
+  --canvas-hard-soft-2: var(--x-soft-2);
+  --canvas-hard-line: var(--x-line);
+  --canvas-hard-line-strong: var(--x-line-strong);
+  --canvas-hard-text: var(--x-text);
+  --canvas-hard-muted: var(--x-muted);
+  --canvas-hard-shadow: var(--x-shadow);
+  --canvas-hard-accent: var(--x-accent);
+
+  /* -- 节点硬编码主题 -- */
+  --hard-node-head: var(--x-soft);
+  --hard-node-body: var(--x-card);
+  --hard-node-soft: var(--x-soft-2);
+  --hard-node-strong: var(--x-accent);
+  --hard-node-line: var(--x-line);
+  --agent-panel-solid: var(--x-panel-solid);
+  --canvas-toggle-active: var(--x-accent);
+}
+
+/* ============================================================
+ * prism 系列已收编为中性装饰灰（2026-09-15 老王确认中性色板）。
+ * 如需恢复彩色品牌视觉，还原下面 5 个值即可：
+ *   cyan #24d8ff / mint #47f59d / amber #ffc84a / pink #ff4fb8 / violet #8e6cff
+ * ============================================================ */
+:root {
+  --x-prism-cyan: #c8c8c8;
+  --x-prism-mint: #d4d4d4;
+  --x-prism-amber: #e0e0e0;
+  --x-prism-pink: #cccccc;
+  --x-prism-violet: #bcbcbc;
+
+  --prism-cyan: var(--x-prism-cyan);
+  --prism-mint: var(--x-prism-mint);
+  --prism-amber: var(--x-prism-amber);
+  --prism-pink: var(--x-prism-pink);
+  --prism-violet: var(--x-prism-violet);
+  --api-prism-cyan: var(--x-prism-cyan);
+  --api-prism-mint: var(--x-prism-mint);
+  --api-prism-amber: var(--x-prism-amber);
+  --api-prism-pink: var(--x-prism-pink);
+  --api-prism-violet: var(--x-prism-violet);
+  --canvas-prism-cyan: var(--x-prism-cyan);
+  --canvas-prism-mint: var(--x-prism-mint);
+  --canvas-prism-amber: var(--x-prism-amber);
+  --canvas-prism-pink: var(--x-prism-pink);
+  --canvas-prism-violet: var(--x-prism-violet);
+  --api-prism-shadow: var(--x-sh-3);
+  --canvas-prism-shadow: var(--x-sh-3);
+  --prism-shadow: var(--x-sh-3);
+  --api-prism-line: var(--x-line);
+  --canvas-prism-line: var(--x-line);
+  --prism-line: var(--x-line);
+  --prism-line-strong: var(--x-line-strong);
+  --prism-text: var(--x-text);
+  --prism-muted: var(--x-muted);
+  --prism-panel: var(--x-panel);
+  --prism-panel-strong: var(--x-panel-solid);
+}
+
+/* ============================================================
+ * 基础控件层（2026-09-16）
+ * ------------------------------------------------------------
+ * 全站共享的「滚动条 / 原生下拉」兜底样式。
+ * 放本文件的原因：它是所有页面第一个、也是唯一必然加载的 CSS。
+ * 为了能压过各页面里已经写下的 .theme-dark .xxx select 之类规则，
+ * 选择器刻意带 html body 前缀抬高特异性，不依赖加载顺序。
+ *
+ * 附带说明：本文件（design-tokens.css）按定位只该放 token，
+ * 但滚动条与下拉是「全站必须一致」的两类控件，散在各页面里
+ * 正是这次问题的成因，因此集中在此收口。
+ * ============================================================ */
+
+/* ---------- 1. 滚动条（滑块） ---------- */
+/* 反例 —— 原有写法（已删除）：
+ *   * { scrollbar-width: thin !important;
+ *       scrollbar-color: rgba(200,200,200,.72) transparent !important; }
+ * 本意是一把抓统一滚动条，实际效果正相反：
+ * Chromium 只要看到 scrollbar-width / scrollbar-color 任一「标准属性」，
+ * 就切换到标准滚动条渲染路径，并【完全忽略】::-webkit-scrollbar 系列伪元素。
+ * 结果是所有页面退回系统原生滚动条（Windows 下浅灰轨道 + 近白色滑块 +
+ * 两端上下箭头小方块），canvas.css / smart-canvas.css 里 80 多处精细规则
+ * 全部作废 —— 也就是画布下拉面板、资产网格里那根突兀白色粗条的来源。
+ *
+ * 修法：只保留 ::-webkit-scrollbar 一条路径，并且
+ *   1. 去掉 !important，让各容器自身的 ::-webkit-scrollbar 规则
+ *      能正常覆盖（恢复原本的尺寸/分级设计）；
+ *   2. 颜色改用 --x-sb-* token，深浅主题自动切换，不再出现
+ *      「深色底上一根浅灰白条」；
+ *   3. 显式干掉原生箭头按钮。
+ * 注：scrollbar-width:none（隐藏滚动条）不受影响，各处保留不动。
+ */
+html body *::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+  background: transparent;
+}
+
+html body *::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html body *::-webkit-scrollbar-thumb {
+  min-height: 32px;
+  background-color: var(--x-sb-thumb, rgba(15, 23, 42, .22));
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+
+html body *::-webkit-scrollbar-thumb:hover {
+  background-color: var(--x-sb-thumb-hover, rgba(15, 23, 42, .40));
+  background-clip: padding-box;
+}
+
+html body *::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+html body *::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* ---------- 2. 原生下拉 <select> ---------- */
+/* 问题：.engine-select 里写死了 appearance:auto，另外一批 select
+ * （.canvas-agent-settings-select / .prompt-template-library-select /
+ *  .mention-library-select / .canvas-asset-select / .provider-field select …）
+ * 完全没设 appearance，于是闭合态直接吃系统样式：系统方块箭头、
+ * 系统灰底、与深色 UI 不搭的边框。
+ * 展开后的 option 弹层由操作系统绘制，CSS 无法控制，
+ * 只能靠 color-scheme 让它跟随主题（见上方暗色主题块）。
+ *
+ * 处理：闭合态统一去掉系统外观 + 自绘 chevron；箭头用 currentColor
+ * 绘制，深浅主题都自动跟随文字颜色，不写死颜色。
+ * 选择器抬到 (0,2,3) 是为了压过 .theme-dark .provider-field select
+ * 这类 (0,2,1) 的规则，与其背景简写对 background-image 的清除。 */
+html body select:not([multiple]):not([size]) {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 24px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 13px) 50%, calc(100% - 9px) 50%;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+}
+
+html body select:not([multiple]):not([size])::-ms-expand {
+  display: none;
+}

@@ -1,5 +1,5 @@
 {
-  "title": "Minimax-H3 多参版",
+  "title": "MM-H3多参版",
   "fields": [
     {
       "id": "f_2q6mwim",
@@ -67,24 +67,11 @@
       "options": []
     },
     {
-      "id": "f_3mos7lx",
-      "node": "252",
-      "input": "aspect_ratio",
-      "name": "视频比例",
-      "type": "dropdown",
-      "default": "16:9 (Widescreen)",
-      "options": [
-        "16:9",
-        "9:16"
-      ],
-      "random_enabled": false
-    },
-    {
       "id": "f_ehgn9x4",
       "node": "252",
       "input": "megapixels",
       "name": "百万像素",
-      "type": "slider",
+      "type": "number",
       "default": 0.5,
       "options": [],
       "min": 0,
@@ -128,48 +115,17 @@
       "random_enabled": false
     },
     {
-      "id": "f_uc1qzx2",
-      "node": "319",
-      "input": "lora_name",
-      "name": "打斗LoRA 模型",
-      "type": "text",
-      "default": "wushu_spatial_physics_v2_1000_pruned.safetensors",
-      "options": [],
-      "random_enabled": false
-    },
-    {
-      "id": "f_wrypoo7",
-      "node": "319",
-      "input": "strength_model",
-      "name": "模型强度",
-      "type": "slider",
-      "default": 0.3,
-      "options": [],
-      "min": 0,
-      "max": 10,
-      "step": 0.1
-    },
-    {
-      "id": "f_whg034y",
-      "node": "128",
-      "input": "lora_name",
-      "name": "LoRA 模型",
-      "type": "text",
-      "default": "MysticXXX_MMH3-V1.safetensors",
-      "options": [],
-      "random_enabled": false
-    },
-    {
       "id": "f_gpnas0m",
       "node": "128",
       "input": "strength_model",
-      "name": "模型强度",
-      "type": "slider",
+      "name": "文戏lora",
+      "type": "number",
       "default": 0.5000000000000001,
       "options": [],
       "min": 0,
       "max": 10,
-      "step": 0.1
+      "step": 0.1,
+      "random_enabled": false
     },
     {
       "id": "f_zpy46su",
@@ -183,6 +139,28 @@
       "max": 30,
       "step": 1,
       "random_enabled": false
+    },
+    {
+      "id": "f_9lwuo6u",
+      "node": "319",
+      "input": "strength_model",
+      "name": "武戏lora",
+      "type": "number",
+      "default": 0.3,
+      "options": [],
+      "min": 0,
+      "max": 10,
+      "step": 0.1,
+      "random_enabled": false
+    },
+    {
+      "id": "f_12jg2v5",
+      "node": "252",
+      "input": "aspect_ratio",
+      "name": "视频比例",
+      "type": "text",
+      "default": "16:9 (Widescreen)",
+      "options": []
     }
   ],
   "mini_cards": {

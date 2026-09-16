@@ -696,6 +696,7 @@ let settings = {
     rhInstanceType:'',
     rhParams:{},
     rhRandomActive:{},
+    rhNodeOff:{},
     width:1024,
     height:1024,
     enhanceStrength:0.5,
@@ -1045,9 +1046,14 @@ function canvasPortMeta(type, direction){
         tip: reg.labelForNodePort(type, direction) || (direction === 'input' ? '输入' : '输出')
     };
 }
+function isScriptPromptNode(node){
+    return Boolean(node && node.type === 'smart-prompt' && node.kind === 'script');
+}
 function canvasPortDotsHtml(node, direction){
     // 无线模式：隐藏端口圆点（只隐藏，画布数据不动）
     if(canvasObjectsMode()) return '';
+    // 剧本节点不显示输入口（2026-09-16 老王：这个节点的输入不再用）
+    if(direction === 'input' && isScriptPromptNode(node)) return '';
     const meta = canvasPortMeta(node?.type, direction);
     const cls = direction === 'input' ? 'port-in' : 'port-out';
     const dataPort = direction === 'input' ? 'in' : 'out';
@@ -1341,7 +1347,7 @@ function formatCanvasTimeShort(ts){
 }
 function switchToCanvas(id){
     if(!id || id === canvasId) { closeCanvasListDropdown(); return; }
-    const url = `/static/smart-canvas.html?id=${encodeURIComponent(id)}&v=2026.09.04.canvastitle1`;
+    const url = `/static/smart-canvas.html?id=${encodeURIComponent(id)}`;
     if(window.parent && window.parent !== window){
         window.parent.postMessage({type:'open-page', page:'smart-canvas', url}, '*');
         return;
@@ -1495,7 +1501,10 @@ function clearPromptInput(options={}){
     }
 }
 function applyTheme(theme){
-    const dark = theme === 'dark';
+    /* 2026-09-15：画布只保留深色，忽略传入的 theme。
+       原先当事件或 localStorage 给出 light 时会把深色 class 全部摘掉，
+       导致画布跳回亮色；这里在唯一入口锁死，4 个调用点一并生效。 */
+    const dark = true;
     document.documentElement.classList.toggle('theme-dark', dark);
     document.documentElement.classList.toggle('studio-theme-dark', dark);
     document.body?.classList.toggle('theme-dark', dark);
@@ -1943,11 +1952,11 @@ function ensureSmartImageContextMenu(){
         style = document.createElement('style');
         style.id = 'smartImageContextMenuStyle';
         style.textContent = `
-        #smartImageContextMenu{position:fixed;display:none;flex-direction:column;min-width:168px;padding:8px;border-radius:14px;border:1px solid rgba(15,23,42,.12);background:rgba(255,255,255,.96);box-shadow:0 18px 40px rgba(15,23,42,.16);backdrop-filter:blur(14px);z-index:2500}
-        body.studio-theme-dark #smartImageContextMenu{background:rgba(19,23,32,.96);border-color:rgba(148,163,184,.18);box-shadow:0 18px 40px rgba(2,6,23,.42)}
+        #smartImageContextMenu{position:fixed;display:none;flex-direction:column;min-width:168px;padding:8px;border-radius:14px;border:1px solid rgba(0,0,0,.12);background:rgba(255,255,255,.96);box-shadow:0 18px 40px rgba(0,0,0,.16);backdrop-filter:blur(14px);z-index:2500}
+        body.studio-theme-dark #smartImageContextMenu{background:rgba(31,31,31,.96);border-color:rgba(200,200,200,.18);box-shadow:0 18px 40px rgba(0,0,0,.42)}
         #smartImageContextMenu.open{display:flex}
         #smartImageContextMenu button{display:flex;align-items:center;justify-content:flex-start;gap:8px;width:100%;padding:10px 12px;border:0;border-radius:10px;background:transparent;color:var(--text);font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap}
-        #smartImageContextMenu button:hover{background:rgba(148,163,184,.14)}
+        #smartImageContextMenu button:hover{background:rgba(200,200,200,.14)}
         `;
         document.head.appendChild(style);
     }
@@ -5283,14 +5292,171 @@ function nodeRect(node){
     const layout = imageLayout(node.images || [], nodeScale(node), node);
     return {x:node.x || 0, y:node.y || 0, width:layout.width, height:layout.height};
 }
+// ── 视口裁剪 ────────────────────────────────────────────────────────────
+// 节点数超过阈值时，DOM 里只保留「视野内 + 外扩缓冲」的节点。
+// 配合 render() 的 renderKey 复用，平移时只有新进入视野的节点会被真正创建，
+// 已经在视野里的节点原地复用，所以平移中的补渲染几乎免费。
+const CULL_MIN_NODES = 80;      // 低于这个数量完全不裁剪，小画布行为与之前一致
+const CULL_MARGIN_RATIO = 0.6;  // 视口四周各外扩 60%，避免边缘闪进闪出
+let nodeRenderStamp = 0;
+let lastCullKey = '';
+let cullCheckTimer = 0;
+let lastCullCheckAt = 0;
+function cullEnabled(){
+    return nodes.length >= CULL_MIN_NODES && !canvasObjectsMode();
+}
+function viewportWorldRect(){
+    const k = safeScale(viewport?.scale);
+    const w = (shell?.clientWidth || window.innerWidth || 1280) / k;
+    const h = (shell?.clientHeight || window.innerHeight || 800) / k;
+    const x = -Number(viewport?.x || 0) / k;
+    const y = -Number(viewport?.y || 0) / k;
+    const mx = w * CULL_MARGIN_RATIO;
+    const my = h * CULL_MARGIN_RATIO;
+    return {x:x - mx, y:y - my, w:w + mx * 2, h:h + my * 2};
+}
+function nodeCullRect(node){
+    const x = Number(node?.x) || 0;
+    const y = Number(node?.y) || 0;
+    let w = Number(node?.w);
+    let h = Number(node?.h);
+    if(!(w > 0) || !(h > 0)){
+        const r = nodeRect(node);
+        w = r.width;
+        h = r.height;
+    }
+    return {x, y, w, h};
+}
+function visibleNodeList(){
+    if(!cullEnabled()) return nodes;
+    const rect = viewportWorldRect();
+    // 选中/正在拖/正在缩放/正在上传的节点永远保留，避免交互目标在 DOM 里失踪
+    const force = new Set();
+    if(selectedId) force.add(selectedId);
+    (selectedIds || []).forEach(id => force.add(id));
+    if(dragState?.id) force.add(dragState.id);
+    (dragState?.groupIds || []).forEach(id => force.add(id));
+    if(resizeState?.id) force.add(resizeState.id);
+    if(uploadTargetId) force.add(uploadTargetId);
+    return nodes.filter(node => {
+        if(force.has(node.id)) return true;
+        const r = nodeCullRect(node);
+        return r.x + r.w > rect.x && r.x < rect.x + rect.w && r.y + r.h > rect.y && r.y < rect.y + rect.h;
+    });
+}
+function cullSignature(){
+    if(!cullEnabled()) return 'off';
+    return visibleNodeList().map(node => node.id).join(',');
+}
+function scheduleCullCheck(){
+    if(!cullEnabled()) return;
+    if(cullCheckTimer) return;
+    const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    const wait = Math.max(0, 130 - (now - lastCullCheckAt));
+    cullCheckTimer = setTimeout(() => {
+        cullCheckTimer = 0;
+        lastCullCheckAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        scheduleCullRender();
+    }, wait);
+}
+function scheduleCullRender(){
+    if(!cullEnabled()) return;
+    // 正在输入 / 正在拖拽时不打断用户
+    const active = document.activeElement;
+    if(active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+    if(dragState || resizeState || portDragState || thumbDragState) return;
+    if(cullSignature() === lastCullKey) return;   // 可见集合没变，一次 render 都不做
+    render();
+}
+function nodeRenderKey(html){
+    let h = 2166136261;
+    for(let i = 0; i < html.length; i++){
+        h ^= html.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0).toString(36);
+}
+// ── 静止后渐进升清 ──────────────────────────────────────────────────────
+// 平移/缩放时继续用低清缩略图（便宜）；视口停稳后按「屏幕实际像素」把视野内的图换成更高分辨率。
+// 关键：只改 img.src，绝不动 HTML 模板里的 src —— 那个参与 renderKey，
+// 一旦随 viewport.scale 变化，每次缩放都会让所有节点 key 失效，把增量复用全部摧毁。
+const UPGRADE_MAX_EDGE = 2048;      // 后端 clamp 已同步放宽到 2048
+const UPGRADE_MEM_BUDGET_MB = 320;  // 一轮升清的位图内存预算，超了就不再升
+let upgradeRafId = 0;
+function scheduleImageUpgrade(){
+    if(upgradeRafId) return;
+    upgradeRafId = requestAnimationFrame(() => {
+        upgradeRafId = 0;
+        upgradeVisibleImageSources();
+    });
+}
+function upgradeVisibleImageSources(){
+    if(!world) return;
+    const imgs = world.querySelectorAll('.image-node img.node-img[data-original-src]');
+    if(!imgs.length) return;
+    const k = safeScale(viewport?.scale);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const shellW = (shell?.clientWidth || 0) + 200;
+    const shellH = (shell?.clientHeight || 0) + 200;
+    let budget = UPGRADE_MEM_BUDGET_MB;
+    let upgraded = 0;
+    imgs.forEach(imgEl => {
+        const base = Number(imgEl.dataset.baseEdge) || 0;
+        if(!(base > 0)) return;
+        if(imgEl.dataset.upgrading === '1') return;
+        const box = imgEl.getBoundingClientRect();
+        if(box.right < -200 || box.left > shellW || box.bottom < -200 || box.top > shellH) return;
+        const cur = Number(imgEl.dataset.currentEdge) || base;
+        const cssMax = Math.max(parseFloat(imgEl.style.width) || 0, parseFloat(imgEl.style.height) || 0)
+            || (Math.max(box.width, box.height) / (k || 1));
+        if(!(cssMax > 0)) return;
+        let want = Math.ceil(cssMax * k * dpr);
+        if(!(want > cur * 1.15)) return;                      // 提升不明显就不折腾
+        want = Math.max(384, Math.min(UPGRADE_MAX_EDGE, want));
+        if(want <= cur) return;
+        const estMb = (want * want * 4) / 1048576;            // 保守按正方形估算
+        if(estMb > budget) return;
+        const original = imgEl.getAttribute('data-original-src') || '';
+        if(!original) return;
+        budget -= estMb;
+        upgraded += 1;
+        imgEl.dataset.currentEdge = String(want);
+        imgEl.dataset.upgrading = '1';
+        // 先在后台把高清解码好，再替换 src —— 避免先白一下再变清晰
+        const hi = new Image();
+        const applySrc = () => {
+            if(!imgEl.isConnected) return;
+            if(String(imgEl.dataset.currentEdge || '') !== String(want)) return;  // 期间又变了，放弃
+            imgEl.src = hi.src;
+            imgEl.dataset.upgrading = '';
+        };
+        hi.onload = applySrc;
+        hi.onerror = () => {
+            // 高清生成失败就退回低清，绝不能掉到原图上（一张 4K 原图 31.7MB）
+            imgEl.dataset.upgrading = '';
+            imgEl.dataset.currentEdge = String(base);
+            const back = canvasThumbnailUrl(original, base);
+            if(imgEl.getAttribute('src') !== back) imgEl.src = back;
+        };
+        hi.src = canvasThumbnailUrl(original, want);
+    });
+    return upgraded;
+}
 function applyViewport(){
     world.style.transform = `translate3d(${viewport.x}px, ${viewport.y}px, 0) scale(${viewport.scale})`;
     shell.classList.add('viewport-motion');
+    world.classList.add('is-viewport-motion');
     clearTimeout(viewportMotionTimer);
     viewportMotionTimer = setTimeout(() => {
         shell.classList.remove('viewport-motion');
+        // 摘掉合成层提升 + 强制回流，让 Chrome 按最终缩放重新栅格化，文字恢复清晰
+        world.classList.remove('is-viewport-motion');
+        void world.offsetWidth;
+        scheduleCullCheck();
+        scheduleImageUpgrade();
         scheduleMinimapRender();
     }, 140);
+    scheduleCullCheck();
 }
 function scheduleViewportApply(){
     if(viewportApplyFrame) return;
@@ -5660,6 +5826,41 @@ function rhWorkflowJsonFromSources(...sources){
 function rhCurrentKind(sourceSettings=settings){
     return selectedRunningHubRef(sourceSettings)?.kind || 'app';
 }
+// RunningHub 云端工作流的「节点开关」（对齐本地 ComfyUI 的 comfyModes 语义）：
+// settings.rhNodeOff[<kind>:<id>][<nodeId>] === true 表示该节点被关闭。
+// 关闭 = 不渲染它的参数 + 提交时把该节点从 workflow JSON 中裁剪掉（下游引用一并断开）。
+function rhNodeOffBucket(sourceSettings=settings){
+    const source = sourceSettings || settings;
+    const store = (source.rhNodeOff && typeof source.rhNodeOff === 'object') ? source.rhNodeOff : {};
+    source.rhNodeOff = store;
+    const ref = selectedRunningHubRef(source);
+    if(!ref) return {};
+    const bucket = store[runningHubEntryKey(ref.kind, ref.id)];
+    return (bucket && typeof bucket === 'object') ? bucket : {};
+}
+function rhNodeOffIds(sourceSettings=settings){
+    return Object.entries(rhNodeOffBucket(sourceSettings)).filter(([,off]) => off === true).map(([id]) => String(id));
+}
+function rhNodeIsOff(nodeId, sourceSettings=settings){
+    const id = String(nodeId ?? '');
+    if(!id) return false;
+    return rhNodeOffBucket(sourceSettings)[id] === true;
+}
+function rhToggleNodeOff(nodeId){
+    const id = String(nodeId ?? '');
+    if(!id) return;
+    const ref = selectedRunningHubRef(settings);
+    if(!ref) return;
+    const key = runningHubEntryKey(ref.kind, ref.id);
+    settings.rhNodeOff = (settings.rhNodeOff && typeof settings.rhNodeOff === 'object') ? settings.rhNodeOff : {};
+    const bucket = (settings.rhNodeOff[key] && typeof settings.rhNodeOff[key] === 'object') ? settings.rhNodeOff[key] : {};
+    if(bucket[id] === true) delete bucket[id];
+    else bucket[id] = true;
+    settings.rhNodeOff[key] = bucket;
+    persistActiveSmartSettings();
+    renderDynamicParams();
+    scheduleSave();
+}
 function rhActiveFields(sourceSettings=settings){
     const ref = selectedRunningHubRef(sourceSettings);
     let fields = rhEntryFields(ref?.entry);
@@ -5668,6 +5869,10 @@ function rhActiveFields(sourceSettings=settings){
         if(Array.isArray(cached?.fields) && cached.fields.length) fields = cached.fields;
     }
     fields = fields.filter(f => f.enabled === true);
+    if(ref?.kind === 'workflow'){
+        // 被关掉的节点：参数不再出现在节点上，也不参与提交（提交侧见 rhBuildWorkflowRequestExtras）
+        fields = fields.filter(f => !rhNodeIsOff(f.nodeId, sourceSettings));
+    }
     return sortRunningHubFields(fields);
 }
 function sortRunningHubFields(fields){
@@ -6121,9 +6326,8 @@ function renderVideoSpecControl(){
     const resolutionLabelText = videoResolutionLabel(settings);
     const aspectOptions = videoAspectOptions();
     const resolutionOptions = videoResolutionOptions();
-    const quick = [3, 4, 5, 6, 8, 10, 12, 15];
     return `<div class="smart-control video-spec-control" title="视频规格">
-        <button class="smart-pill" type="button"><i data-lucide="sliders-horizontal"></i><span>${escapeHtml(aspectLabel)} · ${escapeHtml(resolutionLabelText)} · ${duration}s</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+        <button class="smart-pill" type="button"><span>${escapeHtml(aspectLabel)} · ${escapeHtml(resolutionLabelText)} · ${duration}s</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
         <div class="smart-popover video-spec-popover">
             <div class="video-spec-section">
                 <div class="video-spec-title">视频比例</div>
@@ -6139,14 +6343,15 @@ function renderVideoSpecControl(){
             </div>
             <div class="video-spec-section">
                 <div class="video-spec-title">视频时长</div>
-                <div class="video-spec-duration-grid">
-                    ${quick.map(n => `<button type="button" class="duration-option ${n === duration ? 'active' : ''}" data-smart-param="videoDuration" data-smart-value="${n}">${n}s</button>`).join('')}
-                </div>
                 <label class="duration-custom video-spec-custom-duration">
                     <span>自定义</span>
                     <input type="number" min="1" max="60" step="1" data-param="videoDuration" value="${duration}">
                     <span>秒</span>
                 </label>
+            </div>
+            <div class="video-spec-section">
+                <div class="video-spec-title">音频</div>
+                ${renderVideoToggleControl('videoGenerateAudio', tr('smart.videoGenerateAudio'))}
             </div>
         </div>
     </div>`;
@@ -6202,11 +6407,20 @@ function syncImageSpecControl(){
     const ratio = settings.ratio || 'square';
     const resolution = settings.resolution || '1k';
     const quality = settings.quality || 'auto';
+    const count = Number(settings.count || 1);
     const pillText = control.querySelector('.smart-pill span');
-    if(pillText) pillText.textContent = `${ratioLabel('')} · ${resolutionLabel('')} · ${imageQualityLabel()}`;
+    if(pillText){
+        // 合并 pill（.combo-spec-count）文本含数量；普通规格 pill 不带
+        if(control.classList.contains('combo-spec-count')){
+            pillText.textContent = `${ratioLabel('')} · ${resolutionLabel('')} · ${imageQualityLabel()} · ${count}张`;
+        } else {
+            pillText.textContent = `${ratioLabel('')} · ${resolutionLabel('')} · ${imageQualityLabel()}`;
+        }
+    }
     control.querySelectorAll('[data-smart-param="ratio"]').forEach(btn => btn.classList.toggle('active', btn.dataset.smartValue === ratio));
     control.querySelectorAll('[data-smart-param="resolution"]').forEach(btn => btn.classList.toggle('active', btn.dataset.smartValue === resolution));
     control.querySelectorAll('[data-smart-param="quality"]').forEach(btn => btn.classList.toggle('active', btn.dataset.smartValue === quality));
+    control.querySelectorAll('[data-smart-param="count"]').forEach(btn => btn.classList.toggle('active', Number(btn.dataset.smartValue) === count));
 }
 function setImageSpecSetting(key, value){
     const prevRatio = settings.ratio;
@@ -6215,7 +6429,12 @@ function setImageSpecSetting(key, value){
     // 自定义输入行只在 ratio/resolution 切到/切离 custom 时才需要重建布局
     const needRerender = (key === 'ratio' && (value === 'custom' || prevRatio === 'custom'))
         || (key === 'resolution' && (value === 'custom' || prevResolution === 'custom'));
-    if(needRerender) renderDynamicParams();
+    if(needRerender){
+        renderDynamicParams();
+        // 重建后弹层会被一并关掉；重新钉住，让用户直接看到刚出现的自定义输入行
+        const ctrl = dynamicParams?.querySelector('.image-spec-control');
+        if(ctrl) ctrl.classList.add('pinned');
+    }
     else syncImageSpecControl();
 }
 function renderVideoToggleControl(key, label){
@@ -6243,7 +6462,7 @@ function renderVideoReferenceModeControl(){
         first_last:'首尾帧'
     };
     return `<div class="smart-control video-reference-mode-control">
-        <button class="smart-pill" type="button"><i data-lucide="film"></i><span>${escapeHtml(labels[value] || labels.mixed)}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+        <button class="smart-pill" type="button"><span>${escapeHtml(labels[value] || labels.mixed)}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
         <div class="smart-popover compact-popover">
             <div class="smart-popover-title">参考模式</div>
             <div class="model-list">
@@ -6321,7 +6540,8 @@ function rhOfficialModelForRun(model, refs){
 function shouldUseRhOfficialProxy(payload){
     const model = rhOfficialNormalizeModel(payload?.model);
     if(model === 'blender-previz' || payload?.provider_id === 'blender') return true;
-    return model.startsWith('rhart-image-g-2/') || model.startsWith('rhart-image-g-2/official/');
+    return model.startsWith('rhart-image-g-2/') || model.startsWith('rhart-image-g-2/official/')
+        || model.startsWith('rhart-image-g-2.5/') || model.startsWith('rhart-image-g-2.5/official/');
 }
 function rhOfficialResolutionForRun(sourceSettings=settings){
     const value = String(sourceSettings?.resolution || '1k').trim().toLowerCase();
@@ -6448,6 +6668,12 @@ function renderDynamicParams(){
     settings.engine = availableEngines.includes(settings.engine) ? settings.engine : (availableEngines[0] || 'api');
     composer.classList.toggle('comfy-layout', settings.engine === 'comfy');
     composer.classList.toggle('blender-layout', settings.engine === 'blender');
+    // API 类引擎（api/volcengine/modelscope/runninghub）图片模式：参数选择按钮合并为单排
+    composer.classList.toggle('api-single-row', isApiLikeEngine(settings.engine) && settings.apiKind !== 'video');
+    // API 类引擎视频模式：同样的紧凑单排布局
+    composer.classList.toggle('api-video-row', isApiLikeEngine(settings.engine) && settings.apiKind === 'video');
+    // RH-API 工作流模式（runninghub）：与图片模式同款紧凑单排 chip 布局（2026-09-15 统一）
+    composer.classList.toggle('rh-single-row', settings.engine === 'runninghub');
     // —— 3D预演：只保留视频比例（控制 Blender 渲染分辨率），上移到引擎一排 ——
     if(settings.engine === 'blender'){
         const ratios = [
@@ -6456,29 +6682,70 @@ function renderDynamicParams(){
             ['ultrawide','21:9 超宽'], ['ultratall','9:21 超高']
         ];
         const cur = ratios.some(r => r[0] === settings.ratio) ? settings.ratio : 'wide';
+        // 镜头语言 30 条（值=名称原文，与 assets/blender/previz/camera_language.py 词表一致）
+        const lensOptions = [
+            ['慢镜头感','拉长情绪与细节，适合回忆、压抑、浪漫。'],
+            ['推进 / 慢推','靠近主体，强调“事件正在发生”、心理变化或重要细节。'],
+            ['摇镜','固定机位左右转动，交代环境、跟随视线或揭示信息。'],
+            ['背景虚化','把注意力锁定到人物，获得电影感与情绪隔离感。'],
+            ['低机位','从下往上拍，人物更强势、宏大、有主角感。'],
+            ['高机位','从上往下拍，人物更脆弱、孤立，或用于交代空间。'],
+            ['浅景深','前后景虚实分明，适合情绪特写、产品与人物突出。'],
+            ['中景跟拍','与人物同速移动，最自然地表现行走、生活流和行动。'],
+            ['穿梭镜头','镜头穿过人群、物体或场景，增强沉浸和空间纵深。'],
+            ['超现实镜头','用不符合现实物理的尺度或运动制造梦境、失序感。'],
+            ['希区柯克变焦','推进与反向变焦同时发生，主体大小近似不变、背景变形；适合惊觉与恐惧。'],
+            ['转移焦点 / 拉焦','视频标作“变焦点”；焦点从前景切到人物或背景，用于引导观看重点。'],
+            ['蒙太奇','以多镜头并置压缩时间、传递情绪或展示变化。'],
+            ['慢速拉出','从主体退出并露出环境，适合结尾、孤独感、世界观揭示。'],
+            ['冲击变焦','突然快速变焦到主体，突出发现、危机、强烈反应。'],
+            ['上摇镜头','固定机位由下向上转动，揭示人物、建筑高度或目标。'],
+            ['下摇镜头','由上向下转动，揭示落点、细节或压迫性环境。'],
+            ['水平摇镜','横向扫过场景；比横移更像“转头看”，适合信息揭示。'],
+            ['横移','摄影机横向移动，产生明显前后景视差；适合展示空间层次。'],
+            ['渐进变速横移','横移从慢到快或从快到慢，用于节奏升级和转场。'],
+            ['吊臂上升','镜头升高，人物被置入更大的空间，适合开阔、释然、史诗感。'],
+            ['吊臂下降','从高处落向人物，强化落点、压迫或情绪收束。'],
+            ['正反打','对话双方交替拍摄，保证视线关系和戏剧节奏。'],
+            ['鱼眼镜头','超广角畸变，画面夸张、陌生、带街头或梦幻感。'],
+            ['第一人称行走','用主观视角前行，代入感最强，适合探索、惊悚与体验内容。'],
+            ['遮挡物揭示','先被前景挡住，再移开露出主体；天然形成“发现感”。'],
+            ['穿飞镜头','镜头从门、窗、缝隙或物体间飞入/穿出，适合空间转场。'],
+            ['前景遮挡转场','让人物、柱子、车等遮满画面后切镜，衔接自然且不突兀。'],
+            ['缝隙窥视推进','从栏杆、门缝、前景间慢推，制造观察、秘密或窥探感。'],
+            ['180° 环绕','绕主体半圈，展示环境与人物关系，适合人物出场、情绪高点。']
+        ];
         // 隐藏 图片/视频 切换按钮
         const toggle = document.getElementById('apiKindToggle');
         if(toggle) toggle.style.display = 'none';
         // Blender 模式：头部固定一行（引擎/视频比例/本地资产不换行）
         const headEl = document.querySelector('.composer-head');
         if(headEl) headEl.style.flexWrap = 'nowrap';
-        // 清理所有残留的比例/资产/LLM 控件（防累积）
-        document.querySelectorAll('.blender-ratio-item, .blender-asset-item, .blender-engine-label, .previz-llm-row').forEach(el => el.remove());
+        // 清理所有残留的比例/资产/镜头语言/LLM 控件（防累积）
+        document.querySelectorAll('.blender-ratio-item, .blender-asset-item, .blender-lens-item, .blender-engine-label, .previz-llm-row').forEach(el => el.remove());
         // 3D预演不需要风格按钮：清空风格槽（非 blender 路径会在 renderDynamicParams 末尾重建）
         if(composerStyleModeSlot) composerStyleModeSlot.innerHTML = '';
-        // 视频比例 + 本地资产 + LLM 渲染到 composer 头部（与生成按钮同一排）
+        // 视频比例 + 本地资产 + 镜头语言 + LLM 渲染到 composer 头部（与生成按钮同一排）
         const headLeft = document.querySelector('.composer-head-left');
         if(headLeft){
             headLeft.insertAdjacentHTML('beforeend', `
                 <div class="param-item param-ratio blender-ratio-item">
-                    <span class="param-label blender-ratio-label">视频比例</span>
-                    <select id="blenderRatioSelect" class="engine-select">
+                    <select id="blenderRatioSelect" class="engine-select" title="视频比例">
                         ${ratios.map(r => `<option value="${r[0]}" ${r[0]===cur?'selected':''}>${r[1]}</option>`).join('')}
                     </select>
                 </div>
                 <div class="param-item param-asset blender-asset-item">
-                    <span class="param-label">本地资产</span>
-                    <button type="button" id="blenderAssetPick" class="blender-asset-pick" title="${escapeHtml(settings.assetPath || '')}">${settings.assetPath ? String(settings.assetPath).replace(/[\\/]+$/,'').split(/[\\/]/).pop() : '选择文件夹'}</button>
+                    <button type="button" id="blenderAssetPick" class="blender-asset-pick" title="${escapeHtml(settings.assetPath || '本地资产路径')}">${settings.assetPath ? String(settings.assetPath).replace(/[\\/]+$/,'').split(/[\\/]/).pop() : '本地资产路径'}</button>
+                </div>
+                <div class="param-item param-lens blender-lens-item">
+                    <div class="smart-control previz-lens-control" id="previzLensControl">
+                        <button class="smart-pill previz-lens-pill" type="button" title="${(() => { try { const last = localStorage.getItem('previz_last_lens'); if(last){ const hit = lensOptions.find(l => l[0] === last); return '镜头语言：' + last + (hit ? '（' + hit[1] + '）' : '') + '。点击打开列表重新选择'; } } catch(_){} return '镜头语言：点击打开列表，选中即插入提示词框光标处'; })()}"><i data-lucide="clapperboard"></i><span>镜头语言</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+                        <div class="smart-popover previz-lens-popover">
+                            <div class="previz-lens-list">
+                                ${lensOptions.map(l => `<button type="button" class="previz-lens-opt" data-lens-text="${escapeAttr(l[0])}" title="${escapeAttr(l[1])}"><span class="previz-lens-opt-name">${escapeHtml(l[0])}</span></button>`).join('')}
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 ${renderPrevizLlmControl()}`);
         }
@@ -6508,13 +6775,63 @@ function renderDynamicParams(){
         if(sel){
             sel.onchange = e => { settings.ratio = e.target.value; scheduleSave(); };
         }
+        const lensCtrl = document.getElementById('previzLensControl');
+        if(lensCtrl){
+            const pill = lensCtrl.querySelector('.previz-lens-pill');
+            if(pill) pill.onclick = event => {
+                event.preventDefault();
+                event.stopPropagation();
+                const wasPinned = lensCtrl.classList.contains('pinned');
+                closeAllSmartPopovers();
+                if(wasPinned && lensCtrl.contains(document.activeElement)) document.activeElement.blur();
+                if(!wasPinned){
+                    lensCtrl.classList.add('pinned');
+                    const pop = lensCtrl.querySelector('.previz-lens-popover');
+                    if(pop){
+                        const need = pop.scrollHeight + 24;
+                        const rect = lensCtrl.getBoundingClientRect();
+                        lensCtrl.classList.toggle('previz-lens-pop-above', rect.bottom + need > window.innerHeight && rect.top > need);
+                    }
+                }
+            };
+            lensCtrl.querySelectorAll('.previz-lens-opt').forEach(opt => {
+                opt.addEventListener('click', e => {
+                    e.preventDefault(); e.stopPropagation();
+                    const text = opt.dataset.lensText || '';
+                    if(!text) return;
+                    if(promptInput){
+                        promptInput.focus();
+                        const sel = window.getSelection();
+                        const range = sel && sel.rangeCount && promptInput.contains(sel.anchorNode) ? sel.getRangeAt(0) : null;
+                        const node = document.createTextNode(text + ' ');
+                        if(range){
+                            range.deleteContents();
+                            range.insertNode(node);
+                            range.collapse(false);
+                        } else {
+                            promptInput.insertAdjacentHTML('beforeend', escapeHtml(text) + ' ');
+                        }
+                        promptInput.dispatchEvent(new Event('input', {bubbles:true}));
+                    }
+                    // 记录最近一次选中的镜头语言，用于按钮 hover 显示作用说明
+                    try{ localStorage.setItem('previz_last_lens', text); }catch(_){}
+                    if(pill) pill.title = `镜头语言：${text}（${opt.title || '已插入提示词框'}）。点击打开列表重新选择`;
+                    closeAllSmartPopovers();
+                });
+            });
+        }
         bindPrevizLlmControl();
         const rb = document.getElementById('runBtn');
         if(rb){
             rb.querySelector('span').textContent = '生成预演';
-            // 按钮靠右（与其他节点一致），宽度紧凑（红框区域≈100px）
+            // 按钮往左移：从 run 区（右侧 .composer-actions）挪到 head 区，与比例/资产/镜头语言/LLM 同一排
             const actionsRow = document.querySelector('.composer-actions');
-            if(actionsRow) actionsRow.style.gridColumn = '';
+            if(actionsRow) actionsRow.style.display = 'none';
+            const headLeft2 = document.querySelector('.composer-head-left');
+            // 无条件 appendChild：已存在的子节点会先被移除再追加到末尾，
+            // 保证 runBtn 永远排在比例/资产/镜头/LLM 之后（最右），
+            // 否则重渲染（点 LLM 等）时 runBtn 残留在前面、新控件追加到末尾导致按钮跑到最左
+            if(headLeft2) headLeft2.appendChild(rb);
             rb.style.width = '100px';
             rb.style.minWidth = '0';
             rb.style.height = '26px';
@@ -6522,6 +6839,7 @@ function renderDynamicParams(){
             rb.style.justifyContent = 'center';
             rb.style.gap = '6px';
             rb.style.borderRadius = '8px';
+            rb.style.marginLeft = 'auto';
         }
         // 3D预演 模式隐藏级联运行按钮（不适用）
         const cascadeBtn = document.getElementById('cascadeRunBtn');
@@ -6534,7 +6852,7 @@ function renderDynamicParams(){
     if(toggle2) toggle2.style.display = '';
     const headEl2 = document.querySelector('.composer-head');
     if(headEl2) headEl2.style.flexWrap = '';
-    document.querySelectorAll('.blender-ratio-item, .blender-asset-item, .blender-engine-label, .previz-llm-row').forEach(el => el.remove());
+    document.querySelectorAll('.blender-ratio-item, .blender-asset-item, .blender-lens-item, .blender-engine-label, .previz-llm-row').forEach(el => el.remove());
     const rb2 = document.getElementById('runBtn');
     if(rb2){
         rb2.querySelector('span').textContent = '运行';
@@ -6545,8 +6863,14 @@ function renderDynamicParams(){
         rb2.style.justifyContent = '';
         rb2.style.gap = '';
         rb2.style.borderRadius = '';
+        rb2.style.marginLeft = '';
+        // 把按钮放回右侧 run 区（非 3D预演 时保持原样）
         const actionsRow2 = document.querySelector('.composer-actions');
-        if(actionsRow2) actionsRow2.style.gridColumn = '';
+        if(actionsRow2){
+            actionsRow2.style.display = '';
+            actionsRow2.style.gridColumn = '';
+            if(rb2.parentElement !== actionsRow2) actionsRow2.appendChild(rb2);
+        }
     }
     settings.apiKind = settings.apiKind === 'video' ? 'video' : 'image';
     clearVolcengineSelectionOutsideVolcengine(settings);
@@ -6568,6 +6892,14 @@ function renderDynamicParams(){
     bindDynamicParams();
     updatePromptPlaceholder();
     persistActiveSmartSettings();
+    // 运行按钮图标：2026-09-16 老王「统一成那个箭头+圆圈」——
+    // 所有引擎/布局一律 arrow-up（原来只有 API/RH 单排用 arrow-up，其余用 sparkles，
+    // 同一个按钮在不同引擎下两种图标）。圆形的形状由各布局的 CSS 决定（comfy 30px / API·RH 26px）。
+    const runIcon = document.querySelector('#runBtn [data-lucide]');
+    if(runIcon && runIcon.getAttribute('data-lucide') !== 'arrow-up'){
+        runIcon.setAttribute('data-lucide', 'arrow-up');
+        if(window.lucide) lucide.createIcons();
+    }
     if(window.lucide) lucide.createIcons();
 }
 function renderApiParams(){
@@ -6577,12 +6909,12 @@ function renderApiParams(){
     if(!settings.model || !models.includes(settings.model)) settings.model = models[0] || '';
     normalizeApiSizeSettings('');
     const outpaintLocked = settings.outpaintResolutionLocked === true;
+    // 2026-09-16：「自定义比例 / 自定义尺寸」的输入框已并入规格弹层（.image-spec-popover）内部，
+    // 不再作为独立一格塞进参数排——单排布局（api-single-row，flex-wrap:nowrap）下它会撑开
+    // 参数列并把运行按钮挤出可视区。设置项本身没变，只是换了落点。
     dynamicParams.innerHTML = `
-        ${renderModelControl(models)}
-        ${outpaintLocked ? `${renderResolutionControl('')}${renderQualityControl()}` : renderImageSpecControl()}
-        ${outpaintLocked ? '' : renderInlineCustomSizeFields('')}
-        ${outpaintLocked ? '' : renderInlineCustomRatioFields('')}
-        ${renderCountVisualControl()}
+        ${renderEngineModelCombo(models)}
+        ${outpaintLocked ? `${renderResolutionControl('')}${renderQualityControl()}` : renderComboSpecCount()}
     `;
 }
 function normalizeHiddenVideoToggles(){
@@ -6593,16 +6925,52 @@ function normalizeHiddenVideoToggles(){
     settings.videoUseFrameRoles = videoReferenceModeValue(settings) === 'first_last';
     settings.videoTrustedAsset = videoReferenceModeValue(settings) === 'video_only';
 }
+// API 视频单排：平台+模型合并下拉（与图片版 renderEngineModelCombo 同款）
+function renderVideoEngineModelCombo(models){
+  // 平台组 = 有视频模型的配置平台（含 volcengine 豆包，点它切到火山引擎）+ 无配置平台时的兜底
+  const volc = volcengineProvider();
+  const volcHasVid = volc && (volc.video_models || []).length > 0;
+  const providers = videoApiProviders();
+  const platforms = providers.map(p => ({ id: p.id, name: p.name || p.id, engine: 'api' }));
+  if(volcHasVid) platforms.push({ id: 'volcengine', name: volc.name || '火山引擎', engine: 'volcengine' });
+  const currentEngine = settings.engine || 'api';
+  let currentPlatformId = currentEngine === 'volcengine' ? 'volcengine' : (settings.videoProvider || '');
+  // 无配置视频平台时默认落到豆包（volcengine），保证 pill 与模型列表有真实内容
+  if(!currentPlatformId && !providers.length && volcHasVid) currentPlatformId = 'volcengine';
+  const currentPlatform = platforms.find(p => p.id === currentPlatformId);
+  const providerLabel = currentPlatform?.name || tr('smart.platform');
+  const modelLabel = settings.videoModel ? providerModelDisplayName(settings.videoProvider, settings.videoModel) : '';
+  return `<div class="smart-control engine-model-combo" title="平台与模型">
+    <button class="smart-pill" type="button"><span class="sub">${escapeHtml(providerLabel)}${modelLabel ? ` · ${escapeHtml(modelLabel)}` : ''}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+    <div class="smart-popover engine-model-popover">
+      <div class="smart-popover-title">平台</div>
+      <div class="model-list">
+        ${platforms.map(p => `<button type="button" class="direct-option ${p.id === currentPlatformId ? 'active' : ''}" ${p.engine === 'volcengine' ? `data-combo-engine="volcengine"` : `data-smart-param="videoProvider" data-smart-value="${escapeHtml(p.id)}"`}><span>${escapeHtml(p.name)}</span></button>`).join('') || `<div class="muted-note">${escapeHtml(tr('smart.noVideoPlatform'))}</div>`}
+      </div>
+      <div class="smart-popover-title" style="margin-top:8px">模型</div>
+      <div class="model-list">
+        ${models.map(m => `<button type="button" class="direct-option ${m === settings.videoModel ? 'active' : ''}" data-smart-param="videoModel" data-smart-value="${escapeHtml(m)}"><span>${escapeHtml(providerModelDisplayName(settings.videoProvider, m))}</span></button>`).join('') || `<div class="muted-note">${escapeHtml(tr('smart.noVideoModel'))}</div>`}
+      </div>
+    </div>
+  </div>`;
+}
 function renderApiVideoParams(){
     normalizeHiddenVideoToggles();
     const providers = videoApiProviders();
-    if(!settings.videoProvider || !providers.some(p => p.id === settings.videoProvider)) settings.videoProvider = providers[0]?.id || '';
+    if(!settings.videoProvider || !providers.some(p => p.id === settings.videoProvider)){
+        // 无配置视频平台时兜底到豆包（volcengine 有视频模型即视为可用）
+        const volc = volcengineProvider();
+        if(!providers.length && volc && (volc.video_models || []).length){
+            settings.videoProvider = 'volcengine';
+        } else {
+            settings.videoProvider = providers[0]?.id || '';
+        }
+    }
     const models = filterJimengVideoModels(providerVideoModels(settings.videoProvider));
     if(!settings.videoModel || !models.includes(settings.videoModel)) settings.videoModel = models[0] || '';
     dynamicParams.innerHTML = `
-        ${renderVideoModelControl(models)}
+        ${renderVideoEngineModelCombo(models)}
         ${renderVideoSpecControl()}
-        ${renderVideoToggleControl('videoGenerateAudio', tr('smart.videoGenerateAudio'))}
     `;
 }
 function renderVolcengineParams(){
@@ -6613,12 +6981,10 @@ function renderVolcengineParams(){
     if(!settings.model || !models.includes(settings.model)) settings.model = models[0] || '';
     normalizeApiSizeSettings('');
     const outpaintLocked = settings.outpaintResolutionLocked === true;
+    // 2026-09-16：同上（API 图片参数），自定义比例/尺寸输入框移入规格弹层内部。
     dynamicParams.innerHTML = `
-        ${renderModelControl(models)}
-        ${outpaintLocked ? `${renderResolutionControl('')}${renderQualityControl()}` : renderImageSpecControl()}
-        ${outpaintLocked ? '' : renderInlineCustomSizeFields('')}
-        ${outpaintLocked ? '' : renderInlineCustomRatioFields('')}
-        ${renderCountVisualControl()}
+        ${renderEngineModelCombo(models)}
+        ${outpaintLocked ? `${renderResolutionControl('')}${renderQualityControl()}` : renderComboSpecCount()}
     `;
 }
 function renderVolcengineVideoParams(){
@@ -6629,9 +6995,8 @@ function renderVolcengineVideoParams(){
     settings.videoProvider = 'volcengine';
     if(!settings.videoModel || !models.includes(settings.videoModel)) settings.videoModel = models[0] || '';
     dynamicParams.innerHTML = `
-        ${renderVideoModelControl(models)}
+        ${renderVideoEngineModelCombo(models)}
         ${renderVideoSpecControl()}
-        ${renderVideoToggleControl('videoGenerateAudio', tr('smart.videoGenerateAudio'))}
     `;
 }
 function renderRunningHubParams(){
@@ -6643,19 +7008,359 @@ function renderRunningHubParams(){
     settings.rhPayment = settings.rhPayment === 'wallet' ? 'wallet' : 'free';
     settings.rhParams = settings.rhParams || {};
     settings.rhRandomActive = settings.rhRandomActive || {};
+    settings.rhNodeOff = (settings.rhNodeOff && typeof settings.rhNodeOff === 'object') ? settings.rhNodeOff : {};
+    // 节点开关要列节点清单，需要 workflow JSON。缓存里没有就先异步取一次，到手后重绘
+    // （与本地 ComfyUI 的 ensureComfyWorkflow().then(renderDynamicParams) 同一套路）。
+    if(ref?.kind === 'workflow' && !Object.keys(rhWorkflowJsonForRef(ref)).length){
+        ensureRunningHubWorkflow(ref.id)
+            .then(() => { if(settings.engine === 'runninghub') renderDynamicParams(); })
+            .catch(() => {});
+    }
+    // 2026-09-15 用户要求：删掉底部提示文字说明（原「请先在 API 设置里…」）。
     if(!ref){
-        dynamicParams.innerHTML = `<div class="muted-note">${escapeHtml(tr('smart.rhNeedConfig'))}</div>`;
+        dynamicParams.innerHTML = `<div class="cfn-controls">${renderRhWorkflowControl(ref)}${renderRhResourceControl()}</div>`;
         return;
     }
-    const mediaFields = fields.filter(f => ['image','video','audio'].includes(rhFieldRole(f))).length;
-    const promptFields = fields.filter(f => rhFieldRole(f) === 'prompt').length;
+    // 2026-09-15 用户要求：底部按钮两两合并为两个入口（不是合成一个）。
+    // 入口① = 引擎下拉「RH-API·工作流」+ 工作流选择器；入口② = 「RunningHub币」+「24G 显存」。
+    // 选项仍沿用 data-smart-param/data-smart-value，取值与生成逻辑完全不变。
+    // 2026-09-16：与本地 ComfyUI 规格对齐 —— 新增「节点开关」+ 素材输入行 + 「工作流参数」标题；
+    // 被关掉的节点其参数由 rhActiveFields 过滤掉，不再渲染。
+    // 2026-09-16：三个控件包进 .cfn-controls —— 与 ComfyUI 模式同构。
+    // .param-row / .dynamic-params 在 rh-single-row 下 display:contents 透明化，于是
+    // .cfn-controls 落在 "head params run" 那一行的 params 列（与运行键同排），
+    // .cfn-details 落在新增的 "details details details" 整行 —— 参数块不再把运行键顶下去。
+    // 2026-09-16 老王：与本地 ComfyUI 对齐 —— 工作流参数也收进「工作流参数」二级菜单，
+    // 详情区只留素材输入行（原来参数常驻在 .rh-details 里，占掉整块宽度）。
     dynamicParams.innerHTML = `
-        ${renderRhConfigControl(ref)}
-        ${renderRhPaymentControl()}
-        ${renderRhMachineControl()}
-        <div class="rh-mini-summary">${escapeHtml(mediaFields)} 素材 · ${escapeHtml(promptFields)} 提示词</div>
-        ${fields.length ? fields.filter(f => !['image','video','audio','prompt'].includes(rhFieldRole(f))).map(renderRhSettingField).join('') : `<div class="muted-note">${escapeHtml(tr('smart.rhNeedFields'))}</div>`}
+        <div class="cfn-controls">
+            ${renderRhWorkflowControl(ref)}
+            ${renderRhNodesControl(ref)}
+            ${renderRhParamsControl(fields)}
+            ${renderRhResourceControl()}
+        </div>
+        ${renderRhDetailsHtml()}
     `;
+}
+/* 入口一：工作流（原「引擎下拉 RH-API·工作流」+「工作流选择器」两个同功能按钮合并）
+   弹层内 = 工作流列表 + 生成引擎切换（引擎下拉已隐藏，切走其他引擎的入口在此） */
+function renderRhWorkflowControl(ref){
+    const apps = runningHubEntries('app');
+    const workflows = runningHubEntries('workflow');
+    const selected = ref ? runningHubEntryKey(ref.kind, ref.id) : '';
+    const groupHtml = (kind, entries, label) => entries.length ? `
+        <div class="model-list-label rh-list-label">${escapeHtml(label)}<span class="count">${entries.length}</span></div>
+        ${entries.map(entry => {
+            const id = runningHubEntryId(entry, kind);
+            const key = runningHubEntryKey(kind, id);
+            return `<button type="button" class="direct-option rh-entry-option ${key === selected ? 'active' : ''}" data-smart-param="rhConfigKey" data-smart-value="${escapeHtml(key)}"><i data-lucide="${kind === 'workflow' ? 'workflow' : 'sparkles'}"></i><span>${escapeHtml(runningHubEntryLabel(entry, kind))}</span></button>`;
+        }).join('')}
+    ` : '';
+    const engineLabels = {};
+    if(engineSelect) [...engineSelect.options].forEach(o => { engineLabels[o.value] = o.textContent.trim(); });
+    const engineRow = Object.entries(engineLabels).map(([key, label]) =>
+        `<button type="button" class="direct-option ${key === settings.engine ? 'active' : ''}" data-combo-engine="${escapeHtml(key)}"><span>${escapeHtml(label)}</span></button>`).join('');
+    const caption = ref ? runningHubEntryLabel(ref.entry, ref.kind) : tr('smart.rhConfig');
+    return `<div class="smart-control rh-merge-control rh-workflow-control">
+        <button class="smart-pill" type="button" title="${escapeHtml(caption)}"><span class="sub">${escapeHtml(caption)}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+        <div class="smart-popover compact-popover rh-picker-popover rh-unified-popover">
+            <div class="smart-popover-title">${escapeHtml(tr('smart.rhConfig'))}</div>
+            <div class="model-list rh-config-list">
+                ${groupHtml('app', apps, 'AI 应用')}${groupHtml('workflow', workflows, '工作流')}
+            </div>
+            ${engineRow ? `<div class="model-list-label rh-list-label rh-inline-group-label">生成引擎</div><div class="model-list rh-inline-group">${engineRow}</div>` : ''}
+        </div>
+    </div>`;
+}
+
+/* 节点开关：与本地 ComfyUI 的「已暴露节点」同规格（cfm-* 样式复用）。
+   列出云端工作流里的全部节点，逐个可开/关；关 = 该节点参数隐藏 + 提交时从 workflow JSON 裁剪。 */
+function rhWorkflowJsonForRef(ref){
+    if(!ref) return {};
+    return rhWorkflowJsonFromSources(
+        runningHubWorkflowCache[ref.id]?.workflowJson,
+        ref.entry?.workflowJson,
+        ref.entry?.raw?.workflowJson,
+        ref.entry?.raw?.prompt
+    );
+}
+function rhWorkflowNodeList(ref){
+    if(!ref || ref.kind !== 'workflow') return [];
+    const workflow = rhWorkflowJsonForRef(ref);
+    const ids = Object.keys(workflow || {}).filter(id => workflow[id] && typeof workflow[id] === 'object');
+    if(!ids.length) return [];
+    ids.sort((a, b) => {
+        const an = Number(a), bn = Number(b);
+        if(Number.isFinite(an) && Number.isFinite(bn) && an !== bn) return an - bn;
+        return String(a).localeCompare(String(b), undefined, {numeric:true});
+    });
+    const names = ids.map(id => String(workflow[id]?._meta?.title || workflow[id]?.class_type || id).trim() || id);
+    const total = {};
+    names.forEach(name => { total[name] = (total[name] || 0) + 1; });
+    const seen = {};
+    return ids.map((id, index) => {
+        const name = names[index];
+        let label = name;
+        if(total[name] > 1){
+            seen[name] = (seen[name] || 0) + 1;
+            label = `${name} #${seen[name]}`;
+        }
+        return {id, label, cls:String(workflow[id]?.class_type || '')};
+    });
+}
+/* 图片槽位自动识别（2026-09-16 老王要「全自动」：「能自动裁剪就不用配置那么多」）。
+   直接从 workflow JSON 推出「参考图 / 输入图」的有序槽位，不再依赖 API 设置里的字段暴露
+   与手填 imageOrder —— 以后新工作流的图片部分零配置。
+   顺序优先级：
+     ① 下游节点的有序列命名连线（MM-H3 的 ref_images.ref_image_0..5）—— 这是工作流语义顺序；
+     ② 兜底：按图片节点 id 数值升序。
+   返回 [{nodeId, fieldName, label}]（按槽位顺序）；识别不到返回 []（调用方走原逻辑兜底）。 */
+function rhIsImageLoaderClass(cls){
+    return /loadimage|imageload|load[\s_-]*image|image[\s_-]*load/i.test(String(cls || ''));
+}
+function rhWorkflowImageFieldName(node){
+    const inputs = node?.inputs;
+    if(!inputs || typeof inputs !== 'object') return '';
+    const known = ['image','image_path','filename','file','img'];
+    for(const key of known){
+        if(Object.prototype.hasOwnProperty.call(inputs, key) && !rhIsWorkflowLinkValue(inputs[key])) return key;
+    }
+    for(const key of known){
+        if(Object.prototype.hasOwnProperty.call(inputs, key)) return key;
+    }
+    return '';
+}
+function rhWorkflowImageSlots(ref){
+    if(!ref || ref.kind !== 'workflow') return [];
+    const workflow = rhWorkflowJsonForRef(ref);
+    const ids = Object.keys(workflow || {}).filter(id => workflow[id] && typeof workflow[id] === 'object');
+    if(!ids.length) return [];
+    const imageIds = ids.filter(id => rhIsImageLoaderClass(workflow[id]?.class_type));
+    if(!imageIds.length) return [];
+    const imageIdSet = new Set(imageIds.map(String));
+    // ① 有序列命名连线：<prefix><N> → 图片节点，按 N 升序即槽位语义顺序
+    const groups = new Map();
+    ids.forEach(id => {
+        const inputs = workflow[id]?.inputs;
+        if(!inputs || typeof inputs !== 'object') return;
+        Object.entries(inputs).forEach(([key, value]) => {
+            if(!rhIsWorkflowLinkValue(value) || !imageIdSet.has(String(value[0]))) return;
+            const m = /^(.*?)(\d+)$/.exec(String(key));
+            if(!m) return;
+            const order = Number(m[2]);
+            if(!Number.isFinite(order)) return;
+            if(!groups.has(m[1])) groups.set(m[1], []);
+            groups.get(m[1]).push({order, nodeId:String(value[0])});
+        });
+    });
+    let ordered = [];
+    const candidates = [...groups.values()].map(items => {
+        const uniq = new Map();
+        items.forEach(it => {
+            const prev = uniq.get(it.nodeId);
+            if(!prev || prev.order > it.order) uniq.set(it.nodeId, it);
+        });
+        return [...uniq.values()].sort((a, b) => a.order - b.order).map(it => it.nodeId);
+    }).filter(list => list.length >= 2);
+    if(candidates.length){
+        candidates.sort((a, b) => b.length - a.length);
+        ordered = candidates[0];
+    }
+    // ② 兜底：按节点 id 数值升序
+    if(!ordered.length){
+        ordered = [...imageIds].sort((a, b) => {
+            const an = Number(a), bn = Number(b);
+            if(Number.isFinite(an) && Number.isFinite(bn) && an !== bn) return an - bn;
+            return String(a).localeCompare(String(b), undefined, {numeric:true});
+        });
+    }
+    const seen = new Set();
+    return ordered.filter(id => {
+        const key = String(id);
+        if(seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    }).map(nodeId => {
+        const node = workflow[nodeId];
+        const title = String(node?._meta?.title || node?.class_type || `#${nodeId}`).trim() || `#${nodeId}`;
+        return {nodeId:String(nodeId), fieldName:rhWorkflowImageFieldName(node) || 'image', label:title};
+    });
+}
+function rhImageSlotOrderMap(sourceSettings=settings){
+    const map = new Map();
+    rhWorkflowImageSlots(selectedRunningHubRef(sourceSettings)).forEach((slot, index) => {
+        if(!map.has(String(slot.nodeId))) map.set(String(slot.nodeId), index);
+    });
+    return map;
+}
+function rhNodesPillText(nodes){
+    const total = (nodes || []).length;
+    const offCount = (nodes || []).filter(node => rhNodeIsOff(node.id)).length;
+    return offCount
+        ? `${tr('smart.comfyExposedNodes')} ${total} · ${tr('smart.comfyOff')} ${offCount}`
+        : `${tr('smart.comfyExposedNodes')} ${total}`;
+}
+function renderRhNodesControl(ref){
+    const nodes = rhWorkflowNodeList(ref);
+    if(!nodes.length) return '';
+    const pillText = rhNodesPillText(nodes);
+    const rows = nodes.map(node => {
+        const off = rhNodeIsOff(node.id);
+        const hint = `${node.label}${node.cls ? ` · ${node.cls}` : ''}`;
+        return `<div class="cfm-row ${off ? 'cfm-row-off' : ''}">
+            <span class="cfm-name" title="${escapeHtml(hint)}">${escapeHtml(node.label)}</span>
+            <button type="button" class="cfm-toggle ${off ? '' : 'on'}" data-rh-node-mode="${escapeHtml(node.id)}" title="${escapeHtml(off ? tr('smart.comfyNodeOff') : tr('smart.comfyNodeOn'))}">${off ? tr('smart.comfyOff') : tr('smart.comfyOn')}</button>
+        </div>`;
+    }).join('');
+    const headTitle = String(ref?.entry?.title || ref?.id || '').slice(0, 24);
+    return `<div class="smart-control comfy-nodes-control rh-nodes-control">
+        <button class="smart-pill" type="button" title="${escapeHtml(pillText)}"><i data-lucide="toggle-left"></i><span class="sub">${escapeHtml(pillText)}</span></button>
+        <div class="smart-popover compact-popover comfy-nodes-popover rh-nodes-popover">
+            <div class="smart-popover-title">${escapeHtml(headTitle)}<span class="count">${nodes.length}</span></div>
+            <div class="cfm-list">${rows}</div>
+        </div>
+    </div>`;
+}
+
+// 参数区（素材行 + 工作流参数菜单）单独成块，关节点时只局部重建这一块，保住节点弹层的展开状态。
+// 2026-09-16 老王：参数已收进「工作流参数」二级菜单（见 renderRhParamsControl），这里只留素材输入行。
+function renderRhDetailsHtml(){
+    return `<div class="cfn-details rh-details">
+        ${renderRhInputsRow()}
+    </div>`;
+}
+// 参与「工作流参数」菜单的字段：排除媒体（图片/视频/音频，值来自画布上游连线）与提示词（走画布顶部原生输入框）。
+function rhParamFields(fields){
+    return (fields || []).filter(f => !['image','video','audio','prompt'].includes(rhFieldRole(f)));
+}
+// 工作流参数二级菜单（与本地 ComfyUI 的 comfy-params-control 同规格）：
+// 弹层内还是同一套参数控件（renderRhSettingField），只是从常驻详情区收进一颗 pill。
+function renderRhParamsControl(fields){
+    const paramFields = rhParamFields(fields);
+    if(!paramFields.length) return '';
+    const title = tr('smart.workflowParams') || '工作流参数';
+    return `<div class="smart-control rh-params-control">
+        <button class="smart-pill" type="button" title="${escapeHtml(title)}"><i data-lucide="sliders-horizontal"></i><span class="sub">${escapeHtml(title)} ${paramFields.length}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+        <div class="smart-popover compact-popover rh-picker-popover rh-param-popover rh-params-popover">
+            <div class="smart-popover-title">${escapeHtml(title)}</div>
+            <div class="cfn-params-body">${paramFields.map(renderRhSettingField).join('')}</div>
+        </div>
+    </div>`;
+}
+// 关节点后原地重建素材行 + 参数菜单（不整体重绘，保住刚打开的节点弹层）。
+function syncRhDetailsAndParams(ref){
+    const details = dynamicParams?.querySelector('.rh-details');
+    if(details){
+        const tpl = document.createElement('template');
+        tpl.innerHTML = renderRhDetailsHtml().trim();
+        const next = tpl.content.firstElementChild;
+        if(next) details.replaceWith(next);
+    }
+    const controls = dynamicParams?.querySelector('.cfn-controls');
+    const currentParams = dynamicParams?.querySelector('.rh-params-control');
+    const tpl2 = document.createElement('template');
+    tpl2.innerHTML = renderRhParamsControl(rhActiveFields()).trim();
+    const nextParams = tpl2.content.firstElementChild;
+    if(currentParams && nextParams) currentParams.replaceWith(nextParams);
+    else if(currentParams && !nextParams) currentParams.remove();
+    else if(!currentParams && nextParams && controls){
+        const resource = controls.querySelector('.rh-resource-control');
+        if(resource) controls.insertBefore(nextParams, resource);
+        else controls.appendChild(nextParams);
+    }
+}
+function syncRhNodesChrome(ref){
+    const control = dynamicParams?.querySelector('.rh-nodes-control');
+    if(!control) return;
+    const nodes = rhWorkflowNodeList(ref);
+    const pillText = rhNodesPillText(nodes);
+    const sub = control.querySelector('.smart-pill .sub');
+    if(sub) sub.textContent = pillText;
+    const pill = control.querySelector('.smart-pill');
+    if(pill) pill.title = pillText;
+    const count = control.querySelector('.smart-popover-title .count');
+    if(count) count.textContent = String(nodes.length);
+}
+// 关节点：只切该行外观 + 局部重建参数区，不整体重绘（整体重绘会把刚打开的弹层关掉）。
+function handleRhNodeModeToggle(btn, event){
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    const nodeId = String(btn?.dataset?.rhNodeMode || '');
+    if(!nodeId) return;
+    const ref = selectedRunningHubRef(settings);
+    if(!ref || ref.kind !== 'workflow') return;
+    const key = runningHubEntryKey(ref.kind, ref.id);
+    settings.rhNodeOff = (settings.rhNodeOff && typeof settings.rhNodeOff === 'object') ? settings.rhNodeOff : {};
+    const bucket = (settings.rhNodeOff[key] && typeof settings.rhNodeOff[key] === 'object') ? settings.rhNodeOff[key] : {};
+    const wasOff = bucket[nodeId] === true;
+    if(wasOff) delete bucket[nodeId];
+    else bucket[nodeId] = true;
+    if(Object.keys(bucket).length) settings.rhNodeOff[key] = bucket;
+    else delete settings.rhNodeOff[key];
+    const nowOff = !wasOff;
+    btn.textContent = nowOff ? tr('smart.comfyOff') : tr('smart.comfyOn');
+    btn.title = nowOff ? tr('smart.comfyNodeOff') : tr('smart.comfyNodeOn');
+    btn.classList.toggle('on', !nowOff);
+    const row = btn.closest('.cfm-row');
+    if(row) row.classList.toggle('cfm-row-off', nowOff);
+    syncRhNodesChrome(ref);
+    // 关节点会改变参与渲染的字段 → 素材行 + 「工作流参数」菜单一起原地重建
+    syncRhDetailsAndParams(ref);
+    persistActiveSmartSettings();
+    scheduleSave();
+    bindDynamicParams();
+    if(window.lucide) lucide.createIcons();
+}
+
+/* 素材输入行：与本地 ComfyUI（renderComfyInputsRow）同规格 ——
+   统计画布上游连进来的图片/音频/视频数量 + 是否有提示词。 */
+function renderRhInputsRow(){
+    const node = activeComposerNode() || selectedNode();
+    const ups = upstreamNodesForKinds(node, ['input']);
+    let img = 0, vid = 0, aud = 0;
+    ups.forEach(up => {
+        (up?.images || []).forEach(m => {
+            if(!m?.url) return;
+            const kind = mediaKindForItem(m);
+            if(kind === 'image') img++;
+            else if(kind === 'video') vid++;
+            else if(kind === 'audio') aud++;
+        });
+    });
+    const promptText = (promptInput?.innerText || '').replace(/\u00a0/g, ' ').trim();
+    const upstreamPrompt = node ? inputPromptTextFor(node).trim() : '';
+    const promptCount = (promptText || upstreamPrompt) ? 1 : 0;
+    const cell = (label, n) => `<span class="cfn-mit ${n > 0 ? 'has' : ''}"><span class="cfn-dot"></span>${escapeHtml(label)}：<span class="cfn-mit-n">${n}</span></span>`;
+    // 外层 .cfn-inputs-wrap 负责「独占整行」占位，内层 .cfn-inputs-row 收紧到内容宽度
+    // 并与上方首颗按钮左缘对齐（见 smart-canvas.css 的 CFA-INPUTSROW-ALIGN-20260916）。
+    return `<div class="cfn-inputs-wrap"><div class="cfn-inputs-row">
+        <span class="cfn-mit-label">素材：</span>
+        ${cell('接收图片', img)}<span class="cfn-sep">·</span>
+        ${cell('接收音频', aud)}<span class="cfn-sep">·</span>
+        ${cell('接收视频', vid)}<span class="cfn-sep">·</span>
+        ${cell('接收提示词', promptCount)}
+    </div></div>`;
+}
+
+/* 入口二：资源（原「RunningHub币」+「24G 显存」两个按钮合并）
+   弹层内 = 付费方式 + 显存规格 */
+function renderRhResourceControl(){
+    const rhPaymentLabels = {free:tr('smart.rhFreeKey'), wallet:tr('smart.rhWalletKey')};
+    const rhPaymentValue = settings.rhPayment === 'wallet' ? 'wallet' : 'free';
+    const rhMachineLabels = {'':'24G', plus:'48G'};
+    const rhMachineValue = settings.rhInstanceType === 'plus' ? 'plus' : '';
+    const optionRow = (param, labels, value) => Object.entries(labels).map(([key, label]) =>
+        `<button type="button" class="direct-option ${key === value ? 'active' : ''}" data-smart-param="${param}" data-smart-value="${escapeHtml(key)}"><span>${escapeHtml(label)}</span></button>`).join('');
+    const caption = [rhPaymentLabels[rhPaymentValue], rhMachineLabels[rhMachineValue]].join(' · ');
+    return `<div class="smart-control rh-merge-control rh-resource-control">
+        <button class="smart-pill" type="button" title="${escapeHtml(caption)}"><span class="sub">${escapeHtml(caption)}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+        <div class="smart-popover compact-popover rh-picker-popover rh-unified-popover">
+            <div class="model-list-label rh-list-label rh-inline-group-label">${escapeHtml(tr('smart.rhKey'))}</div>
+            <div class="model-list rh-inline-group">${optionRow('rhPayment', rhPaymentLabels, rhPaymentValue)}</div>
+            <div class="model-list-label rh-list-label rh-inline-group-label">${escapeHtml(tr('smart.rhMachine'))}</div>
+            <div class="model-list rh-inline-group">${optionRow('rhInstanceType', rhMachineLabels, rhMachineValue)}</div>
+        </div>
+    </div>`;
 }
 function renderRhConfigControl(ref){
     const apps = runningHubEntries('app');
@@ -6726,7 +7431,7 @@ function renderComfyParams(){
  const wf = comfyWorkflowCache[settings.comfyWorkflow];
  const fields = wf?.config?.fields || [];
  dynamicParams.innerHTML = `
- <div class="cfn-controls">${renderComfyWorkflowControl()}${renderComfyNodeModesControl(wf)}</div>
+ <div class="cfn-controls">${renderComfyWorkflowControl()}${renderComfyNodeModesControl(wf)}${renderComfyParamsControl(wf, fields)}</div>
  ${renderComfyDetailsHtml(wf, fields)}
  `;
 }
@@ -6739,19 +7444,48 @@ function comfyFieldNodeIsOff(field, workflowName=settings.comfyWorkflow){
 function visibleComfyFields(fields, workflowName=settings.comfyWorkflow){
     return (fields || []).filter(field => !comfyFieldNodeIsOff(field, workflowName));
 }
+// 详情区（2026-09-16）：参数已收进「工作流参数」二级菜单，这里只保留素材输入行。
 function renderComfyDetailsHtml(wf, fields){
+    return `<div class="cfn-details">
+        ${renderComfyInputsRow()}
+        ${settings.comfyWorkflow ? '' : `<div class="muted-note">${escapeHtml(tr('smart.noWorkflow'))}</div>`}
+    </div>`;
+}
+// 工作流参数二级菜单：原来常驻在详情区的参数收进一颗 pill，弹层内还是同一套参数控件。
+function renderComfyParamsControl(wf, fields){
     const visibleFields = visibleComfyFields(fields || [], settings.comfyWorkflow);
     const editableFields = visibleFields.filter(field => {
         const kind = comfyFieldKind(field);
         return kind !== 'prompt' && kind !== 'image' && kind !== 'video' && kind !== 'audio';
     });
-    const paramsHtml = editableFields.length
-        ? `<div class="cfn-workflow-params-title">工作流参数</div>${renderComfyFields(visibleFields)}`
-        : '';
-    return `<div class="cfn-details">
- ${renderComfyInputsRow()}
- ${paramsHtml || (settings.comfyWorkflow ? '' : `<div class="muted-note">${escapeHtml(tr('smart.noWorkflow'))}</div>`)}
- </div>`;
+    if(!editableFields.length) return '';
+    const title = tr('smart.workflowParams') || '工作流参数';
+    return `<div class="smart-control comfy-params-control">
+        <button class="smart-pill" type="button" title="${escapeHtml(title)}"><i data-lucide="sliders-horizontal"></i><span class="sub">${escapeHtml(title)} ${editableFields.length}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+        <div class="smart-popover compact-popover comfy-params-popover">
+            <div class="smart-popover-title">${escapeHtml(title)}</div>
+            <div class="cfn-params-body">${renderComfyFields(visibleFields)}</div>
+        </div>
+    </div>`;
+}
+// 关节点后原地重建详情区 + 参数弹层（不整体重绘，保住刚打开的节点弹层）。
+function syncComfyDetailsAndParams(wf){
+    const fields = wf?.config?.fields || [];
+    const details = dynamicParams?.querySelector('.cfn-details');
+    if(details){
+        const tpl = document.createElement('template');
+        tpl.innerHTML = renderComfyDetailsHtml(wf, fields).trim();
+        const next = tpl.content.firstElementChild;
+        if(next) details.replaceWith(next);
+    }
+    const controls = dynamicParams?.querySelector('.cfn-controls');
+    const currentParams = dynamicParams?.querySelector('.comfy-params-control');
+    const tpl2 = document.createElement('template');
+    tpl2.innerHTML = renderComfyParamsControl(wf, fields).trim();
+    const nextParams = tpl2.content.firstElementChild;
+    if(currentParams && nextParams) currentParams.replaceWith(nextParams);
+    else if(currentParams && !nextParams) currentParams.remove();
+    else if(!currentParams && nextParams && controls) controls.appendChild(nextParams);
 }
 // 素材输入行：标题与计数同一行；只统计画布上游连接（图片/音频/视频 各自计数）；末尾"提示词："标记（原生 #promptInput 非空时亮）。
 function renderComfyInputsRow(){
@@ -6772,13 +7506,15 @@ function renderComfyInputsRow(){
     const promptField = (comfyWorkflowCache[settings.comfyWorkflow]?.config?.fields || []).find(f => comfyFieldKind(f, comfyWorkflowCache[settings.comfyWorkflow]) === 'prompt');
     const promptCount = promptField && (promptText || upstreamPrompt) ? 1 : 0;
     const cell = (label, n) => `<span class="cfn-mit ${n > 0 ? 'has' : ''}"><span class="cfn-dot"></span>${escapeHtml(label)}：<span class="cfn-mit-n">${n}</span></span>`;
-    return `<div class="cfn-inputs-row">
+    // 外层 .cfn-inputs-wrap 负责「独占整行」占位，内层 .cfn-inputs-row 收紧到内容宽度
+    // 并与上方首颗按钮左缘对齐（见 smart-canvas.css 的 CFA-INPUTSROW-ALIGN-20260916）。
+    return `<div class="cfn-inputs-wrap"><div class="cfn-inputs-row">
         <span class="cfn-mit-label">素材：</span>
         ${cell('接收图片', img)}<span class="cfn-sep">·</span>
         ${cell('接收音频', aud)}<span class="cfn-sep">·</span>
         ${cell('接收视频', vid)}<span class="cfn-sep">·</span>
         ${cell('接收提示词', promptCount)}
-    </div>`;
+    </div></div>`;
 }
 function syncComfyInputsRow(){
     if(settings.engine !== 'comfy') return;
@@ -6787,7 +7523,10 @@ function syncComfyInputsRow(){
     const tpl = document.createElement('template');
     tpl.innerHTML = renderComfyInputsRow().trim();
     const next = tpl.content.firstElementChild;
-    if(next) row.replaceWith(next);
+    if(!next) return;
+    // 原位替换要连外层占位壳一起换，否则会在 .cfn-inputs-wrap 里再套一层
+    const host = row.parentElement?.classList?.contains('cfn-inputs-wrap') ? row.parentElement : row;
+    host.replaceWith(next);
 }
 // 字段分组渲染：媒体字段跳过（值来自画布上游连线）；连续 number 横排一行；其余按 .pfield。
 function renderComfyFields(fields){
@@ -6858,23 +7597,40 @@ function comfyWorkflowGroups(){
     });
     return groups;
 }
+// 入口：平台 + 工作流（2026-09-16 合并）
+// 原 head 里的「ComfyUI 引擎下拉」与控件区里的「工作流」两颗按钮合成一颗；
+// 弹层内 = 工作流列表 +「生成引擎」切换（引擎下拉在 comfy 布局下隐藏，切走别的引擎的入口在这里）。
+function comfyEnginePillLabel(){
+    const opt = engineSelect ? [...engineSelect.options].find(o => o.value === settings.engine) : null;
+    const full = String(opt?.textContent || '').trim();
+    const short = full.replace(/[\s]*生成$/, '');
+    return short || full || 'ComfyUI';
+}
 function renderComfyWorkflowControl(){
     if(!comfyWorkflows.length) return `<div class="muted-note">${escapeHtml(tr('smart.noWorkflow'))}</div>`;
     settings.comfyWorkflow = resolveComfyWorkflowName(settings.comfyWorkflow);
     const current = comfyWorkflows.find(w => w.name === settings.comfyWorkflow) || comfyWorkflows[0];
     const label = current?.title || (current?.name || '').replace('.json','') || tr('smart.workflow');
     // 平铺：不分组显示（2026-09-05 用户要求去掉 📁 文件夹，恢复全量平铺列表）
-    const pillLabel = label;
+    // 2026-09-16 老王：pill 只显示工作流名称（原「平台 · 工作流」太长，会跟右边的按钮挤在一起），
+    // 引擎名降级为 title 悬浮提示；引擎切换入口仍在弹层里，不受影响。
+    const platform = comfyEnginePillLabel();
+    const pillTitle = `${platform} · ${label}`;
     const optionBtn = (w, extraClass='') => `<button type="button" class="direct-option ${extraClass} ${w.name === settings.comfyWorkflow ? 'active' : ''}" data-smart-param="comfyWorkflow" data-smart-value="${escapeHtml(w.name)}"><span>${escapeHtml(w.title || w.name.replace('.json',''))}</span></button>`;
     const ungroupedSection = comfyWorkflows.length ? `
         <div class="smart-popover-title">${escapeHtml(tr('smart.workflow'))}</div>
         <div class="model-list">
             ${comfyWorkflows.map(w => optionBtn(w)).join('')}
         </div>` : '';
-    return `<div class="smart-control workflow-control">
-        <button class="smart-pill" type="button" title="${escapeHtml(pillLabel)}"><span class="sub">工作流： ${escapeHtml(pillLabel)}</span></button>
-        <div class="smart-popover compact-popover">
+    const engineLabels = {};
+    if(engineSelect) [...engineSelect.options].forEach(o => { engineLabels[o.value] = o.textContent.trim(); });
+    const engineRow = Object.entries(engineLabels).map(([key, lab]) =>
+        `<button type="button" class="direct-option ${key === settings.engine ? 'active' : ''}" data-combo-engine="${escapeHtml(key)}"><span>${escapeHtml(lab)}</span></button>`).join('');
+    return `<div class="smart-control comfy-merge-control workflow-control">
+        <button class="smart-pill" type="button" title="${escapeHtml(pillTitle)}"><span class="sub">${escapeHtml(label)}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+        <div class="smart-popover compact-popover rh-unified-popover comfy-unified-popover">
             ${ungroupedSection}
+            ${engineRow ? `<div class="model-list-label rh-list-label rh-inline-group-label">生成引擎</div><div class="model-list rh-inline-group">${engineRow}</div>` : ''}
         </div>
     </div>`;
 }
@@ -6886,6 +7642,27 @@ function comfyModesSummary(bucket){
     const entries = Object.entries(bucket || {}).filter(([,mode]) => mode === 'bypass' || mode === 'mute');
     if(!entries.length) return tr('smart.comfyNodesAllOn') || '节点 · 全开';
     return `节点 · 关${entries.length}`;
+}
+// 自动裁剪（2026-09-16）：画布传来的媒体少于工作流槽位时，多出来的槽位对应的节点自动旁路。
+// 语义等同用户手动点「关」（= 本地 ComfyUI 的 Ctrl+B），所以「传几张就是几张」，不用手动关节点。
+// 只在本轮提交时生效，**不写回用户保存的 comfyModes**（避免污染用户自己的开关设置）。
+function comfyAutoBypassForMissingMedia(plans){
+    const out = {};
+    (plans || []).forEach(plan => {
+        const fields = Array.isArray(plan?.fields) ? plan.fields : [];
+        const refs = Array.isArray(plan?.refs) ? plan.refs : [];
+        // 传满时无需裁剪。
+        // 一张都没传时**同样要裁**：空槽位会把工作流自带的无效默认值原样提交上去，
+        // ComfyUI 校验会直接失败并返回 400（典型报错 "Invalid audio file: None"，
+        // 因为本地工作流里 LoadAudio 的默认值就是字符串 'None'）。
+        // 图片一张都没传时，调用方在更早的位置已有友好报错，走不到这里。
+        if(refs.length >= fields.length) return;
+        fields.slice(refs.length).forEach(field => {
+            const nodeId = String(field?.node || '').trim();
+            if(nodeId) out[nodeId] = 'bypass';
+        });
+    });
+    return out;
 }
 // 节点开关（两态）：只列 config.fields 暴露的节点；开 = 使用，关 = 跳过（等同 ComfyUI Ctrl+B 旁路）。
 function renderComfyNodeModesControl(wf){
@@ -7048,6 +7825,74 @@ function renderModelControl(models){
     </div>
   </div>`;
 }
+// API 单排 v2：引擎+模型合并下拉（无边框 pill）
+function renderEngineModelCombo(models){
+  const engineLabel = smartEngineLabel(settings.engine);
+  const modelLabel = providerModelDisplayName(settings.provider_id, settings.model || '');
+  const engines = smartAvailableEngines().filter(e => e !== 'blender');
+  const currentEngine = settings.engine || engines[0] || 'api';
+  return `<div class="smart-control engine-model-combo" title="平台与模型">
+    <button class="smart-pill" type="button"><span class="sub">${escapeHtml(engineLabel)}${modelLabel ? ` · ${escapeHtml(modelLabel)}` : ''}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+    <div class="smart-popover engine-model-popover">
+      <div class="smart-popover-title">平台</div>
+      <div class="model-list">
+        ${engines.map(e => `<button type="button" class="direct-option ${e === currentEngine ? 'active' : ''}" data-combo-engine="${escapeHtml(e)}"><span>${escapeHtml(smartEngineLabel(e))}</span></button>`).join('')}
+      </div>
+      <div class="smart-popover-title" style="margin-top:8px">模型</div>
+      <div class="model-list">
+        ${models.map(m => `<button type="button" class="direct-option ${m === settings.model ? 'active' : ''}" data-smart-param="model" data-smart-value="${escapeHtml(m)}"><span>${escapeHtml(providerModelDisplayName(settings.provider_id, m))}</span></button>`).join('') || `<div class="muted-note">${escapeHtml(tr('smart.noImageModel'))}</div>`}
+      </div>
+    </div>
+  </div>`;
+}
+// API 单排 v2：规格+数量合并 pill（无边框）
+function renderComboSpecCount(){
+  const ratio = settings.ratio || 'square';
+  const resolution = settings.resolution || '1k';
+  const quality = settings.quality || 'auto';
+  const count = Number(settings.count || 1);
+  const label = `${ratioLabel('')} · ${resolutionLabel('')} · ${imageQualityLabel()} · ${count}张`;
+  return `<div class="smart-control image-spec-control combo-spec-count" title="图片参数">
+    <button class="smart-pill" type="button"><span class="sub">${escapeHtml(label)}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+    ${renderImageSpecPopover()}
+  </div>`;
+}
+// 抽取规格弹层（供合并 pill 复用）
+function renderImageSpecPopover(){
+  const {ratios, resolutions, qualityLabels} = imageSpecOptions();
+  const ratio = settings.ratio || 'square';
+  const resolution = settings.resolution || '1k';
+  const quality = settings.quality || 'auto';
+  const count = Number(settings.count || 1);
+  return `<div class="smart-popover video-spec-popover image-spec-popover">
+    <div class="video-spec-section">
+      <div class="video-spec-title">图片比例</div>
+      <div class="image-spec-ratio-grid">
+        ${ratios.map(([v,l]) => `<button type="button" class="video-spec-aspect ${v === ratio ? 'active' : ''}" data-smart-param="ratio" data-smart-value="${escapeHtml(v)}"><span class="ratio-icon ${ratioIconClass(v)}"></span><span>${escapeHtml(l)}</span></button>`).join('')}
+      </div>
+      ${renderInlineCustomRatioFields('', 'inline-fields-in-popover')}
+    </div>
+    <div class="video-spec-section">
+      <div class="video-spec-title">分辨率</div>
+      <div class="video-spec-seg">
+        ${resolutions.map(([v,l]) => `<button type="button" class="${v === resolution ? 'active' : ''}" data-smart-param="resolution" data-smart-value="${escapeHtml(v)}">${escapeHtml(l)}</button>`).join('')}
+      </div>
+      ${renderInlineCustomSizeFields('', 'inline-fields-in-popover')}
+    </div>
+    <div class="video-spec-section">
+      <div class="video-spec-title">画质</div>
+      <div class="video-spec-seg">
+        ${Object.entries(qualityLabels).map(([v,l]) => `<button type="button" class="${v === quality ? 'active' : ''}" data-smart-param="quality" data-smart-value="${escapeHtml(v)}">${escapeHtml(l)}</button>`).join('')}
+      </div>
+    </div>
+    <div class="video-spec-section">
+      <div class="video-spec-title">数量</div>
+      <div class="count-grid">
+        ${[1,2,3,4,5,6,7,8].map(n => `<button type="button" class="count-cell ${n === count ? 'active' : ''}" data-smart-param="count" data-smart-value="${n}">${n}</button>`).join('')}
+      </div>
+    </div>
+  </div>`;
+}
 function msModelLabel(key){
     if(key === 'custom') return tr('smart.custom');
     return MS_GEN_MODELS[key]?.label || key;
@@ -7108,25 +7953,25 @@ function renderResolutionControl(prefix=''){
         </div>
     </div>`;
 }
-function renderInlineCustomRatioFields(prefix=''){
+function renderInlineCustomRatioFields(prefix='', extraClass=''){
     const ratioKey = prefix ? `${prefix}Ratio` : 'ratio';
     if(settings[ratioKey] === 'source') return '';
     if(settings[ratioKey] !== 'custom') return '';
     const wKey = prefix ? `${prefix}CustomRatioWidth` : 'customRatioWidth';
     const hKey = prefix ? `${prefix}CustomRatioHeight` : 'customRatioHeight';
-    return `<div class="inline-fields">
+    return `<div class="inline-fields${extraClass ? ' ' + extraClass : ''}">
         <span class="inline-label">${escapeHtml(tr('smart.ratio'))}</span>
         <input type="number" data-param="${wKey}" value="${escapeHtml(settings[wKey] || '')}" placeholder="W">
         <span class="inline-divider">:</span>
         <input type="number" data-param="${hKey}" value="${escapeHtml(settings[hKey] || '')}" placeholder="H">
     </div>`;
 }
-function renderInlineCustomSizeFields(prefix=''){
+function renderInlineCustomSizeFields(prefix='', extraClass=''){
     const resKey = prefix ? `${prefix}Resolution` : 'resolution';
     if(settings[resKey] !== 'custom') return '';
     const wKey = prefix ? `${prefix}CustomWidth` : 'customWidth';
     const hKey = prefix ? `${prefix}CustomHeight` : 'customHeight';
-    return `<div class="inline-fields">
+    return `<div class="inline-fields${extraClass ? ' ' + extraClass : ''}">
         <span class="inline-label">${escapeHtml(tr('smart.size'))}</span>
         <input type="number" data-param="${wKey}" value="${escapeHtml(settings[wKey] || '')}" placeholder="${escapeHtml(tr('smart.width'))}">
         <span class="inline-divider">×</span>
@@ -7318,7 +8163,7 @@ function rhParamValue(field, media=null, sourceSettings=settings, fields=null, r
     const param = sourceSettings.rhParams[key];
     const kind = rhFieldKind(field);
     if(['image','video','audio'].includes(kind)){
-        const idx = rhFieldIndexes(fields || rhActiveFields(sourceSettings))[key] || 0;
+        const idx = rhFieldIndexes(fields || rhActiveFields(sourceSettings), sourceSettings)[key] || 0;
         const up = media?.[kind]?.[idx]?.url || '';
         if(rhCurrentKind(sourceSettings) === 'workflow' && kind === 'image' && field.required !== true && !up) return '';
         return up || param?.value || rhDefaultValue(field);
@@ -7352,14 +8197,22 @@ function updatePromptPlaceholder(){
     const suggestion = rhDefaultPromptSuggestion();
     promptInput.dataset.placeholder = suggestion || tr('smart.promptPlaceholder');
 }
-function rhFieldIndexes(fields){
-    const counters = {image:0, video:0, audio:0};
+function rhFieldIndexes(fields, sourceSettings=settings){
+    // 图片槽位序号优先用「工作流自动识别」的顺序（零配置）：MM-H3 的 6 个参考图槽位直接由
+    // ref_images.ref_image_0..5 的连线顺序决定，与字段有没有暴露、imageOrder 填没填无关。
+    const slotOrder = rhImageSlotOrderMap(sourceSettings);
+    // 不在槽位表里的图片字段从 slotOrder.size 往后编号，避免和槽位号撞号。
+    const counters = {image:slotOrder.size, video:0, audio:0};
     const map = {};
     sortRunningHubFields(fields).forEach(field => {
         const kind = rhFieldKind(field);
-        if(['image','video','audio'].includes(kind)){
-            map[rhParamKey(field.nodeId, field.fieldName)] = counters[kind]++;
+        if(!['image','video','audio'].includes(kind)) return;
+        const key = rhParamKey(field.nodeId, field.fieldName);
+        if(kind === 'image'){
+            const slot = slotOrder.get(String(field.nodeId));
+            if(slot !== undefined){ map[key] = slot; return; }
         }
+        map[key] = counters[kind]++;
     });
     return map;
 }
@@ -7373,7 +8226,9 @@ async function ensureRunningHubWorkflow(workflowId){
         return null;
     }
     const data = await res.json();
-    runningHubWorkflowCache[workflowId] = data.workflow || null;
+    // 兼容后端两种响应形状：{"ok":true,"data":{...}} 与 {"workflow":{...}}。
+    // 取错字段会拿到 undefined，缓存失效后画布只能退到 entry 里的旧快照。
+    runningHubWorkflowCache[workflowId] = data.workflow || data.data || null;
     return runningHubWorkflowCache[workflowId];
 }
 async function currentRunningHubWorkflowConfig(sourceSettings=settings){
@@ -7606,28 +8461,74 @@ function rhPruneWorkflowForMissingFields(workflowJson, missingFields){
     });
     return workflow;
 }
+// 节点开关：把指定节点整节点从 workflow JSON 中移除，并断开下游对它的引用（等同 ComfyUI 的旁路/跳过）。
+function rhPruneWorkflowNodes(workflowJson, nodeIds){
+    const ids = new Set((nodeIds || []).map(id => String(id)));
+    if(!workflowJson || typeof workflowJson !== 'object' || !ids.size) return null;
+    const workflow = JSON.parse(JSON.stringify(workflowJson));
+    ids.forEach(id => delete workflow[id]);
+    Object.values(workflow).forEach(node => {
+        if(!node?.inputs || typeof node.inputs !== 'object') return;
+        Object.entries(node.inputs).forEach(([name, value]) => {
+            if(rhIsWorkflowLinkValue(value) && ids.has(String(value[0]))) delete node.inputs[name];
+        });
+    });
+    return workflow;
+}
 async function rhBuildWorkflowRequestExtras(media, nodeInfoList, sourceSettings=settings){
     const config = await currentRunningHubWorkflowConfig(sourceSettings);
-    if(!config || (config.optionalImageMode || 'prune-workflow') !== 'prune-workflow') return {};
+    if(!config) return {};
+    const pruneMode = (config.optionalImageMode || 'prune-workflow') === 'prune-workflow';
     const fields = rhActiveFields(sourceSettings);
-    const indexes = rhFieldIndexes(fields);
+    const indexes = rhFieldIndexes(fields, sourceSettings);
     const missingOptional = [];
-    for(const field of fields){
-        if(rhFieldKind(field) !== 'image') continue;
-        const key = rhParamKey(field.nodeId, field.fieldName);
-        const idx = indexes[key] || 0;
-        const hasInput = Boolean(media.image?.[idx]?.url);
-        if(field.required === true && !hasInput) throw new Error(`RunningHub 工作流缺少必选图片：${rhRequiredLabel(field)}`);
-        if(field.required !== true && !hasInput) missingOptional.push(field);
+    // 未暴露的图片槽位缺图时，按 nodeId 整节点裁掉（LoadImage 只有 image 一个输入，等价于旁路）。
+    const missingSlotNodeIds = [];
+    if(pruneMode){
+        const imageSlots = rhWorkflowImageSlots(selectedRunningHubRef(sourceSettings));
+        if(imageSlots.length){
+            // 图片槽位由工作流自动识别 → 覆盖「全部」槽位，不要求先在 API 设置里暴露。
+            imageSlots.forEach((slot, idx) => {
+                if(rhNodeIsOff(slot.nodeId, sourceSettings)) return; // 已被节点开关关掉，交给 offNodeIds 处理
+                const field = fields.find(f => String(f.nodeId) === String(slot.nodeId));
+                const hasInput = Boolean(media.image?.[idx]?.url);
+                if(field?.required === true && !hasInput) throw new Error(`RunningHub 工作流缺少必选图片：${rhRequiredLabel(field)}`);
+                if(hasInput) return;
+                if(field) missingOptional.push(field);
+                else missingSlotNodeIds.push(String(slot.nodeId));
+            });
+        } else {
+            // 兜底：工作流识别不出图片槽位时，沿用原来「按已暴露字段」的逻辑。
+            for(const field of fields){
+                if(rhFieldKind(field) !== 'image') continue;
+                const key = rhParamKey(field.nodeId, field.fieldName);
+                const idx = indexes[key] || 0;
+                const hasInput = Boolean(media.image?.[idx]?.url);
+                if(field.required === true && !hasInput) throw new Error(`RunningHub 工作流缺少必选图片：${rhRequiredLabel(field)}`);
+                if(field.required !== true && !hasInput) missingOptional.push(field);
+            }
+        }
     }
-    if(!missingOptional.length) return {};
-    missingOptional.forEach(field => {
-        const key = rhParamKey(field.nodeId, field.fieldName);
-        const idx = nodeInfoList.findIndex(item => rhParamKey(item.nodeId, item.fieldName) === key);
-        if(idx >= 0) nodeInfoList.splice(idx, 1);
+    // 节点开关关掉的节点：不依赖 optionalImageMode 策略，始终裁剪。
+    // 注意 rhActiveFields 已把被关节点的字段过滤掉，所以 nodeInfoList 里通常本就没有它们的参数，
+    // 这里再按 nodeId 兜底清一次，防止本地缓存与云端字段不一致时把参数带上去。
+    const offNodeIds = rhNodeOffIds(sourceSettings);
+    if(!missingOptional.length && !missingSlotNodeIds.length && !offNodeIds.length) return {};
+    const dropKeys = new Set();
+    missingOptional.forEach(field => dropKeys.add(rhParamKey(field.nodeId, field.fieldName)));
+    offNodeIds.forEach(id => {
+        fields.forEach(field => { if(String(field.nodeId) === String(id)) dropKeys.add(rhParamKey(field.nodeId, field.fieldName)); });
     });
-    const workflow = rhPruneWorkflowForMissingFields(config.workflowJson || {}, missingOptional);
-    return workflow ? {workflow} : {};
+    for(let i = nodeInfoList.length - 1; i >= 0; i--){
+        if(dropKeys.has(rhParamKey(nodeInfoList[i].nodeId, nodeInfoList[i].fieldName))) nodeInfoList.splice(i, 1);
+    }
+    let workflow = config.workflowJson || {};
+    if(missingOptional.length) workflow = rhPruneWorkflowForMissingFields(workflow, missingOptional) || workflow;
+    if(offNodeIds.length) workflow = rhPruneWorkflowNodes(workflow, offNodeIds) || workflow;
+    if(missingSlotNodeIds.length) workflow = rhPruneWorkflowNodes(workflow, missingSlotNodeIds) || workflow;
+    // RH 的 /task/openapi/create 只认 JSON 字符串（官方文档：workflow string - Custom full workflow
+    // in JSON string format）。传对象会被判为非法 → {"code":404,"msg":"NOT_FOUND"}（2026-09-16 实测复现）。
+    return Object.keys(workflow || {}).length ? {workflow: JSON.stringify(workflow)} : {};
 }
 async function rhUploadValueIfNeeded(value, sourceSettings=settings){
     const text = String(value || '').trim();
@@ -7645,12 +8546,15 @@ async function rhUploadValueIfNeeded(value, sourceSettings=settings){
 async function rhBuildNodeInfoList(media, sourceSettings=settings, randomValues=smartRhRandomValues){
     const fields = rhActiveFields(sourceSettings);
     const result = [];
-    const indexes = rhFieldIndexes(fields);
+    const indexes = rhFieldIndexes(fields, sourceSettings);
     const mode = rhCurrentKind(sourceSettings);
     for(const field of fields){
         const kind = rhFieldKind(field);
         const key = rhParamKey(field.nodeId, field.fieldName);
-        if(mode === 'workflow' && field.sourceFromUpstream === false && !['image','video','audio'].includes(kind)) continue;
+        // workflow 模式：非媒体字段默认不覆盖云端工作流的默认值（保持原设计），
+        // 但用户在节点上显式改过值的必须提交 —— 否则「参数设置好了」等于没设置（2026-09-16）。
+        const userEdited = String(sourceSettings?.rhParams?.[key]?.value ?? '').trim() !== '';
+        if(mode === 'workflow' && field.sourceFromUpstream === false && !['image','video','audio'].includes(kind) && !userEdited) continue;
         if(mode === 'workflow' && kind === 'image'){
             const idx = indexes[key] || 0;
             if(field.required !== true && !media.image?.[idx]?.url) continue;
@@ -7661,6 +8565,24 @@ async function rhBuildNodeInfoList(media, sourceSettings=settings, randomValues=
         if(['number','slider'].includes(kind) && String(value ?? '').trim() !== '' && !Number.isNaN(Number(value))) value = Number(value);
         if(typeof value === 'string' && /[\r\n]/.test(value)) value = value.split(/\r?\n/).map(s => s.trim()).filter(Boolean)[0] || '';
         result.push({nodeId:field.nodeId, fieldName:field.fieldName, fieldValue:value});
+    }
+    // 图片槽位自动补全（零配置，2026-09-16）：工作流里自动识别出的图片槽位，即使没在 API 设置里暴露，
+    // 只要画布上传了对应序号的图片也要提交 —— 否则「不暴露就传不进去」，后面自动裁剪还会把用户的图一起裁掉。
+    if(mode === 'workflow'){
+        const slots = rhWorkflowImageSlots(selectedRunningHubRef(sourceSettings));
+        const covered = new Set(result.map(item => rhParamKey(item.nodeId, item.fieldName)));
+        for(let idx = 0; idx < slots.length; idx++){
+            const slot = slots[idx];
+            if(fields.some(f => String(f.nodeId) === String(slot.nodeId))) continue; // 已暴露 → 上面的循环已处理
+            if(rhNodeIsOff(slot.nodeId, sourceSettings)) continue;
+            const url = media?.image?.[idx]?.url;
+            if(!url) continue;
+            const key = rhParamKey(slot.nodeId, slot.fieldName);
+            if(covered.has(key)) continue;
+            covered.add(key);
+            const value = await rhUploadValueIfNeeded(url, sourceSettings);
+            result.push({nodeId:String(slot.nodeId), fieldName:slot.fieldName, fieldValue:value});
+        }
     }
     return result;
 }
@@ -7797,6 +8719,8 @@ function setVideoSpecSetting(key, value){
         settings.videoAspect = value || '16:9';
     } else if(key === 'videoResolution') {
         settings.videoResolution = value || '';
+    } else if(key === 'videoGenerateAudio') {
+        settings.videoGenerateAudio = !settings.videoGenerateAudio;
     } else {
         return;
     }
@@ -7824,6 +8748,9 @@ function syncVideoSpecControl(){
     });
     control.querySelectorAll('[data-param="videoDuration"]').forEach(input => {
         if(document.activeElement !== input) input.value = duration;
+    });
+    control.querySelectorAll('[data-toggle-param="videoGenerateAudio"]').forEach(btn => {
+        btn.classList.toggle('active', !!settings.videoGenerateAudio);
     });
 }
 function closeAllSmartPopovers(){
@@ -7873,14 +8800,7 @@ function handleComfyNodeModeToggle(btn, event){
     const row = btn.closest('.cfm-row');
     if(row) row.classList.toggle('cfm-row-off', nowOff);
     syncComfyModesChrome(workflowName);
-    const wf = comfyWorkflowCache[workflowName];
-    const details = dynamicParams?.querySelector('.cfn-details');
-    if(details && wf){
-        const tpl = document.createElement('template');
-        tpl.innerHTML = renderComfyDetailsHtml(wf, wf?.config?.fields || []).trim();
-        const next = tpl.content.firstElementChild;
-        if(next) details.replaceWith(next);
-    }
+    syncComfyDetailsAndParams(comfyWorkflowCache[workflowName]);
     persistActiveSmartSettings();
     scheduleSave();
     bindDynamicParams();
@@ -7907,6 +8827,23 @@ function bindDynamicParams(){
             if(wasPinned && ctrl.contains(document.activeElement)) document.activeElement.blur();
             else pill.focus({preventScroll:true});
             if(!wasPinned) ctrl.classList.add('pinned');
+        };
+    });
+    // 合并下拉：引擎点击（data-combo-engine）
+    dynamicParams.querySelectorAll('[data-combo-engine]').forEach(btn => {
+        btn.onclick = event => {
+            event.preventDefault();
+            event.stopPropagation();
+            const engine = btn.dataset.comboEngine;
+            if(engine === settings.engine) return;
+            if(engineSelect){
+                engineSelect.value = engine;
+                engineSelect.dispatchEvent(new Event('change', {bubbles:true}));
+            } else {
+                settings.engine = engine;
+                renderDynamicParams();
+            }
+            closeAllSmartPopovers();
         };
     });
     // Comfy 布局下部分设置控件渲染在 dynamicParams 之外：document 级兜底点击 toggle
@@ -7948,6 +8885,8 @@ function bindDynamicParams(){
                 return;
             }
             setDynamicSetting(input.dataset.param, input.value);
+            // 规格弹层里的自定义比例/尺寸：边输边刷新 pill 上的摘要文字
+            if(input.closest('.image-spec-control')) syncImageSpecControl();
             if(input.dataset.param === 'videoDuration' && event?.type === 'change') renderDynamicParams();
         };
     });
@@ -7955,6 +8894,10 @@ function bindDynamicParams(){
         btn.onclick = event => {
             event.preventDefault();
             event.stopPropagation();
+            if(btn.closest('.video-spec-control')){
+                setVideoSpecSetting(btn.dataset.toggleParam, '');
+                return;
+            }
             settings[btn.dataset.toggleParam] = !settings[btn.dataset.toggleParam];
             if(btn.dataset.toggleParam === 'videoMultimodal' && settings.videoMultimodal) settings.videoUseFrameRoles = false;
             if(btn.dataset.toggleParam === 'videoUseFrameRoles' && settings.videoUseFrameRoles) settings.videoMultimodal = false;
@@ -8035,6 +8978,9 @@ function bindDynamicParams(){
             event.stopPropagation();
             toggleSmartComfyRandom(btn.dataset.comfyRandom);
         };
+    });
+    dynamicParams.querySelectorAll('[data-rh-node-mode]').forEach(btn => {
+        btn.onclick = event => handleRhNodeModeToggle(btn, event);
     });
     dynamicParams.querySelectorAll('[data-rh-bool]').forEach(btn => {
         btn.onclick = event => {
@@ -9280,7 +10226,8 @@ function bindComposerStyleControl(){
     if(!composerStyleModeSlot) return;
     const ctrl = composerStyleModeSlot.querySelector('.style-mode-control');
     const pill = ctrl?.querySelector(':scope > .smart-pill');
-    if(pill) pill.onclick = event => {
+    if(pill){
+        pill.onclick = event => {
         event.preventDefault();
         event.stopPropagation();
         const wasPinned = ctrl.classList.contains('pinned');
@@ -9296,6 +10243,31 @@ function bindComposerStyleControl(){
             }
         }
     };
+    // 跟随鼠标的悬浮提示（tooltip 渲染在 body 层，不在按钮内）
+    let styleTip = null;
+    const hideStyleTip = () => {
+        if(styleTip){ styleTip.remove(); styleTip = null; }
+        pill.removeEventListener('mousemove', moveStyleTip);
+    };
+    const moveStyleTip = e => {
+        if(!styleTip) return;
+        const pad = 14;
+        const x = Math.min(e.clientX + pad, window.innerWidth - styleTip.offsetWidth - 8);
+        const y = Math.min(e.clientY + pad, window.innerHeight - styleTip.offsetHeight - 8);
+        styleTip.style.left = x + 'px';
+        styleTip.style.top = y + 'px';
+    };
+    pill.addEventListener('mouseenter', e => {
+        hideStyleTip();
+        styleTip = document.createElement('div');
+        styleTip.className = 'smart-mouse-tip';
+        styleTip.textContent = '风格';
+        document.body.appendChild(styleTip);
+        moveStyleTip(e);
+        pill.addEventListener('mousemove', moveStyleTip);
+    });
+    pill.addEventListener('mouseleave', hideStyleTip);
+    }
     ctrl?.querySelectorAll('[data-style-option]').forEach(row => {
         const id = row.dataset.styleOption;
         row.addEventListener('click', e => {
@@ -10057,14 +11029,14 @@ function renderConnections(){
             isHistory ? 'conn-history' : '',
             isLinkedToSelection ? 'conn-linked' : ''
         ].filter(Boolean).join(' ');
-        const color = isLinkedToSelection ? '#C9A227' : isCascade ? '#16a34a' : isHistory ? 'rgba(100,116,139,0.46)' : kind === 'input' ? 'rgba(100,116,139,0.62)' : 'rgba(148,163,184,0.62)';
+        const color = isLinkedToSelection ? '#C9A227' : isCascade ? '#16a34a' : isHistory ? 'rgba(138,138,138,0.46)' : kind === 'input' ? 'rgba(138,138,138,0.62)' : 'rgba(200,200,200,0.62)';
         const opacity = isPendingLine ? '.82' : '1';
         const width = isLinkedToSelection ? '2.4' : kind === 'input' ? '1.9' : '1.6';
         // 运行中连线：底线常亮 + 两颗彗星光点沿管道滑行（A 方案），不再用滚动虚线
         const cometLayer = isPendingLine ? `<path class="conn-comet" d="${curve}" pathLength="180" stroke="#dbeafe" stroke-dasharray="22 158" fill="none"></path><path class="conn-comet conn-comet-2" d="${curve}" pathLength="180" stroke="#93c5fd" stroke-width="2" stroke-dasharray="10 170" fill="none"></path>` : '';
         return `<path class="${cls}" d="${curve}" stroke="${color}" stroke-width="${width}" fill="none" opacity="${opacity}"></path>${cometLayer}<path class="conn-hit" data-conn-index="${conn.index}" d="${curve}" stroke="transparent" stroke-width="14" fill="none"></path><circle cx="${tx}" cy="${ty}" r="3.5" fill="${color}" opacity=".66"></circle>`;
     }).join('');
-    return `<svg class="connection-layer" width="6000" height="4000" viewBox="0 0 6000 4000" xmlns="http://www.w3.org/2000/svg"><defs><filter id="conn-comet-glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>${paths}<g class="conn-scissor" data-conn-index="-1" transform="translate(-100 -100)"><circle r="20" fill="transparent" pointer-events="all"></circle><circle r="13" fill="var(--card,#10151f)" stroke="#C9A227" stroke-width="1.4"></circle><g transform="translate(-9.4 -9.4) scale(0.78)" fill="none" stroke="#C9A227" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.12 15.88"></path><path d="M14.47 14.48 20 20"></path><path d="M8.12 8.12 12 12"></path></g></g></svg>`;
+    return `<svg class="connection-layer" width="6000" height="4000" viewBox="0 0 6000 4000" xmlns="http://www.w3.org/2000/svg"><defs><filter id="conn-comet-glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>${paths}<g class="conn-scissor" data-conn-index="-1" transform="translate(-100 -100)"><circle r="20" fill="transparent" pointer-events="all"></circle><circle r="13" fill="var(--card,#1f1f1f)" stroke="#C9A227" stroke-width="1.4"></circle><g transform="translate(-9.4 -9.4) scale(0.78)" fill="none" stroke="#C9A227" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.12 15.88"></path><path d="M14.47 14.48 20 20"></path><path d="M8.12 8.12 12 12"></path></g></g></svg>`;
 }
 function refreshConnectionLayer(){
     const oldSvg = world.querySelector('svg.connection-layer');
@@ -10084,7 +11056,10 @@ function updateComfyInputsRow(){
     const tpl = document.createElement('template');
     tpl.innerHTML = renderComfyInputsRow().trim();
     const next = tpl.content.firstElementChild;
-    if(next) el.replaceWith(next);
+    if(!next) return;
+    // 同 syncComfyInputsRow：连外层 .cfn-inputs-wrap 一起替换，避免层层嵌套
+    const host = el.parentElement?.classList?.contains('cfn-inputs-wrap') ? el.parentElement : el;
+    host.replaceWith(next);
 }
 function moveNodeElementsDuringDrag(){
     if(!dragState) return;
@@ -10694,7 +11669,7 @@ function singleMediaHtml(img, w, h){
     if(isAudioMediaItem(img)) return audioPlayerHtml(img, w, h);
     if(isVideoMediaItem(img)) return `<div class="node-img media-card media-video-card" style="width:${w}px;height:${h}px"><video src="${escapeHtml(img.url)}" data-url="${escapeHtml(img.url)}" controls muted preload="metadata" playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"></video></div>`;
     const thumbEdge = Math.max(384, Math.min(1024, Math.ceil(Math.max(w, h) * 1.25)));
-    return `<img class="node-img" src="${escapeHtml(canvasThumbnailUrl(img, thumbEdge))}" data-original-src="${escapeAttr(img.url || '')}" draggable="false" loading="eager" decoding="async" style="width:${w}px;height:${h}px">`;
+    return `<img class="node-img" src="${escapeHtml(canvasThumbnailUrl(img, thumbEdge))}" data-original-src="${escapeAttr(img.url || '')}" data-base-edge="${thumbEdge}" draggable="false" loading="eager" decoding="async" style="width:${w}px;height:${h}px">`;
 }
 function smartNodeHasLiveMedia(node){
     return Boolean(!node?.pending && (node?.images || []).some(img => isVideoMediaItem(img) || isAudioMediaItem(img)));
@@ -10816,7 +11791,7 @@ function displayMediaUrl(itemOrUrl, name=''){
 function canvasThumbnailUrl(itemOrUrl, maxEdge=640){
     const rawUrl = typeof itemOrUrl === 'string' ? itemOrUrl : (itemOrUrl?.url || '');
     if(!String(rawUrl || '').startsWith('/assets/')) return displayMediaUrl(itemOrUrl);
-    const edge = Math.max(160, Math.min(1024, Math.round(Number(maxEdge) || 640)));
+    const edge = Math.max(160, Math.min(2048, Math.round(Number(maxEdge) || 640)));
     return `/api/canvas-thumbnail?url=${encodeURIComponent(rawUrl)}&size=${edge}`;
 }
 function bindImageProxyFallback(imgEl, itemOrUrl){
@@ -11303,9 +12278,8 @@ function nodeBodyHtml(node, layout){
     }
     if(imgs[0]) return `<div class="image-wrap ${selectedImage.nodeId === node.id && selectedImage.index === 0 ? 'image-selected' : ''}" data-image-index="0" data-media-signature="${escapeAttr(`${mediaKindForItem(imgs[0])}:${imgs[0]?.url || ''}`)}" style="--node-img-w:${layout.width}px;--node-img-h:${layout.height}px">${singleMediaHtml(imgs[0], layout.width, layout.height)}${smartImageNameLabelHtml(imgs[0], 0)}${imageResolutionBadgeHtml(imgs[0])}${smartCropButtonHtml(imgs[0], 0)}${comfyNodeProgressBarHtml(node)}<button class="mini-x image-delete" type="button" data-image-index="0" title="${escapeHtml(tr('smart.deleteImage'))}"><i data-lucide="trash-2"></i></button></div>`;
     return `<div class="node-drop" data-upload-action="files">
-        <span class="upload-node-main"><i data-lucide="upload-cloud"></i></span>
-        <span class="upload-node-title">${escapeHtml(tr('smart.createImportNode'))}</span>
-        <span class="upload-node-sub">拖拽 / 粘贴 / 点击上传</span>
+        <span class="node-media-hint"><i data-lucide="image"></i><i data-lucide="square-play"></i><i data-lucide="music"></i></span>
+        <button class="upload-node-btn" type="button" data-upload-action="files"><i data-lucide="upload"></i><span>上传</span></button>
     </div>`;
 }
 function preservedGroupBodyHtml(node, imgs){
@@ -11332,7 +12306,9 @@ function jimengPendingBodyHtml(node, layout){
     </div>`;
 }
 function nowMs(){ return Date.now(); }
-const GENERATED_OUTPUT_EXPORT_FOLDER = 'D:\\APP\\MyridTV\\_internal\\assets\\output';
+// 生成结果导出目录：应由后端按当前用户数据目录下发，前端不能写死开发者本机路径
+// （写死绝对路径会污染发布包，也会让装在其他机器上的实例导出到错误位置）
+const GENERATED_OUTPUT_EXPORT_FOLDER = '';
 const generatedOutputNameReservations = new Set();
 const remoteGeneratedMediaLocalizationInFlight = new Set();
 function generatedDatePrefix(date=new Date()){
@@ -11708,11 +12684,16 @@ function render(){
     const mediaStates = captureMediaPlaybackStates();
     const reusableNodes = new Map();
     const nodeMap = new Map(nodes.map(node => [node.id, node]));
+    const existingEls = new Map();
     world.querySelectorAll('.image-node').forEach(el => {
         const node = nodeMap.get(el.dataset.id);
+        if(!node) return;
+        existingEls.set(node.id, el);
         if(smartNodeHasLiveMedia(node)) reusableNodes.set(node.id, el);
     });
-    const nodeHtmlEntries = nodes.map(node => {
+    const renderStamp = String(++nodeRenderStamp);
+    const renderNodes = visibleNodeList();
+    const nodeHtmlEntries = renderNodes.map(node => {
         ensureNodeTextMedia(node, true);
         const imgs = node.images || [];
 const isScript = node.type === 'smart-prompt' && node.kind === 'script';
@@ -11736,7 +12717,7 @@ const title = isScript ? '剧本' : isTable ? '镜头表' : node.type === 'smart
 const html = `<div class="image-node ${isEmpty ? 'empty-node' : ''} ${isGroup ? 'group-node' : ''} ${node.groupLayout?.mode === 'preserve' ? 'preserved-group-node' : ''} ${isCanvasGroupNode(node) ? 'canvas-group-node' : ''} ${isHistory ? 'history-group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isScript ? 'script-smart-node' : ''} ${isTable ? 'table-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isBlenderPreview ? 'blender-preview-node' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''} ${node.comfyStatus === 'running' ? 'comfy-running' : ''} node-status-${escapeHtml(node.status || 'ready')} node-role-${escapeHtml(node.role || 'media')}" data-id="${escapeHtml(node.id)}" data-status="${escapeHtml(node.status || 'ready')}" data-role="${escapeHtml(node.role || 'media')}" data-comfy-status="${escapeHtml(node.comfyStatus || '')}" style="left:${node.x || 0}px;top:${node.y || 0}px;width:${layout.width}px;height:${layout.height}px;z-index:${isCanvasGroupNode(node) ? 1 : nodeLayerZ(node)}">
             <div class="node-head"><div class="node-title">${node.canvasSetEnabled === true ? `<span class="node-set-badge" title="${escapeAttr(tr('smart.setBadgeTip'))}">SET</span>` : ''}${title}</div><div class="node-actions">${deleteBtn}</div></div>
             ${isCanvasGroupNode(node) ? `<div class="canvas-group-header"><span class="canvas-group-title-display" title="双击重命名">${escapeHtml(node.title || '未命名组')}</span><button class="canvas-group-delete node-delete" type="button" title="删除组"><i data-lucide="trash-2"></i></button></div>` : ''}
-            ${!isEmpty && !isCanvasGroupNode(node) ? `<div class="floating-node-set">${canvasNodeSetToggleHtml(node)}</div><div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>` : ''}
+            ${!isCanvasGroupNode(node) ? (!isEmpty ? `<div class="floating-node-set">${canvasNodeSetToggleHtml(node)}</div><div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>` : `<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>`) : ''}
             ${runTimePillHtml(node)}
             <div class="node-body">${body}</div>
             <div class="node-hint">${hint}</div>
@@ -11744,28 +12725,46 @@ const html = `<div class="image-node ${isEmpty ? 'empty-node' : ''} ${isGroup ? 
             ${canvasPortDotsHtml(node, 'input')}
             ${canvasPortDotsHtml(node, 'output')}
         </div>`;
-        return {node, html};
+        return {node, html, key:nodeRenderKey(html)};
+    });
+    // ── 增量复用：HTML 没变的节点保留原 DOM（不重建、不重新绑事件、图片不重载）──
+    const plan = nodeHtmlEntries.map(entry => {
+        const existing = existingEls.get(entry.node.id);
+        const reusable = reusableNodes.get(entry.node.id);
+        const canReuse = Boolean(existing) && !reusable && existing.dataset.renderKey === entry.key;
+        return {node:entry.node, html:entry.html, key:entry.key, existing, reusable, canReuse};
     });
     const tpl = document.createElement('template');
-    tpl.innerHTML = nodeHtmlEntries.map(entry => entry.html).join('');
     const renderedNodeEls = new Map();
-    nodeHtmlEntries.forEach(entry => {
-        const fresh = tpl.content.querySelector(`.image-node[data-id="${CSS.escape(entry.node.id)}"]`);
-        if(fresh) renderedNodeEls.set(entry.node.id, fresh);
-    });
+    const freshPlan = plan.filter(entry => !entry.canReuse);
+    if(freshPlan.length){
+        tpl.innerHTML = freshPlan.map(entry => entry.html).join('');
+        freshPlan.forEach(entry => {
+            const fresh = tpl.content.querySelector(`.image-node[data-id="${CSS.escape(entry.node.id)}"]`);
+            if(fresh) renderedNodeEls.set(entry.node.id, fresh);
+        });
+    }
     const keepEls = new Set();
     reusableNodes.forEach(el => keepEls.add(el));
+    plan.forEach(entry => { if(entry.canReuse && entry.existing) keepEls.add(entry.existing); });
+    const connSvg = world.querySelector('svg.connection-layer');
+    if(connSvg) keepEls.add(connSvg);
     if(composerEl) keepEls.add(composerEl);
     [...world.childNodes].forEach(child => {
         if(!keepEls.has(child)) child.remove();
     });
-    if(composerEl) world.appendChild(composerEl);
-    world.insertAdjacentHTML('beforeend', renderConnections());
-    nodeHtmlEntries.forEach(entry => {
+    if(composerEl && composerEl.parentNode !== world) world.appendChild(composerEl);
+    // 连线层用数据模型算坐标，不依赖节点 DOM，所以裁剪掉节点也不会断线
+    if(connSvg) refreshConnectionLayer();
+    else world.insertAdjacentHTML('beforeend', renderConnections());
+    plan.forEach(entry => {
+        if(entry.canReuse) return;
         const fresh = renderedNodeEls.get(entry.node.id);
         if(!fresh) return;
+        fresh.dataset.renderKey = entry.key;
+        fresh.dataset.renderStamp = renderStamp;
         world.appendChild(fresh);
-        const reusable = reusableNodes.get(entry.node.id);
+        const reusable = entry.reusable;
         if(reusable){
             transplantSmartMediaElements(reusable, fresh);
             if(reusable !== fresh) reusable.remove();
@@ -11783,6 +12782,8 @@ const html = `<div class="image-node ${isEmpty ? 'empty-node' : ''} ${isGroup ? 
     queueRemoteGeneratedMediaLocalization();
     refreshRunTimerPills();
     installAudioThumbCleanup();
+    lastCullKey = cullSignature();
+    scheduleImageUpgrade();
     return;
     world.innerHTML = '';
     if(composerEl) world.appendChild(composerEl);
@@ -12164,7 +13165,7 @@ function ensurePortDragPathElement(){
     if(!path){
         path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         path.setAttribute('class', 'port-drag-temp conn-pending');
-        path.setAttribute('stroke', 'rgba(100,116,139,0.92)');
+        path.setAttribute('stroke', 'rgba(138,138,138,0.92)');
         path.setAttribute('stroke-width', '1.9');
         path.setAttribute('fill', 'none');
         path.setAttribute('stroke-linecap', 'round');
@@ -12506,6 +13507,8 @@ function handlePortDrop(drag, e){
                 port = (e.clientX - rect.left) < rect.width / 2 ? 'in' : 'out';
             }
         }
+        // 剧本节点已去掉输入口：拖到它上面不再接入输入侧
+        if(id && port === 'in' && isScriptPromptNode(nodes.find(n => n.id === id))){ id = ''; port = ''; }
         return {targetId:id, targetPort:port, hit:hitEl, dropGroupId:groupId};
     })();
     if(targetId){
@@ -12701,9 +13704,14 @@ async function confirmFreeCrop(){
     }
 }
 function bindNodeEvents(){
+    // 只有本轮刚创建的节点需要绑定；HTML 未变化的节点沿用已有监听器
+    const stamp = String(nodeRenderStamp);
+    // 建一次索引，避免每个节点都做一次 nodes.find（O(n²) → O(n)）
+    const nodeIndex = new Map(nodes.map(n => [n.id, n]));
     world.querySelectorAll('.image-node').forEach(el => {
+        if(el.dataset.renderStamp !== stamp) return;
         const id = el.dataset.id;
-        const nodeForControls = nodes.find(n => n.id === id);
+        const nodeForControls = nodeIndex.get(id);
         if(nodeForControls?.type === 'smart-prompt') bindPromptNodeControls(el, nodeForControls);
         if(nodeForControls?.type === 'smart-loop') bindLoopNodeControls(el, nodeForControls);
         const beginCanvasGroupRename = label => {
@@ -12747,12 +13755,13 @@ function bindNodeEvents(){
         };
         el.ondblclick = e => e.stopPropagation();
         const nodeDrop = el.querySelector('.node-drop');
-        nodeDrop?.addEventListener('mousedown', e => {
+        const uploadBtn = el.querySelector('.upload-node-btn');
+        uploadBtn?.addEventListener('mousedown', e => {
             if(e.button !== 0) return;
             e.preventDefault();
             e.stopPropagation();
         }, true);
-        nodeDrop?.addEventListener('click', e => {
+        uploadBtn?.addEventListener('click', e => {
             e.preventDefault(); e.stopPropagation();
             hideRunTimerForNode(nodes.find(n => n.id === id));
             selectedId = id;
@@ -13320,10 +14329,10 @@ function renderEditTextCanvas(){
         if(selected){
             ctx.setLineDash([7, 5]);
             ctx.lineWidth = 1.5;
-            ctx.strokeStyle = 'rgba(15,23,42,.72)';
+            ctx.strokeStyle = 'rgba(31,31,31,.72)';
             ctx.strokeRect(box.x, box.y, box.w, box.h);
             ctx.setLineDash([]);
-            ctx.fillStyle = 'rgba(15,23,42,.92)';
+            ctx.fillStyle = 'rgba(31,31,31,.92)';
             ctx.beginPath();
             ctx.arc(item.x + box.w / 2 - box.pad, item.y - box.h / 2 + box.pad, 3.5, 0, Math.PI * 2);
             ctx.fill();
@@ -14761,7 +15770,7 @@ function refreshGridSplitPreview(){
     const countEl = document.getElementById('gridSplitCount');
     const lineWidth = Math.max(2, Math.round(Math.min(canvasEl.width, canvasEl.height) / 320));
     const drawLine = (x1, y1, x2, y2) => {
-        ctx.save(); ctx.lineWidth = lineWidth + 2; ctx.strokeStyle = 'rgba(2,6,23,0.72)'; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+        ctx.save(); ctx.lineWidth = lineWidth + 2; ctx.strokeStyle = 'rgba(0,0,0,0.72)'; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
         ctx.lineWidth = lineWidth; ctx.strokeStyle = 'rgba(255,255,255,0.92)'; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.restore();
     };
     if(gridCustomMode){
@@ -15354,13 +16363,12 @@ function renderInputThumbsRow(node){
     syncJimengVideoModelPillForRefs();
     const dedup = node ? visibleReferenceImagesFor(node) : [];
     // 无线模式：即使还没有任何输入，也保留“引用结果”入口
+    // 2026-09-16 老王：只留图标（文字改由 hover 的 title 说明），并浮到卡片右上角
     const objectRefActions = (node && canvasObjectsMode())
-        ? `<div class="input-thumb-actions"><button class="smart-pill input-object-ref-btn" type="button" data-object-ref-open="1" title="${escapeAttr(tr('smart.objectRefTip'))}"><i data-lucide="waypoints"></i><span>${escapeHtml(tr('smart.objectRef'))}</span></button></div>`
+        ? `<div class="input-thumb-actions"><button class="smart-pill input-object-ref-btn" type="button" data-object-ref-open="1" title="${escapeAttr(tr('smart.objectRefTip'))}" aria-label="${escapeAttr(tr('smart.objectRef'))}"><i data-lucide="waypoints"></i></button></div>`
         : '';
     inputThumbsRow.classList.toggle('has-items', dedup.length > 0 || Boolean(objectRefActions));
-    const videoQuickActions = isApiLikeEngine(settings.engine) && settings.apiKind === 'video'
-        ? `<div class="input-video-actions">${renderManualVideoUrlControl()}</div>`
-        : '';
+    const videoQuickActions = '';
     if(!dedup.length){
         inputThumbsRow.innerHTML = `${videoQuickActions}${objectRefActions}`;
         inputThumbsRow.classList.toggle('has-items', Boolean(videoQuickActions || objectRefActions));
@@ -17394,7 +18402,8 @@ function syncRunButtonAvailability(node=selectedNode()){
     }
     const icon = runBtn.querySelector('[data-lucide]');
     if(icon){
-        const desired = isComfyRunning ? 'square' : 'sparkles';
+        // 2026-09-16 老王：运行按钮统一成「箭头 + 圆圈」，静置态一律 arrow-up（原 sparkles）
+        const desired = isComfyRunning ? 'square' : 'arrow-up';
         const currentName = icon.getAttribute('data-lucide');
         if(currentName !== desired){
             // lucide 把 <i> 替换成 <svg> 后，单纯 setAttribute 不会重画内部 path。
@@ -17750,9 +18759,18 @@ async function generateUrlsForCurrentSettings(node, prompt, refs, runSettings=se
         const imageFields = fields.filter(f => comfyFieldKind(f, wf) === 'image' && !comfyFieldNodeIsOff(f, workflowName));
         const videoFields = fields.filter(f => comfyFieldKind(f, wf) === 'video' && !comfyFieldNodeIsOff(f, workflowName));
         const audioFields = fields.filter(f => comfyFieldKind(f, wf) === 'audio' && !comfyFieldNodeIsOff(f, workflowName));
-        if(imageFields.length && imageRefs.length < imageFields.length){
-            throw new Error(`ComfyUI 工作流需要 ${imageFields.length} 张输入图，当前只有 ${imageRefs.length} 张。请把图片节点连到该节点后再运行。`);
+        if(imageFields.length && !imageRefs.length){
+            throw new Error(`ComfyUI 工作流需要 ${imageFields.length} 张输入图，当前 0 张。请把图片节点连到该节点后再运行。`);
         }
+        // 2026-09-16：媒体数量不足不再中止 —— 多出来的槽位自动旁路（传几张就用几张），
+        // 与用户手动关节点合并提交，自动裁剪不会覆盖用户已保存的开关设置。
+        const videoRefs = videoRefsOnly(allRefs);
+        const audioRefs = audioRefsOnly(allRefs);
+        const autoModes = comfyAutoBypassForMissingMedia([
+            {fields:imageFields, refs:imageRefs},
+            {fields:videoFields, refs:videoRefs},
+            {fields:audioFields, refs:audioRefs},
+        ]);
         promptFields.forEach((field) => {
             // prompt 字段直接取画布原生提示词节点的值，不再读取独立 comfyParams。
             values[field.id] = String(prompt || '').trim() || (field.default ?? '');
@@ -17763,8 +18781,8 @@ async function generateUrlsForCurrentSettings(node, prompt, refs, runSettings=se
             }
         };
         await assignMediaFields(imageFields, imageRefs);
-        await assignMediaFields(videoFields, videoRefsOnly(allRefs));
-        await assignMediaFields(audioFields, audioRefsOnly(allRefs));
+        await assignMediaFields(videoFields, videoRefs);
+        await assignMediaFields(audioFields, audioRefs);
         fields.filter(f => comfyFieldKind(f, wf) === 'setting').forEach(field => {
             if(comfyRandomEnabledField(field) && smartComfyRandomActive(field.id)){
                 values[field.id] = smartComfyRandomValue(field);
@@ -17775,7 +18793,7 @@ async function generateUrlsForCurrentSettings(node, prompt, refs, runSettings=se
         const result = await fetch(comfyProxyUrl(`/api/workflows/${encodeURIComponent(workflowName)}/run`), {
             method:'POST',
             headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({config:wf.config || {fields:[]}, fields:values, modes:comfyModesForWorkflow(workflowName, runSettings)})
+            body:JSON.stringify({config:wf.config || {fields:[]}, fields:values, modes:{...autoModes, ...comfyModesForWorkflow(workflowName, runSettings)}})
         }).then(async r => { if(!r.ok) throw new Error(await r.text()); return r.json(); });
         const urls = resultMediaUrls(result);
         const fallbackKind = result.videos?.length ? 'video' : result.audios?.length ? 'audio' : result.texts?.length ? 'text' : 'image';
@@ -17860,9 +18878,18 @@ async function generateComfyUrlsWithSettings(runSettings, prompt, refs, node=nul
     const imageFields = fields.filter(f => comfyFieldKind(f, wf) === 'image' && !comfyFieldNodeIsOff(f, workflowName));
     const videoFields = fields.filter(f => comfyFieldKind(f, wf) === 'video' && !comfyFieldNodeIsOff(f, workflowName));
     const audioFields = fields.filter(f => comfyFieldKind(f, wf) === 'audio' && !comfyFieldNodeIsOff(f, workflowName));
-    if(imageFields.length && imageRefs.length < imageFields.length){
-        throw new Error(`ComfyUI 工作流需要 ${imageFields.length} 张输入图，当前只有 ${imageRefs.length} 张。请把图片节点连到该节点后再运行。`);
+    if(imageFields.length && !imageRefs.length){
+        throw new Error(`ComfyUI 工作流需要 ${imageFields.length} 张输入图，当前 0 张。请把图片节点连到该节点后再运行。`);
     }
+    // 2026-09-16：媒体数量不足不再中止 —— 多出来的槽位自动旁路（传几张就用几张），
+    // 与用户手动关节点合并提交，自动裁剪不会覆盖用户已保存的开关设置。
+    const videoRefs = videoRefsOnly(allRefs);
+    const audioRefs = audioRefsOnly(allRefs);
+    const autoModes = comfyAutoBypassForMissingMedia([
+        {fields:imageFields, refs:imageRefs},
+        {fields:videoFields, refs:videoRefs},
+        {fields:audioFields, refs:audioRefs},
+    ]);
     promptFields.forEach((field, index) => {
         // 画布里 user 配的提示词 textarea 字段（settings.comfyParams[field.id]）优先，
         // 没填才回退到全局 prompt slot，再 fallback default。
@@ -17879,8 +18906,8 @@ async function generateComfyUrlsWithSettings(runSettings, prompt, refs, node=nul
         }
     };
     await assignMediaFields(imageFields, imageRefs);
-    await assignMediaFields(videoFields, videoRefsOnly(allRefs));
-    await assignMediaFields(audioFields, audioRefsOnly(allRefs));
+    await assignMediaFields(videoFields, videoRefs);
+    await assignMediaFields(audioFields, audioRefs);
     fields.filter(f => comfyFieldKind(f, wf) === 'setting').forEach(field => {
         if(comfyRandomEnabledField(field) && smartComfyRandomActiveFor(runSettings, field.id)){
             values[field.id] = smartComfyRandomValue(field);
@@ -18896,9 +19923,18 @@ async function buildComfyWorkflowJobPayload(node, runSettings, prompt, refs){
     const imageFields = fields.filter(f => comfyFieldKind(f, wf) === 'image' && !comfyFieldNodeIsOff(f, workflowName));
     const videoFields = fields.filter(f => comfyFieldKind(f, wf) === 'video' && !comfyFieldNodeIsOff(f, workflowName));
     const audioFields = fields.filter(f => comfyFieldKind(f, wf) === 'audio' && !comfyFieldNodeIsOff(f, workflowName));
-    if(imageFields.length && imageRefs.length < imageFields.length){
-        throw new Error(`ComfyUI 工作流需要 ${imageFields.length} 张输入图，当前只有 ${imageRefs.length} 张。请把图片节点连到该节点后再运行。`);
+    if(imageFields.length && !imageRefs.length){
+        throw new Error(`ComfyUI 工作流需要 ${imageFields.length} 张输入图，当前 0 张。请把图片节点连到该节点后再运行。`);
     }
+    // 2026-09-16：媒体数量不足不再中止 —— 多出来的槽位自动旁路（传几张就用几张），
+    // 与用户手动关节点合并提交，自动裁剪不会覆盖用户已保存的开关设置。
+    const videoRefs = videoRefsOnly(allRefs);
+    const audioRefs = audioRefsOnly(allRefs);
+    const autoModes = comfyAutoBypassForMissingMedia([
+        {fields:imageFields, refs:imageRefs},
+        {fields:videoFields, refs:videoRefs},
+        {fields:audioFields, refs:audioRefs},
+    ]);
     promptFields.forEach((field, index) => {
         // 画布里 user 配的提示词 textarea 字段（settings.comfyParams[field.id]）优先，
         // 没填才回退到全局 prompt slot，再 fallback default。
@@ -18915,8 +19951,8 @@ async function buildComfyWorkflowJobPayload(node, runSettings, prompt, refs){
         }
     };
     await assignMediaFields(imageFields, imageRefs);
-    await assignMediaFields(videoFields, videoRefsOnly(allRefs));
-    await assignMediaFields(audioFields, audioRefsOnly(allRefs));
+    await assignMediaFields(videoFields, videoRefs);
+    await assignMediaFields(audioFields, audioRefs);
     fields.filter(f => comfyFieldKind(f, wf) === 'setting').forEach(field => {
  if(comfyRandomEnabledField(field) && smartComfyRandomActiveFor(runSettings, field.id)){
  values[field.id] = smartComfyRandomValue(field);
@@ -18938,7 +19974,7 @@ async function buildComfyWorkflowJobPayload(node, runSettings, prompt, refs){
         body:{
             workflow:workflowName,
             overrides,
-            modes:comfyModesForWorkflow(workflowName, runSettings),
+            modes:{...autoModes, ...comfyModesForWorkflow(workflowName, runSettings)},
             prefs:wf.config?.node_prefs || wf.config?.prefs || {}
         }
     };
@@ -19979,6 +21015,8 @@ window.onmousemove = e => {
                 const rect = nodeEl.getBoundingClientRect();
                 targetPort = (e.clientX - rect.left) < rect.width / 2 ? 'in' : 'out';
             }
+            // 剧本节点已去掉输入口：不接受新的输入连线
+            if(targetPort === 'in' && isScriptPromptNode(nodes.find(n => n.id === targetId))){ targetId = ''; targetPort = ''; }
             const compatible = (portDragState.fromPort === 'out' && targetPort === 'in') || (portDragState.fromPort === 'in' && targetPort === 'out');
             if(!compatible){ targetId = ''; targetPort = ''; }
         }
@@ -21289,7 +22327,7 @@ window.addEventListener('resize', () => {
     if(cropState) syncImageEditOverflow();
     if(panoramaState.enabled) resizePanoramaViewer();
 });
-window.addEventListener('studio-theme-change', event => applyTheme(event.detail?.theme || 'light'));
+window.addEventListener('studio-theme-change', event => applyTheme(event.detail?.theme || 'dark'));
 try {
     const apiChannel = new BroadcastChannel('studio-api');
     apiChannel.onmessage = async event => {
@@ -21308,7 +22346,7 @@ window.addEventListener('focus', () => {
 });
 window.addEventListener('message', event => {
     if(event.origin && event.origin !== location.origin) return;
-    if(event.data?.type === 'studio-theme') applyTheme(event.data.theme || 'light');
+    if(event.data?.type === 'studio-theme') applyTheme(event.data.theme || 'dark');
     if(event.data?.type === 'providers-changed' || event.data?.type === 'workflows-changed' || event.data?.type === 'comfy-instances-changed') refreshSmartConfigFromSettings();
     if(event.data?.type === 'app-config-changed') refreshCanvasAgentConfig().catch(() => {});
     if(event.data?.type === 'asset_library_updated') handleAssetLibraryUpdatedMessage(event.data);
@@ -21329,7 +22367,7 @@ window.addEventListener('studio-lang-change', () => {
     render();
 });
 window.onload = async () => {
-    applyTheme(localStorage.getItem('studio_theme') || localStorage.getItem('canvas_theme') || 'dark');
+    applyTheme('dark');
     loadPromptPresets();
     loadPromptTemplateGroups();
     loadPromptTemplateOverrides();

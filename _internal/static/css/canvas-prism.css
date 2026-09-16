@@ -1,28 +1,28 @@
 :root {
-  --canvas-prism-cyan: #24d8ff;
-  --canvas-prism-mint: #47f59d;
-  --canvas-prism-amber: #ffc84a;
-  --canvas-prism-pink: #ff4fb8;
-  --canvas-prism-violet: #8e6cff;
+  --canvas-prism-cyan: var(--x-prism-cyan);
+  --canvas-prism-mint: var(--x-prism-mint);
+  --canvas-prism-amber: var(--x-prism-amber);
+  --canvas-prism-pink: var(--x-prism-pink);
+  --canvas-prism-violet: var(--x-prism-violet);
   --canvas-prism-shadow: 0 28px 80px rgba(0, 0, 0, 0.26);
   --canvas-prism-line: rgba(255, 255, 255, 0.1);
 }
 
 body.prism-canvas-page {
   background:
-    radial-gradient(circle at 10% 8%, rgba(36, 216, 255, 0.16), transparent 20%),
-    radial-gradient(circle at 88% 10%, rgba(142, 108, 255, 0.14), transparent 18%),
-    radial-gradient(circle at 90% 88%, rgba(255, 79, 184, 0.12), transparent 22%),
+    radial-gradient(circle at 10% 8%, rgba(170,170,170,0.064), transparent 20%),
+    radial-gradient(circle at 88% 10%, rgba(150,150,150,0.056), transparent 18%),
+    radial-gradient(circle at 90% 88%, rgba(170,170,170,0.042), transparent 22%),
     linear-gradient(145deg, #eef4ff 0%, #f7f8fc 42%, #eef2ff 100%) !important;
 }
 
 html.studio-theme-dark body.prism-canvas-page,
 body.theme-dark.prism-canvas-page {
   background:
-    radial-gradient(circle at 10% 8%, rgba(36, 216, 255, 0.16), transparent 20%),
-    radial-gradient(circle at 88% 10%, rgba(142, 108, 255, 0.14), transparent 18%),
-    radial-gradient(circle at 90% 88%, rgba(255, 79, 184, 0.12), transparent 22%),
-    linear-gradient(145deg, #050812 0%, #07111f 42%, #05070d 100%) !important;
+    radial-gradient(circle at 10% 8%, rgba(170,170,170,0.064), transparent 20%),
+    radial-gradient(circle at 88% 10%, rgba(150,150,150,0.056), transparent 18%),
+    radial-gradient(circle at 90% 88%, rgba(170,170,170,0.042), transparent 22%),
+    linear-gradient(145deg, #000000 0%, #000000 42%, #000000 100%) !important;
 }
 
 body.prism-canvas-page::before,
@@ -40,7 +40,7 @@ body.prism-canvas-page::before {
   top: 6vh;
   width: 26vw;
   height: 26vw;
-  background: rgba(36, 216, 255, 0.14);
+  background: rgba(170,170,170,0.056);
 }
 
 body.prism-canvas-page::after {
@@ -48,7 +48,7 @@ body.prism-canvas-page::after {
   bottom: 8vh;
   width: 28vw;
   height: 28vw;
-  background: rgba(255, 79, 184, 0.12);
+  background: rgba(170,170,170,0.042);
 }
 
 body.prism-canvas-page .shell {
@@ -80,7 +80,7 @@ body.prism-canvas-page .error-panel {
   border-color: var(--canvas-prism-line);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.72)),
-    linear-gradient(135deg, rgba(36, 216, 255, 0.04), rgba(255, 79, 184, 0.03));
+    linear-gradient(135deg, rgba(170,170,170,0.016), rgba(170,170,170,0.01));
   box-shadow: 0 24px 60px rgba(82, 95, 129, 0.12);
   backdrop-filter: blur(20px);
 }
@@ -99,8 +99,8 @@ body.theme-dark.prism-canvas-page .image-edit-panel,
 body.theme-dark.prism-canvas-page .error-panel {
   border-color: var(--canvas-prism-line);
   background:
-    linear-gradient(180deg, rgba(9, 18, 38, 0.92), rgba(7, 13, 28, 0.9)),
-    linear-gradient(135deg, rgba(36, 216, 255, 0.06), rgba(255, 79, 184, 0.04));
+    rgba(26,26,26,.95),
+    linear-gradient(135deg, rgba(170,170,170,0.024), rgba(170,170,170,0.014));
   box-shadow: var(--canvas-prism-shadow);
 }
 
@@ -137,7 +137,7 @@ body.prism-canvas-page .tool-btn:hover,
 body.prism-canvas-page .menu-btn:hover,
 body.prism-canvas-page .gate-icon-btn:hover,
 body.prism-canvas-page .gate-back-link:hover {
-  border-color: rgba(36, 216, 255, 0.24);
+  border-color: rgba(170,170,170,0.096);
   background: rgba(255, 255, 255, 0.92);
   transform: translateY(-1px);
 }
@@ -156,10 +156,10 @@ body.theme-dark.prism-canvas-page .gate-back-link {
 
 body.prism-canvas-page .canvas-gate {
   padding: 0;
-  background-color:#0f141d !important;
+  background-color:#000000 !important;
   background-image:
-    radial-gradient(circle at 10% 8%, rgba(36, 216, 255, 0.08), transparent 18%),
-    radial-gradient(circle at 90% 12%, rgba(142, 108, 255, 0.08), transparent 18%),
+    radial-gradient(circle at 10% 8%, rgba(170,170,170,0.032), transparent 18%),
+    radial-gradient(circle at 90% 12%, rgba(150,150,150,0.032), transparent 18%),
     linear-gradient(145deg, rgba(6, 11, 22, 0.75), rgba(8, 15, 30, 0.62)),
     radial-gradient(var(--grid) 1px, transparent 1px) !important;
   background-size: auto, auto, auto, 24px 24px;
@@ -167,10 +167,10 @@ body.prism-canvas-page .canvas-gate {
 
 html.studio-theme-dark body.prism-canvas-page .canvas-gate,
 body.theme-dark.prism-canvas-page .canvas-gate {
-  background-color:#0f141d !important;
+  background-color:#000000 !important;
   background-image:
-    radial-gradient(circle at 10% 8%, rgba(36, 216, 255, 0.08), transparent 18%),
-    radial-gradient(circle at 90% 12%, rgba(142, 108, 255, 0.08), transparent 18%),
+    radial-gradient(circle at 10% 8%, rgba(170,170,170,0.032), transparent 18%),
+    radial-gradient(circle at 90% 12%, rgba(150,150,150,0.032), transparent 18%),
     linear-gradient(145deg, rgba(6, 11, 22, 0.75), rgba(8, 15, 30, 0.62)),
     radial-gradient(var(--grid) 1px, transparent 1px) !important;
   background-size: auto, auto, auto, 24px 24px;
@@ -205,7 +205,7 @@ body.prism-canvas-page .gate-panel::before {
   bottom: -118px;
   width: 250px;
   height: 250px;
-  background: radial-gradient(circle, rgba(36, 216, 255, 0.18), transparent 70%);
+  background: radial-gradient(circle, rgba(170,170,170,0.072), transparent 70%);
 }
 
 body.prism-canvas-page .gate-panel::after {
@@ -213,7 +213,7 @@ body.prism-canvas-page .gate-panel::after {
   right: -44px;
   width: 230px;
   height: 230px;
-  background: radial-gradient(circle, rgba(142, 108, 255, 0.16), transparent 70%);
+  background: radial-gradient(circle, rgba(150,150,150,0.064), transparent 70%);
 }
 
 html.studio-theme-dark body.prism-canvas-page .gate-panel,
@@ -290,9 +290,9 @@ body.prism-canvas-page .gate-sort,
 .prism-canvas-nav-pill {
   border: 1px solid transparent;
   background:
-    linear-gradient(180deg, rgba(10,18,34,.86), rgba(7,13,28,.78)) padding-box,
-    linear-gradient(135deg, rgba(36,216,255,.65), rgba(71,245,157,.48), rgba(142,108,255,.55)) border-box;
-  box-shadow:0 0 18px rgba(36,216,255,.12), inset 0 1px 0 rgba(255,255,255,.06);
+    rgba(31,31,31,.92) padding-box,
+    #2f2f2f border-box;
+  box-shadow:0 0 18px rgba(170,170,170,0.048), inset 0 1px 0 rgba(255,255,255,.06);
 }
 
 .prism-canvas-hero-pill {
@@ -301,7 +301,7 @@ body.prism-canvas-page .gate-sort,
   box-shadow:none !important;
   padding:0 !important;
   min-height:24px !important;
-  color:rgba(205,245,255,.78);
+  color:rgba(200,200,200,0.78);
 }
 
 html.studio-theme-dark body.prism-canvas-page .gate-count-pill,
@@ -313,8 +313,8 @@ body.theme-dark.prism-canvas-page .gate-sort,
 body.theme-dark .prism-canvas-mode-pill,
 body.theme-dark .prism-canvas-nav-pill {
   background:
-    linear-gradient(180deg, rgba(10,18,34,.86), rgba(7,13,28,.78)) padding-box,
-    linear-gradient(135deg, rgba(36,216,255,.65), rgba(71,245,157,.48), rgba(142,108,255,.55)) border-box;
+    rgba(31,31,31,.92) padding-box,
+    #2f2f2f border-box;
   border-color: transparent;
 }
 
@@ -360,8 +360,8 @@ margin-top: 8px;
   width: 8px;
   height: 8px;
   border-radius: 999px;
-  background: linear-gradient(135deg, var(--canvas-prism-cyan), var(--canvas-prism-violet));
-  box-shadow: 0 0 14px rgba(36, 216, 255, 0.55);
+  background: #c8c8c8;
+  box-shadow: 0 0 14px rgba(170,170,170,0.22);
 }
 
 .prism-canvas-brandline {
@@ -383,7 +383,7 @@ margin-top: 8px;
   width: 54px;
   height: 54px;
   border-radius: 18px;
-  filter: drop-shadow(0 0 18px rgba(36,216,255,.42));
+  filter: drop-shadow(0 0 18px rgba(170,170,170,0.168));
 }
 
 .prism-canvas-brand-copy {
@@ -399,11 +399,11 @@ margin-top: 8px;
   line-height:1;
   font-weight:850;
   letter-spacing:.02em;
-  text-shadow:0 0 22px rgba(71,245,157,.42),0 0 12px rgba(36,216,255,.34);
+  text-shadow:0 0 22px rgba(190,190,190,0.168),0 0 12px rgba(170,170,170,0.136);
 }
 
 .prism-canvas-brand-copy em {
-  color:rgba(205,245,255,.74);
+  color:rgba(200,200,200,0.74);
   font-size:13px;
   line-height:1.25;
   font-style:normal;
@@ -434,20 +434,20 @@ body.theme-dark.prism-canvas-page .gate-list {
 
 body.prism-canvas-page .canvas-item {
   border-radius: 20px;
-  border-color: rgba(15, 23, 42, 0.08);
+  border-color: rgba(0,0,0,0.08);
   box-shadow: 0 18px 36px rgba(82, 95, 129, 0.08);
 }
 
 body.prism-canvas-page .canvas-item:hover {
-  border-color: rgba(36, 216, 255, 0.26);
+  border-color: rgba(170,170,170,0.104);
   box-shadow: 0 24px 46px rgba(82, 95, 129, 0.14);
   transform: translateY(-1px);
 }
 
 body.prism-canvas-page .canvas-item.active {
   background:
-    linear-gradient(180deg, rgba(9, 18, 38, 0.94), rgba(7, 13, 28, 0.92)),
-    linear-gradient(135deg, rgba(36, 216, 255, 0.12), rgba(142, 108, 255, 0.1));
+    rgba(26,26,26,.96),
+    linear-gradient(135deg, rgba(170,170,170,0.048), rgba(150,150,150,0.04));
   border-color: rgba(255, 255, 255, 0.12);
   box-shadow: 0 24px 48px rgba(8, 15, 34, 0.3);
 }
@@ -469,7 +469,7 @@ body.prism-canvas-page .hint {
   border: 1px solid rgba(255, 255, 255, 0.1);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.74)),
-    linear-gradient(135deg, rgba(36, 216, 255, 0.04), rgba(255, 79, 184, 0.03));
+    linear-gradient(135deg, rgba(170,170,170,0.016), rgba(170,170,170,0.01));
   color: var(--text);
   box-shadow: 0 16px 36px rgba(82, 95, 129, 0.12);
 }
@@ -477,8 +477,8 @@ body.prism-canvas-page .hint {
 html.studio-theme-dark body.prism-canvas-page .hint,
 body.theme-dark.prism-canvas-page .hint {
   background:
-    linear-gradient(180deg, rgba(9, 18, 38, 0.92), rgba(7, 13, 28, 0.9)),
-    linear-gradient(135deg, rgba(36, 216, 255, 0.06), rgba(255, 79, 184, 0.04));
+    rgba(26,26,26,.95),
+    linear-gradient(135deg, rgba(170,170,170,0.024), rgba(170,170,170,0.014));
   color: rgba(226, 232, 240, 0.84);
   border-color: rgba(255, 255, 255, 0.08);
   box-shadow: var(--canvas-prism-shadow);
@@ -489,8 +489,8 @@ body.prism-canvas-page .canvas-asset-panel {
 }
 
 body.prism-canvas-page .canvas-asset-drop {
-  border-color: rgba(36, 216, 255, 0.18);
-  background: rgba(36, 216, 255, 0.06);
+  border-color: rgba(170,170,170,0.072);
+  background: rgba(170,170,170,0.024);
 }
 
 
@@ -560,17 +560,17 @@ body.prism-canvas-page .canvas-item,
 body.prism-canvas-page .gate-list {
   border:3px solid transparent !important;
   background:
-    linear-gradient(180deg, rgba(10,18,34,.78), rgba(7,13,28,.68)) padding-box,
-    linear-gradient(135deg, rgba(36,216,255,.58), rgba(71,245,157,.34), rgba(142,108,255,.50)) border-box !important;
-  box-shadow:0 0 20px rgba(36,216,255,.10), inset 0 1px 0 rgba(255,255,255,.045);
+    rgba(31,31,31,.9) padding-box,
+    #2f2f2f border-box !important;
+  box-shadow:0 0 20px rgba(170,170,170,0.04), inset 0 1px 0 rgba(255,255,255,.045);
 }
 body.prism-canvas-page .canvas-item:hover,
 body.prism-canvas-page .gate-icon-btn:hover,
 body.prism-canvas-page .gate-back-link:hover,
 body.prism-canvas-page .smart-create-btn:hover {
 background:
-linear-gradient(180deg, rgba(14,26,48,.88), rgba(8,16,34,.78)) padding-box,
-linear-gradient(135deg, rgba(36,216,255,.82), rgba(71,245,157,.52), rgba(142,108,255,.72)) border-box !important;
+rgba(38,38,38,.95) padding-box,
+#7a7a7a border-box !important;
 }
 
 /* Full-bleed workspace: remove title/time text and let canvas content occupy the full frame. */
@@ -622,7 +622,7 @@ height:84px !important;
 border-radius:0 !important;
 object-fit:contain !important;
 object-position:center !important;
-filter:drop-shadow(0 0 18px rgba(36,216,255,.42)) !important;
+filter:drop-shadow(0 0 18px rgba(170,170,170,0.168)) !important;
 }
 
 .prism-canvas-brand-copy {
@@ -638,7 +638,7 @@ letter-spacing:0 !important;
 .prism-canvas-brand-copy em {
 font-size:12px !important;
 line-height:1.2 !important;
-color:rgba(205,245,255,.66) !important;
+color:rgba(200,200,200,0.66) !important;
 }
 
 body.prism-canvas-page .gate-head-actions {
@@ -672,17 +672,17 @@ height:36px !important;
 padding:0 15px !important;
 border-radius:12px !important;
 background:
-linear-gradient(180deg, rgba(39,234,169,.96), rgba(23,184,213,.9)) padding-box,
-linear-gradient(135deg, rgba(255,255,255,.7), rgba(36,216,255,.6)) border-box !important;
-color:#04131c !important;
-box-shadow:0 10px 24px rgba(36,216,255,.18) !important;
+rgba(31,31,31,.9) padding-box,
+#2f2f2f border-box !important;
+color:var(--text) !important;
+box-shadow:0 10px 24px rgba(170,170,170,0.072) !important;
 }
 
 body.prism-canvas-page .smart-create-btn:hover {
 background:
-linear-gradient(180deg, rgba(58,255,186,1), rgba(31,207,232,.96)) padding-box,
-linear-gradient(135deg, rgba(255,255,255,.78), rgba(71,245,157,.72)) border-box !important;
-box-shadow:0 12px 28px rgba(36,216,255,.26) !important;
+rgba(38,38,38,.95) padding-box,
+#7a7a7a border-box !important;
+box-shadow:0 12px 28px rgba(170,170,170,0.104) !important;
 }
 
 /* UI polish 4 final: no inner window frame, only the app frame and cards remain. */
@@ -725,11 +725,11 @@ padding:14px !important;
 border:1px solid transparent !important;
 border-radius:18px !important;
 background:
-linear-gradient(180deg, rgba(9,18,38,.46), rgba(7,13,28,.38)) padding-box,
-linear-gradient(135deg, rgba(36,216,255,.30), rgba(71,245,157,.16), rgba(142,108,255,.28)) border-box !important;
+rgba(24,24,24,.55) padding-box,
+#333333 border-box !important;
 background-image:
-linear-gradient(180deg, rgba(9,18,38,.46), rgba(7,13,28,.38)),
-linear-gradient(135deg, rgba(36,216,255,.30), rgba(71,245,157,.16), rgba(142,108,255,.28)) !important;
+rgba(24,24,24,.55),
+#333333 !important;
 box-shadow:inset 0 1px 0 rgba(255,255,255,.04) !important;
 outline:0 !important;
 }
@@ -796,8 +796,8 @@ padding:14px !important;
 gap:14px !important;
 border-radius:18px !important;
 background:
-linear-gradient(180deg, rgba(9,18,38,.46), rgba(7,13,28,.38)) padding-box,
-linear-gradient(135deg, rgba(36,216,255,.30), rgba(71,245,157,.16), rgba(142,108,255,.28)) border-box !important;
+rgba(24,24,24,.55) padding-box,
+#333333 border-box !important;
 box-shadow:inset 0 1px 0 rgba(255,255,255,.04) !important;
 }
 
@@ -808,7 +808,7 @@ box-shadow:0 10px 22px rgba(0,0,0,.12), inset 0 1px 0 rgba(255,255,255,.035) !im
 
 body.prism-canvas-page .canvas-item:hover {
 transform:translateY(-2px) !important;
-box-shadow:0 16px 30px rgba(0,0,0,.18), 0 0 18px rgba(36,216,255,.12) !important;
+box-shadow:0 16px 30px rgba(0,0,0,.18), 0 0 18px rgba(170,170,170,0.048) !important;
 }
 
 /* Restore the canvas page's own rounded content surfaces. */
@@ -979,9 +979,9 @@ body.theme-dark.prism-canvas-page .gate-list .canvas-item,
 body.theme-dark.prism-canvas-page .gate-list .canvas-item.active {
   border:3px solid transparent !important;
   background:
-    linear-gradient(180deg, rgba(10,18,34,.78), rgba(7,13,28,.68)) padding-box,
-    linear-gradient(135deg, rgba(36,216,255,.58), rgba(71,245,157,.34), rgba(142,108,255,.50)) border-box !important;
-box-shadow:0 0 20px rgba(36,216,255,.10), inset 0 1px 0 rgba(255,255,255,.045) !important;
+    rgba(31,31,31,.9) padding-box,
+    #2f2f2f border-box !important;
+box-shadow:0 0 20px rgba(170,170,170,0.04), inset 0 1px 0 rgba(255,255,255,.045) !important;
 }
 
 /* UI polish 1 final overrides. */
@@ -991,8 +991,8 @@ padding:14px !important;
 gap:14px !important;
 border-radius:18px !important;
 background:
-linear-gradient(180deg, rgba(9,18,38,.46), rgba(7,13,28,.38)) padding-box,
-linear-gradient(135deg, rgba(36,216,255,.30), rgba(71,245,157,.16), rgba(142,108,255,.28)) border-box !important;
+rgba(24,24,24,.55) padding-box,
+#333333 border-box !important;
 box-shadow:inset 0 1px 0 rgba(255,255,255,.04) !important;
 }
 
@@ -1003,22 +1003,22 @@ box-shadow:0 10px 22px rgba(0,0,0,.12), inset 0 1px 0 rgba(255,255,255,.035) !im
 
 body.prism-canvas-page .canvas-item:hover {
 transform:translateY(-2px) !important;
-box-shadow:0 16px 30px rgba(0,0,0,.18), 0 0 18px rgba(36,216,255,.12) !important;
+box-shadow:0 16px 30px rgba(0,0,0,.18), 0 0 18px rgba(170,170,170,0.048) !important;
 }
 
 body.prism-canvas-page .smart-create-btn {
 background:
-linear-gradient(180deg, rgba(39,234,169,.96), rgba(23,184,213,.9)) padding-box,
-linear-gradient(135deg, rgba(255,255,255,.7), rgba(36,216,255,.6)) border-box !important;
-color:#04131c !important;
-box-shadow:0 10px 24px rgba(36,216,255,.18) !important;
+rgba(31,31,31,.9) padding-box,
+#2f2f2f border-box !important;
+color:var(--text) !important;
+box-shadow:0 10px 24px rgba(170,170,170,0.072) !important;
 }
 
 body.prism-canvas-page .smart-create-btn:hover {
 background:
-linear-gradient(180deg, rgba(58,255,186,1), rgba(31,207,232,.96)) padding-box,
-linear-gradient(135deg, rgba(255,255,255,.78), rgba(71,245,157,.72)) border-box !important;
-box-shadow:0 12px 28px rgba(36,216,255,.26) !important;
+rgba(38,38,38,.95) padding-box,
+#7a7a7a border-box !important;
+box-shadow:0 12px 28px rgba(170,170,170,0.104) !important;
 }
 /* Fine tune homepage hero entry pills position. */
 body.prism-canvas-page .prism-canvas-gate-pills {
@@ -1027,35 +1027,35 @@ body.prism-canvas-page .prism-canvas-gate-pills {
 
 /* 2026-09-07 hardline canvas nodes and controls. */
 body.prism-canvas-page {
-  --canvas-hard-page:#e4eaf1;
-  --canvas-hard-grid:rgba(71,85,105,.18);
-  --canvas-hard-node:#f8fafc;
-  --canvas-hard-node-head:#edf3f8;
-  --canvas-hard-soft:#eef3f8;
-  --canvas-hard-soft-2:#dde6ef;
-  --canvas-hard-line:rgba(71,85,105,.22);
-  --canvas-hard-line-strong:#587187;
-  --canvas-hard-text:#101720;
-  --canvas-hard-muted:#556274;
-  --canvas-hard-shadow:rgba(30,41,59,.11);
-  --canvas-hard-accent:#45738c;
+  --canvas-hard-page: var(--x-page);
+  --canvas-hard-grid: var(--x-grid);
+  --canvas-hard-node: var(--x-card);
+  --canvas-hard-node-head: var(--x-soft);
+  --canvas-hard-soft: var(--x-soft);
+  --canvas-hard-soft-2: var(--x-soft-2);
+  --canvas-hard-line: var(--x-line);
+  --canvas-hard-line-strong: var(--x-line-strong);
+  --canvas-hard-text: var(--x-text);
+  --canvas-hard-muted: var(--x-muted);
+  --canvas-hard-shadow: var(--x-shadow);
+  --canvas-hard-accent: var(--x-accent);
 }
 
 body.prism-canvas-page.theme-dark,
 html.theme-dark body.prism-canvas-page,
 html.studio-theme-dark body.prism-canvas-page {
-  --canvas-hard-page:#060a11;
-  --canvas-hard-grid:rgba(118,172,197,.15);
-  --canvas-hard-node:#141d2a;
-  --canvas-hard-node-head:#233449;
-  --canvas-hard-soft:#0d1420;
-  --canvas-hard-soft-2:#1c2c3e;
-  --canvas-hard-line:rgba(139,158,184,.22);
-  --canvas-hard-line-strong:#76acc5;
-  --canvas-hard-text:#edf2f8;
-  --canvas-hard-muted:#a8b4c5;
-  --canvas-hard-shadow:rgba(0,0,0,.32);
-  --canvas-hard-accent:#76acc5;
+  --canvas-hard-page: var(--x-page);
+  --canvas-hard-grid: var(--x-grid);
+  --canvas-hard-node: var(--x-card);
+  --canvas-hard-node-head: var(--x-soft);
+  --canvas-hard-soft: var(--x-soft);
+  --canvas-hard-soft-2: var(--x-soft-2);
+  --canvas-hard-line: var(--x-line);
+  --canvas-hard-line-strong: var(--x-line-strong);
+  --canvas-hard-text: var(--x-text);
+  --canvas-hard-muted: var(--x-muted);
+  --canvas-hard-shadow: var(--x-shadow);
+  --canvas-hard-accent: var(--x-accent);
 }
 
 body.prism-canvas-page .board {
@@ -1189,7 +1189,7 @@ body.prism-canvas-page .seg button.active,
 body.prism-canvas-page .setting-check.active {
   background:var(--canvas-hard-line-strong) !important;
   border-color:var(--canvas-hard-line-strong) !important;
-  color:#07101a !important;
+  color:#000000 !important;
 }
 
 body.prism-canvas-page .gen-cascade-btn {

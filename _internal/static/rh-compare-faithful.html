@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="theme-dark studio-theme-dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="./css/design-tokens.css?v=2026.09.15">
+<link rel="stylesheet" href="./css/smart-canvas.css?v=2026.09.15.rhrow1">
+<title>RH-API 工作流布局对比（真实 DOM + 真实 CSS）</title>
+<script src="./vendor/js/lucide.js"></script>
+<style>
+  body{ margin:0; background:var(--x-page,#000); color:var(--x-text,#fff); font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; padding:22px; }
+  h1{ font-size:15px; font-weight:700; margin:0 0 4px; }
+  .sub{ font-size:11.5px; color:var(--x-faint,#8a8a8a); margin:0 0 18px; line-height:1.5; }
+  .grid{ display:grid; grid-template-columns:repeat(2, minmax(280px,1fr)); gap:18px; align-items:start; }
+  .cell{ background:rgba(255,255,255,.03); border:1px solid var(--x-line,#404040); border-radius:14px; padding:14px; }
+  .cell h2{ font-size:12.5px; font-weight:700; margin:0 0 2px; display:flex; align-items:center; gap:8px; }
+  .tag{ font-size:10px; font-weight:700; padding:2px 7px; border-radius:999px; }
+  .tag.target{ background:rgba(96,165,250,.18); color:#93c5fd; }
+  .tag.old{ background:rgba(248,113,113,.16); color:#fca5a5; }
+  .tag.new{ background:rgba(52,211,153,.16); color:#6ee7b7; }
+  .cell .note{ font-size:10.5px; color:var(--x-faint,#8a8a8a); margin:8px 0 0; line-height:1.5; }
+  /* 让预览里的 .composer 可见（原样式是绝对定位+透明） */
+  .stage{ position:relative; min-height:150px; display:flex; align-items:flex-start; }
+  .stage .composer{ position:relative !important; opacity:1 !important; transform:none !important; pointer-events:auto !important; width:min(620px,100%); }
+  .legend{ font-size:10.5px; color:var(--x-faint,#8a8a8a); margin:16px 0 0; line-height:1.6; }
+  .legend b{ color:var(--x-text,#fff); }
+</style>
+</head>
+<body>
+<h1>RH-API 工作流布局：目标 vs 旧 vs 新（用源码真实 DOM 渲染）</h1>
+<p class="sub">本页直接把 <code>renderRunningHubParams()</code> 输出的真实 innerHTML 串 + 真实 <code>smart-canvas.css</code> 渲染出来。A 列是图片模式 api-single-row（你要的目标），B/C/D 是 RH 工作流模式在「默认 / 加 rh-single-row / 加 rh-single-row+字段」下的真实效果。没用任何手写 mock。</p>
+
+<div class="grid">
+
+  <!-- A. 目标：图片模式 api-single-row -->
+  <div class="cell">
+    <h2><span class="tag target">目标</span> 图片模式 api-single-row</h2>
+    <div class="stage">
+      <div class="composer open api-single-row">
+        <div class="composer-card">
+          <div class="composer-head">
+            <div class="composer-head-left">
+              <select class="engine-select"><option>API生成</option></select>
+              <div class="kind-toggle">
+                <button class="active"><i data-lucide="image"></i><span>图片</span></button>
+                <button><i data-lucide="film"></i><span>视频</span></button>
+              </div>
+            </div>
+          </div>
+          <div class="prompt-row"><div class="prompt-input" contenteditable="true" data-placeholder="描述你想生成或编辑的图片..."></div></div>
+          <div class="param-row">
+            <div class="dynamic-params">
+              <div class="smart-control engine-model-combo">
+                <button class="smart-pill" type="button"><span class="sub">API生成 · 通用模型</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+              </div>
+              <div class="smart-control combo-spec-count">
+                <button class="smart-pill" type="button"><span class="sub">1:1 方形 · 1K · 标准 · 4张</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+              </div>
+            </div>
+          </div>
+          <div class="composer-actions">
+            <button class="composer-template-btn" type="button"><i data-lucide="library"></i><span>模板库</span></button>
+            <button class="run-btn" type="button"><i data-lucide="sparkles"></i><span>运行</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="note">目标观感：参数 chip 单行、透明无框、运行按钮圆形。</p>
+  </div>
+
+  <!-- B. RH 旧：默认布局 -->
+  <div class="cell">
+    <h2><span class="tag old">旧</span> RH 工作流 · 默认布局</h2>
+    <div class="stage">
+      <div class="composer open">
+        <div class="composer-card">
+          <div class="composer-head">
+            <div class="composer-head-left">
+              <select class="engine-select"><option>RH-API · 工作流</option></select>
+            </div>
+          </div>
+          <div class="prompt-row"><div class="prompt-input" contenteditable="true" data-placeholder="描述你想生成或编辑的图片..."></div></div>
+          <div class="param-row">
+            <div class="dynamic-params">
+              <div class="smart-control rh-config-control">
+                <button class="smart-pill" type="button"><i data-lucide="workflow"></i><span class="sub">动漫线稿上色工作流</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+              </div>
+              <div class="smart-control rh-payment-control">
+                <button class="smart-pill" type="button"><i data-lucide="key-round"></i><span>免费额度</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+              </div>
+              <div class="smart-control rh-machine-control">
+                <button class="smart-pill" type="button"><i data-lucide="cpu"></i><span>24G</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+              </div>
+              <div class="rh-mini-summary">2 素材 · 1 提示词</div>
+            </div>
+          </div>
+          <div class="composer-actions">
+            <button class="composer-template-btn" type="button"><i data-lucide="library"></i><span>模板库</span></button>
+            <button class="run-btn" type="button"><i data-lucide="sparkles"></i><span>运行</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="note">现状：3 个控件是块级 div，各占一行 + 带边框 + 有图标和 caret → 这就是你截图里「大块带框、分两行」。</p>
+  </div>
+
+  <!-- C. RH 新：rh-single-row -->
+  <div class="cell">
+    <h2><span class="tag new">新</span> RH 工作流 · rh-single-row</h2>
+    <div class="stage">
+      <div class="composer open rh-single-row">
+        <div class="composer-card">
+          <div class="composer-head">
+            <div class="composer-head-left">
+              <select class="engine-select"><option>RH-API · 工作流</option></select>
+            </div>
+          </div>
+          <div class="prompt-row"><div class="prompt-input" contenteditable="true" data-placeholder="描述你想生成或编辑的图片..."></div></div>
+          <div class="param-row">
+            <div class="dynamic-params">
+              <div class="smart-control rh-config-control">
+                <button class="smart-pill" type="button"><i data-lucide="workflow"></i><span class="sub">动漫线稿上色工作流</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+              </div>
+              <div class="smart-control rh-payment-control">
+                <button class="smart-pill" type="button"><i data-lucide="key-round"></i><span>免费额度</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+              </div>
+              <div class="smart-control rh-machine-control">
+                <button class="smart-pill" type="button"><i data-lucide="cpu"></i><span>24G</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+              </div>
+              <div class="rh-mini-summary">2 素材 · 1 提示词</div>
+            </div>
+          </div>
+          <div class="composer-actions">
+            <button class="composer-template-btn" type="button"><i data-lucide="library"></i><span>模板库</span></button>
+            <button class="run-btn" type="button"><i data-lucide="sparkles"></i><span>运行</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="note">新效果：3 个 chip + 素材提示词摘要同一行，透明无框、图标/caret 隐藏、chip 间竖线分隔、运行按钮圆形。已对齐目标。</p>
+  </div>
+
+  <!-- D. RH 新 + 工作流字段（边界情况） -->
+  <div class="cell">
+    <h2><span class="tag new">新+字段</span> RH 工作流 · 有参数字段时</h2>
+    <div class="stage">
+      <div class="composer open rh-single-row">
+        <div class="composer-card">
+          <div class="composer-head">
+            <div class="composer-head-left">
+              <select class="engine-select"><option>RH-API · 工作流</option></select>
+            </div>
+          </div>
+          <div class="prompt-row"><div class="prompt-input" contenteditable="true" data-placeholder="描述你想生成或编辑的图片..."></div></div>
+          <div class="param-row">
+            <div class="dynamic-params">
+              <div class="smart-control rh-config-control">
+                <button class="smart-pill" type="button"><i data-lucide="workflow"></i><span class="sub">动漫线稿上色工作流</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+              </div>
+              <div class="smart-control rh-payment-control">
+                <button class="smart-pill" type="button"><i data-lucide="key-round"></i><span>免费额度</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+              </div>
+              <div class="smart-control rh-machine-control">
+                <button class="smart-pill" type="button"><i data-lucide="cpu"></i><span>24G</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+              </div>
+              <div class="rh-mini-summary">2 素材 · 1 提示词</div>
+              <div class="num-with-dice" title="种子">
+                <span class="num-label">种子</span>
+                <input type="number" value="0">
+                <button class="dice-btn" type="button"><i data-lucide="dice-5"></i></button>
+              </div>
+              <div class="smart-control rh-slider-control" title="重绘幅度">
+                <button class="smart-pill" type="button"><span class="sub">重绘幅度</span><span class="rh-slider-pill-value">0.6</span></button>
+              </div>
+            </div>
+          </div>
+          <div class="composer-actions">
+            <button class="composer-template-btn" type="button"><i data-lucide="library"></i><span>模板库</span></button>
+            <button class="run-btn" type="button"><i data-lucide="sparkles"></i><span>运行</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="note">字段（种子/重绘幅度）保留边框、自动换行到第二行 —— 刻意保留可编辑感，不与 3 个 chip 抢单行空间。</p>
+  </div>
+
+</div>
+
+<p class="legend">
+  <b>诚实说明：</b>本页用真实 CSS 渲染了真实 DOM 串，所以「新 vs 旧」的差异是可信的；但它仍是<b>静态 HTML 快照</b>，不等同于在软件里点开 RH 工作流节点时的实时渲染（实时还会有弹层、hover、i18n 文案等）。
+  最终以软件内 <b>Ctrl+Shift+R 强刷</b>后实际效果为准。若 C 列与你的截图 #1 目标仍有出入，大概率是：① 你截图里某些 chip 文案/数量不同；② 你期望「严格不换行(nowrap)」而非「放得下才单行(wrap)」。这两点告诉我即可调。
+</p>
+
+<script>
+  if (window.lucide && lucide.createIcons) lucide.createIcons();
+</script>
+</body>
+</html>

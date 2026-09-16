@@ -2,6 +2,7 @@
 <html lang="zh-CN">
 
 <head>
+    <link rel="stylesheet" href="/static/css/design-tokens.css?v=2026.09.16.skill3col1">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="/static/images/myrid-icon.png" type="image/png">
@@ -26,7 +27,7 @@
     <style>
         :root {
             --bg-base: #f8f8f8;
-            --text-main: #1a1a1a;
+            --text-main: #1f1f1f;
             --max-w: 1280px;
             --easing: cubic-bezier(0.4, 0, 0.2, 1);
             --accent: #000000;
@@ -60,11 +61,10 @@
         *::-webkit-scrollbar-corner {
             background: transparent !important;
         }
-
-        * {
-            scrollbar-width: thin !important;
-            scrollbar-color: #d8d8d8 transparent !important;
-        }
+        /* 2026-09-16 移除 scrollbar-width / scrollbar-color：
+           Chromium 见到标准属性会改用原生滚动条渲染，并忽略上方
+           所有 ::-webkit-scrollbar 规则，导致深色页面上出现浅色
+           原生滚动条。详见 design-tokens.css 基础控件层。 */
 
         body {
             background-color: var(--bg-base);
@@ -175,7 +175,7 @@
             display: none;
         }
     </style>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.06.21">
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.09.16.skill3col1">
 </head>
 
 <body class="antialiased">

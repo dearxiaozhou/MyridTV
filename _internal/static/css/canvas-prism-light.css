@@ -3,7 +3,7 @@
 html.theme-light body.prism-canvas-page .canvas-gate,
 body.theme-light.prism-canvas-page .canvas-gate {
   background-color: var(--page,#f1f5f9) !important;
-  background-image: radial-gradient(rgba(148,163,184,0.18) 1px,transparent 1px) !important;
+  background-image: radial-gradient(rgba(200,200,200,0.18) 1px,transparent 1px) !important;
 }
 html.theme-light body.prism-canvas-page .gate-panel,
 html.theme-light body.prism-canvas-page .panel,
@@ -48,16 +48,16 @@ body.theme-light.prism-canvas-page .gate-sort-btn.active {
 }
 html.theme-light .prism-canvas-brand-copy strong,
 body.theme-light .prism-canvas-brand-copy strong {
-  color: #0f172a !important;
+  color: #1f1f1f !important;
   text-shadow: none !important;
 }
 html.theme-light .prism-canvas-brand-copy em,
 body.theme-light .prism-canvas-brand-copy em {
-  color: rgba(71,85,105,0.82) !important;
+  color: rgba(74,74,74,0.82) !important;
 }
 html.theme-light .prism-canvas-hero-pill,
 body.theme-light .prism-canvas-hero-pill {
-  color: rgba(71,85,105,0.9) !important;
+  color: rgba(74,74,74,0.9) !important;
 }
 html.theme-light body.prism-canvas-page .gate-sort,
 body.theme-light.prism-canvas-page .gate-sort {

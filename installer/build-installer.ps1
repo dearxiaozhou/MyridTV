@@ -48,23 +48,48 @@ foreach ($oldBuildDir in @(
     -SignCertStoreLocation $SignCertStoreLocation `
     -SignTimestampUrl $SignTimestampUrl
 
-$iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
-if (-not $iscc) {
-    $candidate = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
-    if (Test-Path -LiteralPath $candidate) { $iscc = $candidate }
-}
-if (-not $iscc) {
-    $candidate = 'C:\Users\<user>\AppData\Local\Programs\Inno Setup 7\ISCC.exe'
-    if (Test-Path -LiteralPath $candidate) { $iscc = $candidate }
-}
-if (-not $iscc) {
-    $candidate = 'C:\Program Files (x86)\Inno Setup 7\ISCC.exe'
-    if (Test-Path -LiteralPath $candidate) { $iscc = $candidate }
+function Resolve-Iscc {
+    # 1) PATH 里有直接用
+    $cmd = Get-Command iscc -ErrorAction SilentlyContinue
+    if ($cmd -and $cmd.Source -and (Test-Path -LiteralPath $cmd.Source)) { return $cmd.Source }
+
+    # 2) 常见安装位置。用环境变量拼接，不把构建机用户名写死进脚本
+    $candidates = @()
+    foreach ($root in @($env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:LOCALAPPDATA)) {
+        if (-not $root) { continue }
+        $candidates += (Join-Path $root 'Inno Setup 6\ISCC.exe')
+        $candidates += (Join-Path $root 'Inno Setup 7\ISCC.exe')
+        $candidates += (Join-Path $root 'Programs\Inno Setup 6\ISCC.exe')
+        $candidates += (Join-Path $root 'Programs\Inno Setup 7\ISCC.exe')
+    }
+    foreach ($candidate in $candidates) {
+        if ($candidate -and (Test-Path -LiteralPath $candidate)) { return $candidate }
+    }
+
+    # 3) 注册表卸载信息里的安装目录，覆盖非默认路径安装
+    $uninstallKeys = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
+    )
+    foreach ($key in $uninstallKeys) {
+        $entries = Get-ItemProperty -Path $key -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -like 'Inno Setup*' }
+        foreach ($entry in $entries) {
+            if (-not $entry.InstallLocation) { continue }
+            $probe = Join-Path $entry.InstallLocation 'ISCC.exe'
+            if (Test-Path -LiteralPath $probe) { return $probe }
+        }
+    }
+
+    return $null
 }
 
+$iscc = Resolve-Iscc
 if (-not $iscc) {
-    throw "ISCC.exe not found. Install Inno Setup first, then run this script again."
+    throw "ISCC.exe not found. Install Inno Setup (https://jrsoftware.org/isinfo.php) or add ISCC.exe to PATH, then run this script again."
 }
+Write-Host "Inno Setup compiler: $iscc"
 
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 

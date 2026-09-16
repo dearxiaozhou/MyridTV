@@ -1,17 +1,17 @@
 :root {
-  --api-prism-cyan: #24d8ff;
-  --api-prism-mint: #47f59d;
-  --api-prism-amber: #ffc84a;
-  --api-prism-pink: #ff4fb8;
-  --api-prism-violet: #8e6cff;
+  --api-prism-cyan: var(--x-prism-cyan);
+  --api-prism-mint: var(--x-prism-mint);
+  --api-prism-amber: var(--x-prism-amber);
+  --api-prism-pink: var(--x-prism-pink);
+  --api-prism-violet: var(--x-prism-violet);
   --api-prism-shadow: 0 28px 80px rgba(0, 0, 0, 0.32);
   --api-prism-line: rgba(255, 255, 255, 0.1);
 }body.prism-api-page {
   background:
-    radial-gradient(circle at 8% 8%, rgba(36, 216, 255, 0.18), transparent 22%),
-    radial-gradient(circle at 88% 12%, rgba(142, 108, 255, 0.16), transparent 20%),
-    radial-gradient(circle at 92% 88%, rgba(255, 79, 184, 0.14), transparent 24%),
-    linear-gradient(145deg, #050812 0%, #07111f 42%, #05070d 100%) !important;
+    radial-gradient(circle at 8% 8%, rgba(170,170,170,0.072), transparent 22%),
+    radial-gradient(circle at 88% 12%, rgba(150,150,150,0.064), transparent 20%),
+    radial-gradient(circle at 92% 88%, rgba(170,170,170,0.049), transparent 24%),
+    linear-gradient(145deg, #000000 0%, #000000 42%, #000000 100%) !important;
 }body.prism-api-page::before,
 body.prism-api-page::after {
   content: "";
@@ -25,13 +25,13 @@ body.prism-api-page::after {
   left: 8vw;
   width: 26vw;
   height: 26vw;
-  background: rgba(36, 216, 255, 0.16);
+  background: rgba(170,170,170,0.064);
 }body.prism-api-page::after {
   right: 8vw;
   bottom: 8vh;
   width: 28vw;
   height: 28vw;
-  background: rgba(255, 79, 184, 0.12);
+  background: rgba(170,170,170,0.042);
 }body.prism-api-page .page {
   position: relative;
   z-index: 1;
@@ -44,8 +44,8 @@ body.prism-api-page::after {
   border: 1px solid var(--api-prism-line);
   border-radius: 30px;
   background:
-    linear-gradient(180deg, rgba(9, 18, 38, 0.92), rgba(7, 13, 28, 0.9)),
-    linear-gradient(135deg, rgba(36, 216, 255, 0.08), rgba(142, 108, 255, 0.08));
+    rgba(26,26,26,.95),
+    linear-gradient(135deg, rgba(170,170,170,0.032), rgba(150,150,150,0.032));
   box-shadow: var(--api-prism-shadow);
   backdrop-filter: blur(24px);
 }body.prism-api-page .page-head::before,
@@ -59,13 +59,13 @@ body.prism-api-page .page-head::after {
   right: -42px;
   width: 220px;
   height: 220px;
-  background: radial-gradient(circle, rgba(142, 108, 255, 0.2), transparent 70%);
+  background: radial-gradient(circle, rgba(150,150,150,0.08), transparent 70%);
 }body.prism-api-page .page-head::after {
   left: -56px;
   bottom: -92px;
   width: 240px;
   height: 240px;
-  background: radial-gradient(circle, rgba(36, 216, 255, 0.18), transparent 70%);
+  background: radial-gradient(circle, rgba(170,170,170,0.072), transparent 70%);
 }body.prism-api-page .page-head > *,
 body.prism-api-page .content-head > *,
 body.prism-api-page .block > * {
@@ -91,7 +91,7 @@ body.prism-api-page .block > * {
   height: 8px;
   border-radius: 999px;
   background: linear-gradient(135deg, var(--api-prism-cyan), var(--api-prism-violet));
-  box-shadow: 0 0 14px rgba(36, 216, 255, 0.6);
+  box-shadow: 0 0 14px rgba(170,170,170,0.24);
 }body.prism-api-page .page-head .title {
   font-size: clamp(20px, 2.2vw, 28px);
   line-height: 1.15;
@@ -133,7 +133,7 @@ body.prism-api-page .page-head .status,
   height: 9px;
   border-radius: 999px;
   background: linear-gradient(135deg, var(--api-prism-mint), var(--api-prism-cyan));
-  box-shadow: 0 0 14px rgba(71, 245, 157, 0.44);
+  box-shadow: 0 0 14px rgba(190,190,190,0.176);
 }body.prism-api-page .page-head-actions {
   display: flex;
   align-items: center;
@@ -154,7 +154,7 @@ body.prism-api-page .page-head .status,
   border-color: var(--api-prism-line);
   background:
     linear-gradient(180deg, rgba(9, 18, 38, 0.9), rgba(7, 13, 28, 0.88)),
-    linear-gradient(135deg, rgba(36, 216, 255, 0.08), rgba(142, 108, 255, 0.06));
+    linear-gradient(135deg, rgba(170,170,170,0.032), rgba(150,150,150,0.024));
   box-shadow: var(--api-prism-shadow);
   backdrop-filter: blur(22px);
 }.prism-api-brand {
@@ -166,7 +166,7 @@ body.prism-api-page .page-head .status,
   border: 1px solid rgba(255, 255, 255, 0.08);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
-    linear-gradient(135deg, rgba(36, 216, 255, 0.08), rgba(255, 79, 184, 0.06));
+    linear-gradient(135deg, rgba(170,170,170,0.032), rgba(170,170,170,0.021));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 14px 32px rgba(0, 0, 0, 0.22);
 }.prism-api-brand-icon {
   width: 64px;
@@ -223,7 +223,7 @@ body.prism-api-page .page-head .status,
   color: #f8fafc;
   letter-spacing: -0.01em;
 }body.prism-api-page .head-stat-label {
-  color: rgba(148,163,184,0.85);
+  color: rgba(200,200,200,0.85);
   font-weight: 750;
 }/* ── 左侧栏紧凑排版 ── */body.prism-api-page .sidebar {
   gap: 8px;
@@ -238,7 +238,7 @@ body.prism-api-page .page-head .status,
   font-size: 10px !important;
   font-weight: 800 !important;
   letter-spacing: 0.1em !important;
-  color: rgba(148,163,184,0.85) !important;
+  color: rgba(200,200,200,0.85) !important;
   background: transparent !important;
   border: none !important;
   border-radius: 0 !important;
@@ -251,7 +251,7 @@ body.prism-api-page.theme-dark .side-section-title {
   border: none !important;
   border-radius: 0 !important;
   box-shadow: none !important;
-  color: rgba(148,163,184,0.85) !important;
+  color: rgba(200,200,200,0.85) !important;
 }body.prism-api-page .provider-list {
   gap: 5px;
   padding-bottom: 8px;
@@ -264,7 +264,7 @@ body.prism-api-page.theme-dark .side-section-title {
   border: 2px solid rgba(255,255,255,0.85) !important;
 }/* 浅色主题选中边框 */html:not(.studio-theme-dark) body.prism-api-page .provider-card.active,
 body:not(.studio-theme-dark) .provider-card.active {
-  border-color: rgba(15,23,42,0.85) !important;
+  border-color: rgba(31,31,31,0.85) !important;
 }body.prism-api-page .provider-card.active::before {
   content: "";
   position: absolute;
@@ -274,7 +274,7 @@ body:not(.studio-theme-dark) .provider-card.active {
   width: 3px;
   border-radius: 3px;
   background: linear-gradient(180deg, var(--api-prism-cyan), var(--api-prism-violet));
-  box-shadow: 0 0 10px rgba(36,216,255,0.45);
+  box-shadow: 0 0 10px rgba(170,170,170,0.18);
 }body.prism-api-page .add-btn,
 body.prism-api-page .api-link-btn {
   min-height: 36px;
@@ -292,7 +292,7 @@ body.prism-api-page .api-link-btn {
   border: 1px dashed rgba(255,255,255,0.12);
   border-radius: 10px;
   background: transparent;
-  color: rgba(148,163,184,0.7);
+  color: rgba(200,200,200,0.7);
   font-size: 14px;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -303,13 +303,13 @@ body.prism-api-page .api-link-btn {
   background: rgba(255,255,255,0.05);
 }html:not(.studio-theme-dark) body.prism-api-page .provider-add-inline,
 body:not(.studio-theme-dark) .provider-add-inline {
-  border-color: rgba(15,23,42,0.12);
-  color: rgba(100,116,139,0.7);
+  border-color: rgba(0,0,0,0.12);
+  color: rgba(138,138,138,0.7);
 }html:not(.studio-theme-dark) body.prism-api-page .provider-add-inline:hover,
 body:not(.studio-theme-dark) .provider-add-inline:hover {
-  border-color: rgba(15,23,42,0.3);
-  color: rgba(15,23,42,0.9);
-  background: rgba(15,23,42,0.04);
+  border-color: rgba(31,31,31,0.3);
+  color: rgba(31,31,31,0.9);
+  background: rgba(0,0,0,0.04);
 }.prism-api-brand-sub {
   margin-top: 8px;
 }.prism-api-brand-status {
@@ -329,7 +329,7 @@ body:not(.studio-theme-dark) .provider-add-inline:hover {
   height: 8px;
   border-radius: 999px;
   background: linear-gradient(135deg, var(--api-prism-cyan), var(--api-prism-violet));
-  box-shadow: 0 0 14px rgba(36, 216, 255, 0.6);
+  box-shadow: 0 0 14px rgba(170,170,170,0.24);
 }.prism-api-summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -340,7 +340,7 @@ body:not(.studio-theme-dark) .provider-add-inline:hover {
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.05);
 }.prism-api-summary-label {
-  color: rgba(148, 163, 184, 0.92);
+  color: rgba(200, 200, 200, 0.92);
   font-size: 11px;
   font-weight: 700;
 }.prism-api-summary-value {
@@ -357,7 +357,7 @@ body:not(.studio-theme-dark) .provider-add-inline:hover {
   margin-top: 8px;
 }body.prism-api-page .side-section-title {
   padding: 4px 6px 2px;
-  color: rgba(148, 163, 184, 0.86);
+  color: rgba(200, 200, 200, 0.86);
   font-size: 10px;
   letter-spacing: 0.12em;
 }body.prism-api-page .provider-list {
@@ -379,7 +379,7 @@ body:not(.studio-theme-dark) .provider-add-inline:hover {
 }body.prism-api-page .provider-card.active {
   color: #fff;
   border-color: rgba(255, 255, 255, 0.16);
-  background: linear-gradient(135deg, rgba(36, 216, 255, 0.18), rgba(142, 108, 255, 0.16)), rgba(255, 255, 255, 0.08);
+  background: linear-gradient(135deg, rgba(170,170,170,0.072), rgba(150,150,150,0.064)), rgba(255, 255, 255, 0.08);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 16px 28px rgba(8, 15, 34, 0.28);
 }body.prism-api-page .provider-card.active .provider-meta {
   color: rgba(226, 232, 240, 0.72);
@@ -401,7 +401,7 @@ body.prism-api-page .block {
   border-radius: 24px;
   background:
     linear-gradient(180deg, rgba(9, 18, 38, 0.9), rgba(7, 13, 28, 0.88)),
-    linear-gradient(135deg, rgba(36, 216, 255, 0.06), rgba(255, 79, 184, 0.04));
+    linear-gradient(135deg, rgba(170,170,170,0.024), rgba(170,170,170,0.014));
   box-shadow: var(--api-prism-shadow);
   backdrop-filter: blur(18px);
 }body.prism-api-page .content-head::before,
@@ -412,7 +412,7 @@ body.prism-api-page .block::before {
   width: 220px;
   height: 220px;
   border-radius: 999px;
-  background: radial-gradient(circle, rgba(36, 216, 255, 0.14), transparent 70%);
+  background: radial-gradient(circle, rgba(170,170,170,0.056), transparent 70%);
   pointer-events: none;
 }body.prism-api-page .content-head {
   padding: 22px 24px;
@@ -448,8 +448,8 @@ body.prism-api-page .rh-workflow-editor-modal {
   border-color: rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.05);
 }body.prism-api-page .field-frame:focus-within {
-  border-color: rgba(36, 216, 255, 0.28);
-  box-shadow: 0 0 0 1px rgba(36, 216, 255, 0.16);
+  border-color: rgba(170,170,170,0.112);
+  box-shadow: 0 0 0 1px rgba(170,170,170,0.064);
 }body.prism-api-page .field-frame input,
 body.prism-api-page .field-frame select,
 body.prism-api-page .field-frame textarea,
@@ -466,13 +466,13 @@ body.prism-api-page .key-btn {
 }body.prism-api-page .action-btn.primary-btn,
 body.prism-api-page .save-btn,
 body.prism-api-page .api-page-save-btn {
-  background: linear-gradient(135deg, rgba(36, 216, 255, 0.18), rgba(142, 108, 255, 0.16));
+  background: linear-gradient(135deg, rgba(170,170,170,0.072), rgba(150,150,150,0.064));
   border-color: rgba(255, 255, 255, 0.14);
 }html:not(.studio-theme-dark) body.prism-api-page {
   background:
-    radial-gradient(circle at 8% 8%, rgba(36, 216, 255, 0.14), transparent 22%),
-    radial-gradient(circle at 88% 12%, rgba(142, 108, 255, 0.12), transparent 20%),
-    radial-gradient(circle at 92% 88%, rgba(255, 79, 184, 0.1), transparent 24%),
+    radial-gradient(circle at 8% 8%, rgba(170,170,170,0.056), transparent 22%),
+    radial-gradient(circle at 88% 12%, rgba(150,150,150,0.048), transparent 20%),
+    radial-gradient(circle at 92% 88%, rgba(170,170,170,0.035), transparent 24%),
     linear-gradient(145deg, #eef4ff 0%, #f7f8fc 42%, #eef2ff 100%) !important;
 }html:not(.studio-theme-dark) body.prism-api-page .page-head,
 html:not(.studio-theme-dark) body.prism-api-page .sidebar,
@@ -484,16 +484,16 @@ html:not(.studio-theme-dark) .prism-api-head-pill,
 html:not(.studio-theme-dark) .prism-api-meta-chip,
 html:not(.studio-theme-dark) .prism-api-active-pill,
 html:not(.studio-theme-dark) body.prism-api-page .page-head .status {
-  border-color: rgba(15, 23, 42, 0.08);
+  border-color: rgba(0,0,0,0.08);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.74)),
-    linear-gradient(145deg, rgba(36, 216, 255, 0.04), rgba(255, 79, 184, 0.03));
+    linear-gradient(145deg, rgba(170,170,170,0.016), rgba(170,170,170,0.01));
   box-shadow: 0 24px 60px rgba(82, 95, 129, 0.12);
 }html:not(.studio-theme-dark) body.prism-api-page .page-head .title,
 html:not(.studio-theme-dark) body.prism-api-page .content-head .editor-title,
 html:not(.studio-theme-dark) body.prism-api-page .block-title,
 html:not(.studio-theme-dark) .prism-api-summary-value {
-  color: #0f172a;
+  color: #1f1f1f;
 }html:not(.studio-theme-dark) body.prism-api-page .page-head .sub,
 html:not(.studio-theme-dark) .prism-api-brand-sub,
 html:not(.studio-theme-dark) .prism-api-summary-sub,
@@ -501,7 +501,7 @@ html:not(.studio-theme-dark) body.prism-api-page .block-desc,
 html:not(.studio-theme-dark) body.prism-api-page .label,
 html:not(.studio-theme-dark) body.prism-api-page .hint,
 html:not(.studio-theme-dark) body.prism-api-page .content-head .editor-sub {
-  color: rgba(51, 65, 85, 0.7);
+  color: rgba(74,74,74,0.7);
 }html:not(.studio-theme-dark) body.prism-api-page .provider-card,
 html:not(.studio-theme-dark) body.prism-api-page .add-btn,
 html:not(.studio-theme-dark) body.prism-api-page .api-link-btn,
@@ -514,18 +514,18 @@ html:not(.studio-theme-dark) .prism-api-head-pill,
 html:not(.studio-theme-dark) .prism-api-meta-chip,
 html:not(.studio-theme-dark) .prism-api-active-pill,
 html:not(.studio-theme-dark) body.prism-api-page .page-head .status {
-  color: #0f172a;
-  border-color: rgba(15, 23, 42, 0.08);
+  color: #1f1f1f;
+  border-color: rgba(0,0,0,0.08);
   background: rgba(255, 255, 255, 0.7);
 }html:not(.studio-theme-dark) body.prism-api-page .provider-card.active {
-  color: #0f172a;
-  background: linear-gradient(135deg, rgba(36, 216, 255, 0.16), rgba(142, 108, 255, 0.14)), rgba(255, 255, 255, 0.88);
+  color: #1f1f1f;
+  background: linear-gradient(135deg, rgba(170,170,170,0.064), rgba(150,150,150,0.056)), rgba(255, 255, 255, 0.88);
 }html:not(.studio-theme-dark) body.prism-api-page .provider-card.active .provider-meta {
-  color: rgba(51, 65, 85, 0.7);
+  color: rgba(74,74,74,0.7);
 }html:not(.studio-theme-dark) body.prism-api-page .field-frame input,
 html:not(.studio-theme-dark) body.prism-api-page .field-frame select,
 html:not(.studio-theme-dark) body.prism-api-page .field-frame textarea {
-  color: #0f172a;
+  color: #1f1f1f;
 }@media (max-width: 1180px){body.prism-api-page .layout {
     grid-template-columns: 280px minmax(0, 1fr);
   }}@media (max-width: 980px){body.prism-api-page .layout {
@@ -535,14 +535,14 @@ html:not(.studio-theme-dark) body.prism-api-page .field-frame textarea {
     max-height: none;
   }.prism-api-summary {
     grid-template-columns: 1fr;
-  }}/* 2026-06-29 compact API settings sidebar */body.prism-api-page .layout { grid-template-columns:280px minmax(0,1fr); gap:18px; }body.prism-api-page .sidebar { top:18px; max-height:calc(100vh - 36px); gap:10px; padding:10px 10px 14px; border-radius:0; background:rgba(5,12,23,.92); box-shadow:none; border-color:rgba(96,116,148,.2); backdrop-filter:none; }.prism-api-brand, .prism-api-summary { display:none !important; }body.prism-api-page .provider-list { gap:6px; padding:0 0 10px; margin:0; border-bottom:0; }body.prism-api-page .provider-card, body.prism-api-page .provider-card.provider-card-banner, body.prism-api-page .agent-provider-card { min-height:30px; padding:0 8px; border-radius:6px; border:1px solid rgba(100,116,139,.22); background:rgba(30,41,59,.58); color:rgba(238,244,255,.95); box-shadow:none; display:flex; align-items:center; }body.prism-api-page .provider-card:hover, body.prism-api-page .provider-card.active { background:linear-gradient(135deg, rgba(36,216,255,.22), rgba(255,79,184,.16)); border-color:rgba(36,216,255,.45); color:#fff; transform:none; }body.prism-api-page .provider-card::before { display:none !important; }body.prism-api-page .provider-card.active::before { display:block !important; }body.prism-api-page .provider-mark, body.prism-api-page .provider-drag-handle, body.prism-api-page .provider-side-meta, body.prism-api-page .provider-meta, body.prism-api-page .provider-banner-inner, body.prism-api-page .provider-logo-wrap { display:none !important; }body.prism-api-page .provider-info { min-width:0; width:100%; }body.prism-api-page .provider-name { display:block; color:inherit; font-size:11px; font-weight:850; line-height:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }body.prism-api-page .api-link-btn { display:flex; }body.prism-api-page .agent-side-title { margin-top:4px; }html:not(.studio-theme-dark) body.prism-api-page .sidebar { background:rgba(248,250,252,.92); border-color:rgba(15,23,42,.08); }/* 最终覆盖：选中边框必须是白色/黑色实线 */body.prism-api-page .provider-card.active {
+  }}/* 2026-06-29 compact API settings sidebar */body.prism-api-page .layout { grid-template-columns:280px minmax(0,1fr); gap:18px; }body.prism-api-page .sidebar { top:18px; max-height:calc(100vh - 36px); gap:10px; padding:10px 10px 14px; border-radius:0; background:rgba(5,12,23,.92); box-shadow:none; border-color:rgba(96,116,148,.2); backdrop-filter:none; }.prism-api-brand, .prism-api-summary { display:none !important; }body.prism-api-page .provider-list { gap:6px; padding:0 0 10px; margin:0; border-bottom:0; }body.prism-api-page .provider-card, body.prism-api-page .provider-card.provider-card-banner, body.prism-api-page .agent-provider-card { min-height:30px; padding:0 8px; border-radius:6px; border:1px solid rgba(138,138,138,.22); background:rgba(30,41,59,.58); color:rgba(238,244,255,.95); box-shadow:none; display:flex; align-items:center; }body.prism-api-page .provider-card:hover, body.prism-api-page .provider-card.active { background:linear-gradient(135deg, rgba(170,170,170,0.088), rgba(170,170,170,0.056)); border-color:rgba(170,170,170,0.18); color:#fff; transform:none; }body.prism-api-page .provider-card::before { display:none !important; }body.prism-api-page .provider-card.active::before { display:block !important; }body.prism-api-page .provider-mark, body.prism-api-page .provider-drag-handle, body.prism-api-page .provider-side-meta, body.prism-api-page .provider-meta, body.prism-api-page .provider-banner-inner, body.prism-api-page .provider-logo-wrap { display:none !important; }body.prism-api-page .provider-info { min-width:0; width:100%; }body.prism-api-page .provider-name { display:block; color:inherit; font-size:11px; font-weight:850; line-height:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }body.prism-api-page .api-link-btn { display:flex; }body.prism-api-page .agent-side-title { margin-top:4px; }html:not(.studio-theme-dark) body.prism-api-page .sidebar { background:rgba(248,250,252,.92); border-color:rgba(0,0,0,.08); }/* 最终覆盖：选中边框必须是白色/黑色实线 */body.prism-api-page .provider-card.active {
   outline: 2px solid rgba(255,255,255,0.88) !important;
   outline-offset: -1px !important;
   border: 1px solid rgba(255,255,255,0.88) !important;
 }html:not(.studio-theme-dark) body.prism-api-page .provider-card.active,
 body:not(.studio-theme-dark) .provider-card.active {
-  outline-color: rgba(15,23,42,0.88) !important;
-  border-color: rgba(15,23,42,0.88) !important;
+  outline-color: rgba(31,31,31,0.88) !important;
+  border-color: rgba(31,31,31,0.88) !important;
 }/* 内容表头按钮显隐：agent 模式显示 agent 按钮，隐藏平台按钮 */body.prism-api-page .agent-head-btn { display:none; }body.prism-api-page.show-agent-mode .content-actions { display:flex !important; }body.prism-api-page.show-agent-mode .api-page-delete-btn,
 body.prism-api-page.show-agent-mode .api-page-save-btn { display:none; }body.prism-api-page.show-agent-mode .agent-head-btn { display:inline-flex; }body.prism-api-page.show-runninghub #runninghubConfigBlock.runninghub-config-block { display:flex !important; }body.prism-api-page.show-runninghub #runninghubConfigBlock.runninghub-config-block[hidden] { display:none !important; }/* 2026-09-06 hardline API status badges */body.prism-api-page .provider-side-meta {
   display:flex !important;
@@ -570,8 +570,8 @@ html:not(.studio-theme-dark) body.prism-api-page {
   background: var(--api-hard-bg, #e6ebf2) !important;
 }body.prism-api-page .page-head,
 html:not(.studio-theme-dark) body.prism-api-page .page-head {
-  border-color: var(--api-hard-line, rgba(71,85,105,.18)) !important;
-  border-bottom: 1px solid var(--api-hard-line, rgba(71,85,105,.18)) !important;
+  border-color: var(--api-hard-line, rgba(74,74,74,.18)) !important;
+  border-bottom: 1px solid var(--api-hard-line, rgba(74,74,74,.18)) !important;
   background: var(--api-hard-panel, #f8fafc) !important;
   box-shadow: var(--api-hard-shadow-sm, 0 8px 20px rgba(30,41,59,.055)) !important;
 }body.prism-api-page .sidebar,
@@ -580,14 +580,14 @@ body.prism-api-page .block,
 html:not(.studio-theme-dark) body.prism-api-page .sidebar,
 html:not(.studio-theme-dark) body.prism-api-page .content-head,
 html:not(.studio-theme-dark) body.prism-api-page .block {
-  border-color: var(--api-hard-line, rgba(71,85,105,.18)) !important;
+  border-color: var(--api-hard-line, rgba(74,74,74,.18)) !important;
   background: var(--api-hard-panel, #f8fafc) !important;
   box-shadow: var(--api-hard-shadow-sm, 0 8px 20px rgba(30,41,59,.055)) !important;
 }body.prism-api-page .block-head,
 body.prism-api-page .picker-head,
 body.prism-api-page .picker-toolbar,
 body.prism-api-page .picker-foot {
-  border-bottom-color: var(--api-hard-line, rgba(71,85,105,.18)) !important;
+  border-bottom-color: var(--api-hard-line, rgba(74,74,74,.18)) !important;
 }body.prism-api-page .provider-card,
 body.prism-api-page .provider-card.provider-card-banner,
 body.prism-api-page .agent-provider-card,
@@ -600,15 +600,15 @@ html:not(.studio-theme-dark) body.prism-api-page .provider-card {
 html:not(.studio-theme-dark) body.prism-api-page .provider-card:hover {
   border-color: transparent !important;
   background: var(--api-hard-soft, #eef3f8) !important;
-  color: var(--api-hard-text, #101720) !important;
+  color: var(--api-hard-text, #1f1f1f) !important;
 }body.prism-api-page .provider-card.active,
 html:not(.studio-theme-dark) body.prism-api-page .provider-card.active,
 body:not(.studio-theme-dark) .provider-card.active {
   border-color: transparent !important;
   outline: 0 !important;
   background: var(--api-hard-soft, #eef3f8) !important;
-  color: var(--api-hard-text, #101720) !important;
-  box-shadow: inset 3px 0 0 var(--api-hard-line-strong, #475569) !important;
+  color: var(--api-hard-text, #1f1f1f) !important;
+  box-shadow: inset 3px 0 0 var(--api-hard-line-strong, #8a8a8a) !important;
 }body.prism-api-page .provider-card::before,
 body.prism-api-page .provider-card.active::before {
   display: none !important;
@@ -616,24 +616,24 @@ body.prism-api-page .provider-card.active::before {
   display: inline-flex !important;
 }/* 2026-09-06 final bridge for runtime theme-dark/theme-light classes. */body.theme-dark.prism-api-page,
 html.theme-dark body.prism-api-page {
-  --api-hard-bg:#070b12;
-  --api-hard-panel:#141a23;
-  --api-hard-soft:#1c2531;
-  --api-hard-line:rgba(148,163,184,.16);
-  --api-hard-line-strong:#91a0b4;
-  --api-hard-text:#edf2f8;
-  --api-hard-muted:#a4afbf;
+  --api-hard-bg: var(--x-page);
+  --api-hard-panel: var(--x-card);
+  --api-hard-soft: var(--x-soft);
+  --api-hard-line: var(--x-line);
+  --api-hard-line-strong: var(--x-line-strong);
+  --api-hard-text: var(--x-text);
+  --api-hard-muted: var(--x-muted);
   background:var(--api-hard-bg) !important;
   color:var(--api-hard-text) !important;
 }body.theme-light.prism-api-page,
 html.theme-light body.prism-api-page {
-  --api-hard-bg:#e6ebf2;
-  --api-hard-panel:#f8fafc;
-  --api-hard-soft:#eef3f8;
-  --api-hard-line:rgba(71,85,105,.18);
-  --api-hard-line-strong:#475569;
-  --api-hard-text:#101720;
-  --api-hard-muted:#566273;
+  --api-hard-bg: var(--x-page);
+  --api-hard-panel: var(--x-card);
+  --api-hard-soft: var(--x-soft);
+  --api-hard-line: var(--x-line);
+  --api-hard-line-strong: var(--x-line-strong);
+  --api-hard-text: var(--x-text);
+  --api-hard-muted: var(--x-muted);
   background:var(--api-hard-bg) !important;
   color:var(--api-hard-text) !important;
 }body.prism-api-page .page-head,

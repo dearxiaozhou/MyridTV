@@ -4,7 +4,15 @@
     const SCALE_KEY = 'studio_ui_scale_mode';
     const SCALE_OPTIONS = ['auto', '100', '115', '125', '140'];
 
+    /* 2026-09-15：界面统一为单一深色主题。
+       画布（以及所有页面）只保留深色，主题切换入口已停用。
+       这里在「主题控制器」这一层锁死，因此无论调用方来自
+       localStorage、postMessage 还是 StudioTheme.set()，
+       结果都只能是深色。如需恢复双主题，把 LOCKED 改为 null 即可。 */
+    const LOCKED = 'dark';
+
     function currentTheme(){
+        if(LOCKED) return LOCKED;
         try {
             var stored = localStorage.getItem(KEY) || localStorage.getItem(LEGACY_KEY) || 'dark';
             return stored === 'light' ? 'light' : 'dark';
@@ -14,7 +22,7 @@
     }
 
     function applyTheme(theme){
-        const next = theme === 'dark' ? 'dark' : 'light';
+        const next = LOCKED || (theme === 'dark' ? 'dark' : 'light');
         const dark = next === 'dark';
         document.documentElement.classList.toggle('studio-theme-dark', dark);
         document.documentElement.classList.toggle('theme-dark', dark);
@@ -23,6 +31,13 @@
             document.body.classList.toggle('studio-theme-dark', dark);
             document.body.classList.toggle('theme-dark', dark);
             document.body.classList.toggle('theme-light', !dark);
+        }
+        if(LOCKED){
+            // 清掉历史遗留的浅色偏好，避免别处直接读 localStorage 时拿到 light
+            try {
+                localStorage.setItem(KEY, LOCKED);
+                localStorage.setItem(LEGACY_KEY, LOCKED);
+            } catch(e) {}
         }
         window.dispatchEvent(new CustomEvent('studio-theme-change', { detail: { theme: next } }));
     }
@@ -207,7 +222,7 @@
         get: currentTheme,
         apply: applyTheme,
         set(theme){
-            const next = theme === 'dark' ? 'dark' : 'light';
+            const next = LOCKED || (theme === 'dark' ? 'dark' : 'light');
             localStorage.setItem(KEY, next);
             localStorage.setItem(LEGACY_KEY, next);
             applyTheme(next);

@@ -2,6 +2,7 @@
 <html lang="zh-CN">
 
 <head>
+    <link rel="stylesheet" href="/static/css/design-tokens.css?v=2026.09.16.skill3col1">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="/static/images/myrid-icon.png" type="image/png">
@@ -27,7 +28,7 @@
         @import url('/static/vendor/css/fonts.css?v=2026.06.21');
 
         :root {
-            --accent: #111827;
+            --accent: #1f1f1f;
             --bg: #f9fafb;
             --card: #ffffff;
             --easing: cubic-bezier(0.4, 0, 0.2, 1);
@@ -38,7 +39,10 @@
         *::-webkit-scrollbar-thumb { background-color:#d8d8d8!important; border:3px solid transparent!important; border-right-width:5px!important; background-clip:padding-box!important; border-radius:10px!important; }
         *::-webkit-scrollbar-thumb:hover { background-color:#c0c0c0!important; }
         *::-webkit-scrollbar-corner { background:transparent!important; }
-        * { scrollbar-width:thin!important; scrollbar-color:#d8d8d8 transparent!important; }
+        /* 2026-09-16 移除 scrollbar-width / scrollbar-color：
+           Chromium 见到标准属性会改用原生滚动条渲染，并忽略上方
+           所有 ::-webkit-scrollbar 规则，导致深色页面上出现浅色
+           原生滚动条。详见 design-tokens.css 基础控件层。 */
 
         body {
             background-color: var(--bg);
@@ -81,7 +85,7 @@
         }
 
         .glass-btn {
-            background: #111827;
+            background: #1f1f1f;
             transition: all 0.3s var(--easing);
         }
         .glass-btn:hover { background: #000; transform: translateY(-1px); box-shadow: 0 12px 24px rgba(0,0,0,0.1); }
@@ -101,7 +105,7 @@
             display: flex;
             align-items: center;
             gap: 6px;
-            color: #94a3b8;
+            color: #c8c8c8;
             font-size: 10px;
             font-weight: 600;
             letter-spacing: .04em;
@@ -122,7 +126,7 @@
             align-items: center;
             justify-content: center;
             gap: 6px;
-            color: #64748b;
+            color: #8a8a8a;
             font-size: 10px;
             font-weight: 600;
             letter-spacing: .02em;
@@ -131,10 +135,10 @@
         }
         .engine-btn.active {
             background: #fff;
-            color: #111827;
-            box-shadow: 0 1px 3px rgba(15,23,42,.08);
+            color: #1f1f1f;
+            box-shadow: 0 1px 3px rgba(0,0,0,.08);
         }
-        .engine-btn:not(.active):hover { color: #111827; background: rgba(0,0,0,.04); }
+        .engine-btn:not(.active):hover { color: #1f1f1f; background: rgba(0,0,0,.04); }
 
         /* Cloud progress */
         .cloud-status {
@@ -142,7 +146,7 @@
             font-weight: 700;
             letter-spacing: 0.1em;
             text-transform: uppercase;
-            color: #64748b;
+            color: #8a8a8a;
             display: none;
             align-items: center;
             gap: 8px;
@@ -183,7 +187,7 @@
 
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.06.21">
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.09.16.skill3col1">
 </head>
 
 <body class="antialiased transition-colors duration-300">
@@ -424,7 +428,7 @@
 
         function toggleLora() {
             loraEnabled = !loraEnabled;
-            document.getElementById('loraTrack').style.background = loraEnabled ? '#111827' : '';
+            document.getElementById('loraTrack').style.background = loraEnabled ? '#1f1f1f' : '';
             document.getElementById('loraThumb').style.transform = loraEnabled ? 'translateX(16px)' : '';
             const row = document.getElementById('loraStrengthRow');
             row.classList.toggle('hidden', !loraEnabled);

@@ -369,6 +369,7 @@ function visionModelName(){
     const fromInput = String(document.getElementById('visionModelSelect')?.value || '').trim();
     if(fromInput) return fromInput;
     if(appConfig?.vision?.deleted) return '视觉平台（未配置）';
+    if(appConfig?.vision?.configured === false) return '未配置';   // 从没配过：不显示后端兜底的 glm-4v-flash
     return String(appConfig?.vision?.model || '').trim() || 'glm-4v-flash';
 }
 function visionEnabledState(){
@@ -400,7 +401,8 @@ async function loadVisionConfig(){
         const keyInput = document.getElementById('visionKeyInput');
         if(enabledCheck) enabledCheck.checked = v.deleted ? false : (v.enabled !== false);
         const baseField = document.getElementById('visionBaseInput');
-        if(v.deleted){
+        if(v.deleted || v.configured === false){
+            // 未配置（含被删除）时不回填后端兜底默认值，界面显示“未配置”而不是假的 glm-4v-flash
             if(modelSel) modelSel.value = '';
             if(baseField) baseField.value = '';
         } else {
@@ -411,7 +413,8 @@ async function loadVisionConfig(){
             keyInput.value = '';
             keyInput.placeholder = v.has_key ? '已保存 Key，输入新值可替换' : '留空则用环境变量 GLM_API_KEY';
         }
-        appConfig = mergeAppConfig(appConfig, {vision:{enabled: v.enabled !== false, model: v.deleted ? '' : (v.model || 'glm-4v-flash'), base_url: v.deleted ? '' : (v.base_url || ''), deleted: Boolean(v.deleted)}});
+        const visionConfigured = v.deleted ? false : (typeof v.configured === 'boolean' ? v.configured : Boolean(String(v.model || '').trim()));
+        appConfig = mergeAppConfig(appConfig, {vision:{enabled: v.enabled !== false, model: v.deleted ? '' : (v.model || ''), base_url: v.deleted ? '' : (v.base_url || ''), deleted: Boolean(v.deleted), configured: visionConfigured}});
         syncVisionDisplayName();
     }catch(_){}
 }
@@ -420,8 +423,9 @@ async function saveVisionConfig(){
     try{
         const proxyBase = cleanBaseUrl(appConfig?.proxy?.base_url, APP_CONFIG_DEFAULTS.proxy.base_url);
         const enabled = document.getElementById('visionEnabledCheck')?.checked !== false;
-        const model = document.getElementById('visionModelSelect')?.value || 'glm-4v-flash';
-        const baseUrl = document.getElementById('visionBaseInput')?.value?.trim() || 'https://open.bigmodel.cn/api/paas/v4';
+        // 已删除/未配置时输入框是空的：不要把空值回填成默认值（否则删除后点保存又把数据救活）
+        const model = String(document.getElementById('visionModelSelect')?.value || '').trim();
+        const baseUrl = String(document.getElementById('visionBaseInput')?.value?.trim() || '');
         const apiKey = document.getElementById('visionKeyInput')?.value?.trim() || '';
         const body = {vision:{enabled, model, base_url:baseUrl}};
         if(apiKey) body.vision.api_key = apiKey;
@@ -502,8 +506,8 @@ async function saveAgentConfig(){
     const nextConfig = collectAgentConfigFromForm();
     nextConfig.vision = {
         enabled: document.getElementById('visionEnabledCheck')?.checked !== false,
-        model: document.getElementById('visionModelSelect')?.value || 'glm-4v-flash',
-        base_url: document.getElementById('visionBaseInput')?.value?.trim() || 'https://open.bigmodel.cn/api/paas/v4'
+        model: String(document.getElementById('visionModelSelect')?.value || '').trim(),
+        base_url: String(document.getElementById('visionBaseInput')?.value?.trim() || '')
     };
     const visionKey = document.getElementById('visionKeyInput')?.value?.trim();
     if(visionKey) nextConfig.vision.api_key = visionKey;
@@ -991,6 +995,34 @@ function normalizeRhWorkflowField(field){
 function normalizeFetchedRhWorkflowField(field){
     return {...normalizeRhWorkflowField(field), enabled:false};
 }
+// 从 RunningHub 重新拉取字段时，按 nodeId::fieldName 合并本地上次保存的配置。
+// 否则拉取会把用户勾好的 enabled（以及 label/必选/图片序号/随机骰子）全部重置为默认，
+// 表现为"配置好的暴露没保存"。
+function mergeFetchedRhFields(fetched, saved){
+    const byKey = new Map();
+    (Array.isArray(saved) ? saved : []).forEach(field => {
+        if(field && field.nodeId) byKey.set(rhWorkflowFieldKey(field), field);
+    });
+    return (Array.isArray(fetched) ? fetched : []).map(field => {
+        const next = normalizeFetchedRhWorkflowField(field);
+        const prev = byKey.get(rhWorkflowFieldKey(field));
+        if(!prev) return next;
+        return {
+            ...next,
+            enabled:prev.enabled === true,
+            label:String(prev.label || '').trim() || next.label,
+            required:prev.required === true,
+            imageOrder:Number(prev.imageOrder) || next.imageOrder,
+            sourceFromUpstream:prev.sourceFromUpstream === true,
+            random_enabled:prev.random_enabled === true,
+            min:prev.min === undefined || prev.min === '' ? next.min : prev.min,
+            max:prev.max === undefined || prev.max === '' ? next.max : prev.max,
+            step:prev.step === undefined || prev.step === '' ? next.step : prev.step,
+            options:(Array.isArray(prev.options) && prev.options.length) ? prev.options : next.options,
+            group:String(next.group || prev.group || '')
+        };
+    });
+}
 function rhWorkflowGroupKey(field){
     return `${field?.nodeId || ''}::${field?.group || ''}`;
 }
@@ -1364,7 +1396,10 @@ async function loadRhWorkflowEditorConfig(entry){
         if(r.status === 404) return null;
         const data = await r.json();
         if(!r.ok) throw new Error(data.detail || '读取工作流配置失败');
-        return data.workflow || null;
+        // 后端 GET /api/runninghub/workflows/<id> 返回 {"ok":true,"data":{...}}；同时兼容旧的 {"workflow":{...}} 形状。
+        // 取错字段会让 existing 恒为 null → 每次打开编辑器都回云端重抓 → normalizeFetchedRhWorkflowField 把
+        // 用户勾好的 enabled 全清成 false（这就是"配好暴露却没保存"的根因），必须兼容两种形状。
+        return data.workflow || data.data || null;
     });
     if(existing) {
         config = existing;
@@ -1534,7 +1569,7 @@ async function fetchRhWorkflowEditor(force=false){
         workflowId:data.data.workflowId,
         title:data.data.title,
         description:data.data.description,
-        fields:(data.data.fields || []).map(normalizeFetchedRhWorkflowField),
+        fields:mergeFetchedRhFields(data.data.fields || [], entry?.fields || []),
         workflowJson:data.data.workflowJson || {},
         optionalImageMode:entry.optionalImageMode || 'prune-workflow',
         raw:data.data.raw || {}
@@ -1993,7 +2028,7 @@ async function testRhMappedPreview(){
         const endpoint = rhEditorMode === 'workflow' ? '/api/runninghub/workflow-submit' : '/api/runninghub/submit';
         const workflow = rhPreviewPruneWorkflow(nodeInfoList);
         const body = rhEditorMode === 'workflow'
-            ? {workflowId:String(config.workflowId || '').trim(), nodeInfoList, ...(workflow ? {workflow} : {})}
+            ? {workflowId:String(config.workflowId || '').trim(), nodeInfoList, ...(workflow ? {workflow: JSON.stringify(workflow)} : {})}
             : {webappId:String(config.appId || '').trim(), nodeInfoList};
         if(rhEditorMode === 'workflow' && !body.workflowId) throw new Error('workflowId 为空');
         if(rhEditorMode === 'app' && !body.webappId) throw new Error('webappId 为空');
@@ -2734,7 +2769,9 @@ document.body.classList.remove('show-ms', 'show-runninghub', 'show-volcengine', 
     }
     document.body.classList.remove('show-agent-mode');
     const item = provider();
-    if(!item) return;
+    // 平台表为空（全新安装 / 独立实例）时 provider() 返回空 → 原来直接 return，
+    // 侧栏列表与「+ 添加平台」按钮都不渲染，用户无法创建第一个平台。改动：空表也要渲染列表。
+    if(!item){ renderProviderList(); return; }
     editorTitle.textContent = item.name || item.id;
     nameInput.value = item.name || '';
     idInput.value = item.id || '';
@@ -3053,7 +3090,7 @@ async function probeAsync(){
         const rawJson = JSON.stringify(data.raw, null, 2);
         const probeMessage = String(data.message || '');
         const hideTasksEndpointTip = probeMessage.includes('/v1/tasks/');
-        const color = (isAsync || isOpenAiCompat || data.ok === true) ? '#15803d' : data.ok === null ? '#b45309' : '#64748b';
+        const color = (isAsync || isOpenAiCompat || data.ok === true) ? '#15803d' : data.ok === null ? '#b45309' : '#8a8a8a';
         const icon = (isAsync || isOpenAiCompat || data.ok === true) ? '✓' : '⚠';
         const proto = detectedProtocol === 'runninghub'
             ? 'RunningHub'

@@ -2,6 +2,9 @@
 _internal/data/
 _internal/data
 _internal/API/.env
+# 运行态配置：含本机绝对路径（D:\APP\MyridTV\...），发布包禁带，同理不入库
+_internal/static/app_config.json
+_internal/static/app_config.json.bak
 _internal/assets/
 _internal/output/
 assets/
@@ -13,12 +16,21 @@ webview2/
 installer/build/
 installer/release-unsigned/
 release/
+# .NET 中间产物：含本机绝对路径（project.assets.json 等），不可入库
+installer/*/obj/
+installer/*/bin/
+# 桌面壳/内核 exe：由 CI 的 dotnet publish 现编译，发布包用的就是现编译产物，仓库不存二进制（各 48MB）
+MyridTV-Desktop.exe
+MyridTV-Desktop-core.exe
 __pycache__/
 *.pyc
 
 # ============ 备份与本地遗留（.bak_* 一堆） ============
 *.bak*
 *.before_*.bak
+
+# 编辑器/对比用的临时副本（*.new 是改前的对照文件，不属于应用）
+*.new
 
 # ============ 本地探针/临时脚本产物（不属于应用） ============
 gate_restart_*.py

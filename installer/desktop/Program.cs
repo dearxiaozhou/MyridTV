@@ -79,6 +79,19 @@ internal sealed class MainWindow : Form
         catch { }
     }
 
+    // WebView2 用户数据目录按安装隔离。曾写死 %APPDATA%\MyridTV\webview2，多份安装共用同一个 profile：
+    // 后开的那份 CreateCoreWebView2ControllerAsync 报 0x8007139F 弹「无法启动 MyridTV」；表单历史/自动填充也跨安装串。
+    private static string ResolveWebViewProfileFolder()
+    {
+        var appDir = Path.GetDirectoryName(Application.ExecutablePath) ?? ".";
+        var portableRoot = Path.Combine(appDir, "user_data");
+        if (Directory.Exists(portableRoot) || File.Exists(Path.Combine(appDir, ".portable")))
+        {
+            return Path.Combine(portableRoot, "webview2");
+        }
+        return Path.Combine(appDir, "_internal", "data", "webview2");
+    }
+
     private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
 
     private static readonly Color DarkBg = Color.FromArgb(4, 10, 22);
@@ -330,10 +343,8 @@ internal sealed class MainWindow : Form
     {
         try
         {
-            var folder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "MyridTV",
-                "webview2");
+            var folder = ResolveWebViewProfileFolder();
+            LogDesktop($"webview profile: {folder}");
             ClearCache(folder);
 
             var env = await CoreWebView2Environment.CreateAsync(userDataFolder: folder);
@@ -360,6 +371,18 @@ internal sealed class MainWindow : Form
             core.Settings.AreBrowserAcceleratorKeysEnabled = true;
             core.Settings.IsStatusBarEnabled = false;
             core.Settings.IsZoomControlEnabled = false;
+            // 关掉 WebView2 通用自动填充：平台名称/请求地址这类输入框不再记录、不再弹历史值。
+            // 注意：这是浏览器 profile 级设置，不换目录（%APPDATA%\MyridTV\webview2 仍与其它安装共用），
+            // 只保证今后不再往那份 profile 里写表单值；localStorage 里的画布偏好不受影响。
+            try
+            {
+                core.Settings.IsGeneralAutofillEnabled = false;
+                LogDesktop($"general autofill enabled={core.Settings.IsGeneralAutofillEnabled}");
+            }
+            catch (Exception ex)
+            {
+                LogDesktop("disable general autofill failed: " + ex.Message);
+            }
 
             SetupThemeSync();
 

@@ -35,6 +35,18 @@ let assetTreeEdit = null;
 let promptTreeEdit = null;
 let pendingTreeDelete = '';
 let marqueeState = null;
+// 画布技能（/api/canvas-agent-*，与智能画布 Agent 的 @技能 同一份数据）
+let skillItems = [];
+let skillLoadedAt = 0;
+let skillDir = '';
+let skillEditorOpen = false;
+let skillEditingName = '';
+let skillContent = '';
+let pendingDeleteSkill = '';
+/* SKILLSYNC-20260916：openSkillEditor / 新建技能 已把状态显式设成目标值，
+   紧跟的 render() 里 syncSkillInputs() 若再从旧 DOM 读回会覆盖成上一个技能（点列表不切换的根因）。
+   置位后跳过一次回写，由 syncSkillInputs 自行复位。 */
+let skillSkipInputSync = false;
 function assetLang(){ return (window.StudioI18n?.lang?.() || localStorage.getItem('studio_lang') || 'zh') === 'en' ? 'en' : 'zh'; }
 const ASSET_TEXT = {
     ready:{zh:'准备就绪', en:'Ready'},
@@ -44,6 +56,7 @@ const ASSET_TEXT = {
     refresh:{zh:'刷新', en:'Refresh'},
     assets:{zh:'图片资产', en:'Image Assets'},
     prompts:{zh:'提示词库', en:'Prompt Library'},
+    skills:{zh:'技能', en:'Skills'},
 };
 function assetText(key){ const entry = ASSET_TEXT[key]; return entry ? entry[assetLang()] : key; }
 function applyAssetLanguage(){
@@ -53,6 +66,7 @@ function applyAssetLanguage(){
     refreshBtn?.querySelector('span')?.replaceChildren(document.createTextNode(assetText('refresh')));
     document.querySelector('#assetTabAssets span')?.replaceChildren(document.createTextNode(assetText('assets')));
     document.querySelector('#assetTabPrompts span')?.replaceChildren(document.createTextNode(assetText('prompts')));
+    document.querySelector('#assetTabSkills span')?.replaceChildren(document.createTextNode(assetText('skills')));
     if(statusEl && (!statusEl.textContent || ['准备就绪','Ready'].includes(statusEl.textContent.trim()))) setStatus();
 }
 
@@ -328,6 +342,7 @@ async function loadAll(){
 function render(){
     document.querySelectorAll('[data-tab]').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === activeTab));
     if(activeTab === 'prompts') renderPromptManager();
+    else if(activeTab === 'skills') renderSkillManager();
     else renderAssetManager();
     refreshIcons();
 }
@@ -810,10 +825,241 @@ async function uploadFiles(files){
     render();
     setStatus(`已上传 ${items.length} 个素材`);
 }
+/* —— 画布技能 tab：与智能画布 Agent 共用 data/canvas_agent_skills/*.md —— */
+async function loadSkillItems(force=false){
+    if(!force && skillItems.length && Date.now() - skillLoadedAt < 5000) return skillItems;
+    try{
+        const data = await apiJson(`/api/canvas-agent-config?v=${Date.now()}`, {cache:'no-store'});
+        skillItems = Array.isArray(data.skills) ? data.skills : [];
+        if(data.skills_dir) skillDir = String(data.skills_dir);
+    }catch(e){
+        skillItems = [];
+        setStatus(e.message || '技能列表加载失败');
+    }
+    skillLoadedAt = Date.now();
+    return skillItems;
+}
+function skillMetaOf(name){
+    const key = String(name || '').trim();
+    return skillItems.find(skill => String(skill?.name || '') === key) || null;
+}
+function skillSizeText(size){
+    const n = Number(size || 0);
+    if(!n) return '—';
+    return n >= 1024 ? `${(n / 1024).toFixed(1)} KB` : `${n} B`;
+}
+/* 重绘前把输入框里的未保存内容收回来，避免切技能/刷新时丢失。
+   skillSkipInputSync：显式切换/新建时状态已是目标值，读回旧 DOM 反而会覆盖（见 SKILLSYNC-20260916 注释）。 */
+function syncSkillInputs(){
+    if(skillSkipInputSync){ skillSkipInputSync = false; return; }
+    if(!skillEditorOpen) return;
+    const nameEl = document.getElementById('skillNameInput');
+    const contentEl = document.getElementById('skillContentInput');
+    if(nameEl) skillEditingName = String(nameEl.value || '').trim();
+    if(contentEl) skillContent = String(contentEl.value || '');
+}
+function renderSkillRow(skill){
+    const name = String(skill?.name || '');
+    const active = skillEditorOpen && skillEditingName === name;
+    const meta = [skillSizeText(skill?.size), skill?.updatedAt ? formatDate(skill.updatedAt) : ''].filter(Boolean).join(' · ');
+    return `<button type="button" class="skill-row ${active ? 'active' : ''} ${pendingDeleteSkill === name ? 'skill-row-arm' : ''}" data-skill-edit="${escapeAttr(name)}" title="${escapeAttr(name)}">
+        <span class="skill-row-icon"><i data-lucide="file-text"></i></span>
+        <span class="skill-row-main">
+            <span class="skill-row-name">${escapeHtml(name)}</span>
+            ${meta ? `<span class="skill-row-meta">${escapeHtml(meta)}</span>` : ''}
+        </span>
+    </button>`;
+}
+function renderSkillNav(){
+    return `
+        <aside class="asset-panel asset-nav skill-nav">
+            <div class="panel-head">
+                <div class="panel-title"><strong>画布技能</strong><span>共 ${skillItems.length} 个 · 把文档丢到 Agent 对话框学习技能</span></div>
+                <div class="panel-actions compact-actions">
+                    <button class="asset-icon-btn" type="button" data-skill-new title="新建技能"><i data-lucide="plus"></i></button>
+                </div>
+            </div>
+            <div class="nav-scroll">
+                <div class="skill-list" id="skillList">加载中...</div>
+            </div>
+        </aside>`;
+}
+function renderSkillFields(){
+    return `
+        <div class="skill-editor">
+            <label class="skill-field"><span>技能名</span>
+                <input id="skillNameInput" class="skill-name-input" type="text" value="${escapeAttr(skillEditingName)}" placeholder="技能名（对话中用 @名字 调用）">
+            </label>
+            <label class="skill-field grow"><span>技能内容（Markdown）</span>
+                <textarea id="skillContentInput" class="skill-content-input" placeholder="技能内容（Markdown）。保存后在智能画布对话里用 @技能名 调用。">${escapeHtml(skillContent)}</textarea>
+            </label>
+        </div>`;
+}
+function renderSkillEditorPanel(){
+    const isNew = !skillEditingName;
+    const heading = skillEditorOpen ? (isNew ? '新建技能' : `@${skillEditingName}`) : '技能内容';
+    const sub = skillEditorOpen
+        ? (isNew ? '填写技能名与内容后保存' : `${skillContent.length} 字符 · 保存后在画布对话中生效`)
+        : '从左侧列表选择一个技能，或点「+」新建';
+    return `
+        <section class="asset-panel asset-content skill-panel">
+            <div class="content-toolbar">
+                <div class="content-heading">
+                    <strong>${escapeHtml(heading)}</strong>
+                    <span>${escapeHtml(sub)}</span>
+                </div>
+                ${skillEditorOpen ? `
+                <div class="asset-tools">
+                    <button class="asset-btn primary" type="button" data-skill-save><i data-lucide="save"></i><span>保存</span></button>
+                    <button class="asset-btn" type="button" data-skill-cancel><i data-lucide="x"></i><span>取消</span></button>
+                </div>` : ''}
+            </div>
+            <div class="content-scroll skill-editor-scroll">
+                ${skillEditorOpen ? renderSkillFields() : '<div class="empty-state">从左侧列表选择一个技能查看 / 编辑，或点右上角「+」新建技能。</div>'}
+            </div>
+        </section>`;
+}
+function renderSkillDetailPanel(){
+    const meta = skillEditorOpen ? skillMetaOf(skillEditingName) : null;
+    const name = String(skillEditingName || '').trim();
+    const armed = pendingDeleteSkill === name;
+    const head = `<div class="panel-head">
+        <div class="panel-title"><strong>技能信息</strong><span>${meta ? escapeHtml(meta.file || 'data/canvas_agent_skills') : '未选择技能'}</span></div>
+    </div>`;
+    if(!skillEditorOpen){
+        return `
+        <aside class="asset-panel asset-detail skill-detail">
+            ${head}
+            <div class="detail-scroll">
+                <div class="detail-meta"><span>技能目录</span><strong>${escapeHtml(skillDir || 'data/canvas_agent_skills')}</strong></div>
+                <div class="skill-callout">
+                    <span>技能是 Markdown 文件，智能画布对话里用 @技能名 调用，和画布 Agent 共用同一份数据。</span>
+                </div>
+                <div class="empty-state">选择一个技能后这里显示大小、更新时间与调用方式。</div>
+            </div>
+        </aside>`;
+    }
+    return `
+        <aside class="asset-panel asset-detail skill-detail">
+            ${head}
+            <div class="detail-scroll">
+                <div class="detail-meta-grid">
+                    <div class="detail-meta"><span>技能名</span><strong>${name ? `@${escapeHtml(name)}` : '未命名'}</strong></div>
+                    <div class="detail-meta"><span>大小</span><strong>${escapeHtml(meta ? skillSizeText(meta.size) : '—')}</strong></div>
+                    <div class="detail-meta"><span>更新时间</span><strong>${escapeHtml(meta?.updatedAt ? formatDate(meta.updatedAt) : '—')}</strong></div>
+                    <div class="detail-meta"><span>当前字符数</span><strong>${skillContent.length}</strong></div>
+                </div>
+                ${name ? `
+                <div class="skill-callout">
+                    <span>调用方式：在智能画布对话中输入</span>
+                    <code>@${escapeHtml(name)}</code>
+                    <button class="asset-btn" type="button" data-skill-copy="@${escapeAttr(name)}"><i data-lucide="copy"></i><span>复制调用名</span></button>
+                </div>` : ''}
+                ${meta ? `
+                <div class="asset-tools">
+                    <button class="asset-btn danger ${armed ? 'detail-confirm' : ''}" type="button" data-skill-delete="${escapeAttr(meta.name)}"><i data-lucide="trash-2"></i><span>${armed ? '确认删除' : '删除技能'}</span></button>
+                </div>` : ''}
+            </div>
+        </aside>`;
+}
+async function renderSkillManager(){
+    syncSkillInputs();
+    const before = skillItems;
+    root.innerHTML = renderSkillNav() + renderSkillEditorPanel() + renderSkillDetailPanel();
+    refreshIcons();
+    const skills = await loadSkillItems();
+    if(activeTab !== 'skills') return;
+    if(skills !== before){ render(); return; }
+    const list = document.getElementById('skillList');
+    if(!list) return;
+    if(!skills.length){
+        list.innerHTML = '<div class="empty-state">还没有技能。点右上角「+」新建，或在智能画布对话里让 Agent 保存。</div>';
+        refreshIcons();
+        return;
+    }
+    list.innerHTML = skills.map(skill => renderSkillRow(skill)).join('');
+    refreshIcons();
+}
+async function openSkillEditor(name){
+    skillEditorOpen = true;
+    skillEditingName = String(name || '').trim();
+    skillContent = '';
+    pendingDeleteSkill = '';
+    skillSkipInputSync = true;
+    if(skillEditingName){
+        setStatus('加载技能...');
+        try{
+            const data = await apiJson(`/api/canvas-agent-skill?name=${encodeURIComponent(skillEditingName)}`, {cache:'no-store'});
+            skillContent = String(data?.skill?.content || '');
+            setStatus();
+        }catch(e){ setStatus(e.message || '技能内容加载失败'); }
+    }
+    render();
+}
+async function saveSkillEditor(){
+    const name = String(document.getElementById('skillNameInput')?.value || '').trim();
+    const content = String(document.getElementById('skillContentInput')?.value || '').trim();
+    if(!name){ setStatus('请输入技能名'); return; }
+    if(!content){ setStatus('请输入技能内容'); return; }
+    try{
+        await apiJson('/api/canvas-agent-skill', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({name, content})
+        });
+        skillEditorOpen = false;
+        skillEditingName = '';
+        skillContent = '';
+        pendingDeleteSkill = '';
+        skillLoadedAt = 0;
+        setStatus(`技能 @${name} 已保存，画布对话中可用 @${name} 调用`);
+        render();
+    }catch(e){ setStatus(e.message || '保存技能失败'); }
+}
+async function handleSkillDelete(name){
+    name = String(name || '').trim();
+    if(!name) return;
+    if(pendingDeleteSkill !== name){
+        pendingDeleteSkill = name;
+        setStatus(`再点一次「删除」确认删除技能 @${name}`);
+        render();
+        return;
+    }
+    try{
+        await apiJson('/api/canvas-agent-skill', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({name, delete:true})
+        });
+        pendingDeleteSkill = '';
+        skillLoadedAt = 0;
+        if(skillEditingName === name){
+            skillEditorOpen = false;
+            skillEditingName = '';
+            skillContent = '';
+        }
+        setStatus(`技能 @${name} 已删除`);
+        render();
+    }catch(e){ setStatus(e.message || '删除技能失败'); }
+}
 async function handleClick(event){
     const target = event.target;
     const tabBtn = target.closest?.('[data-tab]');
-    if(tabBtn){ activeTab = tabBtn.dataset.tab || 'assets'; selectedAssetIds.clear(); selectedPromptIds.clear(); render(); return; }
+    if(tabBtn){ activeTab = tabBtn.dataset.tab || 'assets'; selectedAssetIds.clear(); selectedPromptIds.clear(); pendingDeleteSkill = ''; render(); return; }
+    if(target.closest?.('[data-skill-new]')){ skillEditorOpen = true; skillEditingName = ''; skillContent = ''; pendingDeleteSkill = ''; skillSkipInputSync = true; render(); return; }
+    if(target.closest?.('[data-skill-cancel]')){ skillEditorOpen = false; skillEditingName = ''; skillContent = ''; pendingDeleteSkill = ''; render(); return; }
+    if(target.closest?.('[data-skill-save]')){ await saveSkillEditor(); return; }
+    const skillEditBtn = target.closest?.('[data-skill-edit]');
+    if(skillEditBtn){ await openSkillEditor(skillEditBtn.dataset.skillEdit || ''); return; }
+    const skillDeleteBtn = target.closest?.('[data-skill-delete]');
+    if(skillDeleteBtn){ await handleSkillDelete(skillDeleteBtn.dataset.skillDelete || ''); return; }
+    const skillCopyBtn = target.closest?.('[data-skill-copy]');
+    if(skillCopyBtn){
+        const text = skillCopyBtn.dataset.skillCopy || '';
+        const ok = await copyTextToClipboard(text);
+        setStatus(ok ? `已复制 ${text}` : `复制失败，请手动复制：${text}`);
+        return;
+    }
     if(target.closest?.('#refreshBtn')){ await loadAll(); return; }
     if(target.closest?.('[data-asset-tree-edit-save]')){ await saveAssetTreeEdit(); return; }
     if(target.closest?.('[data-asset-tree-edit-cancel]')){ assetTreeEdit = null; render(); return; }

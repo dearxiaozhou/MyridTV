@@ -1,0 +1,101 @@
+name: Build Windows Installer
+
+on:
+  # 手动触发（推荐日常使用）：可在 GitHub 网页上点 Run workflow，勾选是否签名
+  workflow_dispatch:
+    inputs:
+      sign:
+        description: "对安装包进行代码签名（需要仓库 Secrets 已配置证书）"
+        type: boolean
+        default: false
+  # 打 tag 时自动出正式包，例如 git tag V0.3.11 && git push --tags
+  push:
+    tags:
+      - "v*"
+      - "V*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Setup Python 3.13
+        id: setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Ensure Inno Setup
+        shell: pwsh
+        run: |
+          $candidates = @(
+            'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
+            'C:\Program Files (x86)\Inno Setup 7\ISCC.exe'
+          )
+          if ($candidates | Where-Object { Test-Path $_ }) {
+            Write-Host "Inno Setup already present."
+          } else {
+            Write-Host "Installing Inno Setup via chocolatey..."
+            choco install innosetup --no-progress -y
+          }
+
+      - name: Read version
+        id: version
+        shell: pwsh
+        run: |
+          $display = (Get-Content VERSION -Raw).Trim()
+          $numeric = $display.TrimStart('V','v')
+          "display=$display"  | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "numeric=$numeric"  | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Version: $display (numeric $numeric)"
+
+      - name: Resolve Python directory
+        id: pydir
+        shell: pwsh
+        run: |
+          $exe = '${{ steps.setup-python.outputs.python-path }}'
+          $dir = Split-Path -Parent $exe
+          "dir=$dir" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "PythonDir: $dir"
+
+      - name: Build installer
+        shell: pwsh
+        env:
+          MYRIDTV_SIGN_CERT_PASSWORD: ${{ secrets.MYRIDTV_SIGN_CERT_PASSWORD }}
+        run: |
+          $params = @{
+            PythonDir = '${{ steps.pydir.outputs.dir }}'
+          }
+          if ('${{ inputs.sign }}' -eq 'true' -and '${{ secrets.MYRIDTV_SIGN_CERT_PFX }}' -ne '') {
+            # 证书以 base64 存在 Secret 里，运行时解码到本地临时文件
+            $pfxPath = Join-Path $env:RUNNER_TEMP 'myridtv-code-signing.pfx'
+            [System.IO.File]::WriteAllBytes($pfxPath, [System.Convert]::FromBase64String('${{ secrets.MYRIDTV_SIGN_CERT_PFX }}'))
+            $params['Sign'] = $true
+            $params['SignCertPath'] = $pfxPath
+            Write-Host "Signing enabled."
+          } else {
+            Write-Host "Signing disabled (unsigned build)."
+          }
+          & .\installer\build-installer.ps1 @params
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyridTV-Setup-${{ steps.version.outputs.display }}
+          path: installer/build/installer/MyridTV-Setup.exe
+          if-no-files-found: error
+          retention-days: 30

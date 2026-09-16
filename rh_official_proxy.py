@@ -373,7 +373,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.12.clickpop79"
+STATIC_VERSION = "2026.09.16.skill3col1"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -3179,7 +3179,7 @@ def canvas_thumbnail_path(source_url, max_edge=640):
     if not mime_type.startswith("image/"):
         raise ApiError(415, "thumbnail source must be an image")
 
-    edge = max(160, min(1024, int(max_edge or 640)))
+    edge = max(160, min(2048, int(max_edge or 640)))
     stat = source.stat()
     cache_key = hashlib.sha256(
         f"{source}|{stat.st_mtime_ns}|{stat.st_size}|{edge}".encode("utf-8")
@@ -4203,6 +4203,7 @@ def canvas_summary(canvas):
         "updated_at": int(safe_canvas.get("updated_at") or 0),
         "deleted_at": int(safe_canvas.get("deleted_at") or 0),
         "node_count": len(safe_canvas.get("nodes") or []),
+        "asset_node_count": sum(1 for _n in (safe_canvas.get("nodes") or []) if (_n.get("images") or [])),
     }
 
 
@@ -9416,8 +9417,30 @@ def derive_aspect_ratio_from_size(value):
     if not dims:
         return ""
     width, height = dims
+    # 精确约分（如 3840x2160 -> 16:9）；若结果不在 RH 白名单（如 2480x3312 -> 155:207），
+    # 按宽高比误差最小匹配白名单比例，避免 size 非标准倍数时静默兜底成 16:9。
     divisor = math.gcd(width, height) or 1
-    return f"{width // divisor}:{height // divisor}"
+    exact = f"{width // divisor}:{height // divisor}"
+    if exact in RH_ALLOWED_ASPECT_RATIOS:
+        return exact
+    if width <= 0 or height <= 0:
+        return ""
+    ratio = width / height
+    best = "16:9"
+    best_err = float("inf")
+    for cand in RH_ALLOWED_ASPECT_RATIOS:
+        try:
+            w, h = (int(p) for p in cand.split(":"))
+        except ValueError:
+            continue
+        if w <= 0 or h <= 0:
+            continue
+        cand_ratio = w / h
+        err = abs(cand_ratio - ratio)
+        if err < best_err:
+            best_err = err
+            best = cand
+    return best
 
 
 RH_ALLOWED_ASPECT_RATIOS = ("1:1","3:2","2:3","5:4","4:5","16:9","9:16","21:9","3:4","4:3","9:21","1:2","2:1","1:3","3:1")
@@ -10060,7 +10083,10 @@ def runninghub_upload_task_asset(source_url):
     raw, file_name, content_type = local_media_source_bytes(source_url)
     data = request_multipart_json(
         runninghub_api_url("/task/openapi/upload"),
-        fields={"fileType": "input"},
+        # RH 旧版 /task/openapi/upload 的鉴权要求 apiKey 作为 multipart 表单字段一起提交
+        # （官方 curl 示例里 apiKey 是 --form）。只带 Authorization: Bearer 会被拒：
+        # {"code":-1,"msg":"apiKey is required"}。2026-09-16 修。
+        fields={"fileType": "input", "apiKey": runninghub_task_key()},
         files=[{"name": "file", "filename": file_name, "content_type": content_type, "data": raw}],
         headers=runninghub_task_auth_headers(),
         timeout=180,
@@ -10908,6 +10934,11 @@ def runninghub_submit_workflow(payload):
     key = runninghub_task_key()
     body = dict(payload or {})
     body["apiKey"] = key
+    # RH 的 /task/openapi/create 只接受 workflow 为 JSON 字符串（官方文档：Custom full workflow in
+    # JSON string format）。传对象会返回 {"code":404,"msg":"NOT_FOUND"}（2026-09-16 实测复现），
+    # 这里兜底转换，避免任何前端版本漏转。
+    if isinstance(body.get("workflow"), (dict, list)):
+        body["workflow"] = json.dumps(body["workflow"], ensure_ascii=False)
     data = request_json(runninghub_api_url("/task/openapi/create"), "POST", body, timeout=120)
     task_id = data.get("taskId") or (data.get("data") or {}).get("taskId") or ""
     if not task_id:
@@ -11918,13 +11949,15 @@ def run_blender_previz(payload):
     if not PREVIZ_DIR.exists():
         raise RuntimeError(f"预演脚本目录不存在: {PREVIZ_DIR}")
     width, height = _previz_ratio_size(payload.get("aspectRatio"))
-    run_dir = PREVIZ_DIR / "run"
-    run_dir.mkdir(parents=True, exist_ok=True)
     tag = time.strftime("%m%d_%H%M%S")
-    shots_txt = run_dir / f"shots_{tag}.txt"
+    # All temporary parse/render data lives outside the asset library and is
+    # deleted after a successful task.  Canvas deliverables live together in
+    # assets/output/<canvas>/ only.
+    work_dir = Path(tempfile.mkdtemp(prefix=f"myridtv_previz_{tag}_"))
+    shots_txt = work_dir / "shots.txt"
     shots_txt.write_text(prompt, encoding="utf-8")
-    shots_json = run_dir / f"shots_{tag}.json"
-    frames_dir = run_dir / f"frames_{tag}"
+    shots_json = work_dir / "shots.json"
+    frames_dir = work_dir / "render"
     frames_dir.mkdir(parents=True, exist_ok=True)
     py = sys.executable
     env = dict(os.environ)
@@ -11949,48 +11982,24 @@ def run_blender_previz(payload):
     if asset_dir:
         parse_cmd += ["--assets-dir", asset_dir]
     run_cmd(parse_cmd)
-    # 2) Blender Workbench 渲染，同时保存预演工程 .blend
-    # 工程统一存 assets/blender_projects/，命名 08-24-01.blender（月-日-当日序号）
-    projects_dir = ASSETS_DIR / "blender_projects"
-    projects_dir.mkdir(parents=True, exist_ok=True)
-    seq = len([p for p in projects_dir.glob("*.blender")]) + 1
-    blend_path = projects_dir / f"{time.strftime('%m-%d')}-{seq:02d}.blender"
-    asset_path = str((payload or {}).get("asset_path") or "").strip()
-    blocking_dir = PREVIZ_DIR / "blocking"
-    blocking_used = False
-    if (payload or {}).get("previz_blocking_core", True) is not False:
-        try:
-            shot_spec = run_dir / f"blocking_shot_{tag}.py"
-            run_cmd([py, "-B", str(PREVIZ_DIR / "blocking_bridge.py"),
-                     "--input", str(shots_json), "--output", str(shot_spec)],
-                    timeout=120)
-            run_cmd([py, "-B", str(blocking_dir / "solve_shot.py"), str(shot_spec)],
-                    timeout=180)
-            bake_json = shot_spec.with_name("bake.json")
-            run_cmd([BLENDER_BIN, "--background", "--python-exit-code", "1", "--python", str(PREVIZ_DIR / "blocking_render.py"), "--",
-                     "--input", str(shots_json), "--bake", str(bake_json), "--spec", str(shot_spec),
-                     "--core", str(blocking_dir / "previz_core.py"),
-                     "--output", str(frames_dir), "--save-blend", str(blend_path)],
-                    timeout=3600)
-            blocking_used = True
-            append_log(LOG_FILE, f"previz blocking core used tag={tag}")
-        except Exception as exc:
-            append_log(LOG_FILE, f"previz blocking core fallback tag={tag}: {exc}")
-            try:
-                shutil.rmtree(frames_dir, ignore_errors=True)
-                frames_dir.mkdir(parents=True, exist_ok=True)
-            except Exception:
-                pass
-    if not blocking_used:
-        render_cmd = [BLENDER_BIN, "--background", "--python", str(PREVIZ_DIR / "previz_render.py"), "--",
-                      "--input", str(shots_json), "--output", str(frames_dir), "--single-scene",
-                      "--save-blend", str(blend_path)]
-        if asset_path:
-            render_cmd += ["--asset-path", asset_path]
-        run_cmd(render_cmd, timeout=3600)
-    # 3) ffmpeg 拼接成片
-    video_dir = ASSETS_DIR / "output" / canvas_title / "videos"
+    # 2) Blender Workbench 渲染；最终视频和 .blend 都归档到当前画布资产目录。
+    canvas_output_dir = ASSETS_DIR / "output" / canvas_title
+    video_dir = canvas_output_dir / "videos"
+    blend_dir = canvas_output_dir / "blender"
     video_dir.mkdir(parents=True, exist_ok=True)
+    blend_dir.mkdir(parents=True, exist_ok=True)
+    blend_path = blend_dir / f"previz_{tag}.blend"
+    asset_path = str((payload or {}).get("asset_path") or "").strip()
+    # 预演仅保留正式 Blender 渲染链路：场景资产、中文相机和镜头目标空物体
+    # 全部由 previz_render.py 生成。旧 seedance-blocking 解算链路已移除。
+    render_cmd = [BLENDER_BIN, "--background", "--python", str(PREVIZ_DIR / "previz_render.py"), "--",
+                  "--input", str(shots_json), "--output", str(frames_dir), "--single-scene",
+                  "--video-dir", str(frames_dir / "clips"),
+                  "--save-blend", str(blend_path)]
+    if asset_path:
+        render_cmd += ["--asset-path", asset_path]
+    run_cmd(render_cmd, timeout=3600)
+    # 3) ffmpeg 拼接成片
     video_name = f"previz_{tag}.mp4"
     video_path = video_dir / video_name
     run_cmd([py, "-B", str(PREVIZ_DIR / "previz_build.py"),
@@ -12009,6 +12018,13 @@ def run_blender_previz(payload):
             total_frames = sum(int(s.get("帧数") or 0) for s in (mf.get("镜头") or []))
         except Exception:
             pass
+    # The final MP4 and editable .blend are the deliverables.  Blender now
+    # writes temporary per-shot MP4s directly (not PNG frames); remove them
+    # after a successful build so the run directory cannot accumulate renders.
+    try:
+        shutil.rmtree(work_dir, ignore_errors=True)
+    except Exception:
+        pass
     duration_seconds = round(total_frames / max(PREVIZ_FPS, 1), 3) if total_frames else 0
     # 自动打开 Blender 工程（GUI）+ 把当前画布 ID 填进 myridtv 插件面板（亮绿灯才能手动推送回传）
     if blend_path.exists():
@@ -12028,7 +12044,6 @@ def run_blender_previz(payload):
     return {
         "images": [{"url": url, "name": video_name, "kind": "video", "display_name": f"Blender 预演 {tag}"}],
         "backend": "blender-previz",
-        "blocking_core": blocking_used,
         "video_url": url,
         "duration_seconds": duration_seconds,
     }
@@ -12515,7 +12530,9 @@ class Handler(BaseHTTPRequestHandler):
                 workflow_id = urllib.parse.unquote(request_path.rsplit("/", 1)[-1])
                 cached = runninghub_cached_workflow(workflow_id)
                 if cached:
-                    self._send(200, {"ok": True, "data": cached})
+                    # "workflow" 与 "data" 并存：旧前端读 data.workflow，新前端读 data.data。
+                    # 只给 data 会让旧前端拿不到配置→回云端重抓→把用户勾好的暴露字段清成 enabled:false。
+                    self._send(200, {"ok": True, "data": cached, "workflow": cached})
                     return
                 raise ApiError(404, "未找到已缓存的 RunningHub 工作流")
             if request_path == "/api/providers":

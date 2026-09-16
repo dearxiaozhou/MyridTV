@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-CN" class="studio-route-booting">
 <head>
+    <link rel="stylesheet" href="/static/css/design-tokens.css?v=2026.09.16.skill3col1">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="/static/images/myrid-icon.png" type="image/png">
@@ -12,7 +13,7 @@
     })();
   </script>
   <script src="/static/js/theme.js?v=2026.06.21"></script>
-  <script src="/static/js/i18n.js?v=2026.09.12.clickpop79"></script>
+  <script src="/static/js/i18n.js?v=2026.09.16.skill3col1"></script>
   <style>
     :root {
       --line: rgba(255, 255, 255, 0.1);
@@ -21,12 +22,12 @@
       --cyan: #7c8aa0;
       --mint: #8a98aa;
       --accent: #8ea2bd;
-      --bg: #070b12;
+      --bg: #000000;
       --dock-icon-bg: rgba(142, 162, 189, 0.18);
       --dock-icon-fg: #d8e2ef;
-      --dock-bg: rgba(6, 10, 17, 0.94);
-      --dock-pill-bg: #172232;
-      --dock-pill-hover-bg: #223348;
+      --dock-bg: rgba(10, 10, 10, 0.94);
+      --dock-pill-bg: #2f2f2f;
+      --dock-pill-hover-bg: #404040;
       --dock-pill-line: transparent;
       --dock-active-bg: #50708c;
       --dock-active-line: transparent;
@@ -36,14 +37,14 @@
 
     html.theme-light {
       --line: rgba(0, 0, 0, 0.08);
-      --text: #0f172a;
-      --muted: rgba(71, 85, 105, 0.82);
-      --cyan: #64748b;
+      --text: #1f1f1f;
+      --muted: rgba(74,74,74,0.82);
+      --cyan: #8a8a8a;
       --mint: #7b8797;
       --accent: #52657e;
       --bg: #e6ebf2;
       --dock-icon-bg: rgba(82, 101, 126, 0.13);
-      --dock-icon-fg: #243244;
+      --dock-icon-fg: #404040;
       --dock-bg: rgba(210, 219, 229, 0.94);
       --dock-pill-bg: #eef3f8;
       --dock-pill-hover-bg: #dfe9f2;
@@ -147,10 +148,23 @@ transition: transform 0.22s ease, opacity 0.22s ease;
       transition: background .15s ease, border-color .15s ease, color .15s ease, transform .15s ease;
     }
 
+    /* 2026-09-15：版本号为纯展示，不做禁用灰化。
+       注意：Chromium 对 disabled 按钮的 UA 样式会同时写 -webkit-text-fill-color，
+       只改 color 压不住，必须一起覆盖。 */
+    .dock-pill.dock-version:disabled,
+    .dock-pill.dock-version[disabled] {
+      opacity: 1;
+      color: rgba(241, 245, 249, 0.9);
+      -webkit-text-fill-color: rgba(241, 245, 249, 0.9);
+      background: var(--dock-pill-bg);
+      border-color: var(--dock-pill-line);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+      cursor: default;
+    }
+
     html.theme-light .dock-pill {
       background: var(--dock-pill-bg);
-      color: var(--text);
-      box-shadow: 0 1px 3px rgba(15,23,42,0.06), inset 0 1px 0 rgba(255,255,255,0.72);
+      color: var(--text);      box-shadow: 0 1px 3px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.72);
     }
 
     .dock-pill:hover {
@@ -298,7 +312,7 @@ transition: transform 0.22s ease, opacity 0.22s ease;
     }
 
     /* ===== 任务控制台（task-console） ===== */
-    .tc-overlay { position: fixed; inset: 0; z-index: 40; background: rgba(2, 6, 12, 0.45); display: none; }
+    .tc-overlay { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,0.45); display: none; }
     .tc-overlay.open { display: block; }
     .tc-panel {
       position: fixed; right: 0; top: 0; bottom: 48px; z-index: 41;
@@ -374,12 +388,12 @@ transition: transform 0.22s ease, opacity 0.22s ease;
     .tc-status.st-queued { background: rgba(234,179,8,0.16); color: #fcd34d; }
     .tc-status.st-failed { background: rgba(239,68,68,0.16); color: #fca5a5; }
     .tc-status.st-succeeded { background: rgba(34,197,94,0.15); color: #86efac; }
-    .tc-status.st-cancelled { background: rgba(148,163,184,0.18); color: #cbd5e1; }
+    .tc-status.st-cancelled { background: rgba(200,200,200,0.18); color: #cbd5e1; }
     html.theme-light .tc-status.st-running { color: #1d4ed8; }
     html.theme-light .tc-status.st-queued { color: #a16207; }
     html.theme-light .tc-status.st-failed { color: #b91c1c; }
     html.theme-light .tc-status.st-succeeded { color: #15803d; }
-    html.theme-light .tc-status.st-cancelled { color: #475569; }
+    html.theme-light .tc-status.st-cancelled { color: #8a8a8a; }
     .tc-risk {
       font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 5px;
       background: rgba(251,191,36,0.14); color: #fbbf24; border: 1px solid rgba(251,191,36,0.35);
@@ -401,16 +415,16 @@ transition: transform 0.22s ease, opacity 0.22s ease;
 <body>
   <main class="app-shell">
     <section class="stage" aria-label="内容区域">
-  <iframe id="frame-canvas" data-page="canvas" data-src="/static/canvas.html?v=2026.09.12.clickpop79" scrolling="yes"></iframe>
+  <iframe id="frame-canvas" data-page="canvas" data-src="/static/canvas.html?v=2026.09.16.skill3col1" scrolling="yes"></iframe>
       <iframe id="frame-zimage" data-page="zimage" data-src="/static/zimage.html?v=2026.06.21" scrolling="yes"></iframe>
       <iframe id="frame-enhance" data-page="enhance" data-src="/static/enhance.html?v=2026.06.21" scrolling="yes"></iframe>
       <iframe id="frame-klein" data-page="klein" data-src="/static/klein.html?v=2026.06.21" scrolling="yes"></iframe>
       <iframe id="frame-angle" data-page="angle" data-src="/static/angle.html?v=2026.06.21" scrolling="yes"></iframe>
-      <iframe id="frame-online" data-page="online" data-src="/static/online.html?v=2026.09.12.clickpop79" scrolling="yes"></iframe>
-      <iframe id="frame-asset-manager" data-page="asset-manager" data-src="/static/asset-manager.html?v=2026.09.12.clickpop79" scrolling="yes"></iframe>
-      <iframe id="frame-api-settings" data-page="api-settings" data-src="/static/api-settings.html?v=2026.09.12.clickpop79" scrolling="yes"></iframe>
-    <iframe id="frame-comfyui-settings" data-page="comfyui-settings" data-src="/static/comfyui-settings.html?v=2026.09.12.clickpop79" scrolling="yes"></iframe>
-<iframe id="frame-smart-canvas" data-page="smart-canvas" data-src="/static/smart-canvas.html?v=2026.09.12.clickpop79" scrolling="no"></iframe>
+      <iframe id="frame-online" data-page="online" data-src="/static/online.html?v=2026.09.16.skill3col1" scrolling="yes"></iframe>
+      <iframe id="frame-asset-manager" data-page="asset-manager" data-src="/static/asset-manager.html?v=2026.09.16.skill3col1" scrolling="yes"></iframe>
+      <iframe id="frame-api-settings" data-page="api-settings" data-src="/static/api-settings.html?v=2026.09.16.skill3col1" scrolling="yes"></iframe>
+    <iframe id="frame-comfyui-settings" data-page="comfyui-settings" data-src="/static/comfyui-settings.html?v=2026.09.16.skill3col1" scrolling="yes"></iframe>
+<iframe id="frame-smart-canvas" data-page="smart-canvas" data-src="/static/smart-canvas.html?v=2026.09.16.skill3col1" scrolling="no"></iframe>
     </section>
 
     <button class="dock-toggle left" type="button" onclick="toggleBottomDock()" title="向下收起/显示底部菜单">
@@ -422,9 +436,9 @@ transition: transform 0.22s ease, opacity 0.22s ease;
       <button class="dock-pill" type="button" onclick="switchUI(this, 'comfyui-settings')" title="本地工作流"><span class="dock-icon">WF</span><span class="dock-pill-label">本地工作流</span></button>
       <button class="dock-pill" type="button" onclick="switchUI(this, 'asset-manager')" title="素材库"><span class="dock-icon">LIB</span><span class="dock-pill-label">素材库</span></button>
       <button class="dock-logo" type="button" onclick="goHomeCanvas()" title="返回主页面"><img src="/static/images/myrid-icon-dock.png?v=20260629" alt="MyridTV"></button>
-      <button class="dock-pill" type="button" onclick="toggleTheme()" id="dock-theme-btn" title="切换主题"><span class="dock-icon">TH</span><span class="dock-pill-label">切换主题</span></button>
+      <button class="dock-pill" type="button" onclick="toggleTheme()" id="dock-theme-btn" title="深色模式"><span class="dock-icon">TH</span><span class="dock-pill-label">深色模式</span></button>
       <button class="dock-pill" type="button" onclick="toggleTaskConsole()" id="dock-console-btn" title="任务控制台"><span class="dock-icon">TC</span><span class="dock-pill-label">控制台</span></button>
-        <button class="dock-pill dock-version" type="button" disabled title="版本"><span class="dock-icon">V</span><span class="dock-pill-label app-version">版本：V0.3.6</span></button>
+        <button class="dock-pill dock-version" type="button" disabled title="版本"><span class="dock-icon">V</span><span class="dock-pill-label app-version">版本：V0.3.11</span></button>
     </nav>
 
     <button class="dock-toggle right" type="button" onclick="toggleBottomDock()" title="向下收起/显示底部菜单">
@@ -458,7 +472,10 @@ transition: transform 0.22s ease, opacity 0.22s ease;
 
   <script>
 const ACTIVE_PAGE_KEY = 'studio_active_page';
-const DEFAULT_PAGE_ID = 'canvas';
+/* 2026-09-16：首页由「主画布列表页」改为「智能画布」。
+   canvas.html 仍保留，作为画布管理页（列表 / 新建 / 回收站 / 导入导出），
+   并在"一张画布都没有"或接口不可用时作为兜底首页。 */
+const DEFAULT_PAGE_ID = 'smart-canvas';
 const PAGE_IDS = ['canvas', 'zimage', 'enhance', 'klein', 'angle', 'online', 'asset-manager', 'api-settings', 'comfyui-settings', 'smart-canvas'];
 
 // Remember the last canvas-type page we were on (smart-canvas or canvas)
@@ -547,8 +564,11 @@ function switchUI(trigger, pageId, options) {
     const frame = document.getElementById('frame-' + pageId);
     if (!frame) return;
     if (pageId === DEFAULT_PAGE_ID && !options.src) {
+        // 默认页统一以 data-src 为准（启动时会写入带画布 id 的地址），
+        // 不再硬编码页面文件名，避免换默认页时漏改。
         const currentSrc = frame.getAttribute('src') || '';
-        if (!currentSrc || currentSrc.indexOf('/static/canvas.html') === -1) options.resetFrame = true;
+        const expectedSrc = frame.dataset.src || '';
+        if (!currentSrc || (expectedSrc && currentSrc !== expectedSrc)) options.resetFrame = true;
     }
     document.querySelectorAll('iframe').forEach(function (node) { node.classList.remove('active'); });
     ensureFrameLoaded(frame, options);
@@ -567,10 +587,87 @@ function switchUI(trigger, pageId, options) {
     syncLanguageToFrame(frame);
 }
 
+/* ===== 启动落点解析（2026-09-16） =====
+   目标：打开软件直接进智能画布，不再每次先看到主画布列表页。
+   规则：
+     1. 有画布时 -> 智能画布，优先上次那张，其次最近更新的一张
+     2. 一张画布都没有 / 接口取不到 -> 回画布列表页（新建与回收站都在那里）
+   注意：智能画布在 URL 缺少 id 时不会保存（saveCanvas 直接 return），
+   所以这里必须确保带 id 进页面，不能落到无 id 的空画布上。 */
+function fetchCanvasesForBoot() {
+    return new Promise(function (resolve) {
+        var settled = false;
+        var finish = function (list) { if (!settled) { settled = true; resolve(list); } };
+        // 本地接口通常毫秒级返回；给个上限，避免启动被网络问题挂住
+        setTimeout(function () { finish(null); }, 1500);
+        fetch('/api/canvases', { cache: 'no-store' }).then(function (res) {
+            return res.ok ? res.json() : null;
+        }).then(function (data) {
+            finish(data && Array.isArray(data.canvases) ? data.canvases : null);
+        }).catch(function () { finish(null); });
+    });
+}
+
+function pickBootCanvasId(canvases) {
+    if (!Array.isArray(canvases) || !canvases.length) return '';
+    var lastId = getLastCanvasId();
+    if (lastId) {
+        for (var i = 0; i < canvases.length; i++) {
+            if (canvases[i] && String(canvases[i].id) === String(lastId)) return String(lastId);
+        }
+    }
+    var best = null;
+    canvases.forEach(function (c) {
+        if (!c || !c.id) return;
+        if (!best || Number(c.updated_at || 0) > Number(best.updated_at || 0)) best = c;
+    });
+    return best ? String(best.id) : '';
+}
+
+function buildSmartCanvasUrl(baseSrc, canvasId) {
+    var base = baseSrc || '/static/smart-canvas.html';
+    var verMatch = base.match(/[?&]v=([^&]+)/);
+    var ver = verMatch ? verMatch[1] : '';
+    base = base.split('#')[0].split('?')[0];
+    var qs = [];
+    if (ver) qs.push('v=' + ver);
+    qs.push('id=' + encodeURIComponent(canvasId));
+    return base + '?' + qs.join('&');
+}
+
+async function resolveBootTarget() {
+    var canvases = await fetchCanvasesForBoot();
+    var smartId = pickBootCanvasId(canvases);
+    if (!smartId) return { pageId: 'canvas', canvasId: '' };
+    var frame = document.getElementById('frame-smart-canvas');
+    if (frame) frame.dataset.src = buildSmartCanvasUrl(frame.dataset.src, smartId);
+    try {
+        localStorage.setItem(LAST_CANVAS_KEY, 'smart-canvas');
+        localStorage.setItem(LAST_CANVAS_ID_KEY, smartId);
+    } catch (e) { }
+    return { pageId: 'smart-canvas', canvasId: smartId };
+}
+
 function goHomeCanvas() {
     const currentPage = localStorage.getItem(ACTIVE_PAGE_KEY) || DEFAULT_PAGE_ID;
-    // If we are already on a canvas page, go back to the canvas list (main page)
+    if (currentPage === 'canvas') {
+        // 在画布列表页点 logo：回到首页（智能画布）
+        switchUI(document.querySelector('.dock-logo'), 'smart-canvas', { resetFrame: true });
+        return;
+    }
     if (isCanvasPage(currentPage)) {
+        // 已经在智能画布：以"当前正在看的画布"为准同步默认地址，
+        // 不把用户弹回启动时自动打开的那一张。
+        const frame = document.getElementById('frame-smart-canvas');
+        if (frame) {
+            const curSrc = frame.getAttribute('src') || '';
+            const idMatch = curSrc.match(/[?&]id=([^&]+)/);
+            if (idMatch) {
+                const curId = decodeURIComponent(idMatch[1]);
+                frame.dataset.src = buildSmartCanvasUrl(frame.dataset.src, curId);
+                try { localStorage.setItem(LAST_CANVAS_ID_KEY, curId); } catch (e) { }
+            }
+        }
         switchUI(document.querySelector('.dock-logo'), DEFAULT_PAGE_ID, { resetFrame: true });
         return;
     }
@@ -580,7 +677,7 @@ function goHomeCanvas() {
     if (target === 'smart-canvas') {
         const lastId = getLastCanvasId();
         if (lastId) {
-            options.src = '/static/smart-canvas.html?id=' + encodeURIComponent(lastId) + '&v=2026.09.12.clickpop14';
+            options.src = '/static/smart-canvas.html?id=' + encodeURIComponent(lastId);
         }
     }
     switchUI(document.querySelector('.dock-logo'), target, options);
@@ -590,15 +687,21 @@ function toggleBottomDock() {
     document.body.classList.toggle('dock-collapsed');
 }
 
+/* 2026-09-15：界面统一为单一深色主题，主题切换已停用。
+   保留函数是因为 dock 上的旧入口仍可能被调用，这里直接短路，
+   避免任何一处绕过 theme.js 的锁定去改 class。 */
 function toggleTheme() {
-    const next = getTheme() === 'dark' ? 'light' : 'dark';
-    localStorage.setItem('studio_theme', next);
-    localStorage.setItem('canvas_theme', next);
-    document.documentElement.classList.toggle('studio-theme-dark', next === 'dark');
-    document.documentElement.classList.toggle('theme-dark', next === 'dark');
-    document.documentElement.classList.toggle('theme-light', next === 'light');
-    if (window.StudioTheme) window.StudioTheme.set(next);
-    document.querySelectorAll('iframe').forEach(syncThemeToFrame);
+    if (window.StudioTheme) window.StudioTheme.set('dark');
+    document.documentElement.classList.add('studio-theme-dark', 'theme-dark');
+    document.documentElement.classList.remove('theme-light');
+    if (document.body) {
+        document.body.classList.add('studio-theme-dark', 'theme-dark');
+        document.body.classList.remove('theme-light');
+    }
+    try {
+        localStorage.setItem('studio_theme', 'dark');
+        localStorage.setItem('canvas_theme', 'dark');
+    } catch (e) {}
 }
 
 function toggleLanguage() {
@@ -860,10 +963,16 @@ document.addEventListener('DOMContentLoaded', function () {
 
 document.addEventListener('DOMContentLoaded', function () {
     localStorage.removeItem(ACTIVE_PAGE_KEY);
-    const pageId = DEFAULT_PAGE_ID;
     syncLanguageButton();
-    switchUI(null, pageId, { skipRemember: true });
-    document.documentElement.classList.remove('studio-route-booting');
+    // 首页交给智能画布：先解析出要打开的画布，再切页，避免闪一下列表页
+    resolveBootTarget().then(function (target) {
+        switchUI(null, target.pageId, { skipRemember: true });
+        document.documentElement.classList.remove('studio-route-booting');
+    }).catch(function () {
+        // 任何异常都退回画布列表页，保证软件一定能起来
+        switchUI(null, 'canvas', { skipRemember: true });
+        document.documentElement.classList.remove('studio-route-booting');
+    });
 });
 </script>
 </body>

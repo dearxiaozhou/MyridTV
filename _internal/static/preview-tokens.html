@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MyridTV 设计系统 · 统一前后对比</title>
+<style>
+:root{
+  --x-page:#f8fafc; --x-card:#ffffff; --x-soft:#f1f5f9; --x-soft-2:#e8edf3;
+  --x-line:#e2e8f0; --x-line-strong:#cbd5e1;
+  --x-text:#111827; --x-muted:#64748b; --x-faint:#94a3b8;
+  --x-strong:#111827; --x-strong-text:#ffffff; --x-accent:#475569;
+  --x-ok:#16a34a; --x-warn:#b45309; --x-danger:#dc2626; --x-info:#2563eb;
+  --x-r-xs:6px; --x-r-sm:8px; --x-r-md:10px; --x-r-lg:14px; --x-r-xl:18px; --x-r-full:999px;
+  --x-fs-xs:10px; --x-fs-sm:11px; --x-fs-md:12px; --x-fs-lg:13px; --x-fs-xl:15px; --x-fs-2xl:20px;
+  --x-sp-1:4px; --x-sp-2:6px; --x-sp-3:8px; --x-sp-4:10px; --x-sp-5:12px; --x-sp-6:16px; --x-sp-7:20px; --x-sp-8:28px;
+  --x-sh-1:0 2px 6px rgba(15,23,42,.06);
+  --x-sh-2:0 8px 22px rgba(15,23,42,.08);
+  --x-sh-3:0 18px 48px rgba(15,23,42,.12);
+}
+html.theme-dark{
+  --x-page:#0f141d; --x-card:#171d29; --x-soft:#1c2531; --x-soft-2:#202838;
+  --x-line:#2a3444; --x-line-strong:#3a4657;
+  --x-text:#e5e9f0; --x-muted:#94a3b8; --x-faint:#657286;
+  --x-strong:#d8dee9; --x-strong-text:#10141d; --x-accent:#94a3b8;
+  --x-ok:#34d399; --x-warn:#fbbf24; --x-danger:#f87171; --x-info:#60a5fa;
+  --x-sh-1:0 2px 6px rgba(0,0,0,.22);
+  --x-sh-2:0 8px 22px rgba(0,0,0,.30);
+  --x-sh-3:0 18px 48px rgba(0,0,0,.40);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--x-page); color:var(--x-text);
+  font:400 var(--x-fs-md)/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;
+  padding:var(--x-sp-8) var(--x-sp-7) 64px;
+  transition:background .2s var(--x-ease),color .2s var(--x-ease);
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1080px;margin:0 auto}
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--x-sp-6);margin-bottom:var(--x-sp-8);flex-wrap:wrap}
+h1{font-size:24px;font-weight:600;letter-spacing:-.01em}
+.sub{color:var(--x-muted);font-size:var(--x-fs-md);margin-top:var(--x-sp-1)}
+section{margin-bottom:var(--x-sp-8)}
+h2{font-size:var(--x-fs-xl);font-weight:600;margin-bottom:var(--x-sp-2)}
+.hint{color:var(--x-muted);font-size:var(--x-fs-sm);margin-bottom:var(--x-sp-5)}
+.card{background:var(--x-card);border:1px solid var(--x-line);border-radius:var(--x-r-lg);padding:var(--x-sp-6)}
+button{cursor:pointer;font:inherit;border:0;background:none;color:inherit}
+.theme-btn{
+  height:34px;padding:0 var(--x-sp-5);border-radius:var(--x-r-md);
+  border:1px solid var(--x-line-strong);color:var(--x-text);
+  background:var(--x-card);font-size:var(--x-fs-sm);font-weight:500;
+  display:inline-flex;align-items:center;gap:var(--x-sp-2);
+  transition:background .16s var(--x-ease),transform .16s var(--x-ease);
+}
+.theme-btn:hover{background:var(--x-soft);transform:translateY(-1px)}
+
+/* ---- 色块对比 ---- */
+.swatches{display:flex;gap:var(--x-sp-2);flex-wrap:wrap}
+.sw{flex:1;min-width:104px;border:1px solid var(--x-line);border-radius:var(--x-r-md);overflow:hidden;background:var(--x-card)}
+.sw .chip{height:56px;border-bottom:1px solid var(--x-line)}
+.sw .meta{padding:var(--x-sp-2) var(--x-sp-3);font-size:var(--x-fs-xs);font-family:ui-monospace,Menlo,Consolas,monospace;color:var(--x-muted)}
+.sw .meta b{display:block;color:var(--x-text);font-weight:500;letter-spacing:.02em}
+.compare{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:var(--x-sp-5)}
+@media(max-width:900px){.compare{grid-template-columns:1fr}}
+.tag{display:inline-block;font-size:var(--x-fs-xs);padding:2px var(--x-sp-2);border-radius:var(--x-r-xs);font-weight:500;margin-bottom:var(--x-sp-3)}
+.tag.bad{background:var(--x-danger-soft,rgba(220,38,38,.12));color:var(--x-danger)}
+.tag.good{background:var(--x-ok-soft,rgba(22,163,74,.12));color:var(--x-ok)}
+
+/* ---- token 表 ---- */
+.tok{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:var(--x-sp-2)}
+.tok-item{display:flex;align-items:center;gap:var(--x-sp-3);padding:var(--x-sp-2) var(--x-sp-3);border:1px solid var(--x-line);border-radius:var(--x-r-sm);background:var(--x-card)}
+.tok-dot{width:22px;height:22px;border-radius:var(--x-r-xs);flex:0 0 22px;border:1px solid var(--x-line-strong)}
+.tok-name{font-size:var(--x-fs-xs);font-family:ui-monospace,Menlo,Consolas,monospace;color:var(--x-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tok-val{font-size:var(--x-fs-xs);color:var(--x-faint);font-family:ui-monospace,Menlo,Consolas,monospace}
+
+/* ---- 组件示例 ---- */
+.demo{display:flex;flex-wrap:wrap;gap:var(--x-sp-5);align-items:flex-start}
+.btn{
+  height:var(--x-ctrl-h,28px);padding:0 var(--x-sp-5);border-radius:var(--x-r-md);
+  font-size:var(--x-fs-sm);font-weight:500;display:inline-flex;align-items:center;gap:var(--x-sp-2);
+  transition:background .16s var(--x-ease),transform .16s var(--x-ease);
+}
+.btn:hover{transform:translateY(-1px)}
+.btn-primary{background:var(--x-strong);color:var(--x-strong-text)}
+.btn-primary:hover{opacity:.88}
+.btn-ghost{border:1px solid var(--x-line-strong);color:var(--x-text)}
+.btn-ghost:hover{background:var(--x-soft)}
+.btn-soft{background:var(--x-soft);color:var(--x-text)}
+.btn-soft:hover{background:var(--x-soft-2)}
+.btn:focus-visible{outline:2px solid var(--x-info);outline-offset:2px}
+.input{
+  height:var(--x-ctrl-h,28px);padding:0 var(--x-sp-3);border-radius:var(--x-r-sm);
+  border:1px solid var(--x-line-strong);background:var(--x-card);color:var(--x-text);
+  font-size:var(--x-fs-sm);min-width:200px;
+}
+.input:focus{outline:0;border-color:var(--x-info);box-shadow:0 0 0 3px rgba(37,99,235,.15)}
+.input::placeholder{color:var(--x-faint)}
+.badge{display:inline-flex;align-items:center;height:20px;padding:0 var(--x-sp-2);border-radius:var(--x-r-xs);font-size:var(--x-fs-xs);font-weight:500}
+.b-ok{background:var(--x-ok-soft,rgba(22,163,74,.12));color:var(--x-ok)}
+.b-warn{background:var(--x-warn-soft,rgba(180,83,9,.12));color:var(--x-warn)}
+.b-danger{background:var(--x-danger-soft,rgba(220,38,38,.12));color:var(--x-danger)}
+.b-info{background:var(--x-info-soft,rgba(37,99,235,.12));color:var(--x-info)}
+.b-neutral{background:var(--x-soft);color:var(--x-muted)}
+.node{
+  width:240px;border-radius:var(--x-r-xl);overflow:hidden;border:1px solid var(--x-line);
+  background:var(--x-card);box-shadow:var(--x-sh-2);
+}
+.node-head{padding:var(--x-sp-2) var(--x-sp-3);background:var(--x-soft);border-bottom:1px solid var(--x-line);font-size:var(--x-fs-sm);font-weight:500;display:flex;justify-content:space-between;align-items:center}
+.node-body{padding:var(--x-sp-3);font-size:var(--x-fs-xs);color:var(--x-muted);min-height:64px}
+.node-foot{padding:var(--x-sp-2) var(--x-sp-3);border-top:1px solid var(--x-line);display:flex;gap:var(--x-sp-2)}
+
+/* ---- 尺度阶梯 ---- */
+.ladder{display:flex;align-items:flex-end;gap:var(--x-sp-4);flex-wrap:wrap}
+.lad{text-align:center}
+.lad .box{background:var(--x-soft);border:1px solid var(--x-line)}
+.lad span{display:block;font-size:var(--x-fs-xs);color:var(--x-muted);margin-top:var(--x-sp-2);font-family:ui-monospace,Menlo,Consolas,monospace}
+.stat{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:var(--x-sp-3)}
+.stat-item{background:var(--x-soft);border-radius:var(--x-r-md);padding:var(--x-sp-4)}
+.stat-item b{display:block;font-size:22px;font-weight:600;line-height:1.2}
+.stat-item span{font-size:var(--x-fs-xs);color:var(--x-muted)}
+footer{margin-top:var(--x-sp-8);padding-top:var(--x-sp-5);border-top:1px solid var(--x-line);color:var(--x-faint);font-size:var(--x-fs-xs)}
+code{font-family:ui-monospace,Menlo,Consolas,monospace;background:var(--x-soft);padding:1px 5px;border-radius:4px;font-size:var(--x-fs-xs)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div>
+    <h1>MyridTV 设计系统</h1>
+    <div class="sub">统一前后对比 · 数据来源：全站 11 个 CSS 文件的静态审计</div>
+  </div>
+  <button class="theme-btn" onclick="document.documentElement.classList.toggle('theme-dark')">
+    <span id="tbtn">切换深色 / 浅色</span>
+  </button>
+</header>
+
+<section>
+  <div class="stat">
+    <div class="stat-item"><b>339</b><span>种硬编码 hex 颜色</span></div>
+    <div class="stat-item"><b>179</b><span>个 CSS 变量（9 套命名空间）</span></div>
+    <div class="stat-item"><b>2,356</b><span>处 <code>!important</code></span></div>
+    <div class="stat-item"><b>323</b><span>种 box-shadow 取值</span></div>
+    <div class="stat-item"><b>45</b><span>种字号（含 10.5 / 11.5px）</span></div>
+  </div>
+</section>
+
+<section>
+  <h2>一、问题：同一个语义，多套几乎相同的颜色</h2>
+  <div class="hint">下面每一块都是代码里真实存在的「页面背景」取值。单个看毫无差别，拼在一起就是界面"脏"的根源。</div>
+  <div class="compare">
+    <div class="card">
+      <span class="tag bad">统一前 · 亮色背景 6 个值</span>
+      <div class="swatches">
+        <div class="sw"><div class="chip" style="background:#f8fafc"></div><div class="meta"><b>#f8fafc</b>--page</div></div>
+        <div class="sw"><div class="chip" style="background:#f6f8fb"></div><div class="meta"><b>#f6f8fb</b>--api-page-bg</div></div>
+        <div class="sw"><div class="chip" style="background:#f6f7f9"></div><div class="meta"><b>#f6f7f9</b>--bg</div></div>
+        <div class="sw"><div class="chip" style="background:#f5f6f8"></div><div class="meta"><b>#f5f6f8</b>--api-light-page</div></div>
+        <div class="sw"><div class="chip" style="background:#f3f6fb"></div><div class="meta"><b>#f3f6fb</b>--wf-hard-bg</div></div>
+        <div class="sw"><div class="chip" style="background:#e6ebf2"></div><div class="meta"><b>#e6ebf2</b>--asset-v2-bg</div></div>
+      </div>
+      <div class="hint" style="margin:12px 0 0">暗色背景同样存在 9 个值：#0f141d / #0b1020 / #08090c / #080d15 / #11151b / #10131a / #070b12 / #11161d / #0e1014</div>
+    </div>
+    <div class="card">
+      <span class="tag good">统一后 · 每个语义 1 个值</span>
+      <div class="swatches">
+        <div class="sw"><div class="chip" style="background:var(--x-page)"></div><div class="meta"><b>--x-page</b>页面 / 画布</div></div>
+        <div class="sw"><div class="chip" style="background:var(--x-card)"></div><div class="meta"><b>--x-card</b>卡片 / 节点</div></div>
+        <div class="sw"><div class="chip" style="background:var(--x-soft)"></div><div class="meta"><b>--x-soft</b>次级填充</div></div>
+        <div class="sw"><div class="chip" style="background:var(--x-line)"></div><div class="meta"><b>--x-line</b>描边</div></div>
+      </div>
+      <div class="hint" style="margin:12px 0 0">179 个旧变量全部通过兼容层指向这一套 token，变量名不变，因此不会破坏任何既有选择器。</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>二、统一后的色板</h2>
+  <div class="hint">切换右上角主题，同一套组件会整体跟随——这正是目前 4 套主题选择器没做到的事。</div>
+  <div class="card">
+    <div class="tok" id="palette"></div>
+  </div>
+</section>
+
+<section>
+  <h2>三、组件在同一套 token 下的表现</h2>
+  <div class="hint">按钮、输入框、徽标、节点，全部只用 <code>--x-*</code> 变量，不再有任何硬编码颜色。</div>
+  <div class="card">
+    <div class="demo">
+      <button class="btn btn-primary">主按钮</button>
+      <button class="btn btn-ghost">次按钮</button>
+      <button class="btn btn-soft">柔和按钮</button>
+      <input class="input" placeholder="输入框占位符文字">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <span class="badge b-ok">成功</span>
+        <span class="badge b-warn">警告</span>
+        <span class="badge b-danger">错误</span>
+        <span class="badge b-info">提示</span>
+        <span class="badge b-neutral">中性</span>
+      </div>
+      <div class="node">
+        <div class="node-head"><span>图片生成节点</span><span class="badge b-neutral">v2</span></div>
+        <div class="node-body">节点主体使用 --x-card，头部使用 --x-soft，描边 --x-line，阴影 --x-sh-2。</div>
+        <div class="node-foot"><span class="badge b-ok">已完成</span><span class="badge b-neutral">1024×1024</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>四、尺度阶梯</h2>
+  <div class="hint">现状：圆角 58 种、字号 45 种（含 10.5 / 11.5 / 12.5px 半像素）、z-index 46 种。统一后各收敛到 5~8 级。</div>
+  <div class="card">
+    <div style="font-size:var(--x-fs-sm);color:var(--x-muted);margin-bottom:8px">圆角 --x-r-*</div>
+    <div class="ladder" style="margin-bottom:24px">
+      <div class="lad"><div class="box" style="width:44px;height:44px;border-radius:var(--x-r-xs)"></div><span>xs 6</span></div>
+      <div class="lad"><div class="box" style="width:44px;height:44px;border-radius:var(--x-r-sm)"></div><span>sm 8</span></div>
+      <div class="lad"><div class="box" style="width:44px;height:44px;border-radius:var(--x-r-md)"></div><span>md 10</span></div>
+      <div class="lad"><div class="box" style="width:44px;height:44px;border-radius:var(--x-r-lg)"></div><span>lg 14</span></div>
+      <div class="lad"><div class="box" style="width:44px;height:44px;border-radius:var(--x-r-xl)"></div><span>xl 18</span></div>
+      <div class="lad"><div class="box" style="width:44px;height:44px;border-radius:var(--x-r-full)"></div><span>full</span></div>
+    </div>
+    <div style="font-size:var(--x-fs-sm);color:var(--x-muted);margin-bottom:8px">字号 --x-fs-*（现状 45 种 → 6 级）</div>
+    <div class="ladder" style="margin-bottom:24px;align-items:center">
+      <div class="lad"><span style="font-size:var(--x-fs-xs)">xs 10 次级</span></div>
+      <div class="lad"><span style="font-size:var(--x-fs-sm)">sm 11 紧凑</span></div>
+      <div class="lad"><span style="font-size:var(--x-fs-md)">md 12 正文</span></div>
+      <div class="lad"><span style="font-size:var(--x-fs-lg)">lg 13 小标题</span></div>
+      <div class="lad"><span style="font-size:var(--x-fs-xl)">xl 15 区块</span></div>
+      <div class="lad"><span style="font-size:var(--x-fs-2xl)">2xl 20 大标题</span></div>
+    </div>
+    <div style="font-size:var(--x-fs-sm);color:var(--x-muted);margin-bottom:8px">阴影 --x-sh-*</div>
+    <div class="ladder">
+      <div class="lad"><div class="box" style="width:110px;height:56px;border-radius:var(--x-r-md);box-shadow:var(--x-sh-1)"></div><span>sh-1</span></div>
+      <div class="lad"><div class="box" style="width:110px;height:56px;border-radius:var(--x-r-md);box-shadow:var(--x-sh-2)"></div><span>sh-2</span></div>
+      <div class="lad"><div class="box" style="width:110px;height:56px;border-radius:var(--x-r-md);box-shadow:var(--x-sh-3)"></div><span>sh-3</span></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  生成于 2026-09-15 · token 定义见 <code>static/css/design-tokens.css</code> · 审计明细见 <code>audit_result.txt</code>
+</footer>
+
+</div>
+<script>
+var TOKENS = [
+  ['--x-page','页面 / 画布底色'],['--x-panel','浮层面板'],['--x-card','卡片 / 节点'],
+  ['--x-soft','次级填充'],['--x-soft-2','深层填充'],['--x-line','常规描边'],
+  ['--x-line-strong','强调描边'],['--x-text','主文字'],['--x-muted','次要文字'],
+  ['--x-faint','弱化文字'],['--x-strong','主按钮底色'],['--x-strong-text','主按钮文字'],
+  ['--x-accent','强调 / 激活'],['--x-ok','成功'],['--x-warn','警告'],
+  ['--x-danger','错误'],['--x-info','信息']
+];
+var host = document.getElementById('palette');
+TOKENS.forEach(function(t){
+  var d = document.createElement('div');
+  d.className = 'tok-item';
+  d.innerHTML = '<span class="tok-dot" style="background:var(' + t[0] + ')"></span>' +
+    '<span><span class="tok-name">' + t[0] + '</span>' +
+    '<span class="tok-val" style="display:block">' + t[1] + '</span></span>';
+  host.appendChild(d);
+});
+</script>
+</body>
+</html>
