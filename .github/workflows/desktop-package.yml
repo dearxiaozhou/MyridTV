@@ -15,7 +15,8 @@ on:
       - "V*"
 
 permissions:
-  contents: read
+  # 打 tag 时要把安装包挂到 Release 上，所以需要写权限
+  contents: write
 
 jobs:
   build:
@@ -99,3 +100,26 @@ jobs:
           path: installer/build/installer/MyridTV-Setup.exe
           if-no-files-found: error
           retention-days: 30
+
+      # 只有打 tag 才发 Release（手动 Run workflow 只出临时的 Artifact，
+      # 避免每次调试都在 Release 列表里堆一堆版本）
+      - name: Prepare release asset
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $src = 'installer/build/installer/MyridTV-Setup.exe'
+          $dst = "installer/build/installer/MyridTV-Setup-${{ steps.version.outputs.display }}.exe"
+          Copy-Item $src $dst -Force
+          Write-Host "Release asset: $dst"
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: MyridTV ${{ steps.version.outputs.display }}
+          files: installer/build/installer/MyridTV-Setup-${{ steps.version.outputs.display }}.exe
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
