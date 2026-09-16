@@ -68,13 +68,33 @@ installer\build-installer.ps1 -PythonDir "<Python 3.13 安装目录>"
 
 需要 .NET 9 SDK 和 Inno Setup 6/7（脚本会自动找 `ISCC.exe`，找不到会提示）。
 
+## 改动怎么提交
+
+日常改东西先开分支，别直接往 main 上推 —— main 要始终保持能发版。
+
+```
+git switch -c fix/某个短描述
+git commit -am "..."
+git push -u origin fix/某个短描述
+gh pr create --base main
+```
+
+PR 页面上会直接显示 CI 自检结果，红了就别合并。
+
 ## 发版
 
 ```
-git tag V0.3.13
-git push origin V0.3.13
+git tag V0.3.14
+git push origin V0.3.14
 ```
 
-GitHub Actions（`.github/workflows/desktop-package.yml`）会依次：自检 → `dotnet publish` → 内嵌 Python → Inno Setup → 出安装包 → 建 Release 并挂附件。
+`.github/workflows/desktop-package.yml` 有 verify / build 两个 job，触发关系是：
 
-只想出包、不想发 Release：在 Actions 页面手动 Run workflow，产物进 Artifact，保留 30 天。
+| 触发方式 | verify（自检） | build（出包） |
+|---|---|---|
+| 开 PR / 更新 PR | 跑 | 跳过 |
+| push 到 main | 跑 | 跳过 |
+| 打 tag | 跑 | 跑，并建 Release 挂附件 |
+| 手动 Run workflow | 跑 | 跑，只出 Artifact（保留 30 天），不发 Release |
+
+PR 上不出包是有意的：出一次安装包要 3 分钟，没必要每个 PR 都付这个成本。build 依赖 verify（`needs: verify`），自检红了就不会往下走。

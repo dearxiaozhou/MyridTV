@@ -1,26 +1,77 @@
 name: Build Windows Installer
 
 on:
-  # 手动触发（推荐日常使用）：可在 GitHub 网页上点 Run workflow，勾选是否签名
+  # 手动触发（推荐日常出包）：可在 GitHub 网页上点 Run workflow，勾选是否签名
   workflow_dispatch:
     inputs:
       sign:
         description: "对安装包进行代码签名（需要仓库 Secrets 已配置证书）"
         type: boolean
         default: false
-  # 打 tag 时自动出正式包，例如 git tag V0.3.11 && git push --tags
+  # 打 tag 时自动出正式包并挂 Release，例如 git tag V0.3.11 && git push --tags
   push:
+    branches:
+      - main
     tags:
       - "v*"
       - "V*"
+  # 每个 PR 都跑一遍自检，红绿直接显示在 PR 页面上。
+  # 只跑 verify job，不出安装包 —— 出包要 3 分钟，没必要为每个 PR 浪费。
+  pull_request:
+    branches:
+      - main
 
 permissions:
-  # 打 tag 时要把安装包挂到 Release 上，所以需要写权限
-  contents: write
+  # 默认最小权限；只有真正要发 Release 的 build job 才提升到 write
+  contents: read
 
 jobs:
-  build:
+  # ── 自检：语法 / i18n / 悬空名字 / 单测 ────────────────────────────
+  # PR、push main、打 tag、手动触发都会跑。红了就别往下走。
+  verify:
+    name: Self-check
     runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 自检要跑 Python 单测。node 用 runner 自带的（verify.ps1 也用它查 JS 语法）。
+      - name: Setup Python 3.13
+        id: setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install self-check dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install websockets
+
+      - name: Self-check (verify)
+        shell: pwsh
+        env:
+          MYRIDTV_PYTHON_EXE: ${{ steps.setup-python.outputs.python-path }}
+        run: |
+          & .\tests\verify.ps1
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::自检未通过，终止"
+            exit $LASTEXITCODE
+          }
+
+  # ── 打包：只在「手动」或「打 tag」时跑 ──────────────────────────────
+  # PR 和普通的 push main 都不会走到这里。
+  # needs: verify 保证自检过了才出包。
+  build:
+    name: Build installer
+    needs: verify
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    runs-on: windows-latest
+
+    permissions:
+      # 打 tag 时要把安装包挂到 Release 上，所以需要写权限
+      contents: write
 
     steps:
       - name: Checkout
@@ -38,26 +89,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-
-      # 自检需要的第三方依赖。发布包里只内嵌 websockets，这里保持一致。
-      - name: Install self-check dependencies
-        shell: pwsh
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install websockets
-
-      # 自检基线：语法 / i18n / 悬空名字 / 单测。
-      # 放在打包之前，这样 CI 绿灯才代表「功能没坏」，而不只是「能编译出包」。
-      - name: Self-check (verify)
-        shell: pwsh
-        env:
-          MYRIDTV_PYTHON_EXE: ${{ steps.setup-python.outputs.python-path }}
-        run: |
-          & .\tests\verify.ps1
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "::error::自检未通过，终止打包"
-            exit $LASTEXITCODE
-          }
 
       - name: Ensure Inno Setup
         shell: pwsh
