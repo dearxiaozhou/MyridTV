@@ -67,8 +67,10 @@ if (Test-Path -LiteralPath $dangling) {
     else { $pass.Add("悬空名字: $out") }
 } else { $fail.Add('找不到 tests\check_dangling_names.py') }
 
-# --- 5) 单测（tests/test_*.py） ---
-$testFiles = @(Get-ChildItem -LiteralPath (Join-Path $root 'tests') -Filter 'test_*.py' -File -ErrorAction SilentlyContinue)
+# --- 5) 单测（tests/test_*.py，含子目录） ---
+# 必须递归：tests/agent-e2e/ 下的 4 个测试以前因为不递归而从未被跑到，
+# 变成"看着有测试、其实没人跑"的死测试。
+$testFiles = @(Get-ChildItem -LiteralPath (Join-Path $root 'tests') -Filter 'test_*.py' -File -Recurse -ErrorAction SilentlyContinue)
 foreach ($t in $testFiles) {
     $out = & $python $t.FullName -v 2>&1
     if ($LASTEXITCODE -ne 0) { $fail.Add("单测失败: $($t.Name)`n    $($out | Select-Object -Last 8 | Out-String)") }

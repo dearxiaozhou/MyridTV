@@ -39,6 +39,19 @@ jobs:
         with:
           python-version: "3.13"
 
+      # 自检基线：语法 / i18n / 悬空名字 / 单测。
+      # 放在打包之前，这样 CI 绿灯才代表「功能没坏」，而不只是「能编译出包」。
+      - name: Self-check (verify)
+        shell: pwsh
+        env:
+          MYRIDTV_PYTHON_EXE: ${{ steps.setup-python.outputs.python-path }}
+        run: |
+          & .\tests\verify.ps1
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::自检未通过，终止打包"
+            exit $LASTEXITCODE
+          }
+
       - name: Ensure Inno Setup
         shell: pwsh
         run: |
