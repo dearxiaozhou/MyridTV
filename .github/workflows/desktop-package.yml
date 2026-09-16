@@ -39,6 +39,13 @@ jobs:
         with:
           python-version: "3.13"
 
+      # 自检需要的第三方依赖。发布包里只内嵌 websockets，这里保持一致。
+      - name: Install self-check dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install websockets
+
       # 自检基线：语法 / i18n / 悬空名字 / 单测。
       # 放在打包之前，这样 CI 绿灯才代表「功能没坏」，而不只是「能编译出包」。
       - name: Self-check (verify)

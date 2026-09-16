@@ -27,6 +27,15 @@ Write-Host "MyridTV verify  |  root=$root"
 Write-Host "   python: $python"
 Write-Host "   node  : $((Get-Command node -ErrorAction SilentlyContinue).Source)"
 
+# --- 固定 Python 运行环境（本地与 CI 行为一致）---
+# 1) 非中文代码页的机器上，Python 默认 stdout 是 cp1252，脚本里 print 中文会直接抛
+#    UnicodeEncodeError。强制 UTF-8 后，换机器/CI 都不会因为输出中文而崩。
+$env:PYTHONUTF8 = '1'
+$env:PYTHONIOENCODING = 'utf-8'
+# 2) tests\agent-e2e\ 下的测试要 import 仓库根模块（rh_official_proxy 等），
+#    而脚本模式只会把脚本所在目录加进 sys.path，这里显式补上仓库根。
+$env:PYTHONPATH = $root
+
 # --- 1) Python 语法编译 ---
 $pyFiles = @(Get-ChildItem -LiteralPath $root -Filter *.py -File) +
            @(Get-ChildItem -LiteralPath (Join-Path $root 'tests') -Filter *.py -File -ErrorAction SilentlyContinue)
