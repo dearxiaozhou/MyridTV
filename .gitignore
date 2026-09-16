@@ -2,7 +2,7 @@
 _internal/data/
 _internal/data
 _internal/API/.env
-# 运行态配置：含本机绝对路径（D:\APP\MyridTV\...），发布包禁带，同理不入库
+# 运行态配置：含本机绝对路径，发布包禁带，同理不入库
 _internal/static/app_config.json
 _internal/static/app_config.json.bak
 _internal/assets/
@@ -42,3 +42,35 @@ _apitest_flag.txt
 proxy_restart*.log
 api-settings-runninghub-autotest.png
 verification-*.png
+
+# ============ 本地调试脚本：含本机用户名、绝对路径与内部提示词 ============
+# 以下文件已从全部 git 历史中移除（磁盘上保留，本地照常用），
+# 这里登记是为了防止以后 git add -A 又把它们收回来。
+run_style_iter2.py
+run_style_iter2_more.py
+run_yj_g_iter1.py
+run_yj_g_iter1_more.py
+run_yj_g_iter2.py
+研发启动说明.txt
+_internal/启动MyridTV(自动恢复窗口).bat
+tests/agent-e2e/probe_frontend.py
+tests/agent-e2e/verify_frontend_guard.py
+tests/e2e_comfy_progress.py
+tests/e2e_composer_full_render.py
+tests/e2e_composer_inputs_count.py
+tests/e2e_composer_modes.py
+tests/e2e_composer_v3.py
+tests/e2e_exposed_nodes.py
+tests/e2e_frontend_card.py
+tests/e2e_picker_click.py
+tests/screenshot_cffull.py
+tests/screenshot_cfnv3.py
+tests/screenshot_design_cfnode.py
+tests/screenshot_design_v2.py
+tests/screenshot_design_v3.py
+tests/screenshot_design_v4.py
+tests/screenshot_design_v5.py
+tests/screenshot_design_v5b.py
+tests/screenshot_design_v5c.py
+tests/screenshot_design_v5d.py
+tests/screenshot_design_v5e.py

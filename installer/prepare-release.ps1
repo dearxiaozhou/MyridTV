@@ -439,7 +439,9 @@ function Assert-ReleasePrivacy {
     }
 
     $contentNeedles = @(
-        'C:\Users\<user>',
+        # 检测「任何构建机用户目录」，而不是写死某个用户名：
+        # 换机器/换人打包时用户名会变，只匹配自己那个反而漏检。
+        'C:\Users\',
         'D:\APP\MyridTV'
     )
 

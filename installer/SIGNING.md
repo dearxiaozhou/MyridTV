@@ -29,7 +29,7 @@ $env:MYRIDTV_SIGN_CERT_PASSWORD = 'your-pfx-password'
   -SignCertPath 'D:\certs\myridtv-code-signing.pfx'
 
 .\build-installer.ps1 `
-  -PythonDir 'C:\Users\<user>\AppData\Local\Programs\Python\Python313' `
+  -PythonDir 'C:\Users\<你的用户名>\AppData\Local\Programs\Python\Python313' `
   -Sign `
   -SignCertPath 'D:\certs\myridtv-code-signing.pfx'
 ```
@@ -43,7 +43,7 @@ If the code-signing certificate is installed in the current user's personal cert
   -SignCertThumbprint 'YOUR_CERT_THUMBPRINT'
 
 .\build-installer.ps1 `
-  -PythonDir 'C:\Users\<user>\AppData\Local\Programs\Python\Python313' `
+  -PythonDir 'C:\Users\<你的用户名>\AppData\Local\Programs\Python\Python313' `
   -Sign `
   -SignCertThumbprint 'YOUR_CERT_THUMBPRINT'
 ```
@@ -58,7 +58,7 @@ If the certificate is installed under `LocalMachine\My`, add `-SignCertStoreLoca
   -SignCertThumbprint 'YOUR_CERT_THUMBPRINT'
 
 .\build-installer.ps1 `
-  -PythonDir 'C:\Users\<user>\AppData\Local\Programs\Python\Python313' `
+  -PythonDir 'C:\Users\<你的用户名>\AppData\Local\Programs\Python\Python313' `
   -Sign `
   -SignCertStoreLocation LocalMachine `
   -SignCertThumbprint 'YOUR_CERT_THUMBPRINT'
