@@ -528,7 +528,8 @@ def patch_static_versions_once():
             text = path.read_text(encoding="utf-8")
             updated = text
             for url in urls:
-                pattern = re.compile(rf"({re.escape(url)}\?v=)[^\"'<>\s]+")
+                # 兼容两种 URL 形态：/x.css?v= 与 /x.css?cb=xxx&v= （后者曾导致版本号永远刷不到）
+                pattern = re.compile(rf"({re.escape(url)}\?(?:[^\"'<>\s]*&)?v=)[^\"'<>\s]+")
                 updated = pattern.sub(lambda match: f"{match.group(1)}{STATIC_VERSION}", updated)
             if updated != text:
                 path.write_text(updated, encoding="utf-8")
@@ -1325,6 +1326,55 @@ def request_json(url, method="GET", payload=None, headers=None, timeout=120):
         except Exception:
             detail = raw
         raise RuntimeError(f"HTTP {exc.code}: {detail}") from exc
+
+
+def _rh_request_with_retry(url, method="GET", payload=None, headers=None, timeout=120, attempts=3):
+    """RunningHub API 请求带网络抖动重试。
+
+    只用于 RH 提交/查询链路。RH 官方网关偶发 SSL/连接层瞬时错误
+    （SSLV3_ALERT_BAD_RECORD_MAC / 502 / EOF），这类抖动重试即可成功；
+    业务错误（HTTP 4xx / 明确的 RH code）不重试，直接抛。
+    """
+    last_exc = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return request_json(url, method=method, payload=payload, headers=headers, timeout=timeout)
+        except RuntimeError as exc:
+            # HTTP 业务错误：4xx 不重试（参数错/权限错），5xx 重试
+            msg = str(exc)
+            is_server_err = any(marker in msg for marker in ("HTTP 5", "HTTP 502", "HTTP 503", "HTTP 504"))
+            if not is_server_err and not _is_transient_network_error(msg):
+                raise
+            last_exc = exc
+        except Exception as exc:
+            last_exc = exc
+            if not _is_transient_network_error(str(exc)):
+                raise
+        if attempt < attempts:
+            time.sleep(min(2 ** attempt, 4))
+    raise RuntimeError(f"RunningHub 请求重试 {attempts} 次仍失败：{last_exc}") from last_exc
+
+
+def _is_transient_network_error(msg):
+    """判断是否网络瞬时错误（值得重试）。"""
+    msg = str(msg or "")
+    markers = (
+        "SSLV3_ALERT_BAD_RECORD_MAC",
+        "ssl", "SSL",
+        "EOF occurred",
+        "Connection reset",
+        "ConnectionReset",
+        "timed out",
+        "Timeout",
+        "Temporary failure",
+        "RemoteDisconnected",
+        "Bad Gateway",
+        "502",
+        "503",
+        "504",
+        "unexpected EOF",
+    )
+    return any(m in msg for m in markers)
 
 
 def request_multipart_json(url, fields=None, files=None, headers=None, timeout=120):
@@ -10859,7 +10909,11 @@ def refresh_canvas_task_state(task_id):
             elif status == "FAILED":
                 state = update_task_state(task_id, status="failed", error=queried.get("failReason") or "RunningHub 任务失败", completed_at=time.time(), raw=queried.get("raw"), raw_status=status)
             else:
-                state = update_task_state(task_id, status="running", checked_at=time.time(), raw_status=status or "RUNNING")
+                progress = queried.get("progress")
+                if progress is not None:
+                    state = update_task_state(task_id, status="running", checked_at=time.time(), raw_status=status or "RUNNING", progress=progress)
+                else:
+                    state = update_task_state(task_id, status="running", checked_at=time.time(), raw_status=status or "RUNNING")
         except Exception as exc:
             state = update_task_state(task_id, status="running", checked_at=time.time(), last_error=str(exc))
     return state
@@ -10867,7 +10921,7 @@ def refresh_canvas_task_state(task_id):
 
 def runninghub_query_legacy(task_id):
     key = runninghub_task_key()
-    status_data = request_json(
+    status_data = _rh_request_with_retry(
         runninghub_api_url("/task/openapi/status"),
         "POST",
         {"apiKey": key, "taskId": task_id},
@@ -10879,8 +10933,14 @@ def runninghub_query_legacy(task_id):
     info = status_data.get("data") if isinstance(status_data.get("data"), dict) else status_data
     status = str(info.get("status") or info.get("taskStatus") or "").upper()
     result = {"status": status or "RUNNING", "raw": status_data}
+    progress = _extract_rh_progress(result.get("raw"))
+    if progress is not None:
+        result["progress"] = progress
+    wss_url = _extract_rh_wss(result.get("raw"))
+    if wss_url:
+        result["wss_url"] = wss_url
     if result["status"] == "SUCCESS":
-        output_data = request_json(
+        output_data = _rh_request_with_retry(
             runninghub_api_url("/task/openapi/outputs"),
             "POST",
             {"apiKey": key, "taskId": task_id},
@@ -10903,7 +10963,7 @@ def runninghub_query_legacy(task_id):
 
 
 def runninghub_query_v2(task_id):
-    data = request_json(
+    data = _rh_request_with_retry(
         runninghub_api_url("/openapi/v2/query"),
         "POST",
         {"taskId": task_id},
@@ -10924,9 +10984,55 @@ def runninghub_query_v2(task_id):
             if isinstance(item, dict)
         ]
     result = {"status": status or "RUNNING", "urls": [url for url in urls if isinstance(url, str) and url.strip()], "raw": data}
+    progress = _extract_rh_progress(result.get("raw"))
+    if progress is not None:
+        result["progress"] = progress
+    wss_url = _extract_rh_wss(result.get("raw"))
+    if wss_url:
+        result["wss_url"] = wss_url
     if result["status"] == "FAILED":
         result["failReason"] = info.get("failReason") or info.get("message") or ""
     return result
+
+
+def _extract_rh_progress(raw):
+    """从 RunningHub query 原始返回中提取进度百分比（0-100）。
+
+    RH 官方 query 不保证返回进度字段；若返回里存在 progress/percent 等字段则透传，
+    否则返回 None（调用方回退到 indeterminate 流光，不改变现有行为）。
+    """
+    if not isinstance(raw, dict):
+        return None
+    data = raw.get("data") if isinstance(raw.get("data"), dict) else raw
+    for key in ("progress", "percent", "progressValue", "progress_percent"):
+        val = data.get(key)
+        if val is None:
+            continue
+        try:
+            val = float(val)
+        except (TypeError, ValueError):
+            continue
+        if val < 0 or val > 100:
+            continue
+        return val
+    return None
+
+
+def _extract_rh_wss(raw):
+    """从 RunningHub query 原始返回中提取实时进度 WSS 链接。
+
+    官方进度示例（doc-8287471）在任务 RUNNING 态轮询返回 netWssUrl，连上后
+    收 {"type":"progress","node":..,"value":..,"max":..} 实时消息。工作流任务
+    若返回该字段则透传，否则返回 None（不改变现有轮询行为）。
+    """
+    if not isinstance(raw, dict):
+        return None
+    data = raw.get("data") if isinstance(raw.get("data"), dict) else raw
+    for key in ("netWssUrl", "wssUrl", "wss_url", "progressWssUrl"):
+        val = data.get(key)
+        if isinstance(val, str) and val.startswith("wss://"):
+            return val
+    return None
 
 
 def runninghub_query_task(task_id):
@@ -11019,7 +11125,7 @@ def runninghub_submit_workflow(payload):
     # 这里兜底转换，避免任何前端版本漏转。
     if isinstance(body.get("workflow"), (dict, list)):
         body["workflow"] = json.dumps(body["workflow"], ensure_ascii=False)
-    data = request_json(runninghub_api_url("/task/openapi/create"), "POST", body, timeout=120)
+    data = _rh_request_with_retry(runninghub_api_url("/task/openapi/create"), "POST", body, timeout=120)
     task_id = data.get("taskId") or (data.get("data") or {}).get("taskId") or ""
     if not task_id:
         raise RuntimeError(f"RunningHub 工作流提交失败：{data}")
@@ -11031,7 +11137,7 @@ def runninghub_submit_app(payload):
     key = runninghub_task_key()
     body = dict(payload or {})
     body["apiKey"] = key
-    data = request_json(runninghub_api_url("/task/openapi/ai-app/run"), "POST", body, timeout=120)
+    data = _rh_request_with_retry(runninghub_api_url("/task/openapi/ai-app/run"), "POST", body, timeout=120)
     task_id = data.get("taskId") or (data.get("data") or {}).get("taskId") or ""
     if not task_id:
         raise RuntimeError(f"RunningHub AI 应用提交失败：{data}")
@@ -11919,43 +12025,53 @@ def enhance_previz_prompt_with_llm(prompt, payload):
     aspect = str((payload or {}).get("aspectRatio") or "").strip() or "16:9"
     canvas_title = str((payload or {}).get("canvas_title") or "").strip() or "未命名画布"
     system = (
-        "你是 MyridTV 无限画布的 3D 预演镜头规划器。"
-        "把用户输入整理成可由离线 Blender 预演解析器读取的唯一预演数据包，不解释、不写 Markdown。"
-        "必须依序输出两个标题：3D预演场景资产、3D预演镜头表。"
-        "【坐标】Blender 地面为 z=0；x 为东西，y 为南北，z 为高度。"
-        "资产位置是落地中心点；人物位置是脚底点。人物、门洞、车辆和镜头必须在同一个可见空间内。"
-        "【资产输出格式】资产行必须使用：资产 | 名称 | 类型 | [x,y,z] | [宽,深,高] | 颜色 | 镜头用途。"
+        "你是 MyridTV 的 Blender 3D 预演镜头规划 Agent。"
+        "把用户提供的剧情、分镜、参考图描述整理为可执行的 3D 预演数据。"
+        "不要解释，不要输出视频生成提示词、参考图提示词、Markdown 表格或代码块；"
+        "只按以下顺序输出：\n"
+        "3D预演场景资产\n"
+        "3D预演镜头表\n"
+        "【坐标规则】"
+        "Blender 地面为 z=0。x 轴：东(+)/西(-)；y 轴：北(+)/南(-)；z 轴：上(+)。"
+        "资产位置是落地中心点；人物位置是脚底点。人物、资产、相机必须处在同一个可见空间内。"
+        "只创建镜头看得见、会遮挡、承托人物、形成构图层次或影响走位的资产；画外和相机背后不创建。"
+        "普通物体一件只用一个 box；地面由系统创建，无需输出。"
+        "镜头看得见的墙面、窗墙、门墙可用 box；门洞用门洞框，棚架用棚架，车辆用电驱车，路边设备用立杆设备。"
+        "【资产输出格式】资产 | 名称 | 类型 | [x,y,z] | [宽,深,高] | 颜色 | 镜头用途。"
         "类型只能使用：box、cylinder、sphere、门洞框、棚架、电驱车、立杆设备。"
-        "只输出镜头能看见、会遮挡、承托人物、形成构图层次或影响运动路径的资产。"
-        "地面由系统自动生成；普通资产一件只用一个 box，不要拆成零件。"
-        "门洞必须用门洞框，中间必须留空，绝不能用实心 box 堵住通道；"
-        "棚架/雨棚用棚架（顶棚+支柱）；电动车/摩托用电驱车（车身+两轮+座垫+车把）；"
-        "路边监控/监测箱/信号设备用立杆设备（立杆+箱体）。"
-        "镜头看得到的背景墙、窗墙、门墙要输出为 box；镜头看不到的建筑外壳、相机背后、画外不要输出。"
-        "每一行镜头用途必须写明对应镜头及作用，例如：S01可见背景墙、S02前景遮挡、S03人物承托；已写入用途的资产必须保留创建。"
-        "窗和门需带方位，例如 北墙窗、东墙门。尺寸格式固定为 [宽X,深Y,高Z]，单位米。"
-        "【镜头输出格式】镜头行必须使用：镜头 | 镜号 | 时长 | 景别 | 运镜 | 内容 | 人物 | 相机。\n"
-        "镜号用 S01、S02。时长写“3秒”这类格式。"
-        "景别只能从 特写、近景、中近景、中景、全景、远景、大远景 中选择。"
-        "人物格式：静止人物用 名称[x,y,z]颜色姿态=站；移动人物用 名称[x,y,z]→[x,y,z]颜色姿态=站；"
-        "姿态只能用：站、坐、躺；多人用空格分隔。"
-        "相机格式：相机[x,y,z]→[目标x,目标y,目标z] 焦距mm（如 24mm）。"
-        "相机目标必须是主角头部、动作关键点或关键道具，不能指向场景原点、空墙或无关背景。"
-        "有走位的人物是跟拍镜头的主构图主体，静止配角不得抢走相机目标。"
-        "空间一致性：人物从门洞出来时起点必须在门洞留空范围内；人物跑到车辆、桌子或门前停下时，"
-        "人物终点与目标资产中心的平面距离必须不超过1米；参与同一动作的角色和道具必须放在同一空间区域。"
-        "常用颜色：红、蓝、青、橙、灰、冷灰、黑、白。"
-        "【时间与运镜硬规则】每个镜头的内容列末尾必须写：镜头节拍：动作[开始秒-结束秒]；动作[开始秒-结束秒]。"
-        "节拍动作只能用这些可渲染名称：跟拍、横移、横移加速、横移减速、下压、上升、慢推、变焦、冲击变焦、固定。"
-        "1. 只要有运镜，必须写镜头节拍；固定机位也必须写 固定[0-镜头时长秒]。"
-        "2. 第一段最早开始必须为 0秒，最后一段最晚结束必须严格等于该镜头时长；不得超出镜头时长。"
-        "3. 动作可以重叠，例如：跟拍[0-8秒]；横移加速[2-8秒]。"
-        "4. 人物有 →终点 且镜头含跟拍时，人物必须从跟拍开始时移动，在跟拍结束时准确到达终点并停住；镜头与人物使用同一时间曲线。"
-        "5. 没有跟拍时，人物走位默认从 0 秒覆盖至镜头结束。"
-        "6. 后段变焦、下压、摇镜等只改变镜头，不得让已经到终点的人物继续移动。"
-        "7. 用户指定的中文运镜名称必须逐字保留在运镜列，不得替换、删减或改写。"
-        "镜头内容要明确起始构图、人物动作、空间关系、前景遮挡、结束构图；若资产表中已有镜头用途，镜头内容要与该用途一致。"
-        "如果用户已经给了竖线镜头表，要保留其意图、中文运镜、人物、资产和相机，不得另行改写。"
+        "镜头用途必须写对应镜号及空间职责，例如：S01可见背景墙、S01人物承托、S01前景遮挡、S01前景掠过、S01收束主体。"
+        "【前景掠过硬规则】当镜头内容出现“某资产前景掠过”时，该资产用途必须严格写为：Sxx前景掠过。"
+        "例如：资产 | 早餐铺棚架 | 棚架 | [3.5,1.0,0] | [2.5,1.5,2.4] | 棕 | S01前景掠过。"
+        "这代表它是静止的前景构图资产：系统会在该镜头横移的中段，把它放入相机与主角之间的构图带，由相机经过它产生视差。"
+        "不要把它写成背景，不要把它当作移动物体，也不要用“中段：前景掠过与街道纵深”这类文学备注替代用途字段。"
+        "【镜头输出格式】镜头 | 镜号 | 时长 | 景别 | 运镜 | 内容 | 人物 | 相机。"
+        "镜号固定为 S01、S02……。景别只能使用：特写、近景、中近景、中景、全景、远景、大远景。"
+        "人物格式：静止 名称[x,y,z]颜色姿态=站；移动 名称[x,y,z]→[x,y,z]颜色姿态=站；多人用空格分隔。"
+        "姿态只能使用：站、坐、躺。"
+        "相机格式：相机[x,y,z]→[目标x,目标y,目标z] 焦距mm。"
+        "相机目标必须是主角头部、动作关键点或关键道具；禁止指向场景原点、空墙或无关背景。"
+        "主体有走位且镜头有跟拍时，相机目标必须锁定该主体，而不是静止配角。"
+        "【运镜与时间规则】保留用户指定的中文运镜名称，不得改写或删减。"
+        "内容列末尾必须写镜头节拍：镜头节拍：动作[开始秒-结束秒]；动作[开始秒-结束秒]。"
+        "动作只能使用：跟拍、横移、横移加速、横移减速、下压、上升、慢推、变焦、冲击变焦、固定。"
+        "第一段从 0 秒开始，最后一段必须在镜头结束秒结束。"
+        "人物有终点且存在跟拍时，人物从跟拍开始移动，在跟拍结束时到达终点。"
+        "前景掠过通常与横移时间重叠；例如横移[1-3秒]，系统会在约 2 秒时使前景资产进入画面。"
+        "后段冲击变焦、下压或变焦只改变相机，不得让已到终点的人物继续移动。"
+        "【空间关系规则】从门洞出来的人物起点必须位于门洞开口范围内。"
+        "人物停在车辆、桌子、门前时，人物终点与目标资产的平面距离不超过 1 米。"
+        "同一动作相关的角色、车辆、道具必须放在同一区域，不能一个在 y=0、另一个在 y=-3.5。"
+        "多人物镜头：主角是相机目标；配角只能作为同画面关系、前景肩部、反应对象或对话对象出现。"
+        "车辆有甩尾急停、驶入或漂移时，在内容列镜头节拍后追加："
+        "车辆动作：资产名从[x,y,z]→[x,y,z]，朝向=东→南，甩尾急停[开始秒-结束秒]。"
+        "车辆动作终点必须等于车辆资产位置；坐车人物必须贴近车辆终点。"
+        "【输出示例】\n"
+        "3D预演场景资产\n"
+        "资产 | 居民楼门洞 | 门洞框 | [-3.0,0.5,0] | [3.0,0.6,2.4] | 灰 | S01起点通道\n"
+        "资产 | 早餐铺棚架 | 棚架 | [3.5,1.0,0] | [2.5,1.5,2.4] | 棕 | S01前景掠过\n"
+        "资产 | 电驱车 | 电驱车 | [2.0,0.5,0] | [1.9,0.7,1.1] | 深灰 | S01收束主体\n"
+        "3D预演镜头表\n"
+        "镜头 | S01 | 4秒 | 中景 | 中景跟拍+横移+冲击变焦 | 林野从门洞冲出；早餐铺棚架在前景掠过；林野跑至电驱车旁停住，镜头冲击变焦收在林野。镜头节拍：跟拍[0-3秒]；横移[1-3秒]；冲击变焦[3-4秒]。 | 林野[-2.8,0.5,0]→[1.35,0.5,0]蓝姿态=站 | 相机[-4.5,-1.2,1.0]→[-2.8,0.5,1.5] 35mm\n"
         "不要输出说明、列表符号或代码块。"
     )
     user = (
