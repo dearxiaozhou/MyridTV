@@ -24,6 +24,24 @@ def call(method, path, payload=None):
         return resp.status, json.loads(resp.read().decode())
 
 
+def call_no_raise(method, path, payload=None):
+    # 幂等清理用：404/409 等错误码也吞掉，不抛异常
+    import urllib.error
+    data = json.dumps(payload).encode() if payload is not None else None
+    req = urllib.request.Request(BASE + path, data=data, method=method)
+    if data:
+        req.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return resp.status, json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        return e.code, None
+
+
+# 0. 幂等清理：删掉上次运行可能残留的同名测试工作流（409 冲突源）
+call_no_raise("DELETE", "/api/workflows/" + urllib.parse.quote(WF_NAME))
+
+
 # 1. 拿图片名
 _, oi = call("GET", "/api/comfyui/object-info?types=LoadImage,ImageScaleBy,SaveImage")
 info = oi["object_info"]
