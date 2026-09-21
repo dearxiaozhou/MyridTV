@@ -131,7 +131,7 @@
       "id": "f_zpy46su",
       "node": "289",
       "input": "step",
-      "name": "step",
+      "name": "一采步数​​",
       "type": "number",
       "default": 8,
       "options": [],
@@ -154,10 +154,23 @@
       "random_enabled": false
     },
     {
-      "id": "f_12jg2v5",
+      "id": "f_pn8a5sv",
+      "node": "261",
+      "input": "steps",
+      "name": "采样总步数",
+      "type": "number",
+      "default": 10,
+      "options": [],
+      "min": 0,
+      "max": 28,
+      "step": 1,
+      "random_enabled": false
+    },
+    {
+      "id": "f_l3qw96o",
       "node": "252",
       "input": "aspect_ratio",
-      "name": "视频比例",
+      "name": "比例",
       "type": "text",
       "default": "16:9 (Widescreen)",
       "options": []

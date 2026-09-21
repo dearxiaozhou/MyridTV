@@ -373,7 +373,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.16.skill3col1"
+STATIC_VERSION = "2026.09.20.uifix10"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -1945,6 +1945,12 @@ def task_console_snapshot():
         result = st.get("result") if isinstance(st.get("result"), dict) else {}
         out_images = result.get("images") if isinstance(result.get("images"), list) else []
         out_videos = result.get("videos") if isinstance(result.get("videos"), list) else []
+        created_ts = _task_console_ts(st.get("created_at"))
+        completed_ts = _task_console_ts(st.get("completed_at"))
+        checked_ts = _task_console_ts(st.get("checked_at"))
+        duration = None
+        if created_ts and completed_ts and completed_ts >= created_ts:
+            duration = int(completed_ts - created_ts)
         items.append({
             "task_id": tid,
             "kind": kind,
@@ -1957,11 +1963,16 @@ def task_console_snapshot():
             "canvas_id": str(st.get("canvas_id") or ""),
             "canvas_title": str(st.get("canvas_title") or ""),
             "node_id": str(st.get("node_id") or ""),
+            "node_title": str(st.get("node_title") or ""),
             "mode": str(st.get("mode") or ("i2i" if (st.get("reference_images") or st.get("reference_image_urls")) else "t2i")),
+            "ratio": str(st.get("ratio") or submit.get("ratio") or "").strip(),
+            "quality": str(st.get("quality") or submit.get("quality") or "").strip(),
             "provider_task_id": str(st.get("provider_task_id") or st.get("rh_task_id") or ""),
-            "created_at": _task_console_ts(st.get("created_at")),
-            "completed_at": _task_console_ts(st.get("completed_at")),
-            "error": str(st.get("error") or st.get("last_error") or "")[:300],
+            "created_at": created_ts,
+            "completed_at": completed_ts,
+            "checked_at": checked_ts,
+            "duration": duration,
+            "error": str(st.get("error") or st.get("last_error") or "")[:2000],
             "outputs": len(out_images) + len(out_videos),
             "risks": _task_console_risks(tid, st),
         })
@@ -10930,6 +10941,75 @@ def runninghub_query_task(task_id):
     raise RuntimeError(errors[-1] if errors else "RunningHub 查询失败")
 
 
+def _rh_sync_task_console_state(rh_task_id, queried):
+    """把 RH 轮询结果回写任务控制台（running->succeeded/failed）。"""
+    if not rh_task_id or not isinstance(queried, dict):
+        return
+    try:
+        status = str(queried.get("status") or "").upper()
+        if status not in ("SUCCESS", "FAILED", "RUNNING"):
+            return
+        with TASKS_LOCK:
+            local_id = None
+            for tid, st in TASKS.items():
+                if isinstance(st, dict) and str(st.get("rh_task_id") or "") == str(rh_task_id):
+                    local_id = tid
+                    break
+        if not local_id:
+            return
+        if status == "SUCCESS":
+            urls = queried.get("urls") or []
+            update_task_state(local_id, status="succeeded", result={"images": [{"url": u} for u in urls]},
+                              completed_at=time.time(), checked_at=time.time(), raw_status="SUCCESS")
+        elif status == "FAILED":
+            update_task_state(local_id, status="failed", error=queried.get("failReason") or "RunningHub 任务失败",
+                              completed_at=time.time(), checked_at=time.time(), raw_status="FAILED")
+        else:
+            update_task_state(local_id, status="running", checked_at=time.time(), raw_status="RUNNING")
+    except Exception as exc:
+        append_log(LOG_FILE, f"rh task console sync failed: {exc}")
+
+
+def _rh_task_console_register(rh_task_id, payload, data, backend, mode):
+    """RunningHub 提交成功后注册到任务控制台（running 态，持久化）。
+
+    智能画布走 /api/runninghub/submit 与 /api/runninghub/workflow-submit 是透传
+    （此前不写 TASKS，控制台永远只显示旧画布/Agent 的任务）。这里补注册，让
+    新任务从提交起就出现在控制台，随后由 /api/runninghub/query 轮询回写状态。
+    """
+    try:
+        local_id = "rhproxy_" + uuid.uuid4().hex
+        # 元数据优先取 payload 显式字段；前端未传时从 nodeInfoList 兜底解析模型
+        model = str(payload.get("model") or "").strip()
+        if not model:
+            for item in (payload.get("nodeInfoList") or []):
+                if not isinstance(item, dict):
+                    continue
+                fv = str(item.get("fieldValue") or "").strip()
+                if fv and ("/" in fv) and not fv.startswith("http"):
+                    model = fv
+                    break
+        set_task_state(local_id, {
+            "status": "running",
+            "persistent": True,
+            "backend": backend,
+            "created_at": time.time(),
+            "canvas_title": str(payload.get("canvas_title") or ""),
+            "canvas_id": str(payload.get("canvas_id") or ""),
+            "model": model,
+            "provider_id": "runninghub",
+            "mode": mode,
+            "node_id": str(payload.get("node_id") or ""),
+            "node_title": str(payload.get("node_title") or ""),
+            "rh_task_id": str(rh_task_id or ""),
+            "submit": data,
+            "checked_at": time.time(),
+            "raw_status": "QUEUED",
+        })
+    except Exception as exc:
+        append_log(LOG_FILE, f"rh task console register failed: {exc}")
+
+
 def runninghub_submit_workflow(payload):
     key = runninghub_task_key()
     body = dict(payload or {})
@@ -10943,6 +11023,7 @@ def runninghub_submit_workflow(payload):
     task_id = data.get("taskId") or (data.get("data") or {}).get("taskId") or ""
     if not task_id:
         raise RuntimeError(f"RunningHub 工作流提交失败：{data}")
+    _rh_task_console_register(task_id, payload, data, "runninghub-workflow", "workflow")
     return {"taskId": task_id, "raw": data}
 
 
@@ -10954,6 +11035,7 @@ def runninghub_submit_app(payload):
     task_id = data.get("taskId") or (data.get("data") or {}).get("taskId") or ""
     if not task_id:
         raise RuntimeError(f"RunningHub AI 应用提交失败：{data}")
+    _rh_task_console_register(task_id, payload, data, "runninghub-official", "i2i")
     return {"taskId": task_id, "raw": data}
 
 
@@ -11813,30 +11895,6 @@ def _previz_ratio_size(aspect_ratio):
     return mapping.get(text, (1280, 720))
 
 
-def pick_previz_folder():
-    """弹出 Windows 文件夹选择框，返回用户选择的路径（取消返回空串）。
-    以当前前台窗口为 owner 模态弹出（否则会被前台锁压制显示在应用后面）。"""
-    ps = (
-        "Add-Type -AssemblyName System.Windows.Forms | Out-Null;"
-        "Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public class PrevizWin32 {[DllImport(\"user32.dll\")]public static extern IntPtr GetForegroundWindow();public class PrevizOwner : System.Windows.Forms.IWin32Window {public IntPtr H;public IntPtr Handle {get{return H;}}}}' -ReferencedAssemblies System.Windows.Forms;"
-        "$f = New-Object System.Windows.Forms.FolderBrowserDialog;"
-        "$f.Description = '选择本地资产文件夹';"
-        "$ow = New-Object PrevizWin32+PrevizOwner;"
-        "$ow.H = [PrevizWin32]::GetForegroundWindow();"
-        "if($f.ShowDialog($ow) -eq [System.Windows.Forms.DialogResult]::OK){ $f.SelectedPath } else { '' }"
-    )
-    try:
-        out = subprocess.run(
-            ["powershell", "-NoProfile", "-Command", ps],
-            capture_output=True, text=True, timeout=180,
-        )
-        lines = [ln.strip() for ln in (out.stdout or "").splitlines() if ln.strip()]
-        return lines[-1] if lines else ""
-    except Exception as exc:
-        append_log(LOG_FILE, f"pick folder failed: {exc}")
-        return ""
-
-
 def _strip_llm_fenced_text(text):
     text = str(text or "").strip()
     fence = re.match(r"^```(?:\w+)?\s*([\s\S]*?)\s*```$", text)
@@ -11862,16 +11920,43 @@ def enhance_previz_prompt_with_llm(prompt, payload):
     canvas_title = str((payload or {}).get("canvas_title") or "").strip() or "未命名画布"
     system = (
         "你是 MyridTV 无限画布的 3D 预演镜头规划器。"
-        "把用户输入整理成可由离线 Blender 预演解析器读取的镜头表，不解释、不写 Markdown。"
-        "每行必须使用这个格式：镜号 | 时长 | 景别 | 运镜 | 内容 | 主体 | 相机。\n"
+        "把用户输入整理成可由离线 Blender 预演解析器读取的唯一预演数据包，不解释、不写 Markdown。"
+        "必须依序输出两个标题：3D预演场景资产、3D预演镜头表。"
+        "【坐标】Blender 地面为 z=0；x 为东西，y 为南北，z 为高度。"
+        "资产位置是落地中心点；人物位置是脚底点。人物、门洞、车辆和镜头必须在同一个可见空间内。"
+        "【资产输出格式】资产行必须使用：资产 | 名称 | 类型 | [x,y,z] | [宽,深,高] | 颜色 | 镜头用途。"
+        "类型只能使用：box、cylinder、sphere、门洞框、棚架、电驱车、立杆设备。"
+        "只输出镜头能看见、会遮挡、承托人物、形成构图层次或影响运动路径的资产。"
+        "地面由系统自动生成；普通资产一件只用一个 box，不要拆成零件。"
+        "门洞必须用门洞框，中间必须留空，绝不能用实心 box 堵住通道；"
+        "棚架/雨棚用棚架（顶棚+支柱）；电动车/摩托用电驱车（车身+两轮+座垫+车把）；"
+        "路边监控/监测箱/信号设备用立杆设备（立杆+箱体）。"
+        "镜头看得到的背景墙、窗墙、门墙要输出为 box；镜头看不到的建筑外壳、相机背后、画外不要输出。"
+        "每一行镜头用途必须写明对应镜头及作用，例如：S01可见背景墙、S02前景遮挡、S03人物承托；已写入用途的资产必须保留创建。"
+        "窗和门需带方位，例如 北墙窗、东墙门。尺寸格式固定为 [宽X,深Y,高Z]，单位米。"
+        "【镜头输出格式】镜头行必须使用：镜头 | 镜号 | 时长 | 景别 | 运镜 | 内容 | 人物 | 相机。\n"
         "镜号用 S01、S02。时长写“3秒”这类格式。"
         "景别只能从 特写、近景、中近景、中景、全景、远景、大远景 中选择。"
-        "运镜只能从 固定、推、拉、摇、移、跟、环绕、俯拍、仰拍、升降、甩镜、变焦 或用 + 组合中选择。"
-        "主体列用“名称[x,y,z]颜色”或“名称[x,y,z]→[x,y,z]颜色”，多人用空格分隔；"
+        "人物格式：静止人物用 名称[x,y,z]颜色姿态=站；移动人物用 名称[x,y,z]→[x,y,z]颜色姿态=站；"
+        "姿态只能用：站、坐、躺；多人用空格分隔。"
+        "相机格式：相机[x,y,z]→[目标x,目标y,目标z] 焦距mm（如 24mm）。"
+        "相机目标必须是主角头部、动作关键点或关键道具，不能指向场景原点、空墙或无关背景。"
+        "有走位的人物是跟拍镜头的主构图主体，静止配角不得抢走相机目标。"
+        "空间一致性：人物从门洞出来时起点必须在门洞留空范围内；人物跑到车辆、桌子或门前停下时，"
+        "人物终点与目标资产中心的平面距离必须不超过1米；参与同一动作的角色和道具必须放在同一空间区域。"
         "常用颜色：红、蓝、青、橙、灰、冷灰、黑、白。"
-        "相机列用“相机[x,y,z]→[x,y,z] 24mm”。"
-        "如果用户已经给了竖线镜头表，要保留其意图并补齐缺失主体/相机。"
-        "不要输出标题、说明、列表符号或代码块。"
+        "【时间与运镜硬规则】每个镜头的内容列末尾必须写：镜头节拍：动作[开始秒-结束秒]；动作[开始秒-结束秒]。"
+        "节拍动作只能用这些可渲染名称：跟拍、横移、横移加速、横移减速、下压、上升、慢推、变焦、冲击变焦、固定。"
+        "1. 只要有运镜，必须写镜头节拍；固定机位也必须写 固定[0-镜头时长秒]。"
+        "2. 第一段最早开始必须为 0秒，最后一段最晚结束必须严格等于该镜头时长；不得超出镜头时长。"
+        "3. 动作可以重叠，例如：跟拍[0-8秒]；横移加速[2-8秒]。"
+        "4. 人物有 →终点 且镜头含跟拍时，人物必须从跟拍开始时移动，在跟拍结束时准确到达终点并停住；镜头与人物使用同一时间曲线。"
+        "5. 没有跟拍时，人物走位默认从 0 秒覆盖至镜头结束。"
+        "6. 后段变焦、下压、摇镜等只改变镜头，不得让已经到终点的人物继续移动。"
+        "7. 用户指定的中文运镜名称必须逐字保留在运镜列，不得替换、删减或改写。"
+        "镜头内容要明确起始构图、人物动作、空间关系、前景遮挡、结束构图；若资产表中已有镜头用途，镜头内容要与该用途一致。"
+        "如果用户已经给了竖线镜头表，要保留其意图、中文运镜、人物、资产和相机，不得另行改写。"
+        "不要输出说明、列表符号或代码块。"
     )
     user = (
         f"画布：{canvas_title}\n"
@@ -11900,10 +11985,14 @@ def enhance_previz_prompt_with_llm(prompt, payload):
     message = (choices[0].get("message") if choices and isinstance(choices[0], dict) else {}) or {}
     text = _strip_llm_fenced_text(message.get("content") or "")
     lines = []
+    shot_count = 0
     for raw_line in text.splitlines():
-        line = raw_line.strip().strip("|").strip()
+        line = raw_line.strip().strip()
         if not line or "|" not in line:
+            if line.replace(" ", "").rstrip("：:") in {"3D预演场景资产", "3D预演镜头表"}:
+                lines.append(line.rstrip("：:"))
             continue
+        line = line.strip("|").strip()
         parts = [p.strip() for p in line.split("|")]
         if len(parts) < 4:
             continue
@@ -11911,10 +12000,13 @@ def enhance_previz_prompt_with_llm(prompt, payload):
             continue
         if not re.search(r"\d", parts[1] if len(parts) > 1 else ""):
             continue
-        if not re.match(r"^(S\d+|镜头\d+|M\d+)", parts[0], re.I):
-            continue
-        lines.append(" | ".join(parts))
-    if not lines:
+        is_asset = re.match(r"^资产$", parts[0]) and len(parts) >= 6
+        is_shot = re.match(r"^镜头$", parts[0]) and len(parts) >= 7
+        is_plain_shot = re.match(r"^(S\d+|镜头\d+|M\d+)", parts[0], re.I)
+        if is_asset or is_shot or is_plain_shot:
+            lines.append(" | ".join(parts))
+            shot_count += 1 if (is_shot or is_plain_shot) else 0
+    if not lines or not shot_count:
         raise RuntimeError("LLM 未返回可解析的镜头表")
     enhanced = "\n".join(lines)
     append_log(LOG_FILE, "previz llm enhanced provider={} model={} chars={} lines={}".format(
@@ -11974,13 +12066,10 @@ def run_blender_previz(payload):
             )
         return out
 
-    # 1) 解析镜头表文本 → previz JSON（资产目录：前端用户选择可覆盖默认）
-    asset_dir = str((payload or {}).get("asset_dir") or (payload or {}).get("asset_path") or "").strip()
+    # 1) 解析镜头表文本 → previz JSON（不传资产目录 = 基础风格）
     parse_cmd = [py, "-B", str(PREVIZ_DIR / "previz_parse.py"),
                  "--input", str(shots_txt), "--output", str(shots_json),
                  "--width", str(width), "--height", str(height), "--fps", str(PREVIZ_FPS)]
-    if asset_dir:
-        parse_cmd += ["--assets-dir", asset_dir]
     run_cmd(parse_cmd)
     # 2) Blender Workbench 渲染；最终视频和 .blend 都归档到当前画布资产目录。
     canvas_output_dir = ASSETS_DIR / "output" / canvas_title
@@ -11988,16 +12077,15 @@ def run_blender_previz(payload):
     blend_dir = canvas_output_dir / "blender"
     video_dir.mkdir(parents=True, exist_ok=True)
     blend_dir.mkdir(parents=True, exist_ok=True)
+    data_dir = canvas_output_dir / "previs_data"
+    data_dir.mkdir(parents=True, exist_ok=True)
     blend_path = blend_dir / f"previz_{tag}.blend"
-    asset_path = str((payload or {}).get("asset_path") or "").strip()
     # 预演仅保留正式 Blender 渲染链路：场景资产、中文相机和镜头目标空物体
     # 全部由 previz_render.py 生成。旧 seedance-blocking 解算链路已移除。
     render_cmd = [BLENDER_BIN, "--background", "--python", str(PREVIZ_DIR / "previz_render.py"), "--",
                   "--input", str(shots_json), "--output", str(frames_dir), "--single-scene",
                   "--video-dir", str(frames_dir / "clips"),
                   "--save-blend", str(blend_path)]
-    if asset_path:
-        render_cmd += ["--asset-path", asset_path]
     run_cmd(render_cmd, timeout=3600)
     # 3) ffmpeg 拼接成片
     video_name = f"previz_{tag}.mp4"
@@ -12009,15 +12097,26 @@ def run_blender_previz(payload):
         raise RuntimeError("预演视频未生成")
     size = video_path.stat().st_size
     url = asset_output_url(video_name, "video", canvas_folder=canvas_title)
-    # 读 manifest 拿帧数/时长（拼接脚本写入）
+    # 镜头表 JSON 是整个链路的唯一事实来源：与可编辑 .blend / MP4 一起归档，
+    # 再从同一 JSON 生成 AI 视频提示词，绝不反向从自然语言重新猜镜头。
+    data_json_path = data_dir / f"previz_{tag}_镜头数据.json"
+    prompt_path = data_dir / f"previz_{tag}_视频提示词.txt"
+    validation_path = data_dir / f"previz_{tag}_验镜结果.json"
+    shutil.copy2(shots_json, data_json_path)
+    run_cmd([py, "-B", str(PREVIZ_DIR / "previz_prompt.py"),
+             "--input", str(shots_json), "--output", str(prompt_path)])
+    # 读 manifest 拿帧数/时长与验镜结果（Blender 写入）。
     total_frames = 0
+    validation = {}
     manifest_file = frames_dir / "manifest.json"
     if manifest_file.exists():
         try:
             mf = json.loads(manifest_file.read_text(encoding="utf-8"))
             total_frames = sum(int(s.get("帧数") or 0) for s in (mf.get("镜头") or []))
+            validation = mf.get("验镜") or {}
         except Exception:
             pass
+    validation_path.write_text(json.dumps(validation, ensure_ascii=False, indent=2), encoding="utf-8")
     # The final MP4 and editable .blend are the deliverables.  Blender now
     # writes temporary per-shot MP4s directly (not PNG frames); remove them
     # after a successful build so the run directory cannot accumulate renders.
@@ -12046,6 +12145,10 @@ def run_blender_previz(payload):
         "backend": "blender-previz",
         "video_url": url,
         "duration_seconds": duration_seconds,
+        "previs_data_url": asset_output_url(data_json_path.name, "file", canvas_folder=f"{canvas_title}/previs_data"),
+        "video_prompt_url": asset_output_url(prompt_path.name, "file", canvas_folder=f"{canvas_title}/previs_data"),
+        "validation_url": asset_output_url(validation_path.name, "file", canvas_folder=f"{canvas_title}/previs_data"),
+        "validation": validation,
     }
 
 
@@ -12515,7 +12618,9 @@ class Handler(BaseHTTPRequestHandler):
                 task_id = (query.get("taskId") or [""])[0]
                 if not str(task_id or "").strip():
                     raise ApiError(400, "缺少 taskId")
-                self._send(200, {"success": True, "data": runninghub_query_task(task_id)})
+                _queried = runninghub_query_task(task_id)
+                _rh_sync_task_console_state(task_id, _queried)
+                self._send(200, {"success": True, "data": _queried})
                 return
             if request_path == "/api/runninghub/app-info":
                 parsed = urllib.parse.urlparse(self.path)
@@ -12854,9 +12959,6 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(200, _agent_tool_undo_batch(payload))
                 except Exception as exc:
                     self._send(200, {"ok": False, "error": str(exc)[:300]})
-                return
-            if request_path == "/api/previz/pick-folder":
-                self._send(200, {"path": pick_previz_folder()})
                 return
             if request_path == "/api/canvas-agent-config":
                 if "rules" in payload:

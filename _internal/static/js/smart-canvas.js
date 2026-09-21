@@ -938,7 +938,9 @@ function canvasObjectReferencesFor(node){
     return (node && Array.isArray(node.objectReferences)) ? node.objectReferences.filter(ref => ref && ref.sourceNodeId) : [];
 }
 // 运行时解析：引用只指向来源节点，不复制媒体；来源没 Set / 已删 / 暂无结果 → 不产生输入
+// 模式铁律（2026-09-16 老王）：无线引用只在「无线模式」下解析生效；切到有线模式 → 引用隐藏不删、运行时不参与输入。
 function canvasObjectReferenceImages(node, ctx=smartLoopContext){
+    if(!canvasObjectsMode()) return [];
     return canvasObjectReferencesFor(node).flatMap(ref => {
         const source = nodes.find(n => n.id === ref.sourceNodeId);
         if(!source || source.canvasSetEnabled !== true) return [];
@@ -946,6 +948,7 @@ function canvasObjectReferenceImages(node, ctx=smartLoopContext){
     });
 }
 function canvasObjectReferenceTextNodes(node){
+    if(!canvasObjectsMode()) return [];
     return canvasObjectReferencesFor(node).map(ref => {
         const source = nodes.find(n => n.id === ref.sourceNodeId);
         if(!source || source.canvasSetEnabled !== true) return '';
@@ -1677,6 +1680,9 @@ function canGroupSelectedNodes(){
 function refreshSmartNodeToolButtons(){
     const hasMulti = selectedLayoutNodes().length >= 2;
     const canGroup = canGroupSelectedNodes();
+    world?.querySelectorAll?.('.smart-node-toolbar').forEach(tb => {
+        tb.classList.toggle('show', hasMulti);
+    });
     world?.querySelectorAll?.('.smart-layout-tools').forEach(group => {
         group.classList.toggle('is-inactive', !hasMulti);
     });
@@ -5937,8 +5943,18 @@ function renderPrevizLlmControl(){
         </button>
         ${panelOpen ? `
             <div class="previz-llm-panel">
-                <select class="prompt-node-control previz-llm-provider">${chatProviderOptions(settings.previzLlmProvider)}</select>
-                <select class="prompt-node-control previz-llm-model">${chatModelOptions(settings.previzLlmModel, settings.previzLlmProvider)}</select>
+                <div class="smart-control previz-llm-select previz-llm-provider-ctl" data-ctl="provider">
+                    <button type="button" class="smart-pill previz-llm-select-pill"><span class="previz-llm-select-label"></span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+                    <div class="smart-popover previz-llm-select-popover">
+                        <div class="previz-llm-select-list"></div>
+                    </div>
+                </div>
+                <div class="smart-control previz-llm-select previz-llm-model-ctl" data-ctl="model">
+                    <button type="button" class="smart-pill previz-llm-select-pill"><span class="previz-llm-select-label"></span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+                    <div class="smart-popover previz-llm-select-popover">
+                        <div class="previz-llm-select-list"></div>
+                    </div>
+                </div>
                 <button type="button" class="previz-llm-disable" title="关闭 LLM"><i data-lucide="power"></i><span>关闭 LLM</span></button>
             </div>
         ` : ''}
@@ -5973,24 +5989,66 @@ function bindPrevizLlmControl(){
             persistActiveSmartSettings();
         };
     }
-    const providerEl = document.querySelector('.previz-llm-provider');
-    if(providerEl){
-        providerEl.onchange = e => {
-            e.stopPropagation();
-            settings.previzLlmProvider = resolveChatProviderId(e.target.value);
-            settings.previzLlmModel = resolveChatModel('', settings.previzLlmProvider);
-            previzLlmPanelOpen = true;
-            renderDynamicParams();
-            persistActiveSmartSettings();
+    const providerCtl = document.querySelector('.previz-llm-provider-ctl');
+    if(providerCtl){
+        const label = providerCtl.querySelector('.previz-llm-select-label');
+        const list = providerCtl.querySelector('.previz-llm-select-list');
+        const pill = providerCtl.querySelector('.previz-llm-select-pill');
+        const providers = chatApiProviders();
+        const curP = resolveChatProviderId(settings.previzLlmProvider);
+        if(label) label.textContent = (providers.find(p => p.id === curP) || {}).name || curP;
+        if(list){
+            list.innerHTML = providers.map(p => `<button type="button" class="previz-llm-opt ${p.id === curP ? 'active' : ''}" data-val="${escapeAttr(p.id)}" title="${escapeHtml(p.name || p.id)}"><span>${escapeHtml(p.name || p.id)}</span>${p.id === curP ? '<span class="previz-llm-opt-check">✓</span>' : ''}</button>`).join('');
+        }
+        if(pill) pill.onclick = event => {
+            event.preventDefault();
+            event.stopPropagation();
+            const wasPinned = providerCtl.classList.contains('pinned');
+            closeAllSmartPopovers();
+            if(wasPinned && providerCtl.contains(document.activeElement)) document.activeElement.blur();
+            if(!wasPinned) providerCtl.classList.add('pinned');
         };
+        providerCtl.querySelectorAll('.previz-llm-opt').forEach(opt => {
+            opt.addEventListener('click', e => {
+                e.preventDefault(); e.stopPropagation();
+                const val = opt.dataset.val || '';
+                if(!val) return;
+                settings.previzLlmProvider = resolveChatProviderId(val);
+                settings.previzLlmModel = resolveChatModel('', settings.previzLlmProvider);
+                previzLlmPanelOpen = true;
+                renderDynamicParams();
+                persistActiveSmartSettings();
+            });
+        });
     }
-    const modelEl = document.querySelector('.previz-llm-model');
-    if(modelEl){
-        modelEl.onchange = e => {
-            e.stopPropagation();
-            settings.previzLlmModel = e.target.value;
-            persistActiveSmartSettings();
+    const modelCtl = document.querySelector('.previz-llm-model-ctl');
+    if(modelCtl){
+        const label = modelCtl.querySelector('.previz-llm-select-label');
+        const list = modelCtl.querySelector('.previz-llm-select-list');
+        const pill = modelCtl.querySelector('.previz-llm-select-pill');
+        const models = providerChatModels(resolveChatProviderId(settings.previzLlmProvider));
+        const curM = resolveChatModel(settings.previzLlmModel, settings.previzLlmProvider);
+        if(label) label.textContent = curM;
+        if(list){
+            list.innerHTML = [...new Set([curM, ...models].filter(Boolean))].map(m => `<button type="button" class="previz-llm-opt ${m === curM ? 'active' : ''}" data-val="${escapeAttr(m)}" title="${escapeHtml(m)}"><span>${escapeHtml(m)}</span>${m === curM ? '<span class="previz-llm-opt-check">✓</span>' : ''}</button>`).join('');
+        }
+        if(pill) pill.onclick = event => {
+            event.preventDefault();
+            event.stopPropagation();
+            const wasPinned = modelCtl.classList.contains('pinned');
+            closeAllSmartPopovers();
+            if(wasPinned && modelCtl.contains(document.activeElement)) document.activeElement.blur();
+            if(!wasPinned) modelCtl.classList.add('pinned');
         };
+        modelCtl.querySelectorAll('.previz-llm-opt').forEach(opt => {
+            opt.addEventListener('click', e => {
+                e.preventDefault(); e.stopPropagation();
+                const val = opt.dataset.val || '';
+                if(!val) return;
+                settings.previzLlmModel = val;
+                persistActiveSmartSettings();
+            });
+        });
     }
 }
 document.addEventListener('click', event => {
@@ -6718,28 +6776,30 @@ function renderDynamicParams(){
         // 隐藏 图片/视频 切换按钮
         const toggle = document.getElementById('apiKindToggle');
         if(toggle) toggle.style.display = 'none';
-        // Blender 模式：头部固定一行（引擎/视频比例/本地资产不换行）
+        // Blender 模式：头部固定一行（引擎/视频比例不换行）
         const headEl = document.querySelector('.composer-head');
         if(headEl) headEl.style.flexWrap = 'nowrap';
         // 清理所有残留的比例/资产/镜头语言/LLM 控件（防累积）
         document.querySelectorAll('.blender-ratio-item, .blender-asset-item, .blender-lens-item, .blender-engine-label, .previz-llm-row').forEach(el => el.remove());
         // 3D预演不需要风格按钮：清空风格槽（非 blender 路径会在 renderDynamicParams 末尾重建）
         if(composerStyleModeSlot) composerStyleModeSlot.innerHTML = '';
-        // 视频比例 + 本地资产 + 镜头语言 + LLM 渲染到 composer 头部（与生成按钮同一排）
+        // 视频比例 + 镜头语言 + LLM 渲染到 composer 头部（与生成按钮同一排）
         const headLeft = document.querySelector('.composer-head-left');
         if(headLeft){
             headLeft.insertAdjacentHTML('beforeend', `
                 <div class="param-item param-ratio blender-ratio-item">
-                    <select id="blenderRatioSelect" class="engine-select" title="视频比例">
-                        ${ratios.map(r => `<option value="${r[0]}" ${r[0]===cur?'selected':''}>${r[1]}</option>`).join('')}
-                    </select>
-                </div>
-                <div class="param-item param-asset blender-asset-item">
-                    <button type="button" id="blenderAssetPick" class="blender-asset-pick" title="${escapeHtml(settings.assetPath || '本地资产路径')}">${settings.assetPath ? String(settings.assetPath).replace(/[\\/]+$/,'').split(/[\\/]/).pop() : '本地资产路径'}</button>
+                    <div class="smart-control blender-ratio-control" id="blenderRatioControl">
+                        <button class="smart-pill blender-ratio-pill" type="button" title="视频比例：点击打开列表选择" id="blenderRatioPill"><span class="blender-ratio-label"></span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+                        <div class="smart-popover blender-ratio-popover">
+                            <div class="blender-ratio-list">
+                                ${ratios.map(r => `<button type="button" class="blender-ratio-opt ${r[0]===cur?'active':''}" data-ratio-value="${r[0]}" title="${r[1]}"><span class="blender-ratio-opt-name">${r[1]}</span>${r[0]===cur?'<span class="ratio-opt-check">✓</span>':''}</button>`).join('')}
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="param-item param-lens blender-lens-item">
                     <div class="smart-control previz-lens-control" id="previzLensControl">
-                        <button class="smart-pill previz-lens-pill" type="button" title="${(() => { try { const last = localStorage.getItem('previz_last_lens'); if(last){ const hit = lensOptions.find(l => l[0] === last); return '镜头语言：' + last + (hit ? '（' + hit[1] + '）' : '') + '。点击打开列表重新选择'; } } catch(_){} return '镜头语言：点击打开列表，选中即插入提示词框光标处'; })()}"><i data-lucide="clapperboard"></i><span>镜头语言</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+                        <button class="smart-pill previz-lens-pill" type="button" title="${(() => { try { const last = localStorage.getItem('previz_last_lens'); if(last){ const hit = lensOptions.find(l => l[0] === last); return '镜头语言：' + last + (hit ? '（' + hit[1] + '）' : '') + '。点击打开列表重新选择'; } } catch(_){} return '镜头语言：点击打开列表，选中即插入提示词框光标处'; })()}""><i data-lucide="clapperboard"></i><span>镜头语言</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
                         <div class="smart-popover previz-lens-popover">
                             <div class="previz-lens-list">
                                 ${lensOptions.map(l => `<button type="button" class="previz-lens-opt" data-lens-text="${escapeAttr(l[0])}" title="${escapeAttr(l[1])}"><span class="previz-lens-opt-name">${escapeHtml(l[0])}</span></button>`).join('')}
@@ -6749,31 +6809,49 @@ function renderDynamicParams(){
                 </div>
                 ${renderPrevizLlmControl()}`);
         }
-        dynamicParams.innerHTML = `
-            <div class="previz-asset-help">
-                <span>本资产说明：通过添加本地路径让后端按类型调用。</span>
-                <span>资产命名规范：必须要带：女、男、机、怪。如：女1、男2、机3、怪4。</span>
-            </div>`;
-        const assetPick = document.getElementById('blenderAssetPick');
-        if(assetPick){
-            assetPick.onclick = async () => {
-                try{
-                    const r = await fetch('/api/previz/pick-folder', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
-                    const j = await r.json();
-                    // 用当前 DOM 引用更新（防止闭包里的旧节点已被重渲染替换）
-                    const btn = document.getElementById('blenderAssetPick');
-                    if(j && j.path && btn){
-                        settings.assetPath = j.path;
-                        btn.textContent = String(j.path).replace(/[\\/]+$/,'').split(/[\\/]/).pop();
-                        btn.title = j.path;
-                        scheduleSave();
-                    }
-                }catch(e){ console.warn('pick folder failed', e); }
+        dynamicParams.innerHTML = '';
+        const ratioCtrl = document.getElementById('blenderRatioControl');
+        if(ratioCtrl){
+            const ratioPill = ratioCtrl.querySelector('.blender-ratio-pill');
+            const ratioLabel = ratioCtrl.querySelector('.blender-ratio-label');
+            const setRatioLabel = (val) => {
+                const hit = ratios.find(r => r[0] === val);
+                if(ratioLabel) ratioLabel.textContent = hit ? hit[1] : val;
             };
-        }
-        const sel = document.getElementById('blenderRatioSelect');
-        if(sel){
-            sel.onchange = e => { settings.ratio = e.target.value; scheduleSave(); };
+            setRatioLabel(cur);
+            if(ratioPill) ratioPill.onclick = event => {
+                event.preventDefault();
+                event.stopPropagation();
+                const wasPinned = ratioCtrl.classList.contains('pinned');
+                closeAllSmartPopovers();
+                if(wasPinned && ratioCtrl.contains(document.activeElement)) document.activeElement.blur();
+                if(!wasPinned){
+                    ratioCtrl.classList.add('pinned');
+                    const pop = ratioCtrl.querySelector('.blender-ratio-popover');
+                    if(pop){
+                        const need = pop.scrollHeight + 24;
+                        const rect = ratioCtrl.getBoundingClientRect();
+                        ratioCtrl.classList.toggle('blender-ratio-pop-above', rect.bottom + need > window.innerHeight && rect.top > need);
+                    }
+                }
+            };
+            ratioCtrl.querySelectorAll('.blender-ratio-opt').forEach(opt => {
+                opt.addEventListener('click', e => {
+                    e.preventDefault(); e.stopPropagation();
+                    const val = opt.dataset.ratioValue || '';
+                    if(!val) return;
+                    settings.ratio = val;
+                    scheduleSave();
+                    setRatioLabel(val);
+                    ratioCtrl.querySelectorAll('.blender-ratio-opt').forEach(o => {
+                        o.classList.toggle('active', o === opt);
+                        const chk = o.querySelector('.ratio-opt-check');
+                        if(o === opt && !chk) o.insertAdjacentHTML('beforeend', '<span class="ratio-opt-check">✓</span>');
+                        if(o !== opt && chk) chk.remove();
+                    });
+                    closeAllSmartPopovers();
+                });
+            });
         }
         const lensCtrl = document.getElementById('previzLensControl');
         if(lensCtrl){
@@ -6834,6 +6912,7 @@ function renderDynamicParams(){
             if(headLeft2) headLeft2.appendChild(rb);
             rb.style.width = '100px';
             rb.style.minWidth = '0';
+            rb.style.marginLeft = 'auto';
             rb.style.height = '26px';
             rb.style.fontSize = '12px';
             rb.style.justifyContent = 'center';
@@ -7500,6 +7579,14 @@ function renderComfyInputsRow(){
             else if(k === 'video') vid++;
             else if(k === 'audio') aud++;
         });
+    });
+    // 无线引用（objectReferences）也计入素材行计数：按引用源节点当前的媒体归类累加
+    canvasObjectReferenceImages(node).forEach(m => {
+        if(!m?.url) return;
+        const k = mediaKindForItem(m);
+        if(k === 'image') img++;
+        else if(k === 'video') vid++;
+        else if(k === 'audio') aud++;
     });
     const promptText = (promptInput?.innerText || '').replace(/\u00a0/g, ' ').trim();
     const upstreamPrompt = node ? inputPromptTextFor(node).trim() : '';
@@ -10631,6 +10718,7 @@ async function loadCanvas(){
         recoverCompletedEmptySmartNodes();
         resumeJimengPendingNodes();
         recoverStuckComfyNodes();
+        startComfyJobSupervisor();
         startCanvasMetaPoll();
     } catch(e) { toast(tr('smart.toastCanvasFail')); }
 }
@@ -12217,6 +12305,22 @@ function smartCropButtonHtml(img, index){
         </span>
     </div>`;
 }
+function smartNodeToolbarHtml(){
+    // 节点级工具栏（非图片节点：Prompt / Loop / 镜头表 / 3D预演 等通用布局功能）
+    const multiDisabled = selectedLayoutNodes().length >= 2 ? '' : ' disabled';
+    const groupDisabled = canGroupSelectedNodes() ? '' : ' disabled';
+    const layoutButtons = [
+        ['group', 'group', '打组', groupDisabled],
+        ['align-left', 'align-left', '左对齐', multiDisabled],
+        ['align-top', 'align-start-horizontal', '顶对齐', multiDisabled],
+        ['same-size', 'maximize-2', '统一尺寸', multiDisabled],
+        ['distribute-horizontal', 'columns-3', '左右等距', multiDisabled],
+        ['distribute-vertical', 'rows-3', '上下等距', multiDisabled]
+    ];
+    return `<div class="smart-node-toolbar">
+        ${layoutButtons.map(([action, icon, title, disabled]) => `<button class="smart-node-action${disabled ? ' disabled' : ''}" type="button" data-smart-node-action="${action}" title="${title}" aria-label="${title}"${disabled}><i data-lucide="${icon}"></i></button>`).join('')}
+    </div>`;
+}
 function openSmartImageTool(nodeId, imageIndex, mode, event){
     if(mode === 'free-crop') return beginFreeCrop(nodeId, imageIndex, event);
     event?.preventDefault?.();
@@ -12631,16 +12735,20 @@ function updateComfyNodeLiveState(node){
     if(!node) return;
     const el = world.querySelector(`.image-node[data-id="${CSS.escape(node.id)}"]`);
     if(!el) { render(); return; } // 节点不在 DOM（如首次提交），退回全量渲染
-    const running = node.comfyStatus === 'running';
+    // 2026-09-17：queued（已提交、ComfyUI 还没开工）也要当成运行态显示进度条，
+    // 与 syncRunButtonAvailability 的判定保持一致，否则按钮红了节点却没任何进度反馈。
+    const running = ['running', 'queued'].includes(node.comfyStatus);
     el.classList.toggle('comfy-running', running);
     el.setAttribute('data-comfy-status', node.comfyStatus || '');
-    // 进度条：running 时确保存在并更新宽度；否则移除
+    // 进度环：running 时确保存在并按当前进度沿边框绘制；否则移除
     let bar = el.querySelector(':scope > .comfy-node-progress');
     if(running){
         if(!bar){
-            el.insertAdjacentHTML('beforeend', comfyNodeProgressBarHtml(node));
+            el.insertAdjacentHTML('beforeend', comfyNodeProgressBarHtml(node, {width: el.clientWidth, height: el.clientHeight}));
             bar = el.querySelector(':scope > .comfy-node-progress');
         }
+        syncNodeProgressRing(bar, el, node);
+        // 兼容旧版底部直条（若 DOM 里还有）：宽度一并同步，避免两种形态不同步
         const fill = bar && bar.querySelector('.comfy-node-progress-fill');
         if(fill) fill.style.width = Math.max(0, Math.min(100, Number(node.comfyProgress || 0))) + '%';
     } else if(bar){
@@ -12649,13 +12757,86 @@ function updateComfyNodeLiveState(node){
     refreshRunTimerPills();
     syncRunButtonAvailability(node);
 }
-// 节点底部进度条：comfyStatus==='running' 时显示当前节点进度
-function comfyNodeProgressBarHtml(node){
-    if(!node || node.comfyStatus !== 'running') return '';
+// 2026-09-17：节点进度改为「沿节点边框一圈」的进度环，整圈 = 100%。
+// 起点 = 下边中点，方向 = 逆时针（底中 → 右下 → 右 → 上 → 左 → 回到底中）。
+function nodeProgressRingPath(w, h, radius=10){
+    const inset = 2; // 3px 描边整体内缩，保证整条线都落在节点内、不被 overflow 裁掉
+    const x0 = inset, y0 = inset;
+    const x1 = Math.max(x0 + 1, (Number(w) || 260) - inset);
+    const y1 = Math.max(y0 + 1, (Number(h) || 178) - inset);
+    const r = Math.max(0, Math.min(Number(radius) || 10, Math.min(x1 - x0, y1 - y0) / 2));
+    const cx = (x0 + x1) / 2;
+    return `M ${cx} ${y1} L ${x1 - r} ${y1} Q ${x1} ${y1} ${x1} ${y1 - r} L ${x1} ${y0 + r} Q ${x1} ${y0} ${x1 - r} ${y0} L ${x0 + r} ${y0} Q ${x0} ${y0} ${x0} ${y0 + r} L ${x0} ${y1 - r} Q ${x0} ${y1} ${x0 + r} ${y1} L ${cx} ${y1} Z`;
+}
+// 把进度刷到环上：pathLength=100，dashoffset = 100 - 百分比。
+// 传 node 时可识别 indeterminate（云端 RH-api 等无精确进度）：整圈流光一直跑，不锁定百分比。
+function syncNodeProgressRing(bar, host, node){
+    if(!bar) return;
+    const data = node && typeof node === 'object' ? node : null;
+    const indeterminate = Boolean(data && data.comfyIndeterminate);
+    const progress = data ? (data.comfyProgress) : (typeof node === 'number' ? node : 0);
+    const box = host || bar.parentElement;
+    const w = box ? (box.clientWidth || Number.parseFloat(box.style.width) || 0) : 0;
+    const h = box ? (box.clientHeight || Number.parseFloat(box.style.height) || 0) : 0;
+    const d = nodeProgressRingPath(w || 260, h || 178, 10);
+    bar.querySelectorAll('path').forEach(p => p.setAttribute('d', d));
+    const pct = Math.max(0, Math.min(100, Number(progress) || 0));
+    const arc = bar.querySelector('.comfy-node-progress-path');
+    if(arc) arc.setAttribute('stroke-dashoffset', String(indeterminate ? 0 : (100 - pct)));
+    // 点状流光：determinate 时由 mask 裁到 [0, pct]（只有已跑过的那段有光点）；
+    // indeterminate 时 mask 整圈放开，光点沿整圈逆时针流动表示「运行中」。
+    const maskPath = bar.querySelector('.comfy-node-progress-mask');
+    if(maskPath){
+        maskPath.setAttribute('d', d);
+        maskPath.setAttribute('stroke-dashoffset', String(indeterminate ? 0 : (100 - Math.max(pct, 2.5))));
+    }
+    // 头部亮点：determinate 时跟着当前进度停在进度弧末端（0% / 100% 时不显示）；indeterminate 不显示
+    const dot = bar.querySelector('.comfy-node-progress-dot');
+    if(dot && arc){
+        const show = !indeterminate && pct > 0.5 && pct < 99.5;
+        dot.classList.toggle('is-on', show);
+        dot.style.opacity = show ? '' : '0';
+        if(show && typeof arc.getTotalLength === 'function'){
+            const len = arc.getTotalLength();
+            if(len){
+                const pt = arc.getPointAtLength(len * pct / 100);
+                dot.setAttribute('cx', pt.x.toFixed(2));
+                dot.setAttribute('cy', pt.y.toFixed(2));
+            }
+        }
+    }
+}
+// 节点进度环：comfyStatus 为 running/queued 时显示当前节点进度。
+// indeterminate（云端 RH-api 等无精确进度的运行）：整圈流光一直跑，不锁定百分比。
+function comfyNodeProgressBarHtml(node, size){
+    if(!node || !['running', 'queued'].includes(node.comfyStatus)) return '';
+    const indeterminate = Boolean(node.comfyIndeterminate);
     const progress = Math.max(0, Math.min(100, Number(node.comfyProgress || 0)));
-    return `<div class="comfy-node-progress">
-        <div class="comfy-node-progress-track"><div class="comfy-node-progress-fill" style="width:${progress}%"></div></div>
+    const box = size || nodeRect(node) || {};
+    const d = nodeProgressRingPath(box.width, box.height, 10);
+    const maskId = 'cnring-' + uid('ring'); // 随机 id：多个节点的 mask 不打架
+    const arcOffset = indeterminate ? 0 : (100 - progress);
+    const maskOffset = indeterminate ? 0 : (100 - Math.max(progress, 2.5));
+    return `<div class="comfy-node-progress" data-progress="${progress}">
+        <svg class="comfy-node-progress-ring" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
+            <defs><mask id="${maskId}" maskUnits="userSpaceOnUse">
+                <path class="comfy-node-progress-mask" d="${d}" pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="${maskOffset}" />
+            </mask></defs>
+            <path class="comfy-node-progress-track-path" d="${d}" pathLength="100" />
+            <path class="comfy-node-progress-path" d="${d}" pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="${arcOffset}" />
+            <path class="comfy-node-progress-flow" d="${d}" pathLength="100" mask="url(#${maskId})" />
+            <circle class="comfy-node-progress-dot" r="3.4" cx="0" cy="0" />
+        </svg>
     </div>`;
+}
+// 全量 render 后统一校准一次尺寸（节点缩放/布局变化时环跟着重画）
+function syncAllNodeProgressRings(){
+    world?.querySelectorAll?.('.comfy-node-progress').forEach(bar => {
+        const host = bar.parentElement;
+        const hostNode = host ? host.closest('.image-node') : null;
+        const data = hostNode ? nodes.find(n => n.id === hostNode.dataset.id) : null;
+        syncNodeProgressRing(bar, host, data);
+    });
 }
 function hideRunTimerForNode(node){
     if(!node || node.runTimerHidden || node.pending || node.running || node.jimengPending || !node.runFinishedAt) return false;
@@ -12720,6 +12901,7 @@ const html = `<div class="image-node ${isEmpty ? 'empty-node' : ''} ${isGroup ? 
             ${!isCanvasGroupNode(node) ? (!isEmpty ? `<div class="floating-node-set">${canvasNodeSetToggleHtml(node)}</div><div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>` : `<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>`) : ''}
             ${runTimePillHtml(node)}
             <div class="node-body">${body}</div>
+            ${smartNodeToolbarHtml()}
             <div class="node-hint">${hint}</div>
             ${isCanvasGroupNode(node) || imgs.length || node.pending || isQueued || isJimengPending || isPrompt || isLoop || isTable ? '<div class="node-resize-handle" data-resize="1"></div>' : ''}
             ${canvasPortDotsHtml(node, 'input')}
@@ -12821,6 +13003,7 @@ const html = `<div class="image-node ${isEmpty ? 'empty-node' : ''} ${isGroup ? 
     if(window.lucide) lucide.createIcons();
     measureSmartNodeImages();
     refreshRunTimerPills();
+    syncAllNodeProgressRings();
 }
 function measureSmartNodeImages(){
     world.querySelectorAll('.image-node img,.image-node video').forEach(imgEl => {
@@ -18389,33 +18572,36 @@ function syncRunButtonAvailability(node=selectedNode()){
     // 若不判断选中态，会把用户刚选中的其他节点（如 API 生图节点）的按钮持续刷成红色停止态，
     // 导致 ComfyUI 跑任务期间其他节点无法点运行。
     if(node && node !== selectedNode()) return;
-    const isComfyRunning = Boolean(node && node.comfyStatus === 'running' && node.comfyJobId);
+    // 2026-09-17：queued 也算 ComfyUI 运行态。
+    // 后端 job 建好时 status 是 'queued'（comfy_flow_service.py:280），要等 ComfyUI 真正开工才转
+    // 'running'（同文件 460/467/499）。而 submitComfyWorkflowJob 的 900ms 轮询第一轮就会把
+    // comfyStatus 覆写成后端即时值（20112 行）—— 只认 running 的话，点下运行后按钮要么压根不亮、
+    // 要么只亮一瞬就灭，看起来就是"动效不到 1 秒就变回来，但后台还在跑"。
+    const isComfyRunning = Boolean(node && node.comfyJobId && ['running', 'queued'].includes(node.comfyStatus));
+    // 2026-09-16 运行按钮分类动效：AP 类（api/volcengine，对应 api-single-row / api-video-row 布局）
+    // 运行时单独挂 is-ap-running，与 ComfyUI 运行的 is-running/is-stop 区分，使两类运行态颜色/动效不同。
+    const apScope = runBtn.closest('.api-single-row, .api-video-row');
+    // 2026-09-17：API 类运行态改用 node.apiRunning（与 node.running 解耦）。
+    // 之前 isApRunning 依赖 node.running，而 API 并发任务里 node.running 被刻意保持 false
+    // （避免锁住共享运行按钮），结果点运行后 is-ap-running 永远不触发、毫无动效。
+    // node.apiRunning 由运行流程显式置位/清除，只管「动效」，不参与「禁用」判定。
+    const isApRunning = Boolean(node && (node.running || node.apiRunning) && !isComfyRunning && apScope);
     // 选中节点正在 ComfyUI 运行时，按钮变"停止"，可点击；否则按原逻辑
     runBtn.disabled = isComfyRunning ? false : (Boolean(node?.running) || smartCascadeAnyRunning());
     runBtn.classList.toggle('is-running', isComfyRunning);
     runBtn.classList.toggle('is-stop', isComfyRunning);
-    runBtn.setAttribute('data-comfy-state', isComfyRunning ? 'running' : 'idle');
+    runBtn.classList.toggle('is-ap-running', isApRunning);
+    runBtn.setAttribute('data-comfy-state', isComfyRunning ? 'running' : (isApRunning ? 'ap-running' : 'idle'));
     const label = runBtn.querySelector('[data-i18n], span');
     if(label){
-        label.dataset.i18n = isComfyRunning ? 'smart.stop' : 'smart.run';
-        label.textContent = isComfyRunning ? tr('smart.stop') : tr('smart.run');
+        const runningText = isComfyRunning ? tr('smart.stop') : (isApRunning ? '生成中' : tr('smart.run'));
+        label.dataset.i18n = isComfyRunning ? 'smart.stop' : (isApRunning ? 'common.running' : 'smart.run');
+        label.textContent = runningText;
     }
-    const icon = runBtn.querySelector('[data-lucide]');
-    if(icon){
-        // 2026-09-16 老王：运行按钮统一成「箭头 + 圆圈」，静置态一律 arrow-up（原 sparkles）
-        const desired = isComfyRunning ? 'square' : 'arrow-up';
-        const currentName = icon.getAttribute('data-lucide');
-        if(currentName !== desired){
-            // lucide 把 <i> 替换成 <svg> 后，单纯 setAttribute 不会重画内部 path。
-            // 移除旧 svg，插入新 <i data-lucide>，让 lucide.createIcons() 重建。
-            const fresh = document.createElement('i');
-            fresh.setAttribute('data-lucide', desired);
-            icon.replaceWith(fresh);
-            if(typeof window !== 'undefined' && window.lucide && typeof window.lucide.createIcons === 'function'){
-                try { window.lucide.createIcons(); } catch(e){}
-            }
-        }
-    }
+    // 2026-09-16：图标（arrow-up / square / loader）一律由 CSS 按 [data-lucide] 切显隐，此处不再改
+    // data-lucide。原因：renderDynamicParams() 里写死了「把 #runBtn 的第一个图标设回 arrow-up」，
+    // 两边同时改图标会互相覆盖 —— 真机实测方块永远出现不了，lucide 重建后 class 还被叠成
+    // "lucide lucide-arrow-up lucide-square"。CSS 方案对那处写死逻辑免疫（第一个图标本来就是 arrow-up）。
 }
 // 停止当前 ComfyUI 任务：先尝试后端 cancel 路由；不存在就只清前端状态
 async function cancelComfyJob(node){
@@ -19496,6 +19682,10 @@ async function runGeneration(){
         // API tasks expose their own pending state and may run alongside other nodes.
         // Do not lock the shared composer button while the request is in flight.
         pendingNode.running = false;
+        // 2026-09-17：API 并发任务不锁按钮，但要让按钮进入「生成中」动效，
+        // 用独立标记 node.apiRunning 驱动 is-ap-running（不依赖 node.running）。
+        pendingNode.apiRunning = true;
+        syncRunButtonAvailability(pendingNode);
     } else {
         pendingNode.running = true;
         syncRunButtonAvailability(pendingNode);
@@ -19542,6 +19732,15 @@ async function runGeneration(){
             settings = previousSettings;
             scheduleSave();
             return;
+        }
+        // 2026-09-18：云端 RH-api 工作流没有实时进度百分比，但要让节点保持「运行中」视觉
+        // （边框进度环 + comfy-running 蓝色边框），否则点一下运行态就消失。
+        // 用 comfyStatus='running' 触发现有进度环，comfyIndeterminate 标记走「整圈流光」渲染。
+        if(settings.engine === 'runninghub'){
+            pendingNode.comfyStatus = 'running';
+            pendingNode.comfyIndeterminate = true;
+            syncRunButtonAvailability(pendingNode);
+            updateComfyNodeLiveState(pendingNode);
         }
         const outImages = settings.engine === 'runninghub'
             ? await runRunningHubGeneration(prompt, refs)
@@ -19616,7 +19815,15 @@ async function runGeneration(){
         if(!apiConcurrentRun){
             clearNodeRunningState(pendingNode);
             syncRunButtonAvailability();
+        } else {
+            // 2026-09-17：清掉 API 运行动效标记，让按钮回到待机态
+            delete pendingNode.apiRunning;
+            syncRunButtonAvailability();
         }
+        // 2026-09-18：清掉云端 RH-api 运行时挂的 indeterminate 进度环标记。
+        // 非 ComfyUI 模式（无 comfyJobId）设的 comfyStatus 也一并清，避免节点卡在 running 视觉。
+        delete pendingNode.comfyIndeterminate;
+        if(!pendingNode.comfyJobId) delete pendingNode.comfyStatus;
         render();
     }
 }
@@ -19708,7 +19915,6 @@ async function runApiGeneration(prompt, refs, runSettings=settings, sourceNode=n
         payload.n = 1;
         payload.count = 1;
         payload.aspectRatio = rhOfficialAspectRatioForRun(runSettings);
-        payload.asset_path = runSettings.assetPath || settings.assetPath || '';
         payload.previz_llm_enabled = runSettings.previzLlmEnabled === true;
         payload.previz_llm_provider = runSettings.previzLlmProvider || '';
         payload.previz_llm_model = runSettings.previzLlmModel || '';
@@ -19906,6 +20112,77 @@ function clearComfyProgress(node){
     delete node.comfyCurrentNodeTitle;
     delete node.comfyStatus;
 }
+// 2026-09-17：ComfyUI 状态后台监督器
+// 运行按钮回弹原本完全依赖 submitComfyWorkflowJob 内部那条「随 runGeneration promise
+// 生命周期」的 900ms 轮询。一旦这条 promise 链被打断（切画布 / 智能体重渲染 /
+// 标签页休眠 / 异常提前 return），comfyStatus 就永远停在 'running'，按钮卡在红底「停止」态，
+// 必须手动点一下才清 —— 即老王说的「状态调取断了」。
+// 这里加一层与单次运行 promise 解耦的独立监督：定期回拉后端 job 状态，
+// 任务真正结束就把视觉/按钮态清掉（必要时按输出回填产出），实现「状态主动调取」。
+let comfyJobSupervisorTimer = null;
+async function syncComfyJobStatusOnce(node){
+    // queued 也要管：否则任务停在排队阶段、promise 链又断了时，没人把它推进到 running/收尾
+    if(!node || !node.comfyJobId || !['running', 'queued'].includes(node.comfyStatus)) return false;
+    let job;
+    try {
+        job = await fetch(comfyProxyUrl(`/api/comfyui/jobs/${encodeURIComponent(node.comfyJobId)}`), {cache:'no-store'}).then(async r => {
+            if(!r.ok) throw new Error('http ' + r.status);
+            return r.json();
+        });
+    } catch(e) {
+        // 拉取失败先计数，不立刻清 —— 后端瞬时抖动 / 重启间隙不该把「还在跑」的任务误清成已结束，
+        // 否则按钮会假回弹、产出也永远补不回来。连续失败 3 次（约 6s）才认定任务记录真丢了。
+        node.comfySupervisorMiss = (Number(node.comfySupervisorMiss || 0)) + 1;
+        if(node.comfySupervisorMiss < 3) return false;
+        // 任务记录已丢失（后端重启 / job 被清）：连运行态一起清，别卡按钮
+        delete node.comfySupervisorMiss;
+        clearComfyRunStateKeepPromptId(node);
+        clearNodeRunningState(node);
+        syncRunButtonAvailability(node);
+        render(); scheduleSave();
+        return true;
+    }
+    delete node.comfySupervisorMiss;
+    const st = job.status || node.comfyStatus;
+    node.comfyProgress = Number(job.progress || node.comfyProgress || 0);
+    updateComfyNodeLiveState(node);
+    if(st === 'done'){
+        const urls = (job.videos && job.videos.length) ? job.videos : (job.images || []);
+        const kind = (job.videos && job.videos.length) ? 'video' : 'image';
+        // 仅当节点还没产出时回填（避免和正常轮询的 finalize 重复）
+        if(urls.length && !(node.images || []).length){
+            try { await finalizePendingNode(node, urls, {prompt:node.promptDraftText || node.runPrompt || '', displayPrompt:node.promptDraftText || node.runPrompt || ''}, kind); }
+            catch(_) { /* 产出回填失败也不阻塞清态 */ }
+        }
+        clearComfyProgress(node);
+        clearNodeRunningState(node);
+        syncRunButtonAvailability(node);
+        render(); scheduleSave();
+        return true;
+    }
+    if(['error','cancelled','gone'].includes(st)){
+        if(st !== 'cancelled') clearComfyRunStateKeepPromptId(node);
+        else clearComfyProgressExceptStatus(node);
+        clearNodeRunningState(node);
+        syncRunButtonAvailability(node);
+        render(); scheduleSave();
+        return true;
+    }
+    return false;
+}
+function startComfyJobSupervisor(){
+    if(comfyJobSupervisorTimer) return;
+    comfyJobSupervisorTimer = setInterval(async () => {
+        const active = (nodes || []).filter(n => n.comfyJobId && ['running', 'queued'].includes(n.comfyStatus));
+        if(!active.length){ stopComfyJobSupervisor(); return; }
+        for(const n of active){
+            try { await syncComfyJobStatusOnce(n); } catch(_) {}
+        }
+    }, 2000);
+}
+function stopComfyJobSupervisor(){
+    if(comfyJobSupervisorTimer){ clearInterval(comfyJobSupervisorTimer); comfyJobSupervisorTimer = null; }
+}
 async function buildComfyWorkflowJobPayload(node, runSettings, prompt, refs){
     normalizeComfyWorkflowSelection(runSettings);
     const allRefs = refs || [];
@@ -20002,6 +20279,8 @@ async function submitComfyWorkflowJob(node, payload, meta=null){
         render();
         syncRunButtonAvailability(target);
         scheduleSave();
+        // 2026-09-17：启动独立状态监督，避免单次 runGeneration promise 链被打断后按钮卡死
+        startComfyJobSupervisor();
     }
     for(let i = 0; i < 7200; i++){
         await sleep(900);
@@ -20442,6 +20721,8 @@ async function resumeSmartPendingNode(node){
     if(!node || !tasks.length) return;
     node.pending = Math.max(tasks.length, Number(node.pending || 0) || tasks.length);
     node.running = false;
+    node.apiRunning = true;   // 2026-09-17：被恢复的 API 任务也显示「生成中」动效
+    syncRunButtonAvailability(node);
     render();
     const failures = [];
     await Promise.all(tasks.map(async task => {
@@ -20474,6 +20755,9 @@ async function resumeSmartPendingNode(node){
             scheduleSave();
         }
     }));
+    // 2026-09-17：无论成功/失败都清掉 API 运行动效标记
+    node.apiRunning = false;
+    syncRunButtonAvailability(node);
     if(failures.length && !(node.images || []).length){
         throw failures[0];
     }
