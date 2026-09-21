@@ -86,6 +86,58 @@ foreach ($t in $testFiles) {
     else { $pass.Add("单测通过: $($t.Name)") }
 }
 
+# --- 6) 画布交互 e2e（隔离测试实例 3217，Playwright） ---
+# 守护无限画布交互链路（引擎切换/节点生命周期/连线/提示词构建）：
+# 这些测试跑在独立端口 3217 + _test_userdata，不碰用户正式实例 3107。
+# 流程：启动 launch_test_instance.py → 跑 tests/e2e_canvas_*.py → 杀实例。
+# 注意：e2e 用 Python313（装 playwright）；verify 选中的 python 必须是同一个。
+$e2eDir = Join-Path $root 'tests'
+$e2eFiles = @(Get-ChildItem -LiteralPath $e2eDir -Filter 'e2e_canvas_*.py' -File -ErrorAction SilentlyContinue)
+if ($e2eFiles.Count -gt 0) {
+    # 确认 playwright 可用（Python313 装了；其它解释器可能没有）
+    $hasPw = & $python -c "import playwright" 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        # 启动隔离测试实例（后台）
+        $instOut = Join-Path $env:TEMP 'myridtv_e2e_instance.out.log'
+        $instErr = Join-Path $env:TEMP 'myridtv_e2e_instance.err.log'
+        $inst = Start-Process -FilePath $python -ArgumentList @((Join-Path $e2eDir 'launch_test_instance.py')) -PassThru -WindowStyle Hidden -RedirectStandardOutput $instOut -RedirectStandardError $instErr
+        # 等实例健康（最多 30s）
+        $healthy = $false
+        for ($i = 0; $i -lt 30; $i++) {
+            Start-Sleep -Seconds 1
+            try {
+                $r = Invoke-WebRequest -Uri 'http://127.0.0.1:3217/health' -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
+                if ($r.StatusCode -eq 200) { $healthy = $true; break }
+            } catch {}
+        }
+        if (-not $healthy) {
+            $fail.Add("画布 e2e: 测试实例 3217 启动失败`n    $(Get-Content $instOut -ErrorAction SilentlyContinue | Select-Object -Last 5 | Out-String)`n    $(Get-Content $instErr -ErrorAction SilentlyContinue | Select-Object -Last 5 | Out-String)")
+        } else {
+            $pass.Add("画布 e2e: 测试实例 3217 就绪")
+            $e2eBad = 0
+            foreach ($e in $e2eFiles) {
+                $out = & $python $e.FullName 2>&1
+                # e2e 脚本自己输出 PASS/FAIL 并返回 exit 1（failures>0 时）
+                if ($LASTEXITCODE -ne 0) { $e2eBad++; $fail.Add("画布 e2e 失败: $($e.Name)`n    $($out | Select-Object -Last 12 | Out-String)") }
+                else { $pass.Add("画布 e2e 通过: $($e.Name)") }
+            }
+            if ($e2eBad -eq 0) { $pass.Add("画布 e2e: $($e2eFiles.Count) 个全部通过") }
+        }
+        # 杀测试实例（含可能残留的 python 子进程：launch_test_instance 里 ThreadingHTTPServer 同进程）
+        if (-not $inst.HasExited) { Stop-Process -Id $inst.Id -Force -ErrorAction SilentlyContinue }
+        # 兜底：端口 3217 若还被占，杀占用 pid（测试实例是独立进程，只杀 3217 的）
+        $listener = Get-NetTCPConnection -LocalPort 3217 -State Listen -ErrorAction SilentlyContinue
+        if ($listener) {
+            $listener | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
+        }
+        Start-Sleep -Seconds 1
+    } else {
+        $fail.Add("画布 e2e: 当前 python 无 playwright 模块（需要 Python313），跳过")
+    }
+} else {
+    $fail.Add('找不到 tests/e2e_canvas_*.py（画布交互 e2e 缺失）')
+}
+
 # --- 汇总 ---
 Write-Host ''
 foreach ($line in $pass) { Write-Host "  [OK]   $line" -ForegroundColor Green }
