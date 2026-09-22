@@ -375,7 +375,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.22.comfyconsole4"
+STATIC_VERSION = "2026.09.22.comfyconsole6"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -510,7 +510,7 @@ STATIC_PATCHES = {
         "/static/comfyui-settings.html",
         "/static/asset-manager.html",
     ],
-    ROOT / "static" / "smart-canvas.html": ["/static/css/smart-canvas.css", "/static/js/smart-canvas.js", "/static/js/canvas-node-registry.js", "/static/js/canvas-draft-store.js", "/static/js/canvas-viewport-engine.js", "/static/js/canvas-render-scheduler.js", "/static/js/canvas-comfy-job-engine.js", "/static/js/canvas-agent-history-store.js", "/static/js/canvas-artifact-model.js", "/static/js/i18n.js"],
+    ROOT / "static" / "smart-canvas.html": ["/static/css/smart-canvas.css", "/static/js/smart-canvas.js", "/static/js/canvas-node-registry.js", "/static/js/canvas-draft-store.js", "/static/js/canvas-viewport-engine.js", "/static/js/canvas-render-scheduler.js", "/static/js/canvas-comfy-job-engine.js", "/static/js/canvas-agent-history-store.js", "/static/js/canvas-artifact-model.js", "/static/js/canvas-artifact-view.js", "/static/js/i18n.js"],
     ROOT / "static" / "canvas.html": [
         "/static/css/canvas.css",
         "/static/css/canvas-prism.css",
