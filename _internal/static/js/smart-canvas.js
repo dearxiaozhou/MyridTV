@@ -4541,6 +4541,21 @@ CanvasAgentMessageRender.configure({
     getNodes: () => nodes,
     getChosenMap: () => canvasAgentChosenMap
 });
+
+// ===== RunningHub 控件渲染层（canvas-rh-controls.js）：主文件侧注入 =====
+CanvasRhControls.configure({
+    escapeHtml: (s) => escapeHtml(s),
+    tr: (k, fb) => tr(k, fb),
+    runningHubEntries: (kind) => runningHubEntries(kind),
+    selectedRunningHubRef: (src) => selectedRunningHubRef(src),
+    rhNodeOffBucket: (src) => rhNodeOffBucket(src),
+    renderRhInputsRow: () => renderRhInputsRow(),
+    rhFieldRole: (f) => rhFieldRole(f),
+    renderRhSettingField: (f) => renderRhSettingField(f),
+    rhWorkflowNodeList: (ref) => rhWorkflowNodeList(ref),
+    getSettings: () => settings,
+    getEngineSelect: () => engineSelect
+});
 CanvasArtifactView.bindEvents();
 
 // ===== 视口内核（canvas-viewport-engine.js）：viewport 权威状态在该模块，这里是主文件侧注入与薄别名 =====
@@ -4939,23 +4954,17 @@ function runningHubEntries(kind){
     const key = kind === 'workflow' ? 'rh_workflows' : 'rh_apps';
     return Array.isArray(provider?.[key]) ? provider[key].filter(item => item?.enabled !== false && item?.hidden !== true) : [];
 }
-function runningHubEntryId(entry, kind){
-    return String(kind === 'workflow'
-        ? (entry?.workflowId || entry?.workflow_id || entry?.workflowID || entry?.id || '')
-        : (entry?.appId || entry?.app_id || entry?.webappId || entry?.webapp_id || entry?.webappID || entry?.id || '')
-    ).trim();
+function runningHubEntryId(entry, kind) {
+    return CanvasRhControls.runningHubEntryId.apply(null, arguments);
 }
-function runningHubEntryLabel(entry, kind){
-    const id = runningHubEntryId(entry, kind);
-    return entry?.title || entry?.name || (kind === 'workflow' ? `Workflow ${id}` : `AI App ${id}`);
+function runningHubEntryLabel(entry, kind) {
+    return CanvasRhControls.runningHubEntryLabel.apply(null, arguments);
 }
-function runningHubEntryKey(kind, id){
-    return `${kind}:${String(id || '').trim()}`;
+function runningHubEntryKey(kind, id) {
+    return CanvasRhControls.runningHubEntryKey.apply(null, arguments);
 }
-function parseRunningHubEntryKey(value){
-    const text = String(value || '').trim();
-    const match = text.match(/^(app|workflow):(.+)$/);
-    return match ? {kind:match[1], id:match[2].trim()} : null;
+function parseRunningHubEntryKey(value) {
+    return CanvasRhControls.parseRunningHubEntryKey.apply(null, arguments);
 }
 function runningHubAllEntries(){
     return [
@@ -4972,14 +4981,11 @@ function selectedRunningHubRef(sourceSettings=settings){
     if(ref && sourceSettings === settings) settings.rhConfigKey = runningHubEntryKey(ref.kind, ref.id);
     return ref || null;
 }
-function rhEntryFields(entry){
-    return Array.isArray(entry?.fields) ? entry.fields : [];
+function rhEntryFields(entry) {
+    return CanvasRhControls.rhEntryFields.apply(null, arguments);
 }
-function rhWorkflowJsonFromSources(...sources){
-    for(const source of sources){
-        if(source && typeof source === 'object' && Object.keys(source).length) return source;
-    }
-    return {};
+function rhWorkflowJsonFromSources(...sources) {
+    return CanvasRhControls.rhWorkflowJsonFromSources.apply(null, arguments);
 }
 function rhCurrentKind(sourceSettings=settings){
     return selectedRunningHubRef(sourceSettings)?.kind || 'app';
@@ -4996,13 +5002,11 @@ function rhNodeOffBucket(sourceSettings=settings){
     const bucket = store[runningHubEntryKey(ref.kind, ref.id)];
     return (bucket && typeof bucket === 'object') ? bucket : {};
 }
-function rhNodeOffIds(sourceSettings=settings){
-    return Object.entries(rhNodeOffBucket(sourceSettings)).filter(([,off]) => off === true).map(([id]) => String(id));
+function rhNodeOffIds(sourceSettings=settings) {
+    return CanvasRhControls.rhNodeOffIds.apply(null, arguments);
 }
-function rhNodeIsOff(nodeId, sourceSettings=settings){
-    const id = String(nodeId ?? '');
-    if(!id) return false;
-    return rhNodeOffBucket(sourceSettings)[id] === true;
+function rhNodeIsOff(nodeId, sourceSettings=settings) {
+    return CanvasRhControls.rhNodeIsOff.apply(null, arguments);
 }
 function rhToggleNodeOff(nodeId){
     const id = String(nodeId ?? '');
@@ -6267,33 +6271,8 @@ function renderRunningHubParams(){
 }
 /* 入口一：工作流（原「引擎下拉 RH-API·工作流」+「工作流选择器」两个同功能按钮合并）
    弹层内 = 工作流列表 + 生成引擎切换（引擎下拉已隐藏，切走其他引擎的入口在此） */
-function renderRhWorkflowControl(ref){
-    const apps = runningHubEntries('app');
-    const workflows = runningHubEntries('workflow');
-    const selected = ref ? runningHubEntryKey(ref.kind, ref.id) : '';
-    const groupHtml = (kind, entries, label) => entries.length ? `
-        <div class="model-list-label rh-list-label">${escapeHtml(label)}<span class="count">${entries.length}</span></div>
-        ${entries.map(entry => {
-            const id = runningHubEntryId(entry, kind);
-            const key = runningHubEntryKey(kind, id);
-            return `<button type="button" class="direct-option rh-entry-option ${key === selected ? 'active' : ''}" data-smart-param="rhConfigKey" data-smart-value="${escapeHtml(key)}"><i data-lucide="${kind === 'workflow' ? 'workflow' : 'sparkles'}"></i><span>${escapeHtml(runningHubEntryLabel(entry, kind))}</span></button>`;
-        }).join('')}
-    ` : '';
-    const engineLabels = {};
-    if(engineSelect) [...engineSelect.options].forEach(o => { engineLabels[o.value] = o.textContent.trim(); });
-    const engineRow = Object.entries(engineLabels).map(([key, label]) =>
-        `<button type="button" class="direct-option ${key === settings.engine ? 'active' : ''}" data-combo-engine="${escapeHtml(key)}"><span>${escapeHtml(label)}</span></button>`).join('');
-    const caption = ref ? runningHubEntryLabel(ref.entry, ref.kind) : tr('smart.rhConfig');
-    return `<div class="smart-control rh-merge-control rh-workflow-control">
-        <button class="smart-pill" type="button" title="${escapeHtml(caption)}"><span class="sub">${escapeHtml(caption)}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
-        <div class="smart-popover compact-popover rh-picker-popover rh-unified-popover">
-            <div class="smart-popover-title">${escapeHtml(tr('smart.rhConfig'))}</div>
-            <div class="model-list rh-config-list">
-                ${groupHtml('app', apps, 'AI 应用')}${groupHtml('workflow', workflows, '工作流')}
-            </div>
-            ${engineRow ? `<div class="model-list-label rh-list-label rh-inline-group-label">生成引擎</div><div class="model-list rh-inline-group">${engineRow}</div>` : ''}
-        </div>
-    </div>`;
+function renderRhWorkflowControl(ref) {
+    return CanvasRhControls.renderRhWorkflowControl.apply(null, arguments);
 }
 
 /* 节点开关：与本地 ComfyUI 的「已暴露节点」同规格（cfm-* 样式复用）。
@@ -6416,59 +6395,26 @@ function rhImageSlotOrderMap(sourceSettings=settings){
     });
     return map;
 }
-function rhNodesPillText(nodes){
-    const total = (nodes || []).length;
-    const offCount = (nodes || []).filter(node => rhNodeIsOff(node.id)).length;
-    return offCount
-        ? `${tr('smart.comfyExposedNodes')} ${total} · ${tr('smart.comfyOff')} ${offCount}`
-        : `${tr('smart.comfyExposedNodes')} ${total}`;
+function rhNodesPillText(nodes) {
+    return CanvasRhControls.rhNodesPillText.apply(null, arguments);
 }
-function renderRhNodesControl(ref){
-    const nodes = rhWorkflowNodeList(ref);
-    if(!nodes.length) return '';
-    const pillText = rhNodesPillText(nodes);
-    const rows = nodes.map(node => {
-        const off = rhNodeIsOff(node.id);
-        const hint = `${node.label}${node.cls ? ` · ${node.cls}` : ''}`;
-        return `<div class="cfm-row ${off ? 'cfm-row-off' : ''}">
-            <span class="cfm-name" title="${escapeHtml(hint)}">${escapeHtml(node.label)}</span>
-            <button type="button" class="cfm-toggle ${off ? '' : 'on'}" data-rh-node-mode="${escapeHtml(node.id)}" title="${escapeHtml(off ? tr('smart.comfyNodeOff') : tr('smart.comfyNodeOn'))}">${off ? tr('smart.comfyOff') : tr('smart.comfyOn')}</button>
-        </div>`;
-    }).join('');
-    const headTitle = String(ref?.entry?.title || ref?.id || '').slice(0, 24);
-    return `<div class="smart-control comfy-nodes-control rh-nodes-control">
-        <button class="smart-pill" type="button" title="${escapeHtml(pillText)}"><i data-lucide="toggle-left"></i><span class="sub">${escapeHtml(pillText)}</span></button>
-        <div class="smart-popover compact-popover comfy-nodes-popover rh-nodes-popover">
-            <div class="smart-popover-title">${escapeHtml(headTitle)}<span class="count">${nodes.length}</span></div>
-            <div class="cfm-list">${rows}</div>
-        </div>
-    </div>`;
+function renderRhNodesControl(ref) {
+    return CanvasRhControls.renderRhNodesControl.apply(null, arguments);
 }
 
 // 参数区（素材行 + 工作流参数菜单）单独成块，关节点时只局部重建这一块，保住节点弹层的展开状态。
 // 2026-09-16 老王：参数已收进「工作流参数」二级菜单（见 renderRhParamsControl），这里只留素材输入行。
-function renderRhDetailsHtml(){
-    return `<div class="cfn-details rh-details">
-        ${renderRhInputsRow()}
-    </div>`;
+function renderRhDetailsHtml() {
+    return CanvasRhControls.renderRhDetailsHtml.apply(null, arguments);
 }
 // 参与「工作流参数」菜单的字段：排除媒体（图片/视频/音频，值来自画布上游连线）与提示词（走画布顶部原生输入框）。
-function rhParamFields(fields){
-    return (fields || []).filter(f => !['image','video','audio','prompt'].includes(rhFieldRole(f)));
+function rhParamFields(fields) {
+    return CanvasRhControls.rhParamFields.apply(null, arguments);
 }
 // 工作流参数二级菜单（与本地 ComfyUI 的 comfy-params-control 同规格）：
 // 弹层内还是同一套参数控件（renderRhSettingField），只是从常驻详情区收进一颗 pill。
-function renderRhParamsControl(fields){
-    const paramFields = rhParamFields(fields);
-    if(!paramFields.length) return '';
-    const title = tr('smart.workflowParams') || '工作流参数';
-    return `<div class="smart-control rh-params-control">
-        <button class="smart-pill" type="button" title="${escapeHtml(title)}"><i data-lucide="sliders-horizontal"></i><span class="sub">${escapeHtml(title)} ${paramFields.length}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
-        <div class="smart-popover compact-popover rh-picker-popover rh-param-popover rh-params-popover">
-            <div class="smart-popover-title">${escapeHtml(title)}</div>
-            <div class="cfn-params-body">${paramFields.map(renderRhSettingField).join('')}</div>
-        </div>
-    </div>`;
+function renderRhParamsControl(fields) {
+    return CanvasRhControls.renderRhParamsControl.apply(null, arguments);
 }
 // 关节点后原地重建素材行 + 参数菜单（不整体重绘，保住刚打开的节点弹层）。
 function syncRhDetailsAndParams(ref){
@@ -6567,71 +6513,17 @@ function renderRhInputsRow(){
 
 /* 入口二：资源（原「RunningHub币」+「24G 显存」两个按钮合并）
    弹层内 = 付费方式 + 显存规格 */
-function renderRhResourceControl(){
-    const rhPaymentLabels = {free:tr('smart.rhFreeKey'), wallet:tr('smart.rhWalletKey')};
-    const rhPaymentValue = settings.rhPayment === 'wallet' ? 'wallet' : 'free';
-    const rhMachineLabels = {'':'24G', plus:'48G'};
-    const rhMachineValue = settings.rhInstanceType === 'plus' ? 'plus' : '';
-    const optionRow = (param, labels, value) => Object.entries(labels).map(([key, label]) =>
-        `<button type="button" class="direct-option ${key === value ? 'active' : ''}" data-smart-param="${param}" data-smart-value="${escapeHtml(key)}"><span>${escapeHtml(label)}</span></button>`).join('');
-    const caption = [rhPaymentLabels[rhPaymentValue], rhMachineLabels[rhMachineValue]].join(' · ');
-    return `<div class="smart-control rh-merge-control rh-resource-control">
-        <button class="smart-pill" type="button" title="${escapeHtml(caption)}"><span class="sub">${escapeHtml(caption)}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
-        <div class="smart-popover compact-popover rh-picker-popover rh-unified-popover">
-            <div class="model-list-label rh-list-label rh-inline-group-label">${escapeHtml(tr('smart.rhKey'))}</div>
-            <div class="model-list rh-inline-group">${optionRow('rhPayment', rhPaymentLabels, rhPaymentValue)}</div>
-            <div class="model-list-label rh-list-label rh-inline-group-label">${escapeHtml(tr('smart.rhMachine'))}</div>
-            <div class="model-list rh-inline-group">${optionRow('rhInstanceType', rhMachineLabels, rhMachineValue)}</div>
-        </div>
-    </div>`;
+function renderRhResourceControl() {
+    return CanvasRhControls.renderRhResourceControl.apply(null, arguments);
 }
-function renderRhConfigControl(ref){
-    const apps = runningHubEntries('app');
-    const workflows = runningHubEntries('workflow');
-    const selected = ref ? runningHubEntryKey(ref.kind, ref.id) : '';
-    const groupHtml = (kind, entries, label) => entries.length ? `
-        <div class="model-list-label rh-list-label">${escapeHtml(label)}<span class="count">${entries.length}</span></div>
-        ${entries.map(entry => {
-            const id = runningHubEntryId(entry, kind);
-            const key = runningHubEntryKey(kind, id);
-            return `<button type="button" class="direct-option rh-entry-option ${key === selected ? 'active' : ''}" data-smart-param="rhConfigKey" data-smart-value="${escapeHtml(key)}"><i data-lucide="${kind === 'workflow' ? 'workflow' : 'sparkles'}"></i><span>${escapeHtml(runningHubEntryLabel(entry, kind))}</span></button>`;
-        }).join('')}
-    ` : '';
-    return `<div class="smart-control rh-config-control">
-        <button class="smart-pill" type="button"><i data-lucide="workflow"></i><span class="sub">${escapeHtml(ref ? runningHubEntryLabel(ref.entry, ref.kind) : tr('smart.rhConfig'))}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
-        <div class="smart-popover compact-popover rh-picker-popover">
-            <div class="smart-popover-title">${escapeHtml(tr('smart.rhConfig'))}</div>
-            <div class="model-list rh-config-list">
-                ${groupHtml('app', apps, 'AI 应用')}${groupHtml('workflow', workflows, '工作流') || ''}
-            </div>
-        </div>
-    </div>`;
+function renderRhConfigControl(ref) {
+    return CanvasRhControls.renderRhConfigControl.apply(null, arguments);
 }
-function renderRhPaymentControl(){
-    const value = settings.rhPayment === 'wallet' ? 'wallet' : 'free';
-    const labels = {free:tr('smart.rhFreeKey'), wallet:tr('smart.rhWalletKey')};
-    return `<div class="smart-control rh-payment-control">
-        <button class="smart-pill" type="button"><i data-lucide="key-round"></i><span>${escapeHtml(labels[value])}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
-        <div class="smart-popover compact-popover rh-picker-popover">
-            <div class="smart-popover-title">${escapeHtml(tr('smart.rhKey'))}</div>
-            <div class="model-list">
-                ${Object.entries(labels).map(([key, label]) => `<button type="button" class="direct-option ${key === value ? 'active' : ''}" data-smart-param="rhPayment" data-smart-value="${escapeHtml(key)}"><span>${escapeHtml(label)}</span></button>`).join('')}
-            </div>
-        </div>
-    </div>`;
+function renderRhPaymentControl() {
+    return CanvasRhControls.renderRhPaymentControl.apply(null, arguments);
 }
-function renderRhMachineControl(){
-    const value = settings.rhInstanceType === 'plus' ? 'plus' : '';
-    const labels = {'':'24G', plus:'48G'};
-    return `<div class="smart-control rh-machine-control">
-        <button class="smart-pill" type="button"><i data-lucide="cpu"></i><span>${escapeHtml(labels[value])}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
-        <div class="smart-popover compact-popover rh-picker-popover">
-            <div class="smart-popover-title">${escapeHtml(tr('smart.rhMachine'))}</div>
-            <div class="model-list">
-                ${Object.entries(labels).map(([key, label]) => `<button type="button" class="direct-option ${key === value ? 'active' : ''}" data-smart-param="rhInstanceType" data-smart-value="${escapeHtml(key)}"><span>${escapeHtml(label)}</span></button>`).join('')}
-            </div>
-        </div>
-    </div>`;
+function renderRhMachineControl() {
+    return CanvasRhControls.renderRhMachineControl.apply(null, arguments);
 }
 function renderMsParams(){
     settings.msgenModel = MS_GEN_MODELS[settings.msgenModel] ? settings.msgenModel : 'zimage';
