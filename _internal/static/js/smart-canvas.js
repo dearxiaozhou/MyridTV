@@ -4598,6 +4598,16 @@ CanvasParamControls.configure({
     volcengineProvider: (...a) => volcengineProvider(...a),
     getSettings: () => settings
 });
+
+// ===== 规格控件渲染层（canvas-spec-controls.js）：主文件侧注入 =====
+CanvasSpecControls.configure({
+    escapeHtml: (...a) => escapeHtml(...a),
+    tr: (...a) => tr(...a),
+    sourceImageRatioLabel: (...a) => sourceImageRatioLabel(...a),
+    modelscopeImageModels: (...a) => modelscopeImageModels(...a),
+    getSettings: () => settings,
+    getMsModels: () => MS_GEN_MODELS
+});
 CanvasArtifactView.bindEvents();
 
 // ===== 视口内核（canvas-viewport-engine.js）：viewport 权威状态在该模块，这里是主文件侧注入与薄别名 =====
@@ -5493,11 +5503,8 @@ function renderVideoAspectControl() {
 function renderVideoResolutionControl() {
     return CanvasParamControls.renderVideoResolutionControl.apply(null, arguments);
 }
-function videoAspectOptions(){
-    return [
-        ['21:9','21:9'], ['16:9','16:9'], ['4:3','4:3'], ['1:1','1:1'], ['3:4','3:4'],
-        ['9:16','9:16'], ['keep_ratio', tr('smart.videoAspectKeep')], ['adaptive', tr('smart.videoAspectAdaptive')]
-    ];
+function videoAspectOptions() {
+    return CanvasSpecControls.videoAspectOptions.apply(null, arguments);
 }
 function videoResolutionOptions(){
     return [['', tr('smart.videoResAuto')], ['480p','480P'], ['720p','720P'], ['1080p','1080P'], ['4k','4K']];
@@ -5511,30 +5518,17 @@ function videoResolutionLabel(source=settings){
     const labelMap = Object.fromEntries(options);
     return labelMap[value] || value || tr('smart.videoResAuto');
 }
-function videoAspectLabel(source=settings){
-    const options = videoAspectOptions();
-    const value = source?.videoAspect || '16:9';
-    const labelMap = Object.fromEntries(options);
-    return labelMap[value] || value;
+function videoAspectLabel(source=settings) {
+    return CanvasSpecControls.videoAspectLabel.apply(null, arguments);
 }
 function renderVideoSpecControl() {
     return CanvasParamControls.renderVideoSpecControl.apply(null, arguments);
 }
-function imageSpecOptions(){
-    const ratios = [
-        ['square','1:1'], ['portrait','2:3'], ['landscape','3:2'], ['portrait43','3:4'], ['landscape43','4:3'],
-        ['story','9:16'], ['wide','16:9'], ['ultrawide','21:9'], ['ultratall','9:21'],
-        ['source', sourceImageRatioLabel('') || tr('smart.imageRatio')],
-        ['custom', tr('smart.custom')]
-    ];
-    const resolutions = [['1k','1K'], ['2k','2K'], ['4k','4K'], ['custom', tr('smart.custom')]];
-    const qualityLabels = {auto:tr('smart.qualityAuto'), low:tr('smart.qualityLow'), medium:tr('smart.qualityMid'), high:tr('smart.qualityHigh')};
-    return {ratios, resolutions, qualityLabels};
+function imageSpecOptions() {
+    return CanvasSpecControls.imageSpecOptions.apply(null, arguments);
 }
-function imageQualityLabel(source=settings){
-    const labels = {auto:tr('smart.qualityAuto'), low:tr('smart.qualityLow'), medium:tr('smart.qualityMid'), high:tr('smart.qualityHigh')};
-    const v = source?.quality || 'auto';
-    return labels[v] || v;
+function imageQualityLabel(source=settings) {
+    return CanvasSpecControls.imageQualityLabel.apply(null, arguments);
 }
 function renderImageSpecControl() {
     return CanvasParamControls.renderImageSpecControl.apply(null, arguments);
@@ -5606,8 +5600,8 @@ function renderComposerReferenceModeSlot(){
 function renderVideoTrustedAssetControl() {
     return CanvasParamControls.renderVideoTrustedAssetControl.apply(null, arguments);
 }
-function optionHtml(value, label, selected){
-    return `<option value="${escapeHtml(value)}" ${String(value) === String(selected) ? 'selected' : ''}>${escapeHtml(label ?? value)}</option>`;
+function optionHtml(value, label, selected) {
+    return CanvasSpecControls.optionHtml.apply(null, arguments);
 }
 function parseSizeValue(value){
     const match = String(value || '').trim().match(/^(\d+)\s*[xX*]\s*(\d+)$/);
@@ -6588,38 +6582,17 @@ function syncComfyModesChrome(workflowName){
         el.classList.toggle('off', modes[id] === 'bypass' || modes[id] === 'mute');
     });
 }
-function renderSizeControls(prefix='', includeSource=false){
-    const ratioKey = prefix ? `${prefix}Ratio` : 'ratio';
-    const resKey = prefix ? `${prefix}Resolution` : 'resolution';
-    const ratios = [
-        ['square','1:1'], ['portrait','2:3'], ['landscape','3:2'], ['portrait43','3:4'], ['landscape43','4:3'], ['story','9:16'], ['wide','16:9'], ['ultrawide','21:9'], ['ultratall','9:21'],
-        ...(includeSource ? [['source', tr('canvas.adaptiveRatio') || '适配比例']] : []),
-        ['custom', tr('canvas.custom') || '自定义']
-    ];
-    return `<select data-param="${resKey}">
-            ${['1k','2k','4k','custom'].map(v => optionHtml(v, v === 'custom' ? (tr('canvas.custom') || '自定义') : v.toUpperCase(), settings[resKey] || '1k')).join('')}
-        </select>
-        <select data-param="${ratioKey}" ${settings[resKey] === 'custom' ? 'disabled' : ''}>
-            ${ratios.map(([v,l]) => `<option value="${escapeHtml(v)}" ${v === (settings[ratioKey] || 'square') ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}
-        </select>`;
+function renderSizeControls(prefix='', includeSource=false) {
+    return CanvasSpecControls.renderSizeControls.apply(null, arguments);
 }
-function ratioLabel(prefix=''){
-    const ratioKey = prefix ? `${prefix}Ratio` : 'ratio';
-    const customKey = prefix ? `${prefix}CustomRatio` : 'customRatio';
-    const sourceLabel = sourceImageRatioLabel(prefix) || tr('smart.imageRatio');
-    const map = {square:'1:1', portrait:'2:3', landscape:'3:2', portrait43:'3:4', landscape43:'4:3', story:'9:16', wide:'16:9', ultrawide:'21:9', ultratall:'9:21', source:sourceLabel, custom:settings[customKey] || tr('smart.custom')};
-    return map[settings[ratioKey] || 'square'] || '1:1';
+function ratioLabel(prefix='') {
+    return CanvasSpecControls.ratioLabel.apply(null, arguments);
 }
-function gcdInt(a, b){
-    a = Math.abs(Math.round(Number(a) || 0));
-    b = Math.abs(Math.round(Number(b) || 0));
-    while(b){ const t = b; b = a % b; a = t; }
-    return a || 1;
+function gcdInt(a, b) {
+    return CanvasSpecControls.gcdInt.apply(null, arguments);
 }
-function imageSizeForRatio(img){
-    const w = Math.round(Number(img?.natural_w || img?.width || img?.w || 0));
-    const h = Math.round(Number(img?.natural_h || img?.height || img?.h || 0));
-    return w > 0 && h > 0 ? {w, h} : null;
+function imageSizeForRatio(img) {
+    return CanvasSpecControls.imageSizeForRatio.apply(null, arguments);
 }
 function sourceRatioImageForNode(node){
     const images = (node?.images || []).filter(img => img?.url && !isAudioMediaItem(img));
@@ -6630,11 +6603,8 @@ function sourceRatioImageForNode(node){
     }
     return images.find(img => imageSizeForRatio(img)) || images[0];
 }
-function reducedRatioForImage(img){
-    const size = imageSizeForRatio(img);
-    if(!size) return null;
-    const d = gcdInt(size.w, size.h);
-    return {w:Math.max(1, Math.round(size.w / d)), h:Math.max(1, Math.round(size.h / d))};
+function reducedRatioForImage(img) {
+    return CanvasSpecControls.reducedRatioForImage.apply(null, arguments);
 }
 function sourceImageRatioLabel(prefix=''){
     const node = activeComposerNode() || selectedNode();
@@ -6654,30 +6624,14 @@ function applySourceRatioToSettings(prefix=''){
     settings[hKey] = ratio.h;
     settings[customKey] = `${ratio.w}:${ratio.h}`;
 }
-function resolutionLabel(prefix=''){
-    const resKey = prefix ? `${prefix}Resolution` : 'resolution';
-    const sizeKey = prefix ? `${prefix}CustomSize` : 'customSize';
-    const value = settings[resKey] || '1k';
-    return value === 'custom' ? (settings[sizeKey] || tr('smart.custom')) : value.toUpperCase();
+function resolutionLabel(prefix='') {
+    return CanvasSpecControls.resolutionLabel.apply(null, arguments);
 }
-function ratioIconClass(value){
-    if(value === 'portrait') return 'r-portrait';
-    if(value === 'portrait43') return 'r-portrait43';
-    if(value === 'landscape') return 'r-landscape';
-    if(value === 'landscape43') return 'r-landscape43';
-    if(value === 'wide' || value === 'ultrawide') return 'r-wide';
-    if(value === 'story' || value === 'ultratall') return 'r-story';
-    if(value === 'source') return 'r-source';
-    if(value === 'custom') return 'r-custom';
-    return '';
+function ratioIconClass(value) {
+    return CanvasSpecControls.ratioIconClass.apply(null, arguments);
 }
-function videoAspectIconClass(value){
-    if(value === '16:9' || value === '21:9') return 'r-wide';
-    if(value === '9:16' || value === '9:21') return 'r-story';
-    if(value === '4:3') return 'r-landscape43';
-    if(value === '3:4') return 'r-portrait43';
-    if(value === 'keep_ratio' || value === 'adaptive') return 'r-source';
-    return '';
+function videoAspectIconClass(value) {
+    return CanvasSpecControls.videoAspectIconClass.apply(null, arguments);
 }
 function renderProviderControl(providers) {
     return CanvasParamControls.renderProviderControl.apply(null, arguments);
@@ -6690,182 +6644,48 @@ function renderEngineModelCombo(models) {
     return CanvasParamControls.renderEngineModelCombo.apply(null, arguments);
 }
 // API 单排 v2：规格+数量合并 pill（无边框）
-function renderComboSpecCount(){
-  const ratio = settings.ratio || 'square';
-  const resolution = settings.resolution || '1k';
-  const quality = settings.quality || 'auto';
-  const count = Number(settings.count || 1);
-  const label = `${ratioLabel('')} · ${resolutionLabel('')} · ${imageQualityLabel()} · ${count}张`;
-  return `<div class="smart-control image-spec-control combo-spec-count" title="图片参数">
-    <button class="smart-pill" type="button"><span class="sub">${escapeHtml(label)}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
-    ${renderImageSpecPopover()}
-  </div>`;
+function renderComboSpecCount() {
+    return CanvasSpecControls.renderComboSpecCount.apply(null, arguments);
 }
 // 抽取规格弹层（供合并 pill 复用）
-function renderImageSpecPopover(){
-  const {ratios, resolutions, qualityLabels} = imageSpecOptions();
-  const ratio = settings.ratio || 'square';
-  const resolution = settings.resolution || '1k';
-  const quality = settings.quality || 'auto';
-  const count = Number(settings.count || 1);
-  return `<div class="smart-popover video-spec-popover image-spec-popover">
-    <div class="video-spec-section">
-      <div class="video-spec-title">图片比例</div>
-      <div class="image-spec-ratio-grid">
-        ${ratios.map(([v,l]) => `<button type="button" class="video-spec-aspect ${v === ratio ? 'active' : ''}" data-smart-param="ratio" data-smart-value="${escapeHtml(v)}"><span class="ratio-icon ${ratioIconClass(v)}"></span><span>${escapeHtml(l)}</span></button>`).join('')}
-      </div>
-      ${renderInlineCustomRatioFields('', 'inline-fields-in-popover')}
-    </div>
-    <div class="video-spec-section">
-      <div class="video-spec-title">分辨率</div>
-      <div class="video-spec-seg">
-        ${resolutions.map(([v,l]) => `<button type="button" class="${v === resolution ? 'active' : ''}" data-smart-param="resolution" data-smart-value="${escapeHtml(v)}">${escapeHtml(l)}</button>`).join('')}
-      </div>
-      ${renderInlineCustomSizeFields('', 'inline-fields-in-popover')}
-    </div>
-    <div class="video-spec-section">
-      <div class="video-spec-title">画质</div>
-      <div class="video-spec-seg">
-        ${Object.entries(qualityLabels).map(([v,l]) => `<button type="button" class="${v === quality ? 'active' : ''}" data-smart-param="quality" data-smart-value="${escapeHtml(v)}">${escapeHtml(l)}</button>`).join('')}
-      </div>
-    </div>
-    <div class="video-spec-section">
-      <div class="video-spec-title">数量</div>
-      <div class="count-grid">
-        ${[1,2,3,4,5,6,7,8].map(n => `<button type="button" class="count-cell ${n === count ? 'active' : ''}" data-smart-param="count" data-smart-value="${n}">${n}</button>`).join('')}
-      </div>
-    </div>
-  </div>`;
+function renderImageSpecPopover() {
+    return CanvasSpecControls.renderImageSpecPopover.apply(null, arguments);
 }
-function msModelLabel(key){
-    if(key === 'custom') return tr('smart.custom');
-    return MS_GEN_MODELS[key]?.label || key;
+function msModelLabel(key) {
+    return CanvasSpecControls.msModelLabel.apply(null, arguments);
 }
-function renderMsFunctionControl(){
-    return `<div class="smart-control provider-control">
-        <button class="smart-pill" type="button"><i data-lucide="sparkles"></i><span class="sub">${escapeHtml(msModelLabel(settings.msgenModel) || 'Modelscope')}</span></button>
-        <div class="smart-popover compact-popover">
-            <div class="smart-popover-title">${escapeHtml(tr('smart.msFunction'))}</div>
-            <div class="model-list">
-                ${Object.entries(MS_GEN_MODELS).map(([key]) => `<button type="button" class="direct-option ${key === settings.msgenModel ? 'active' : ''}" data-smart-param="msgenModel" data-smart-value="${escapeHtml(key)}"><span>${escapeHtml(msModelLabel(key))}</span></button>`).join('')}
-            </div>
-        </div>
-    </div>`;
+function renderMsFunctionControl() {
+    return CanvasSpecControls.renderMsFunctionControl.apply(null, arguments);
 }
-function renderMsCustomModelPill(){
-    if(settings.msgenModel !== 'custom') return '';
-    const models = modelscopeImageModels();
-    const label = settings.msCustomModel || tr('smart.customModel');
-    return `<div class="smart-control model-control">
-        <button class="smart-pill" type="button"><i data-lucide="boxes"></i><span class="sub">${escapeHtml(label)}</span></button>
-        <div class="smart-popover compact-popover">
-            <div class="smart-popover-title">${escapeHtml(tr('smart.msCustomModel'))}</div>
-            <div class="model-list">
-                ${models.map(m => `<button type="button" class="direct-option ${m === settings.msCustomModel ? 'active' : ''}" data-smart-param="msCustomModel" data-smart-value="${escapeHtml(m)}"><span>${escapeHtml(m)}</span></button>`).join('') || `<div class="muted-note">${escapeHtml(tr('smart.noMsModel'))}</div>`}
-            </div>
-        </div>
-    </div>`;
+function renderMsCustomModelPill() {
+    return CanvasSpecControls.renderMsCustomModelPill.apply(null, arguments);
 }
-function renderRatioControl(prefix='', includeSource=false){
-    const ratioKey = prefix ? `${prefix}Ratio` : 'ratio';
-    const resKey = prefix ? `${prefix}Resolution` : 'resolution';
-    const ratios = [
-        ['square','1:1'], ['portrait','2:3'], ['landscape','3:2'], ['portrait43','3:4'], ['landscape43','4:3'],
-        ['story','9:16'], ['wide','16:9'], ['ultrawide','21:9'], ['ultratall','9:21'],
-        ...(includeSource ? [['source', tr('smart.imageRatio')]] : []),
-        ['custom', tr('smart.custom')]
-    ];
-    return `<div class="smart-control ratio-control">
-        <button class="smart-pill" type="button"><i data-lucide="scan"></i><span>${escapeHtml(ratioLabel(prefix))}</span></button>
-        <div class="smart-popover">
-            <div class="smart-popover-title">${escapeHtml(tr('smart.ratio'))}</div>
-            <div class="ratio-grid">
-                ${ratios.map(([value, label]) => `<button type="button" class="ratio-option ${value === (settings[ratioKey] || 'square') ? 'active' : ''}" data-smart-param="${ratioKey}" data-smart-value="${escapeHtml(value)}"><span class="ratio-icon ${ratioIconClass(value)}"></span><span>${escapeHtml(label)}</span></button>`).join('')}
-            </div>
-        </div>
-    </div>`;
+function renderRatioControl(prefix='', includeSource=false) {
+    return CanvasSpecControls.renderRatioControl.apply(null, arguments);
 }
-function renderResolutionControl(prefix=''){
-    const resKey = prefix ? `${prefix}Resolution` : 'resolution';
-    return `<div class="smart-control resolution-control">
-        <button class="smart-pill" type="button"><i data-lucide="monitor"></i><span>${escapeHtml(resolutionLabel(prefix))}</span></button>
-        <div class="smart-popover compact-popover">
-            <div class="smart-popover-title">${escapeHtml(tr('smart.resolution'))}</div>
-            <div class="seg-row">
-                ${['1k','2k','4k','custom'].map(value => `<button type="button" class="${value === (settings[resKey] || '1k') ? 'active' : ''}" data-smart-param="${resKey}" data-smart-value="${value}">${value === 'custom' ? escapeHtml(tr('smart.custom')) : value.toUpperCase()}</button>`).join('')}
-            </div>
-        </div>
-    </div>`;
+function renderResolutionControl(prefix='') {
+    return CanvasSpecControls.renderResolutionControl.apply(null, arguments);
 }
-function renderInlineCustomRatioFields(prefix='', extraClass=''){
-    const ratioKey = prefix ? `${prefix}Ratio` : 'ratio';
-    if(settings[ratioKey] === 'source') return '';
-    if(settings[ratioKey] !== 'custom') return '';
-    const wKey = prefix ? `${prefix}CustomRatioWidth` : 'customRatioWidth';
-    const hKey = prefix ? `${prefix}CustomRatioHeight` : 'customRatioHeight';
-    return `<div class="inline-fields${extraClass ? ' ' + extraClass : ''}">
-        <span class="inline-label">${escapeHtml(tr('smart.ratio'))}</span>
-        <input type="number" data-param="${wKey}" value="${escapeHtml(settings[wKey] || '')}" placeholder="W">
-        <span class="inline-divider">:</span>
-        <input type="number" data-param="${hKey}" value="${escapeHtml(settings[hKey] || '')}" placeholder="H">
-    </div>`;
+function renderInlineCustomRatioFields(prefix='', extraClass='') {
+    return CanvasSpecControls.renderInlineCustomRatioFields.apply(null, arguments);
 }
-function renderInlineCustomSizeFields(prefix='', extraClass=''){
-    const resKey = prefix ? `${prefix}Resolution` : 'resolution';
-    if(settings[resKey] !== 'custom') return '';
-    const wKey = prefix ? `${prefix}CustomWidth` : 'customWidth';
-    const hKey = prefix ? `${prefix}CustomHeight` : 'customHeight';
-    return `<div class="inline-fields${extraClass ? ' ' + extraClass : ''}">
-        <span class="inline-label">${escapeHtml(tr('smart.size'))}</span>
-        <input type="number" data-param="${wKey}" value="${escapeHtml(settings[wKey] || '')}" placeholder="${escapeHtml(tr('smart.width'))}">
-        <span class="inline-divider">×</span>
-        <input type="number" data-param="${hKey}" value="${escapeHtml(settings[hKey] || '')}" placeholder="${escapeHtml(tr('smart.height'))}">
-    </div>`;
+function renderInlineCustomSizeFields(prefix='', extraClass='') {
+    return CanvasSpecControls.renderInlineCustomSizeFields.apply(null, arguments);
 }
-function renderQualityControl(){
-    const value = settings.quality || 'auto';
-    const labels = {auto:tr('smart.qualityAuto'), low:tr('smart.qualityLow'), medium:tr('smart.qualityMid'), high:tr('smart.qualityHigh')};
-    return `<div class="smart-control quality-control">
-        <button class="smart-pill" type="button"><i data-lucide="sliders-horizontal"></i><span>${escapeHtml(labels[value] || value)}</span></button>
-        <div class="smart-popover compact-popover">
-            <div class="smart-popover-title">${escapeHtml(tr('smart.quality'))}</div>
-            <div class="seg-row">
-                ${Object.entries(labels).map(([k, l]) => `<button type="button" class="${k === value ? 'active' : ''}" data-smart-param="quality" data-smart-value="${escapeHtml(k)}">${escapeHtml(l)}</button>`).join('')}
-            </div>
-        </div>
-    </div>`;
+function renderQualityControl() {
+    return CanvasSpecControls.renderQualityControl.apply(null, arguments);
 }
-function renderCountVisualControl(){
-    const value = Number(settings.count || 1);
-    return `<div class="smart-control count-control">
-        <button class="smart-pill" type="button"><i data-lucide="copy"></i><span>${value}${tr('smart.countUnit') ? ' ' + escapeHtml(tr('smart.countUnit')) : ''}</span></button>
-        <div class="smart-popover compact-popover" style="min-width:170px">
-            <div class="smart-popover-title">${escapeHtml(tr('smart.count'))}</div>
-            <div class="count-grid">
-                ${[1,2,3,4,5,6,7,8].map(n => `<button type="button" class="count-cell ${n === value ? 'active' : ''}" data-smart-param="count" data-smart-value="${n}">${n}</button>`).join('')}
-            </div>
-        </div>
-    </div>`;
+function renderCountVisualControl() {
+    return CanvasSpecControls.renderCountVisualControl.apply(null, arguments);
 }
-function renderCountControl(){
-    return `<select data-param="count">${[1,2,3,4,5,6,7,8].map(n => optionHtml(n, `${n} 张`, Number(settings.count || 1))).join('')}</select>`;
+function renderCountControl() {
+    return CanvasSpecControls.renderCountControl.apply(null, arguments);
 }
-function renderCustomRatioControls(prefix=''){
-    const ratioKey = prefix ? `${prefix}Ratio` : 'ratio';
-    if(settings[ratioKey] !== 'custom' && settings[ratioKey] !== 'source') return '';
-    const wKey = prefix ? `${prefix}CustomRatioWidth` : 'customRatioWidth';
-    const hKey = prefix ? `${prefix}CustomRatioHeight` : 'customRatioHeight';
-    const disabled = settings[ratioKey] === 'source' ? 'disabled' : '';
-    return `<input type="number" data-param="${wKey}" value="${escapeHtml(settings[wKey] || '')}" placeholder="比例宽" ${disabled}>
-            <input type="number" data-param="${hKey}" value="${escapeHtml(settings[hKey] || '')}" placeholder="比例高" ${disabled}>`;
+function renderCustomRatioControls(prefix='') {
+    return CanvasSpecControls.renderCustomRatioControls.apply(null, arguments);
 }
-function renderCustomSizeControls(prefix=''){
-    const resKey = prefix ? `${prefix}Resolution` : 'resolution';
-    if(settings[resKey] !== 'custom') return '';
-    const wKey = prefix ? `${prefix}CustomWidth` : 'customWidth';
-    const hKey = prefix ? `${prefix}CustomHeight` : 'customHeight';
-    return `<input type="number" data-param="${wKey}" value="${escapeHtml(settings[wKey] || '')}" placeholder="宽度">
-            <input type="number" data-param="${hKey}" value="${escapeHtml(settings[hKey] || '')}" placeholder="高度">`;
+function renderCustomSizeControls(prefix='') {
+    return CanvasSpecControls.renderCustomSizeControls.apply(null, arguments);
 }
 // 完全照搬 comfyui-settings.js renderPreviewField —— 把 config.json 里 user
 // 手工配的"暴露字段"按 type 渲染成完整面板（textarea/number/slider/dropdown/boolean）。
