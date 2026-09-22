@@ -4838,6 +4838,18 @@ CanvasAgentHistoryStore.configure({
     getCanvasTitle: () => canvas?.title || document.getElementById('smartTitle')?.textContent || ''
 });
 
+// ===== 产物数据模型（canvas-artifact-model.js）：主文件侧注入 =====
+CanvasArtifactModel.configure({
+    canvasId: () => canvasId,
+    getArtifacts: () => canvasAgentArtifactsState,
+    setArtifacts: (list) => { canvasAgentArtifactsState = list; },
+    navSectionId: () => canvasAgentActiveSectionId,
+    navItemId: () => canvasAgentActiveItemId,
+    renderSidebar: () => renderArtifactSidebar(),
+    scheduleSave: () => scheduleSave(),
+    artifactTypeLabel: (t) => artifactTypeLabel(t)
+});
+
 // ===== 视口内核（canvas-viewport-engine.js）：viewport 权威状态在该模块，这里是主文件侧注入与薄别名 =====
 const viewport = CanvasViewport.viewport;
 CanvasViewport.configure({
@@ -10111,7 +10123,7 @@ async function loadCanvas(){
         canvasAgentActiveArtifactId = '';
         canvasAgentActiveSectionId = '';   // Phase 9：切换 Canvas 重置内部导航层级
         canvasAgentActiveItemId = '';
-        if(ARTIFACT_AUTO_MIGRATE) migrateLegacyArtifactsToConversations();
+        if(CanvasArtifactModel.ARTIFACT_AUTO_MIGRATE) migrateLegacyArtifactsToConversations();
         renderArtifactSidebar();
         document.title = canvas.title || tr('canvas.smartCanvas');
         updateCanvasTitleDisplay();
@@ -21992,7 +22004,6 @@ let canvasAgentActiveItemId = '';      // Phase 9：Section 内部选中的 Item
 // 安全总开关：文档类默认进 Sidebar 而不是直接建 Canvas Node。
 // 若线上出现误伤，改 false 即回退旧行为（文本仍建节点）。
 const ARTIFACT_TEXT_DEFAULT_SIDEBAR = true;
-const ARTIFACT_LIMIT = 300;  // 与后端 ARTIFACT_LIMIT 保持一致
 
 const ARTIFACT_TYPE_META = {
     brainstorm:        {icon:'sparkles',        label:'Brainstorm'},
@@ -22084,88 +22095,19 @@ function routeArtifact(opts){
    同一 artifactId -> update，不 append duplicate。
    --------------------------------------------------------------- */
 function findArtifact(id){
-    if(!id) return null;
-    return canvasAgentArtifactsState.find(a => a && a.id === id) || null;
+    return CanvasArtifactModel.findArtifact(id);
 }
 function artifactUpsert(next){
-    if(!next || !next.id) return null;
-    const idx = canvasAgentArtifactsState.findIndex(a => a && a.id === next.id);
-    if(idx >= 0){
-        const prev = canvasAgentArtifactsState[idx];
-        canvasAgentArtifactsState[idx] = Object.assign({}, prev, next, {
-            createdAt: prev.createdAt || next.createdAt || Date.now(),
-            updatedAt: Date.now(),
-            version: (Number(prev.version || 1) || 1) + 1
-        });
-        return canvasAgentArtifactsState[idx];
-    }
-    canvasAgentArtifactsState.push(Object.assign({
-        canvasId: canvasId,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        version: 1
-    }, next));
-    // 与后端 _merge_artifacts 同构：超出上限截断（保留最新的）
-    if(canvasAgentArtifactsState.length > ARTIFACT_LIMIT){
-        canvasAgentArtifactsState = canvasAgentArtifactsState.slice(-ARTIFACT_LIMIT);
-    }
-    return canvasAgentArtifactsState[canvasAgentArtifactsState.length - 1];
+    return CanvasArtifactModel.artifactUpsert(next);
 }
 
 /* 保存一个 Valid Artifact 到 Sidebar（需求第三十条：只接受 Valid Artifact，
    Thinking/Plan/Tool/Progress/Error/普通消息 永不进入） */
 function saveArtifactToSidebar(opts){
-    const o = opts || {};
-    const content = String(o.content || '').trim();
-    const title = String(o.title || '').trim();
-    // 需求第四十一条/四十二条：宁可不创建，也不创建空 Sidebar Item
-    if(!content && !o.resourceId) return null;
-    if(!title && !content) return null;
-    const artifactType = String(o.artifactType || o.type || 'text').trim().toLowerCase();
-    // Phase 9：容器型产物（一轮 Brainstorm / 一次完整创意讨论）走分层模型。
-    // 同一 canvas + 同一 conversationId + 同一类型 -> 同一个 Conversation Artifact，
-    // 内容写进它内部的 Section / Item，绝不在 Sidebar 新建平铺的一级条目。
-    const _convId = String(o.conversationId || '').trim();
-    // Phase 9 兜底：会话内的非文档产物（text/note/script/analysis...）一律归入
-    // 会话容器，哪怕事件没带 sectionTitle —— 用产物 title 退化成板块名，
-    // 绝不退回旧的"每次 uuid 新建平铺条目"。只有独立文档型保持一级条目。
-    if(_convId && !INDEPENDENT_DOC_TYPES.has(artifactType)){
-        const _saved = upsertConversationSection({
-            conversationId: _convId,
-            artifactType: CONVERSATION_CONTAINER_TYPES.has(artifactType) ? artifactType : 'brainstorm',
-            conversationTitle: o.conversationTitle || '',
-            sectionType: o.sectionType || '',
-            sectionTitle: o.sectionTitle || '',
-            fallbackTitle: title,
-            itemTitle: o.itemTitle || '',
-            content: content,
-            metadata: o.metadata || null,
-            sourceRunId: o.sourceRunId || ''
-        });
-        if(_saved){ renderArtifactSidebar(); scheduleSave(); }
-        return _saved;
-    }
-    const id = String(o.id || ('artifact_' + artifactType + '_' + simpleHash(artifactType + '|' + title)));
-    const saved = artifactUpsert({
-        id: id,
-        title: title || (artifactTypeLabel(artifactType) || '未命名'),
-        artifactType: artifactType,
-        content: content,
-        resourceId: o.resourceId || '',
-        canvasId: canvasId,
-        sourceRunId: o.sourceRunId || '',
-        sourceEventId: o.sourceEventId || '',
-        canvasNodeId: findArtifact(id)?.canvasNodeId || ''
-    });
-    renderArtifactSidebar();
-    scheduleSave();
-    return saved;
+    return CanvasArtifactModel.saveArtifactToSidebar(opts);
 }
 function simpleHash(str){
-    let h = 0;
-    const s = String(str || '');
-    for(let i = 0; i < s.length; i += 1){ h = ((h << 5) - h + s.charCodeAt(i)) | 0; }
-    return Math.abs(h).toString(36);
+    return CanvasArtifactModel.simpleHash(str);
 }
 
 /* --------------------------------------------------------------- Sidebar UI */
@@ -22632,40 +22574,13 @@ function clearCanvasAgentArtifacts(){
 // 收窄原则：只有"一轮讨论会自然产出多个板块"的创意/结构型类型才算容器；
 // script / markdown / report 这类成品文档保持独立文件，不并进会话
 // （与后端 CONVERSATION_CONTAINER_TYPES 必须逐项一致）。
-const CONVERSATION_CONTAINER_TYPES = new Set([
-    'brainstorm', 'creative_session', 'document_session', 'research_session',
-    'story_bible', 'character_bible', 'world_bible',
-    'story_outline', 'outline', 'visual_direction', 'creative_brief', 'brief'
-]);
 
 // 独立文档型：保持 Sidebar 一级独立条目（如 project.md），即使产生于会话内
 // 也不吸进 Conversation 容器（与后端 INDEPENDENT_DOC_TYPES 必须逐项一致）。
-const INDEPENDENT_DOC_TYPES = new Set([
-    'document', 'markdown', 'file', 'table', 'csv',
-    'html', 'interactive', 'deck', 'presentation'
-]);
 
 // 已有数据是否自动归并成 Conversation。默认 false：老扁平产物（project.md 等）
 // 保持原样可读，不会被猜错关系。需要归并时控制台执行 migrateLegacyArtifactsToConversations(true)。
-const ARTIFACT_AUTO_MIGRATE = false;
 
-const SECTION_TYPE_META = {
-    character:  {label:'核心人物', icon:'users'},
-    story:      {label:'故事设定', icon:'book-open'},
-    scene:      {label:'关键场面', icon:'clapperboard'},
-    world:      {label:'世界观',   icon:'globe'},
-    visual:     {label:'视觉方向', icon:'palette'},
-    direction:  {label:'方案方向', icon:'compass'},
-    custom:     {label:'其他',     icon:'shapes'}
-};
-const SECTION_TYPE_KEYWORDS = [
-    ['character', ['人物','角色','人设','character','主角']],
-    ['story',     ['故事','剧情','梗概','大纲','story','plot','主线']],
-    ['scene',     ['场面','场景','分镜','镜头','scene','关键场','高潮']],
-    ['world',     ['世界观','势力','world','地理','规则','设定集']],
-    ['visual',    ['视觉','美术','色彩','摄影','灯光','材质','visual','画风']],
-    ['direction', ['方向','结局','方案','候选','direction','版本']]
-];
 
 /* 与后端 _artifact_hash 完全一致的 FNV-1a 32-bit。前后端算出同一个 ID 是
    "连改 5 次仍是 1 个 Section" 以及重试不裂成多份的前提。
@@ -22673,102 +22588,52 @@ const SECTION_TYPE_KEYWORDS = [
    注意：必须用 Math.imul。写成 (h ^ c) * 16777619 会因为超过 2^53 丢浮点精度，
    和后端 Python 的精确整数运算算出不同的 ID（踩过，test_phase9_parity.py 有守）。 */
 function artifactHash(){
-    let h = 2166136261;
-    for(let i = 0; i < arguments.length; i += 1){
-        const s = String(arguments[i] == null ? '' : arguments[i]);
-        for(let j = 0; j < s.length; j += 1){
-            h = Math.imul(h ^ s.charCodeAt(j), 16777619) >>> 0;
-        }
-    }
-    return ('0000000' + h.toString(16)).slice(-8);
+    return CanvasArtifactModel.artifactHash.apply(null, arguments);
 }
 function conversationArtifactId(canvasIdVal, conversationId, artifactType){
-    return 'conv_' + artifactHash(
-        String(canvasIdVal || ''),
-        String(conversationId || ''),
-        String(artifactType || 'brainstorm').trim().toLowerCase()
-    );
+    return CanvasArtifactModel.conversationArtifactId(canvasIdVal, conversationId, artifactType);
 }
 function artifactSectionId(conversationId, sectionType, sectionTitle){
-    const st = String(sectionType || '').trim().toLowerCase();
-    if(st) return 'sec_' + artifactHash(String(conversationId || ''), 't:' + st);
-    return 'sec_' + artifactHash(String(conversationId || ''), 'n:' + String(sectionTitle || '').trim().toLowerCase());
+    return CanvasArtifactModel.artifactSectionId(conversationId, sectionType, sectionTitle);
 }
 function artifactItemId(sectionId, itemTitle){
-    const t = String(itemTitle || '').trim();
-    if(!t) return String(sectionId || '') + '_main';
-    return 'item_' + artifactHash(String(sectionId || ''), t.toLowerCase());
+    return CanvasArtifactModel.artifactItemId(sectionId, itemTitle);
 }
 function inferSectionType(title, explicit){
-    const e = String(explicit || '').trim().toLowerCase();
-    if(SECTION_TYPE_META[e]) return e;
-    const t = String(title || '').toLowerCase();
-    for(const [stype, kws] of SECTION_TYPE_KEYWORDS){
-        for(const kw of kws){ if(t.indexOf(kw.toLowerCase()) >= 0) return stype; }
-    }
-    return 'custom';
+    return CanvasArtifactModel.inferSectionType(title, explicit);
 }
-function sectionTypeMeta(type){ return SECTION_TYPE_META[String(type || 'custom')] || SECTION_TYPE_META.custom; }
+function sectionTypeMeta(type){
+    return CanvasArtifactModel.sectionTypeMeta(type);
+}
 
 /* --------------------------------------------------------------- 读写 */
 function artifactSections(a){
-    return (a && Array.isArray(a.sections)) ? a.sections : [];
+    return CanvasArtifactModel.artifactSections(a);
 }
 function findSectionOf(a, sid){
-    if(!sid) return null;
-    return artifactSections(a).find(s => s && String(s.id || '') === String(sid)) || null;
+    return CanvasArtifactModel.findSectionOf(a, sid);
 }
 function defaultSectionId(a){
-    const secs = artifactSections(a);
-    if(!secs.length) return '';
-    if(canvasAgentActiveSectionId && findSectionOf(a, canvasAgentActiveSectionId)) return canvasAgentActiveSectionId;
-    return String(secs[0].id || '');
+    return CanvasArtifactModel.defaultSectionId(a);
 }
 function activeSectionOf(a){
-    if(!a) return null;
-    const secs = artifactSections(a);
-    if(!secs.length) return null;
-    return findSectionOf(a, canvasAgentActiveSectionId) || secs[0] || null;
+    return CanvasArtifactModel.activeSectionOf(a);
 }
 function defaultItemId(a, sid){
-    const sec = findSectionOf(a, sid);
-    const items = (sec && Array.isArray(sec.items)) ? sec.items : [];
-    if(!items.length) return '';
-    const hit = items.find(x => x && String(x.id || '') === String(canvasAgentActiveItemId || ''));
-    if(hit) return String(hit.id || '');
-    return items[0].title ? String(items[0].id || '') : '';
+    return CanvasArtifactModel.defaultItemId(a, sid);
 }
 function activeItemOf(sec){
-    if(!sec) return null;
-    const items = Array.isArray(sec.items) ? sec.items : [];
-    if(!items.length) return null;
-    const hit = items.find(x => x && String(x.id || '') === String(canvasAgentActiveItemId || ''));
-    if(hit) return hit;
-    // 单条目且无标题 -> 直接显示内容，不显示 Tab
-    if(items.length === 1 && !String(items[0].title || '').trim()) return items[0];
-    return items[0] || null;
+    return CanvasArtifactModel.activeItemOf(sec);
 }
-function sectionItems(sec){ return (sec && Array.isArray(sec.items)) ? sec.items : []; }
+function sectionItems(sec){
+    return CanvasArtifactModel.sectionItems(sec);
+}
 
 function flattenSectionContent(sec){
-    if(!sec) return '';
-    const items = sectionItems(sec);
-    if(!items.length) return '';
-    if(items.length === 1 && !String(items[0].title || '').trim()) return String(items[0].content || '');
-    return items.map(it => {
-        const t = String(it.title || '').trim();
-        const c = String(it.content || '').trim();
-        return t ? ('### ' + t + (c ? ('\n' + c) : '')) : c;
-    }).filter(Boolean).join('\n\n');
+    return CanvasArtifactModel.flattenSectionContent(sec);
 }
 function flattenConversationContent(a){
-    if(!a) return '';
-    const secs = artifactSections(a);
-    if(!secs.length) return '';
-    return secs.map(sec => {
-        const body = flattenSectionContent(sec);
-        return '## ' + String(sec.title || '') + (body ? ('\n\n' + body) : '');
-    }).join('\n\n');
+    return CanvasArtifactModel.flattenConversationContent(a);
 }
 
 /* --------------------------------------------------------------- 写入 */
@@ -22776,89 +22641,7 @@ function flattenConversationContent(a){
    同一 conversationId + 同一 Section -> update，不 append duplicate（需求第十二/三十二条）。
    Agent 连改 5 次「核心人物」，结果仍然是 1 个 Conversation + 1 个 核心人物 Section。 */
 function upsertConversationSection(opts){
-    const o = opts || {};
-    const convId = String(o.conversationId || '').trim();
-    if(!convId) return null;
-    const atype = String(o.artifactType || 'brainstorm').trim().toLowerCase();
-    const aid = conversationArtifactId(canvasId, convId, atype);
-    const now = Date.now();
-
-    let art = findArtifact(aid);
-    if(!art){
-        art = {
-            id: aid,
-            canvasId: canvasId,
-            conversationId: convId,
-            artifactType: atype,
-            kind: 'conversation',
-            title: String(o.conversationTitle || '').trim().slice(0, 60) || 'Brainstorm',
-            content: '',
-            sections: [],
-            resourceId: '',
-            canvasNodeId: '',
-            canvasNodeIds: {},
-            sourceRunId: String(o.sourceRunId || ''),
-            sourceEventId: '',
-            version: 1,
-            createdAt: now,
-            updatedAt: now
-        };
-        canvasAgentArtifactsState.push(art);
-    }
-    art.kind = 'conversation';
-    art.conversationId = convId;
-    if(!Array.isArray(art.sections)) art.sections = [];
-
-    // 板块名取值链：显式 sectionTitle > 产物 title(fallbackTitle) > 退化成类型标签。
-    // 与后端 sec_name 规则必须一致，否则前后端会算出不同 sectionId。
-    const secName = String(o.sectionTitle || '').trim() || String(o.fallbackTitle || '').trim();
-    const stype = inferSectionType(secName, o.sectionType);
-    const stitle = secName || sectionTypeMeta(stype).label;
-    // ID 去重键：有名字就按名字；连名字都没有才按类型。
-    // 不能仅因为语义类型相同就合并 —— 「悲剧结局/开放结局/反转结局」都推断成 direction，
-    // 但它们明明是三个不同板块（需求第二十八/二十条）。
-    const sid = secName ? artifactSectionId(convId, '', secName) : artifactSectionId(convId, stype, '');
-
-    let sec = art.sections.find(s => s && String(s.id || '') === sid);
-    if(!sec){
-        sec = {id: sid, type: stype, title: stitle, order: art.sections.length, items: [], createdAt: now, updatedAt: now};
-        art.sections.push(sec);
-    }
-    sec.title = stitle;
-    sec.type = stype;
-    if(!Array.isArray(sec.items)) sec.items = [];
-
-    const iTitle = String(o.itemTitle || '').trim();
-    const iid = String(o.itemId || '').trim() || artifactItemId(sid, iTitle);
-    // 板块从「一整块文本」升级成「具名条目」时，撤掉之前那个匿名占位条目。
-    // 否则 核心人物 会同时挂着 "林澜/司徒岳" 旧块 + 林澜 + 司徒岳 三条。
-    if(iTitle){
-        const only = sec.items.length === 1 ? sec.items[0] : null;
-        if(only && !String(only.title || '').trim() && String(only.id || '').endsWith('_main')){
-            sec.items = [];
-        }
-    }
-    let item = sec.items.find(x => x && String(x.id || '') === iid);
-    if(!item){
-        item = {id: iid, title: iTitle, content: '', order: sec.items.length, metadata: o.metadata || {}, createdAt: now, updatedAt: now};
-        sec.items.push(item);
-    }
-    if(o.content !== undefined) item.content = String(o.content || '');
-    if(o.metadata && typeof o.metadata === 'object') item.metadata = Object.assign({}, item.metadata || {}, o.metadata);
-    item.updatedAt = now;
-    sec.updatedAt = now;
-
-    art.sections.sort((x, y) => (Number(x.order || 0) - Number(y.order || 0)));
-    art.sections.forEach((s, i) => { s.order = i; });
-    art.updatedAt = now;
-    art.version = (Number(art.version || 1) || 1) + 1;
-    // content 保留扁平镜像，供旧逻辑 / 全文检索兜底（不作为分层导航来源）
-    art.content = flattenConversationContent(art);
-
-    if(canvasAgentArtifactsState.length > ARTIFACT_LIMIT){
-        canvasAgentArtifactsState = canvasAgentArtifactsState.slice(-ARTIFACT_LIMIT);
-    }
-    return art;
+    return CanvasArtifactModel.upsertConversationSection(opts);
 }
 
 /* 新建一轮独立 Brainstorm：本质是开一个新的 Agent Session，
@@ -22889,56 +22672,19 @@ function canvasAgentConversationSeedTitle(){
    扁平产物，归并成一个 Conversation 的多个 Section。
    默认不自动跑（ARTIFACT_AUTO_MIGRATE=false），确认无误后再手动执行。 */
 function migrateLegacyArtifactsToConversations(apply){
-    const groups = {};
-    (canvasAgentArtifactsState || []).forEach(a => {
-        if(!a || !a.id || a.kind === 'conversation') return;
-        if(Array.isArray(a.sections) && a.sections.length) return;
-        const run = String(a.sourceRunId || '').trim();
-        if(!run || run === 'agent_action_plan') return;   // 通用常量不作归并依据
-        const key = String(a.canvasId || canvasId) + '|' + run + '|' + String(a.artifactType || 'text');
-        (groups[key] = groups[key] || []).push(a);
-    });
-    const plan = Object.keys(groups).filter(k => groups[k].length > 1);
-    if(!apply){
-        return {groups: plan.length, artifacts: plan.reduce((n, k) => n + groups[k].length, 0)};
-    }
-    let moved = 0;
-    plan.forEach(key => {
-        const list = groups[key].slice().sort((x, y) => Number(x.createdAt || 0) - Number(y.createdAt || 0));
-        const convId = String(list[0].sourceRunId || '');
-        list.forEach(a => {
-            upsertConversationSection({
-                conversationId: convId,
-                artifactType: String(a.artifactType || 'brainstorm'),
-                conversationTitle: String(list[0].title || ''),
-                sectionTitle: String(a.title || ''),
-                content: String(a.content || '')
-            });
-            canvasAgentArtifactsState = canvasAgentArtifactsState.filter(x => x && x.id !== a.id);
-            moved += 1;
-        });
-    });
-    renderArtifactSidebar();
-    scheduleSave();
-    return {moved: moved, conversations: plan.length};
+    return CanvasArtifactModel.migrateLegacyArtifactsToConversations(apply);
 }
 
 /* --------------------------------------------------------------- 旧数据兼容读取 */
 /* Agent / 其它模块读 artifact 内容时统一走这里：有分层就返回当前作用域文本，
    没有就返回老字段 content。老数据零改动即可继续工作。 */
 function artifactPlainText(a){
-    if(!a) return '';
-    const sec = activeSectionOf(a);
-    if(sec){
-        const it = activeItemOf(sec);
-        return (it && String(it.content || '').trim()) ? String(it.content || '') : flattenSectionContent(sec);
-    }
-    return String(a.content || '');
+    return CanvasArtifactModel.artifactPlainText(a);
 }
 
 /* --------------------------------------------------------------- Viewer 导航 */
 function currentArtifactScope(){
-    return localStorage.getItem('myridtv.artifact.scope') || 'section';
+    return CanvasArtifactModel.currentArtifactScope();
 }
 function setArtifactScope(scope){
     localStorage.setItem('myridtv.artifact.scope', String(scope || 'section'));
