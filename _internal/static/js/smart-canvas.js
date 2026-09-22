@@ -271,15 +271,6 @@ const PROVIDER_MODEL_DISPLAY = window.WcsProviderModelDisplay || null;
 let smartImageContextMenuState = {nodeId:'', imageIndex:-1};
 let comfyWorkflows = [];
 let comfyInstanceCount = 1;
-const COMFY_WORKFLOW_REGISTRY_KEY = 'studio_comfy_workflows_v1';
-const REMOVED_COMFY_WORKFLOWS = new Set(['2511.json', 'Flux2-Klein.json']);
-const COMFY_WORKFLOW_NAME_ALIASES = Object.freeze({
-    'Z image 文生图强化版.json': 'Z-image-enhanced.json',
-    'Qwen3.5提示词扩写+图片反推+视频反推.json': 'Qwen35-prompt-vision-video.json'
-});
-const DEFAULT_COMFY_WORKFLOWS = [
-    {name:'SeedVR2图片放大流.json', title:'SeedVR2图片放大流', field_count:0, builtin:true},
-];
 let assetLibrary = {categories:[]};
 let assetLibraryOpen = false;
 let assetTab = 'image';
@@ -419,72 +410,28 @@ let smartCascadeStopRequested = false;
 let smartCascadeSilentSelection = false;
 let smartCascadeRunPath = null;
 function normalizeComfyWorkflowEntries(list){
-    const seen = new Set();
-    const out = [];
-    (Array.isArray(list) ? list : []).forEach(item => {
-        const name = resolveComfyWorkflowName(item?.name);
-        if(!name || REMOVED_COMFY_WORKFLOWS.has(name) || !/\.json$/i.test(name) || /\.config\.json$/i.test(name) || seen.has(name)) return;
-        seen.add(name);
-        const entry = {
-            name,
-            title: String(item?.title || name.replace(/\.json$/i, '')).trim() || name.replace(/\.json$/i, ''),
-            field_count: Math.max(0, Number(item?.field_count) || 0),
-            builtin: item?.builtin === true
-        };
-        if(item?.group?.id) entry.group = {id: String(item.group.id), title: String(item.group.title || item.group.id)};
-        out.push(entry);
-    });
-    return out;
+    return CanvasComfyJobEngine.normalizeComfyWorkflowEntries(list);
 }
 function resolveComfyWorkflowName(name){
-    const normalized = String(name || '').trim();
-    return COMFY_WORKFLOW_NAME_ALIASES[normalized] || normalized;
+    return CanvasComfyJobEngine.resolveComfyWorkflowName(name);
 }
 function loadLocalComfyWorkflowRegistry(){
-    try {
-        return normalizeComfyWorkflowEntries(JSON.parse(localStorage.getItem(COMFY_WORKFLOW_REGISTRY_KEY) || '[]'));
-    } catch(_) {
-        return [];
-    }
+    return CanvasComfyJobEngine.loadLocalComfyWorkflowRegistry();
 }
 function saveLocalComfyWorkflowRegistry(list){
-    try {
-        localStorage.setItem(COMFY_WORKFLOW_REGISTRY_KEY, JSON.stringify(normalizeComfyWorkflowEntries(list)));
-    } catch(_) {}
+    CanvasComfyJobEngine.saveLocalComfyWorkflowRegistry(list);
 }
 function mergeKnownComfyWorkflows(primary=[], fallback=[]){
-    return normalizeComfyWorkflowEntries([
-        ...(Array.isArray(primary) ? primary : []),
-        ...(Array.isArray(fallback) ? fallback : []),
-        ...DEFAULT_COMFY_WORKFLOWS
-    ]);
+    return CanvasComfyJobEngine.mergeKnownComfyWorkflows(primary, fallback);
 }
 function updateKnownComfyWorkflows(primary=[]){
-    const merged = mergeKnownComfyWorkflows(primary, loadLocalComfyWorkflowRegistry());
-    saveLocalComfyWorkflowRegistry(merged);
-    return merged;
+    return CanvasComfyJobEngine.updateKnownComfyWorkflows(primary);
 }
 function replaceKnownComfyWorkflows(primary=[]){
-    const normalized = normalizeComfyWorkflowEntries(primary);
-    saveLocalComfyWorkflowRegistry(normalized);
-    return normalized;
+    return CanvasComfyJobEngine.replaceKnownComfyWorkflows(primary);
 }
 async function filterAccessibleComfyWorkflows(list=[]){
-    const normalized = normalizeComfyWorkflowEntries(list);
-    const accessible = [];
-    for(const item of normalized){
-        const data = await ensureComfyWorkflow(item.name);
-        if(!data?.workflow) continue;
-        const resolvedName = resolveComfyWorkflowName(data.name || item.name);
-        accessible.push({
-            ...item,
-            name: resolvedName,
-            title: String(data?.config?.title || item.title || resolvedName.replace(/\.json$/i, '')).trim() || resolvedName.replace(/\.json$/i, ''),
-            field_count: Array.isArray(data?.config?.fields) ? data.config.fields.length : item.field_count,
-            builtin: item.builtin === true || data?.builtin === true
-        });
-    }
-    return normalizeComfyWorkflowEntries(accessible);
+    return CanvasComfyJobEngine.filterAccessibleComfyWorkflows(list);
 }
 const smartCascadeRuns = new Map();
 let smartLoopContext = null;
@@ -570,7 +517,7 @@ function performUndo(){
     undoSuppressed = false;
     toast(tr('smart.toastUndone'));
 }
-let comfyWorkflowCache = {};
+const comfyWorkflowCache = CanvasComfyJobEngine.cache;  // 权威缓存在任务引擎模块
 let cropState = null;
 let freeCropState = null;
 let cropDrag = null;
@@ -5099,6 +5046,19 @@ CanvasRenderScheduler.configure({
     minimapToggleEl: document.getElementById('minimapToggle')
 });
 
+// ===== ComfyUI 任务引擎（canvas-comfy-job-engine.js）：主文件侧注入 =====
+CanvasComfyJobEngine.configure({
+    proxyUrl: (p) => comfyProxyUrl(p),
+    getNodes: () => nodes,
+    render: () => render(),
+    scheduleSave: () => scheduleSave(),
+    clearNodeRunningState: (n) => clearNodeRunningState(n),
+    syncRunButtonAvailability: (n) => syncRunButtonAvailability(n),
+    updateComfyNodeLiveState: (n) => updateComfyNodeLiveState(n),
+    finalizePendingNode: async (n, urls, meta, kind) => finalizePendingNode(n, urls, meta, kind),
+    nowMs: () => nowMs()
+});
+
 // ===== 视口内核（canvas-viewport-engine.js）：viewport 权威状态在该模块，这里是主文件侧注入与薄别名 =====
 const viewport = CanvasViewport.viewport;
 CanvasViewport.configure({
@@ -6346,15 +6306,7 @@ function normalizeApiSizeSettings(prefix=''){
     const resKey = prefix ? `${prefix}Resolution` : 'resolution';
 }
 async function ensureComfyWorkflow(name){
-    const resolved = resolveComfyWorkflowName(name);
-    if(!resolved) return null;
-    if(comfyWorkflowCache[resolved]) return comfyWorkflowCache[resolved];
-    const data = await fetch(`/api/workflows/${encodeURIComponent(resolved)}`).then(r => r.ok ? r.json() : null).catch(() => null);
-    if(data){
-        comfyWorkflowCache[resolved] = data;
-        if(name && name !== resolved) comfyWorkflowCache[name] = data;
-    }
-    return data;
+    return CanvasComfyJobEngine.ensureComfyWorkflow(name);
 }
 function currentComfyWorkflowData(){
     const name = resolveComfyWorkflowName(settings.comfyWorkflow || comfyWorkflows[0]?.name || '');
@@ -18313,35 +18265,11 @@ function syncRunButtonAvailability(node=selectedNode()){
 }
 // 停止当前 ComfyUI 任务：先尝试后端 cancel 路由；不存在就只清前端状态
 async function cancelComfyJob(node){
-    if(!node || !node.comfyJobId) return false;
-    const jobId = node.comfyJobId;
-    node.comfyStatus = 'cancelled';  // 保留 cancelled 状态供前端显示
-    try {
-        await fetch(comfyProxyUrl(`/api/comfyui/jobs/${encodeURIComponent(jobId)}/cancel`), {
-            method:'POST',
-            headers:{'Content-Type':'application/json'}
-        }).catch(()=>null);
-        await fetch(comfyProxyUrl(`/api/comfyui/jobs/${encodeURIComponent(jobId)}/interrupt`), {
-            method:'POST',
-            headers:{'Content-Type':'application/json'}
-        }).catch(()=>null);
-    } catch(e){ /* 后端暂无 cancel 接口也能清前端态 */ }
-    clearComfyProgressExceptStatus(node);
-    syncRunButtonAvailability(node);
-    render();
-    // 停止要落盘：不保存的话刷新/切画布又会从磁盘读回「运行中」
-    scheduleSave();
-    return true;
+    return CanvasComfyJobEngine.cancelComfyJob(node);
 }
 // 类似 clearComfyProgress 但保留 comfyStatus 字段（cancelled 用于 UI 显示）
 function clearComfyProgressExceptStatus(node){
-    if(!node) return;
-    delete node.comfyJobId;
-    delete node.comfyPromptId;
-    delete node.comfyProgress;
-    delete node.comfyCurrentNode;
-    delete node.comfyCurrentNodeTitle;
-    // 保留 comfyStatus = 'cancelled'
+    CanvasComfyJobEngine.clearComfyProgressExceptStatus(node);
 }
 function coolNodeRunningState(node, ms=2000){
     if(!node) return 0;
@@ -19804,21 +19732,10 @@ function sleep(ms){ return new Promise(resolve => setTimeout(resolve, ms)); }
 // 清掉「运行中」外观，但保留 comfyPromptId —— 后端重启/任务记录丢失时，
 // prompt_id 是之后把 ComfyUI 已经跑完的结果认领回节点的唯一钥匙，不能删。
 function clearComfyRunStateKeepPromptId(node){
-    if(!node) return;
-    delete node.comfyJobId;
-    delete node.comfyStatus;
-    delete node.comfyProgress;
-    delete node.comfyCurrentNode;
-    delete node.comfyCurrentNodeTitle;
+    CanvasComfyJobEngine.clearComfyRunStateKeepPromptId(node);
 }
 function clearComfyProgress(node){
-    if(!node) return;
-    delete node.comfyJobId;
-    delete node.comfyPromptId;
-    delete node.comfyProgress;
-    delete node.comfyCurrentNode;
-    delete node.comfyCurrentNodeTitle;
-    delete node.comfyStatus;
+    CanvasComfyJobEngine.clearComfyProgress(node);
 }
 // 2026-09-17：ComfyUI 状态后台监督器
 // 运行按钮回弹原本完全依赖 submitComfyWorkflowJob 内部那条「随 runGeneration promise
@@ -19827,69 +19744,14 @@ function clearComfyProgress(node){
 // 必须手动点一下才清 —— 即老王说的「状态调取断了」。
 // 这里加一层与单次运行 promise 解耦的独立监督：定期回拉后端 job 状态，
 // 任务真正结束就把视觉/按钮态清掉（必要时按输出回填产出），实现「状态主动调取」。
-let comfyJobSupervisorTimer = null;
 async function syncComfyJobStatusOnce(node){
-    // queued 也要管：否则任务停在排队阶段、promise 链又断了时，没人把它推进到 running/收尾
-    if(!node || !node.comfyJobId || !['running', 'queued'].includes(node.comfyStatus)) return false;
-    let job;
-    try {
-        job = await fetch(comfyProxyUrl(`/api/comfyui/jobs/${encodeURIComponent(node.comfyJobId)}`), {cache:'no-store'}).then(async r => {
-            if(!r.ok) throw new Error('http ' + r.status);
-            return r.json();
-        });
-    } catch(e) {
-        // 拉取失败先计数，不立刻清 —— 后端瞬时抖动 / 重启间隙不该把「还在跑」的任务误清成已结束，
-        // 否则按钮会假回弹、产出也永远补不回来。连续失败 3 次（约 6s）才认定任务记录真丢了。
-        node.comfySupervisorMiss = (Number(node.comfySupervisorMiss || 0)) + 1;
-        if(node.comfySupervisorMiss < 3) return false;
-        // 任务记录已丢失（后端重启 / job 被清）：连运行态一起清，别卡按钮
-        delete node.comfySupervisorMiss;
-        clearComfyRunStateKeepPromptId(node);
-        clearNodeRunningState(node);
-        syncRunButtonAvailability(node);
-        render(); scheduleSave();
-        return true;
-    }
-    delete node.comfySupervisorMiss;
-    const st = job.status || node.comfyStatus;
-    node.comfyProgress = Number(job.progress || node.comfyProgress || 0);
-    updateComfyNodeLiveState(node);
-    if(st === 'done'){
-        const urls = (job.videos && job.videos.length) ? job.videos : (job.images || []);
-        const kind = (job.videos && job.videos.length) ? 'video' : 'image';
-        // 仅当节点还没产出时回填（避免和正常轮询的 finalize 重复）
-        if(urls.length && !(node.images || []).length){
-            try { await finalizePendingNode(node, urls, {prompt:node.promptDraftText || node.runPrompt || '', displayPrompt:node.promptDraftText || node.runPrompt || ''}, kind); }
-            catch(_) { /* 产出回填失败也不阻塞清态 */ }
-        }
-        clearComfyProgress(node);
-        clearNodeRunningState(node);
-        syncRunButtonAvailability(node);
-        render(); scheduleSave();
-        return true;
-    }
-    if(['error','cancelled','gone'].includes(st)){
-        if(st !== 'cancelled') clearComfyRunStateKeepPromptId(node);
-        else clearComfyProgressExceptStatus(node);
-        clearNodeRunningState(node);
-        syncRunButtonAvailability(node);
-        render(); scheduleSave();
-        return true;
-    }
-    return false;
+    return CanvasComfyJobEngine.syncComfyJobStatusOnce(node);
 }
 function startComfyJobSupervisor(){
-    if(comfyJobSupervisorTimer) return;
-    comfyJobSupervisorTimer = setInterval(async () => {
-        const active = (nodes || []).filter(n => n.comfyJobId && ['running', 'queued'].includes(n.comfyStatus));
-        if(!active.length){ stopComfyJobSupervisor(); return; }
-        for(const n of active){
-            try { await syncComfyJobStatusOnce(n); } catch(_) {}
-        }
-    }, 2000);
+    CanvasComfyJobEngine.startComfyJobSupervisor();
 }
 function stopComfyJobSupervisor(){
-    if(comfyJobSupervisorTimer){ clearInterval(comfyJobSupervisorTimer); comfyJobSupervisorTimer = null; }
+    CanvasComfyJobEngine.stopComfyJobSupervisor();
 }
 async function buildComfyWorkflowJobPayload(node, runSettings, prompt, refs){
     normalizeComfyWorkflowSelection(runSettings);
@@ -19966,10 +19828,18 @@ async function buildComfyWorkflowJobPayload(node, runSettings, prompt, refs){
 }
 async function submitComfyWorkflowJob(node, payload, meta=null){
     const target = node || null;
+    // 任务控制台定位：提交时带上画布/节点信息（与 RH 提交链的 canvas_id/node_id 同构）
+    const consoleMeta = {
+        canvas_id:canvasId || '',
+        canvas_title:String(canvas?.title || document.getElementById('smartTitle')?.textContent || '').trim(),
+        node_id:String(target?.id || ''),
+        node_title:String(target?.title || ''),
+        origin:'画布节点执行'
+    };
     const submitted = await fetch(comfyProxyUrl('/api/comfyui/jobs'), {
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify(payload.body)
+        body:JSON.stringify({...payload.body, ...consoleMeta})
     }).then(async r => {
         const data = await r.json().catch(async () => ({error:await r.text()}));
         if(!r.ok || data.ok === false) throw new Error(data.error || tr('smart.errRunFailed'));
@@ -20471,56 +20341,10 @@ async function resumeSmartPendingNode(node){
     }
 }
 function isRecoverableComfyNode(node){
-    if(!node || (node.images || []).length) return false;
-    const runSettings = node.runSettings || node.settings || {};
-    const isComfy = (runSettings.engine || '') === 'comfy' || node.comfyRecovery || node.comfyPromptId || node.comfyJobId;
-    if(!isComfy) return false;
-    // 还在跑的节点：跑够 20 秒还没产出，才认为可能卡住了。
-    if(node.running) {
-        const startedAt = Number(node.runStartedAt || node.comfyRecovery?.startedAt || 0);
-        return !startedAt || nowMs() - startedAt > 20000;
-    }
-    // 后端重启过 / 记录丢失被清掉运行态，但留了 prompt_id：按 prompt_id 认领结果。
-    return Boolean(node.comfyPromptId);
+    return CanvasComfyJobEngine.isRecoverableComfyNode(node);
 }
-let comfyRecoveryInFlight = false;
 async function recoverStuckComfyNodes(){
-    if(comfyRecoveryInFlight) return false;
-    const stuck = (nodes || []).filter(isRecoverableComfyNode);
-    if(!stuck.length) return false;
-    comfyRecoveryInFlight = true;
-    try {
-        const data = await fetch(comfyProxyUrl('/api/comfyui/recent-outputs?limit=6'), {cache:'no-store'}).then(async r => {
-            if(!r.ok) throw new Error(await r.text());
-            return r.json();
-        });
-        const outputs = Array.isArray(data.outputs) ? data.outputs : [];
-        let changed = false;
-        for(const node of stuck){
-            if((node.images || []).length) continue;
-            // 有 prompt_id 就精确认领对应那一条（避免把「最近一条输出」错挂到别的节点上）
-            const row = node.comfyPromptId
-                ? outputs.find(item => String(item.prompt_id || '') === String(node.comfyPromptId))
-                : outputs.find(item => (item.images || []).length || (item.videos || []).length);
-            if(!row) continue;
-            const urls = (row.images || []).length ? row.images : (row.videos || []);
-            const kind = (row.images || []).length ? 'image' : 'video';
-            await finalizePendingNode(node, urls, {prompt:node.runPrompt || '', displayPrompt:node.runPrompt || ''}, kind);
-            node.comfyPromptId = row.prompt_id || '';
-            delete node.comfyRecovery;
-            changed = true;
-        }
-        if(changed){
-            render();
-            scheduleSave();
-        }
-        return changed;
-    } catch(e) {
-        console.warn('comfy recovery failed', e);
-        return false;
-    } finally {
-        comfyRecoveryInFlight = false;
-    }
+    return CanvasComfyJobEngine.recoverStuckComfyNodes();
 }
 function resumeSmartPendingTasks(){
     nodes.filter(node => smartPendingTasks(node).length).forEach(node => {
