@@ -4556,6 +4556,23 @@ CanvasRhControls.configure({
     getSettings: () => settings,
     getEngineSelect: () => engineSelect
 });
+
+// ===== ComfyUI 控件渲染层（canvas-comfy-controls.js）：主文件侧注入 =====
+CanvasComfyControls.configure({
+    escapeHtml: (s) => escapeHtml(s),
+    tr: (k, fb) => tr(k, fb),
+    renderComfyInputsRow: () => renderComfyInputsRow(),
+    renderComfySettingField: (f) => renderComfySettingField(f),
+    comfyFieldKind: (f, wf) => comfyFieldKind(f, wf),
+    visibleComfyFields: (fields, wf) => visibleComfyFields(fields, wf),
+    comfyParamValue: (f) => comfyParamValue(f),
+    smartComfyRandomActive: (id) => smartComfyRandomActive(id),
+    comfyModesForWorkflow: (wf) => comfyModesForWorkflow(wf),
+    resolveComfyWorkflowName: (wf) => resolveComfyWorkflowName(wf),
+    getSettings: () => settings,
+    getEngineSelect: () => engineSelect,
+    getWorkflows: () => comfyWorkflows
+});
 CanvasArtifactView.bindEvents();
 
 // ===== 视口内核（canvas-viewport-engine.js）：viewport 权威状态在该模块，这里是主文件侧注入与薄别名 =====
@@ -6550,38 +6567,19 @@ function renderComfyParams(){
  ${renderComfyDetailsHtml(wf, fields)}
  `;
 }
-function comfyFieldNodeIsOff(field, workflowName=settings.comfyWorkflow){
-    const nodeId = String(field?.node || '');
-    if(!nodeId) return false;
-    const mode = comfyModesForWorkflow(workflowName)[nodeId];
-    return mode === 'bypass' || mode === 'mute';
+function comfyFieldNodeIsOff(field, workflowName=settings.comfyWorkflow) {
+    return CanvasComfyControls.comfyFieldNodeIsOff.apply(null, arguments);
 }
 function visibleComfyFields(fields, workflowName=settings.comfyWorkflow){
     return (fields || []).filter(field => !comfyFieldNodeIsOff(field, workflowName));
 }
 // 详情区（2026-09-16）：参数已收进「工作流参数」二级菜单，这里只保留素材输入行。
-function renderComfyDetailsHtml(wf, fields){
-    return `<div class="cfn-details">
-        ${renderComfyInputsRow()}
-        ${settings.comfyWorkflow ? '' : `<div class="muted-note">${escapeHtml(tr('smart.noWorkflow'))}</div>`}
-    </div>`;
+function renderComfyDetailsHtml(wf, fields) {
+    return CanvasComfyControls.renderComfyDetailsHtml.apply(null, arguments);
 }
 // 工作流参数二级菜单：原来常驻在详情区的参数收进一颗 pill，弹层内还是同一套参数控件。
-function renderComfyParamsControl(wf, fields){
-    const visibleFields = visibleComfyFields(fields || [], settings.comfyWorkflow);
-    const editableFields = visibleFields.filter(field => {
-        const kind = comfyFieldKind(field);
-        return kind !== 'prompt' && kind !== 'image' && kind !== 'video' && kind !== 'audio';
-    });
-    if(!editableFields.length) return '';
-    const title = tr('smart.workflowParams') || '工作流参数';
-    return `<div class="smart-control comfy-params-control">
-        <button class="smart-pill" type="button" title="${escapeHtml(title)}"><i data-lucide="sliders-horizontal"></i><span class="sub">${escapeHtml(title)} ${editableFields.length}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
-        <div class="smart-popover compact-popover comfy-params-popover">
-            <div class="smart-popover-title">${escapeHtml(title)}</div>
-            <div class="cfn-params-body">${renderComfyFields(visibleFields)}</div>
-        </div>
-    </div>`;
+function renderComfyParamsControl(wf, fields) {
+    return CanvasComfyControls.renderComfyParamsControl.apply(null, arguments);
 }
 // 关节点后原地重建详情区 + 参数弹层（不整体重绘，保住刚打开的节点弹层）。
 function syncComfyDetailsAndParams(wf){
@@ -6652,57 +6650,16 @@ function syncComfyInputsRow(){
     host.replaceWith(next);
 }
 // 字段分组渲染：媒体字段跳过（值来自画布上游连线）；连续 number 横排一行；其余按 .pfield。
-function renderComfyFields(fields){
-    const out = [];
-    let pendingNumbers = [];
-    const flushNumbers = () => {
-        if(!pendingNumbers.length) return;
-        if(pendingNumbers.length === 1) out.push(renderComfySettingField(pendingNumbers[0]));
-        else out.push(`<div class="cfn-size-row">${pendingNumbers.map(renderComfyNumberCell).join('')}</div>`);
-        pendingNumbers = [];
-    };
-    fields.forEach(field => {
-        const kind = comfyFieldKind(field);
-        // prompt 字段直接复用画布顶部原生 #promptInput，不在参数区重复渲染。
-        if(kind === 'prompt'){ flushNumbers(); return; }
-        if(kind === 'image' || kind === 'video' || kind === 'audio'){ flushNumbers(); return; }
-        if(field.type === 'number'){ pendingNumbers.push(field); return; }
-        flushNumbers();
-        out.push(renderComfySettingField(field));
-    });
-    flushNumbers();
-    return out.join('');
+function renderComfyFields(fields) {
+    return CanvasComfyControls.renderComfyFields.apply(null, arguments);
 }
-function renderComfyNumberCell(field){
-    const value = comfyParamValue(field);
-    const min = field.min !== undefined ? ` min="${escapeHtml(field.min)}"` : '';
-    const max = field.max !== undefined ? ` max="${escapeHtml(field.max)}"` : '';
-    const step = field.step !== undefined ? ` step="${escapeHtml(field.step)}"` : '';
-    const dice = field.random_enabled === true
-        ? `<button type="button" class="random-btn ${smartComfyRandomActive(field.id) ? 'active' : ''}" data-comfy-random="${escapeHtml(field.id)}" title="${escapeHtml(smartComfyRandomActive(field.id) ? tr('smart.diceOn') : tr('smart.diceOff'))}"><i data-lucide="dice-5"></i></button>`
-        : '';
-    const labelText = field.name || field.input || field.id;
-    return `<div class="cfn-size-cell">
-        <div class="cfn-size-label">${escapeHtml(labelText)}</div>
-        <div class="cfn-size-inputs">
-            <input class="cfn-size-input" type="number" data-comfy-param="${escapeHtml(field.id)}" value="${escapeHtml(value ?? 0)}"${min}${max}${step}>${dice}
-        </div>
-    </div>`;
+function renderComfyNumberCell(field) {
+    return CanvasComfyControls.renderComfyNumberCell.apply(null, arguments);
 }
 // 可编辑参数已经统一由 renderComfyFields() 渲染；不再额外渲染节点名称网格。
 function renderComfyOtherNodesGrid(){ return ''; }
-function renderUpscalePill(paramKey, current){
-    const opts = [2048, 4096];
-    const labels = {2048:'2X / 2048', 4096:'4X / 4096'};
-    return `<div class="smart-control upscale-control">
-        <button class="smart-pill" type="button"><i data-lucide="maximize-2"></i><span>${escapeHtml(labels[current] || `${current}px`)}</span></button>
-        <div class="smart-popover compact-popover">
-            <div class="smart-popover-title">${escapeHtml(tr('smart.upscaleTarget'))}</div>
-            <div class="model-list">
-                ${opts.map(v => `<button type="button" class="direct-option ${v === current ? 'active' : ''}" data-smart-param="${escapeHtml(paramKey)}" data-smart-value="${v}"><span>${escapeHtml(labels[v])}</span></button>`).join('')}
-            </div>
-        </div>
-    </div>`;
+function renderUpscalePill(paramKey, current) {
+    return CanvasComfyControls.renderUpscalePill.apply(null, arguments);
 }
 function comfyWorkflowGroups(){
     // 把带 group 字段的工作流（导入集合自动拆分的成员）按组归拢；无组工作流返回 null 占位。
@@ -6723,39 +6680,11 @@ function comfyWorkflowGroups(){
 // 入口：平台 + 工作流（2026-09-16 合并）
 // 原 head 里的「ComfyUI 引擎下拉」与控件区里的「工作流」两颗按钮合成一颗；
 // 弹层内 = 工作流列表 +「生成引擎」切换（引擎下拉在 comfy 布局下隐藏，切走别的引擎的入口在这里）。
-function comfyEnginePillLabel(){
-    const opt = engineSelect ? [...engineSelect.options].find(o => o.value === settings.engine) : null;
-    const full = String(opt?.textContent || '').trim();
-    const short = full.replace(/[\s]*生成$/, '');
-    return short || full || 'ComfyUI';
+function comfyEnginePillLabel() {
+    return CanvasComfyControls.comfyEnginePillLabel.apply(null, arguments);
 }
-function renderComfyWorkflowControl(){
-    if(!comfyWorkflows.length) return `<div class="muted-note">${escapeHtml(tr('smart.noWorkflow'))}</div>`;
-    settings.comfyWorkflow = resolveComfyWorkflowName(settings.comfyWorkflow);
-    const current = comfyWorkflows.find(w => w.name === settings.comfyWorkflow) || comfyWorkflows[0];
-    const label = current?.title || (current?.name || '').replace('.json','') || tr('smart.workflow');
-    // 平铺：不分组显示（2026-09-05 用户要求去掉 📁 文件夹，恢复全量平铺列表）
-    // 2026-09-16 老王：pill 只显示工作流名称（原「平台 · 工作流」太长，会跟右边的按钮挤在一起），
-    // 引擎名降级为 title 悬浮提示；引擎切换入口仍在弹层里，不受影响。
-    const platform = comfyEnginePillLabel();
-    const pillTitle = `${platform} · ${label}`;
-    const optionBtn = (w, extraClass='') => `<button type="button" class="direct-option ${extraClass} ${w.name === settings.comfyWorkflow ? 'active' : ''}" data-smart-param="comfyWorkflow" data-smart-value="${escapeHtml(w.name)}"><span>${escapeHtml(w.title || w.name.replace('.json',''))}</span></button>`;
-    const ungroupedSection = comfyWorkflows.length ? `
-        <div class="smart-popover-title">${escapeHtml(tr('smart.workflow'))}</div>
-        <div class="model-list">
-            ${comfyWorkflows.map(w => optionBtn(w)).join('')}
-        </div>` : '';
-    const engineLabels = {};
-    if(engineSelect) [...engineSelect.options].forEach(o => { engineLabels[o.value] = o.textContent.trim(); });
-    const engineRow = Object.entries(engineLabels).map(([key, lab]) =>
-        `<button type="button" class="direct-option ${key === settings.engine ? 'active' : ''}" data-combo-engine="${escapeHtml(key)}"><span>${escapeHtml(lab)}</span></button>`).join('');
-    return `<div class="smart-control comfy-merge-control workflow-control">
-        <button class="smart-pill" type="button" title="${escapeHtml(pillTitle)}"><span class="sub">${escapeHtml(label)}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
-        <div class="smart-popover compact-popover rh-unified-popover comfy-unified-popover">
-            ${ungroupedSection}
-            ${engineRow ? `<div class="model-list-label rh-list-label rh-inline-group-label">生成引擎</div><div class="model-list rh-inline-group">${engineRow}</div>` : ''}
-        </div>
-    </div>`;
+function renderComfyWorkflowControl() {
+    return CanvasComfyControls.renderComfyWorkflowControl.apply(null, arguments);
 }
 function comfyModesForWorkflow(workflowName, source=settings){
     const bucket = (source?.comfyModes || {})[workflowName];
@@ -6788,36 +6717,8 @@ function comfyAutoBypassForMissingMedia(plans){
     return out;
 }
 // 节点开关（两态）：只列 config.fields 暴露的节点；开 = 使用，关 = 跳过（等同 ComfyUI Ctrl+B 旁路）。
-function renderComfyNodeModesControl(wf){
-    const workflowName = settings.comfyWorkflow;
-    const workflow = wf?.workflow;
-    if(!workflowName || !workflow || !Object.keys(workflow).length) return '';
-    const exposedNodes = [...new Set((wf?.config?.fields || []).map(f => String(f?.node || '')).filter(Boolean))];
-    if(!exposedNodes.length) return '';
-    const modes = comfyModesForWorkflow(workflowName);
-    const fieldNames = {};
-    (wf?.config?.fields || []).forEach(f => {
-        const nid = String(f?.node || '');
-        const nm = String(f?.name || '').trim();
-        if(nid && nm && !fieldNames[nid]) fieldNames[nid] = nm;
-    });
-    const rows = exposedNodes.map(id => {
-        const node = workflow[id] || {};
-        const title = String(fieldNames[id] || node?._meta?.title || node?.class_type || id).slice(0, 40);
-        const off = modes[id] === 'bypass' || modes[id] === 'mute';
-        return `<div class="cfm-row ${off ? 'cfm-row-off' : ''}">
-            <span class="cfm-name" title="${escapeHtml(title)}">${escapeHtml(title)}</span>
-            <button type="button" class="cfm-toggle ${off ? '' : 'on'}" data-comfy-node-mode="${escapeHtml(id)}" title="${escapeHtml(off ? (tr('smart.comfyNodeOff') || '关 = 跳过，点击恢复执行') : (tr('smart.comfyNodeOn') || '开 = 使用，点击跳过该节点'))}">${off ? (tr('smart.comfyOff') || '关') : (tr('smart.comfyOn') || '开')}</button>
-        </div>`;
-    }).join('');
-    return `<div class="smart-control comfy-nodes-control">
-        <button class="smart-pill" type="button"><i data-lucide="toggle-left"></i><span class="sub">${escapeHtml(tr('smart.comfyExposedNodes') || '已暴露节点')} ${exposedNodes.length}</span></button>
-        <div class="smart-popover compact-popover comfy-nodes-popover">
-            <div class="smart-popover-title">${escapeHtml(tr('smart.comfyExposedNodes') || '已暴露节点')} · ${escapeHtml((comfyWorkflows.find(w => w.name === workflowName)?.title || workflowName.replace(/\.json$/,'')).slice(0, 24))}</div>
-            <div class="cfm-list">${rows}</div>
-            <div class="cfm-hint">${escapeHtml(tr('smart.comfyToggleHint') || '开 = 使用 · 关 = 跳过（Ctrl+B 旁路，下游自动接上游）')}</div>
-        </div>
-    </div>`;
+function renderComfyNodeModesControl(wf) {
+    return CanvasComfyControls.renderComfyNodeModesControl.apply(null, arguments);
 }
 // 节点开关切换后原位同步 pill 摘要 + 其它暴露节点网格（不重渲整个面板，避免 popover 被关）。
 function syncComfyModesChrome(workflowName){
