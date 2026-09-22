@@ -4573,6 +4573,31 @@ CanvasComfyControls.configure({
     getEngineSelect: () => engineSelect,
     getWorkflows: () => comfyWorkflows
 });
+
+// ===== 参数控件渲染层（canvas-param-controls.js）：主文件侧注入 =====
+CanvasParamControls.configure({
+    escapeHtml: (...a) => escapeHtml(...a),
+    tr: (...a) => tr(...a),
+    videoProviderById: (...a) => videoProviderById(...a),
+    providerModelDisplayName: (...a) => providerModelDisplayName(...a),
+    videoAspectIconClass: (...a) => videoAspectIconClass(...a),
+    videoAspectLabel: (...a) => videoAspectLabel(...a),
+    videoAspectOptions: (...a) => videoAspectOptions(...a),
+    videoDurationValue: (...a) => videoDurationValue(...a),
+    videoResolutionLabel: (...a) => videoResolutionLabel(...a),
+    imageQualityLabel: (...a) => imageQualityLabel(...a),
+    imageSpecOptions: (...a) => imageSpecOptions(...a),
+    ratioIconClass: (...a) => ratioIconClass(...a),
+    ratioLabel: (...a) => ratioLabel(...a),
+    resolutionLabel: (...a) => resolutionLabel(...a),
+    videoReferenceModeValue: (...a) => videoReferenceModeValue(...a),
+    apiProviderById: (...a) => apiProviderById(...a),
+    smartAvailableEngines: (...a) => smartAvailableEngines(...a),
+    smartEngineLabel: (...a) => smartEngineLabel(...a),
+    videoApiProviders: (...a) => videoApiProviders(...a),
+    volcengineProvider: (...a) => volcengineProvider(...a),
+    getSettings: () => settings
+});
 CanvasArtifactView.bindEvents();
 
 // ===== 视口内核（canvas-viewport-engine.js）：viewport 权威状态在该模块，这里是主文件侧注入与薄别名 =====
@@ -5453,77 +5478,20 @@ function syncEngineSelectOptions(){
     engineSelect.value = settings.engine;
     if(typeof enhanceAgentSelects === 'function') enhanceAgentSelects();
 }
-function renderVideoProviderControl(providers){
-    const current = (providers || []).find(p => p.id === settings.videoProvider) || videoProviderById(settings.videoProvider);
-    return `<div class="smart-control provider-control">
-        <button class="smart-pill" type="button"><i data-lucide="plug-zap"></i><span class="sub">${escapeHtml(current?.name || settings.videoProvider || tr('smart.platform'))}</span></button>
-        <div class="smart-popover compact-popover">
-            <div class="smart-popover-title">${escapeHtml(tr('smart.videoPlatform'))}</div>
-            <div class="model-list">
-                ${providers.map(p => `<button type="button" class="direct-option ${p.id === settings.videoProvider ? 'active' : ''}" data-smart-param="videoProvider" data-smart-value="${escapeHtml(p.id)}"><span>${escapeHtml(p.name || p.id)}</span></button>`).join('') || `<div class="muted-note">${escapeHtml(tr('smart.noVideoPlatform'))}</div>`}
-            </div>
-        </div>
-    </div>`;
+function renderVideoProviderControl(providers) {
+    return CanvasParamControls.renderVideoProviderControl.apply(null, arguments);
 }
-function renderVideoModelControl(models){
-    const videoLabel = settings.videoModel ? providerModelDisplayName(settings.videoProvider, settings.videoModel) : tr('smart.model');
-    return `<div class="smart-control model-control">
-        <button class="smart-pill" type="button"><i data-lucide="film"></i><span class="sub">${escapeHtml(videoLabel)}</span></button>
-        <div class="smart-popover compact-popover">
-            <div class="smart-popover-title">${escapeHtml(tr('smart.videoModel'))}</div>
-            <div class="model-list">
-                ${models.map(m => `<button type="button" class="direct-option ${m === settings.videoModel ? 'active' : ''}" data-smart-param="videoModel" data-smart-value="${escapeHtml(m)}"><span>${escapeHtml(providerModelDisplayName(settings.videoProvider, m))}</span></button>`).join('') || `<div class="muted-note">${escapeHtml(tr('smart.noVideoModel'))}</div>`}
-            </div>
-        </div>
-    </div>`;
+function renderVideoModelControl(models) {
+    return CanvasParamControls.renderVideoModelControl.apply(null, arguments);
 }
-function renderVideoDurationControl(){
-    const v = Math.max(1, Math.min(60, Number(settings.videoDuration) || 5));
-    const quick = [3, 4, 5, 6, 8, 10, 12, 15];
-    return `<div class="smart-control duration-control" title="${escapeHtml(tr('smart.videoDurationTip'))}">
-        <button class="smart-pill" type="button"><i data-lucide="timer"></i><span>${v}s</span></button>
-        <div class="smart-popover compact-popover">
-            <div class="smart-popover-title">${escapeHtml(tr('smart.videoDuration'))}</div>
-            <div class="duration-grid">
-                ${quick.map(n => `<button type="button" class="duration-option ${n === v ? 'active' : ''}" data-smart-param="videoDuration" data-smart-value="${n}">${n}s</button>`).join('')}
-            </div>
-            <label class="duration-custom">
-                <span>${escapeHtml(tr('smart.custom'))}</span>
-                <input type="number" min="1" max="60" step="1" data-param="videoDuration" value="${v}">
-            </label>
-        </div>
-    </div>`;
+function renderVideoDurationControl() {
+    return CanvasParamControls.renderVideoDurationControl.apply(null, arguments);
 }
-function renderVideoAspectControl(){
-    const options = [
-        ['16:9','16:9'], ['9:16','9:16'], ['1:1','1:1'], ['4:3','4:3'], ['3:4','3:4'],
-        ['21:9','21:9'], ['9:21','9:21'], ['keep_ratio', tr('smart.videoAspectKeep')], ['adaptive', tr('smart.videoAspectAdaptive')]
-    ];
-    const value = settings.videoAspect || '16:9';
-    const labelMap = Object.fromEntries(options);
-    return `<div class="smart-control aspect-control">
-        <button class="smart-pill" type="button"><i data-lucide="scan"></i><span>${escapeHtml(labelMap[value] || value)}</span></button>
-        <div class="smart-popover">
-            <div class="smart-popover-title">${escapeHtml(tr('smart.videoAspect'))}</div>
-            <div class="ratio-grid">
-                ${options.map(([v,l]) => `<button type="button" class="ratio-option ${v === value ? 'active' : ''}" data-smart-param="videoAspect" data-smart-value="${escapeHtml(v)}"><span class="ratio-icon ${videoAspectIconClass(v)}"></span><span>${escapeHtml(l)}</span></button>`).join('')}
-            </div>
-        </div>
-    </div>`;
+function renderVideoAspectControl() {
+    return CanvasParamControls.renderVideoAspectControl.apply(null, arguments);
 }
-function renderVideoResolutionControl(){
-    const options = [['', tr('smart.videoResAuto')], ['480p','480P'], ['720p','720P'], ['1080p','1080P'], ['4k','4K']];
-    const value = settings.videoResolution || '';
-    const labelMap = Object.fromEntries(options);
-    return `<div class="smart-control resolution-control">
-        <button class="smart-pill" type="button"><i data-lucide="monitor"></i><span>${escapeHtml(labelMap[value] || value || tr('smart.videoResAuto'))}</span></button>
-        <div class="smart-popover compact-popover">
-            <div class="smart-popover-title">${escapeHtml(tr('smart.videoResolution'))}</div>
-            <div class="model-list">
-                ${options.map(([v,l]) => `<button type="button" class="direct-option ${v === value ? 'active' : ''}" data-smart-param="videoResolution" data-smart-value="${escapeHtml(v)}"><span>${escapeHtml(l)}</span></button>`).join('')}
-            </div>
-        </div>
-    </div>`;
+function renderVideoResolutionControl() {
+    return CanvasParamControls.renderVideoResolutionControl.apply(null, arguments);
 }
 function videoAspectOptions(){
     return [
@@ -5549,43 +5517,8 @@ function videoAspectLabel(source=settings){
     const labelMap = Object.fromEntries(options);
     return labelMap[value] || value;
 }
-function renderVideoSpecControl(){
-    const aspect = settings.videoAspect || '16:9';
-    const resolution = settings.videoResolution || '';
-    const duration = videoDurationValue(settings);
-    const aspectLabel = videoAspectLabel(settings);
-    const resolutionLabelText = videoResolutionLabel(settings);
-    const aspectOptions = videoAspectOptions();
-    const resolutionOptions = videoResolutionOptions();
-    return `<div class="smart-control video-spec-control" title="视频规格">
-        <button class="smart-pill" type="button"><span>${escapeHtml(aspectLabel)} · ${escapeHtml(resolutionLabelText)} · ${duration}s</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
-        <div class="smart-popover video-spec-popover">
-            <div class="video-spec-section">
-                <div class="video-spec-title">视频比例</div>
-                <div class="video-spec-aspect-grid">
-                    ${aspectOptions.map(([v,l]) => `<button type="button" class="video-spec-aspect ${v === aspect ? 'active' : ''}" data-smart-param="videoAspect" data-smart-value="${escapeHtml(v)}"><span class="ratio-icon ${videoAspectIconClass(v)}"></span><span>${escapeHtml(l)}</span></button>`).join('')}
-                </div>
-            </div>
-            <div class="video-spec-section">
-                <div class="video-spec-title">分辨率</div>
-                <div class="video-spec-seg">
-                    ${resolutionOptions.map(([v,l]) => `<button type="button" class="${v === resolution ? 'active' : ''}" data-smart-param="videoResolution" data-smart-value="${escapeHtml(v)}">${escapeHtml(l)}</button>`).join('')}
-                </div>
-            </div>
-            <div class="video-spec-section">
-                <div class="video-spec-title">视频时长</div>
-                <label class="duration-custom video-spec-custom-duration">
-                    <span>自定义</span>
-                    <input type="number" min="1" max="60" step="1" data-param="videoDuration" value="${duration}">
-                    <span>秒</span>
-                </label>
-            </div>
-            <div class="video-spec-section">
-                <div class="video-spec-title">音频</div>
-                ${renderVideoToggleControl('videoGenerateAudio', tr('smart.videoGenerateAudio'))}
-            </div>
-        </div>
-    </div>`;
+function renderVideoSpecControl() {
+    return CanvasParamControls.renderVideoSpecControl.apply(null, arguments);
 }
 function imageSpecOptions(){
     const ratios = [
@@ -5603,34 +5536,8 @@ function imageQualityLabel(source=settings){
     const v = source?.quality || 'auto';
     return labels[v] || v;
 }
-function renderImageSpecControl(){
-    const {ratios, resolutions, qualityLabels} = imageSpecOptions();
-    const ratio = settings.ratio || 'square';
-    const resolution = settings.resolution || '1k';
-    const quality = settings.quality || 'auto';
-    return `<div class="smart-control image-spec-control" title="图片规格">
-        <button class="smart-pill" type="button"><i data-lucide="sliders-horizontal"></i><span>${escapeHtml(ratioLabel(''))} · ${escapeHtml(resolutionLabel(''))} · ${escapeHtml(imageQualityLabel())}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
-        <div class="smart-popover video-spec-popover image-spec-popover">
-            <div class="video-spec-section">
-                <div class="video-spec-title">图片比例</div>
-                <div class="image-spec-ratio-grid">
-                    ${ratios.map(([v,l]) => `<button type="button" class="video-spec-aspect ${v === ratio ? 'active' : ''}" data-smart-param="ratio" data-smart-value="${escapeHtml(v)}"><span class="ratio-icon ${ratioIconClass(v)}"></span><span>${escapeHtml(l)}</span></button>`).join('')}
-                </div>
-            </div>
-            <div class="video-spec-section">
-                <div class="video-spec-title">分辨率</div>
-                <div class="video-spec-seg">
-                    ${resolutions.map(([v,l]) => `<button type="button" class="${v === resolution ? 'active' : ''}" data-smart-param="resolution" data-smart-value="${escapeHtml(v)}">${escapeHtml(l)}</button>`).join('')}
-                </div>
-            </div>
-            <div class="video-spec-section">
-                <div class="video-spec-title">画质</div>
-                <div class="video-spec-seg">
-                    ${Object.entries(qualityLabels).map(([v,l]) => `<button type="button" class="${v === quality ? 'active' : ''}" data-smart-param="quality" data-smart-value="${escapeHtml(v)}">${escapeHtml(l)}</button>`).join('')}
-                </div>
-            </div>
-        </div>
-    </div>`;
+function renderImageSpecControl() {
+    return CanvasParamControls.renderImageSpecControl.apply(null, arguments);
 }
 function syncImageSpecControl(){
     const control = dynamicParams?.querySelector('.image-spec-control');
@@ -5668,9 +5575,8 @@ function setImageSpecSetting(key, value){
     }
     else syncImageSpecControl();
 }
-function renderVideoToggleControl(key, label){
-    const on = !!settings[key];
-    return `<button type="button" class="setting-check ${on ? 'active' : ''}" data-toggle-param="${escapeHtml(key)}"><span class="check-box"></span><span>${escapeHtml(label)}</span></button>`;
+function renderVideoToggleControl(key, label) {
+    return CanvasParamControls.renderVideoToggleControl.apply(null, arguments);
 }
 function renderTempShUploadControl(){
     return `<button type="button" class="smart-pill cloud-upload-pill" data-temp-sh-upload-video title="上传当前输入图片或视频到云端直链"><i data-lucide="upload-cloud"></i><span>上传云端</span></button>`;
@@ -5684,26 +5590,8 @@ function videoReferenceModeValue(source=settings){
     if(source?.videoUseFrameRoles) return 'first_last';
     return source?.videoTrustedAsset ? 'video_only' : 'mixed';
 }
-function renderVideoReferenceModeControl(){
-    const value = videoReferenceModeValue(settings);
-    const labels = {
-        mixed:'视频+图片',
-        video_only:'仅视频参考',
-        frame_extract:'抽帧参考',
-        first_last:'首尾帧'
-    };
-    return `<div class="smart-control video-reference-mode-control">
-        <button class="smart-pill" type="button"><span>${escapeHtml(labels[value] || labels.mixed)}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
-        <div class="smart-popover compact-popover">
-            <div class="smart-popover-title">参考模式</div>
-            <div class="model-list">
-                <button type="button" class="direct-option ${value === 'mixed' ? 'active' : ''}" data-smart-param="videoReferenceMode" data-smart-value="mixed"><span>视频+图片</span></button>
-                <button type="button" class="direct-option ${value === 'video_only' ? 'active' : ''}" data-smart-param="videoReferenceMode" data-smart-value="video_only"><span>仅视频参考</span></button>
-                <button type="button" class="direct-option ${value === 'frame_extract' ? 'active' : ''}" data-smart-param="videoReferenceMode" data-smart-value="frame_extract"><span>抽帧参考</span></button>
-                <button type="button" class="direct-option ${value === 'first_last' ? 'active' : ''}" data-smart-param="videoReferenceMode" data-smart-value="first_last"><span>首尾帧</span></button>
-            </div>
-        </div>
-    </div>`;
+function renderVideoReferenceModeControl() {
+    return CanvasParamControls.renderVideoReferenceModeControl.apply(null, arguments);
 }
 function shouldShowVideoReferenceModeControl(){
     if(!isApiLikeEngine(settings.engine) || settings.apiKind !== 'video') return false;
@@ -5715,17 +5603,8 @@ function renderComposerReferenceModeSlot(){
     bindComposerReferenceModeControl();
 }
 // 可信素材模式：打开后可选择素材来源——素材库认证链接 / 自行上传云端 / 自行输入网址。
-function renderVideoTrustedAssetControl(){
-    const on = !!settings.videoTrustedAsset;
-    let html = renderVideoToggleControl('videoTrustedAsset', tr('smart.videoTrustedAsset'));
-    if(!on) return html;
-    const src = ['library','cloud','manual'].includes(settings.videoTrustedSource) ? settings.videoTrustedSource : 'library';
-    html += `<div class="trusted-source-row">
-        <button type="button" class="smart-pill trusted-src-pill ${src === 'library' ? 'active' : ''}" data-trusted-source="library" title="使用素材库中已注册的认证素材链接（asset://）"><i data-lucide="library"></i><span>素材库链接</span></button>
-        <button type="button" class="smart-pill trusted-src-pill ${src === 'cloud' ? 'active' : ''}" data-trusted-source="cloud" title="把当前输入图片/视频上传到云端直链"><i data-lucide="upload-cloud"></i><span>上传云端</span></button>
-        <button type="button" class="smart-pill trusted-src-pill ${src === 'manual' ? 'active' : ''}" data-trusted-source="manual" title="手动输入媒体 URL 或 asset:// 地址"><i data-lucide="link"></i><span>输入网址</span></button>
-    </div>`;
-    return html;
+function renderVideoTrustedAssetControl() {
+    return CanvasParamControls.renderVideoTrustedAssetControl.apply(null, arguments);
 }
 function optionHtml(value, label, selected){
     return `<option value="${escapeHtml(value)}" ${String(value) === String(selected) ? 'selected' : ''}>${escapeHtml(label ?? value)}</option>`;
@@ -6170,33 +6049,8 @@ function normalizeHiddenVideoToggles(){
     settings.videoTrustedAsset = videoReferenceModeValue(settings) === 'video_only';
 }
 // API 视频单排：平台+模型合并下拉（与图片版 renderEngineModelCombo 同款）
-function renderVideoEngineModelCombo(models){
-  // 平台组 = 有视频模型的配置平台（含 volcengine 豆包，点它切到火山引擎）+ 无配置平台时的兜底
-  const volc = volcengineProvider();
-  const volcHasVid = volc && (volc.video_models || []).length > 0;
-  const providers = videoApiProviders();
-  const platforms = providers.map(p => ({ id: p.id, name: p.name || p.id, engine: 'api' }));
-  if(volcHasVid) platforms.push({ id: 'volcengine', name: volc.name || '火山引擎', engine: 'volcengine' });
-  const currentEngine = settings.engine || 'api';
-  let currentPlatformId = currentEngine === 'volcengine' ? 'volcengine' : (settings.videoProvider || '');
-  // 无配置视频平台时默认落到豆包（volcengine），保证 pill 与模型列表有真实内容
-  if(!currentPlatformId && !providers.length && volcHasVid) currentPlatformId = 'volcengine';
-  const currentPlatform = platforms.find(p => p.id === currentPlatformId);
-  const providerLabel = currentPlatform?.name || tr('smart.platform');
-  const modelLabel = settings.videoModel ? providerModelDisplayName(settings.videoProvider, settings.videoModel) : '';
-  return `<div class="smart-control engine-model-combo" title="平台与模型">
-    <button class="smart-pill" type="button"><span class="sub">${escapeHtml(providerLabel)}${modelLabel ? ` · ${escapeHtml(modelLabel)}` : ''}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
-    <div class="smart-popover engine-model-popover">
-      <div class="smart-popover-title">平台</div>
-      <div class="model-list">
-        ${platforms.map(p => `<button type="button" class="direct-option ${p.id === currentPlatformId ? 'active' : ''}" ${p.engine === 'volcengine' ? `data-combo-engine="volcengine"` : `data-smart-param="videoProvider" data-smart-value="${escapeHtml(p.id)}"`}><span>${escapeHtml(p.name)}</span></button>`).join('') || `<div class="muted-note">${escapeHtml(tr('smart.noVideoPlatform'))}</div>`}
-      </div>
-      <div class="smart-popover-title" style="margin-top:8px">模型</div>
-      <div class="model-list">
-        ${models.map(m => `<button type="button" class="direct-option ${m === settings.videoModel ? 'active' : ''}" data-smart-param="videoModel" data-smart-value="${escapeHtml(m)}"><span>${escapeHtml(providerModelDisplayName(settings.videoProvider, m))}</span></button>`).join('') || `<div class="muted-note">${escapeHtml(tr('smart.noVideoModel'))}</div>`}
-      </div>
-    </div>
-  </div>`;
+function renderVideoEngineModelCombo(models) {
+    return CanvasParamControls.renderVideoEngineModelCombo.apply(null, arguments);
 }
 function renderApiVideoParams(){
     normalizeHiddenVideoToggles();
@@ -6825,49 +6679,15 @@ function videoAspectIconClass(value){
     if(value === 'keep_ratio' || value === 'adaptive') return 'r-source';
     return '';
 }
-function renderProviderControl(providers){
-    const current = (providers || []).find(p => p.id === settings.provider_id) || apiProviderById(settings.provider_id);
-    return `<div class="smart-control provider-control">
-        <button class="smart-pill" type="button"><i data-lucide="plug-zap"></i><span class="sub">${escapeHtml(current?.name || settings.provider_id || tr('smart.platform'))}</span></button>
-        <div class="smart-popover compact-popover">
-            <div class="smart-popover-title">${escapeHtml(tr('smart.apiPlatform'))}</div>
-            <div class="model-list">
-                ${providers.map(p => `<button type="button" class="direct-option ${p.id === settings.provider_id ? 'active' : ''}" data-smart-param="provider_id" data-smart-value="${escapeHtml(p.id)}"><span>${escapeHtml(p.name || p.id)}</span></button>`).join('') || `<div class="muted-note">${escapeHtml(tr('smart.noApiPlatform'))}</div>`}
-            </div>
-        </div>
-    </div>`;
+function renderProviderControl(providers) {
+    return CanvasParamControls.renderProviderControl.apply(null, arguments);
 }
-function renderModelControl(models){
-  const selectedLabel = providerModelDisplayName(settings.provider_id, settings.model || '') || tr('smart.model');
-  return `<div class="smart-control model-control">
-    <button class="smart-pill" type="button"><i data-lucide="sparkles"></i><span class="sub">${escapeHtml(selectedLabel)}</span></button>
-    <div class="smart-popover compact-popover">
-      <div class="smart-popover-title">${escapeHtml(tr('smart.imageModel'))}</div>
-      <div class="model-list">
-        ${models.map(m => `<button type="button" class="direct-option ${m === settings.model ? 'active' : ''}" data-smart-param="model" data-smart-value="${escapeHtml(m)}"><span>${escapeHtml(providerModelDisplayName(settings.provider_id, m))}</span></button>`).join('') || `<div class="muted-note">${escapeHtml(tr('smart.noImageModel'))}</div>`}
-      </div>
-    </div>
-  </div>`;
+function renderModelControl(models) {
+    return CanvasParamControls.renderModelControl.apply(null, arguments);
 }
 // API 单排 v2：引擎+模型合并下拉（无边框 pill）
-function renderEngineModelCombo(models){
-  const engineLabel = smartEngineLabel(settings.engine);
-  const modelLabel = providerModelDisplayName(settings.provider_id, settings.model || '');
-  const engines = smartAvailableEngines().filter(e => e !== 'blender');
-  const currentEngine = settings.engine || engines[0] || 'api';
-  return `<div class="smart-control engine-model-combo" title="平台与模型">
-    <button class="smart-pill" type="button"><span class="sub">${escapeHtml(engineLabel)}${modelLabel ? ` · ${escapeHtml(modelLabel)}` : ''}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
-    <div class="smart-popover engine-model-popover">
-      <div class="smart-popover-title">平台</div>
-      <div class="model-list">
-        ${engines.map(e => `<button type="button" class="direct-option ${e === currentEngine ? 'active' : ''}" data-combo-engine="${escapeHtml(e)}"><span>${escapeHtml(smartEngineLabel(e))}</span></button>`).join('')}
-      </div>
-      <div class="smart-popover-title" style="margin-top:8px">模型</div>
-      <div class="model-list">
-        ${models.map(m => `<button type="button" class="direct-option ${m === settings.model ? 'active' : ''}" data-smart-param="model" data-smart-value="${escapeHtml(m)}"><span>${escapeHtml(providerModelDisplayName(settings.provider_id, m))}</span></button>`).join('') || `<div class="muted-note">${escapeHtml(tr('smart.noImageModel'))}</div>`}
-      </div>
-    </div>
-  </div>`;
+function renderEngineModelCombo(models) {
+    return CanvasParamControls.renderEngineModelCombo.apply(null, arguments);
 }
 // API 单排 v2：规格+数量合并 pill（无边框）
 function renderComboSpecCount(){
