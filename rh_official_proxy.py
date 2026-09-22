@@ -375,7 +375,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.22.comfyconsole11"
+STATIC_VERSION = "2026.09.22.comfyconsole13"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -590,6 +590,16 @@ def write_env_values(updates=None, removals=None):
     ENV_FILE.parent.mkdir(parents=True, exist_ok=True)
     ENV_FILE.write_text("\n".join(result_lines).rstrip() + "\n", encoding="utf-8")
     return read_env_values()
+
+
+def read_env_balance_key():
+    """标准模型 API（flare 等第三方模型）只认企业级 Key：优先「账户余额 API Key」槽。
+
+    与 read_env_key()（RH币工作流通道=会员 Key 优先）分刀；余额槽为空时回退
+    币槽，兼容只配一把 Key 的老配置。"""
+    values = read_env_values()
+    wallet = str(values.get("RUNNINGHUB_API_KEY") or "").strip()
+    return wallet or read_env_key()
 
 
 def read_env_key():
@@ -1015,93 +1025,6 @@ def canvas_agent_augmented_system_prompt(payload):
     return "\n\n".join(parts).strip()
 
 
-def canvas_agent_vision_config():
-    """后台视觉识别配置：主模型不支持视觉时，自动调视觉模型把图片转文字。"""
-    v = APP_CONFIG.get("vision") if isinstance(APP_CONFIG, dict) else {}
-    if not isinstance(v, dict):
-        v = {}
-    enabled = v.get("enabled")
-    if not isinstance(enabled, bool):
-        enabled = str(enabled or "").lower() in ("1", "true", "yes", "on") if enabled not in (None, "") else True
-    deleted = bool(str(v.get("deleted_at") or "").strip())
-    if deleted:
-        # 已删除的视觉平台：模型/地址/Key 一律返回空，不回填默认值（否则前端又显示地址）
-        return {
-            "enabled": False,
-            "model": "",
-            "base_url": "",
-            "api_key": "",
-            "has_key": False,
-            "deleted": True,
-            "deleted_at": str(v.get("deleted_at") or ""),
-            "configured": False,
-        }
-    # configured：用户是否真的配过（model/base_url/api_key 任一非空）。未配过时上面的
-    # model/base_url 只是后端兜底默认值（视觉通道回退智谱免费档），前端不该显示成“已配置”。
-    configured = bool(
-        str(v.get("model") or "").strip()
-        or str(v.get("base_url") or "").strip()
-        or str(v.get("api_key") or "").strip()
-    )
-    return {
-        "enabled": bool(enabled) if enabled is not None else True,
-        "model": str(v.get("model") or "glm-4v-flash").strip() or "glm-4v-flash",
-        "base_url": str(v.get("base_url") or "").strip() or "https://open.bigmodel.cn/api/paas/v4",
-        "api_key": str(v.get("api_key") or "").strip(),
-        "has_key": bool(str(v.get("api_key") or "").strip()),
-        "deleted": deleted,
-        "deleted_at": str(v.get("deleted_at") or ""),
-        "configured": configured,
-    }
-
-
-def save_canvas_agent_vision_config(vision):
-    """保存后台视觉识别配置（app_config.json 顶层 vision 字段）。
-
-    vision={"delete": True} 表示删除视觉平台：清空模型/地址/Key 并关闭视觉识别，
-    不影响任何 API 平台（不写 api_providers.json）。
-    """
-    global APP_CONFIG
-    if not isinstance(vision, dict):
-        return canvas_agent_vision_config()
-    config = dict(APP_CONFIG)
-    if vision.get("delete") is True:
-        config["vision"] = {
-            "enabled": False,
-            "model": "",
-            "base_url": "",
-            "deleted_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        }
-        write_app_config(config)
-        APP_CONFIG = config
-        append_log(LOG_FILE, "[VisionPlatformDeleted] vision config cleared")
-        return canvas_agent_vision_config()
-    base_url = str(vision.get("base_url") or "").strip()
-    api_key = str(vision.get("api_key") or "").strip()
-    model = str(vision.get("model") or "").strip()
-    # 已删除的视觉平台：空字段保存不得用默认值把它“救活”。
-    # 前端删除后输入框是空的，用户再点“保存视觉配置”= 仍是删除态；只有填了内容才算重新配置。
-    prev = config.get("vision") if isinstance(config.get("vision"), dict) else {}
-    if str(prev.get("deleted_at") or "").strip() and not (model or base_url or api_key):
-        config["vision"] = dict(prev)
-        config["vision"]["enabled"] = bool(vision.get("enabled", False))
-        write_app_config(config)
-        APP_CONFIG = config
-        return canvas_agent_vision_config()
-    base_url = base_url or "https://open.bigmodel.cn/api/paas/v4"
-    model = model or "glm-4v-flash"
-    config["vision"] = {
-        "enabled": bool(vision.get("enabled", True)),
-        "model": str(vision.get("model") or "glm-4v-flash").strip() or "glm-4v-flash",
-        "base_url": base_url,
-    }
-    if api_key:
-        config["vision"]["api_key"] = api_key
-    write_app_config(config)
-    APP_CONFIG = config
-    return canvas_agent_vision_config()
-
-
 def canvas_agent_config_payload(include_rules=True):
     return {
         "ok": True,
@@ -1111,7 +1034,6 @@ def canvas_agent_config_payload(include_rules=True):
         "skills": list_canvas_agent_skills(),
         "invocation": {"prefix": "@", "example": "@服装优化"},
         "agents": agents_meta_payload(),
-        "vision": canvas_agent_vision_config(),
     }
 
 
@@ -7468,6 +7390,13 @@ def _agent_sanitize_messages(messages):
                     parts.append(str(block))
             m = dict(m)
             m["content"] = "\n".join(p for p in parts if p)
+        # 协议防御：OpenAI 兼容上游会拒绝 assistant 消息携带空 tool_calls 数组
+        # (400 invalid_parameter_error: Empty tool_calls is not supported in message)。
+        # 历史存档会话里可能已存下 "tool_calls": [] 的坏消息，这里统一剔除，
+        # 保证每轮发出去的 messages 都符合协议。
+        if m.get("role") == "assistant" and "tool_calls" in m and not m.get("tool_calls"):
+            m = dict(m)
+            m.pop("tool_calls", None)
         out.append(m)
     return out
 
@@ -7582,183 +7511,6 @@ def _agent_candidate_interaction_guidance():
         "4. candidates 每次最多 3 个，每个候选**必须带 prompt 字段**（该候选可直接用于图片/视频生成的画面提示词，具体、可视、含主体/场景/光影/镜头）。\n"
         "5. 若用户只是问某一个具体问题、不需要对比选择，则**正常用文本回答**，不要输出 JSON。\n"
     )
-
-
-def _model_supports_vision(model):
-    """判断模型是否原生支持视觉输入（支持则直接传图，否则走后台视觉转文字）。"""
-    m = str(model or "").lower()
-    return any(k in m for k in [
-        "glm-4v", "vl", "vision", "qwen-vl", "qwen2.5-vl", "qwen3-vl",
-        "gpt-4", "gpt-4o", "gpt-4.1", "omni", "gemini", "doubao-1-5-vision",
-        "kimi-latest", "moonshot-v1-8k-vision", "claude-3", "grok-4.1-vision",
-    ])
-
-
-VISION_CACHE = {}
-VISION_CACHE_DIR = USER_DATA_DIR / "data" / "vision_cache"
-
-def _vision_cache_key_file(cache_key):
-    try:
-        digest = hashlib.sha256(cache_key.encode("utf-8")).hexdigest()[:24]
-        return VISION_CACHE_DIR / (digest + ".json")
-    except Exception:
-        return None
-
-def _vision_cache_disk_get(cache_key):
-    try:
-        f = _vision_cache_key_file(cache_key)
-        if f is None or not f.exists():
-            return None
-        data = json.loads(f.read_text(encoding="utf-8"))
-        return data.get("desc") if isinstance(data, dict) else None
-    except Exception:
-        return None
-
-def _vision_cache_disk_put(cache_key, desc):
-    try:
-        f = _vision_cache_key_file(cache_key)
-        if f is None:
-            return
-        VISION_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        f.write_text(json.dumps({"key": cache_key[:64], "desc": desc}, ensure_ascii=False), encoding="utf-8")
-    except Exception:
-        pass
-
-
-def _vision_describe_image(data_url, prompt="请详细描述这张图片的内容：主体、环境、构图、光线、风格、画面中的文字等。用中文回答。"):
-    """后台视觉通道：调视觉模型（默认智谱 glm-4v-flash 免费）把图片转成文字描述。"""
-    vconf = canvas_agent_vision_config()
-    key = str(vconf.get("api_key") or "").strip()
-    if not key:
-        try:
-            key = str((read_env_values() or {}).get("GLM_API_KEY") or "").strip()
-        except Exception:
-            key = ""
-    if not key:
-        return ""
-    base_url = str(vconf.get("base_url") or "https://open.bigmodel.cn/api/paas/v4").strip().rstrip("/")
-    # 视觉识别用图在通道内独立压缩（最长边 1024 / JPEG 80 / 去透明）——
-    # 识别内容足够，比主链路 2048 快 2-4 倍；压缩失败降级用原图。
-    payload_url = str(data_url or "")
-    try:
-        from PIL import Image
-        header, _, b64part = payload_url.partition(",")
-        if ";base64" in header.lower() and b64part:
-            img = Image.open(io.BytesIO(base64.b64decode(b64part)))
-            img.thumbnail((1024, 1024), Image.LANCZOS)
-            if img.mode in ("RGBA", "LA", "P"):
-                img = img.convert("RGB")
-            out = io.BytesIO()
-            img.save(out, format="JPEG", quality=80)
-            payload_url = "data:image/jpeg;base64," + base64.b64encode(out.getvalue()).decode("ascii")
-    except Exception:
-        payload_url = str(data_url or "")
-    # 缓存 key：压缩后图片内容 hash + prompt 前缀（同一素材重复引用秒回）
-    cache_key = ""
-    try:
-        header, _, b64part = payload_url.partition(",")
-        img_bytes = base64.b64decode(b64part) if b64part else b""
-        if img_bytes:
-            cache_key = hashlib.md5(img_bytes).hexdigest() + "|" + prompt[:30]
-    except Exception:
-        cache_key = ""
-    if cache_key:
-        cached = VISION_CACHE.get(cache_key)
-        if cached is None:
-            cached = _vision_cache_disk_get(cache_key)
-            if cached is not None:
-                VISION_CACHE[cache_key] = cached
-        if cached:
-            return cached
-    body = {
-        "model": str(vconf.get("model") or "glm-4v-flash").strip() or "glm-4v-flash",
-        "messages": [{"role": "user", "content": [
-            {"type": "text", "text": prompt},
-            {"type": "image_url", "image_url": {"url": payload_url}},
-        ]}],
-        "temperature": 0.3,
-    }
-    desc = ""
-    try:
-        data = request_json("{}/chat/completions".format(base_url), "POST",
-                            body, headers={"Authorization": "Bearer {}".format(key)}, timeout=120)
-        choices = data.get("choices") or []
-        msg = (choices[0].get("message") if choices and isinstance(choices[0], dict) else {}) or {}
-        desc = str(msg.get("content") or "").strip()
-    except Exception as exc:
-        append_log(LOG_FILE, "vision describe failed: {}".format(exc))
-        desc = ""
-    if desc and cache_key:
-        VISION_CACHE[cache_key] = desc
-        _vision_cache_disk_put(cache_key, desc)
-    return desc
-
-
-def _agent_auto_vision_messages(messages, model):
-    """后台视觉通道入口：主模型不支持视觉时，把 messages 里的图片自动转成文字描述。
-
-    有图时自己走视觉 API（glm-4v-flash 免费），转成文字给主模型读——
-    不需要暴露视觉模型给用户选，也不用等 Agent 手动调 ModLens。
-    """
-    if _model_supports_vision(model):
-        return messages
-    vconf = canvas_agent_vision_config()
-    if not vconf["enabled"]:
-        return messages
-    if not isinstance(messages, list):
-        return messages
-    # 收集所有图片 url（去重）
-    all_urls = []
-    for m in messages:
-        content = m.get("content")
-        if not isinstance(content, list):
-            continue
-        for b in content:
-            if isinstance(b, dict) and b.get("type") == "image_url":
-                u = str((b.get("image_url") or {}).get("url") or "").strip()
-                if u:
-                    all_urls.append(u)
-    unique_urls = list(dict.fromkeys(all_urls))
-    if not unique_urls:
-        return messages
-    # 多图并行描述（单图直接调）
-    desc_map = {}
-    if len(unique_urls) == 1:
-        desc_map[unique_urls[0]] = _vision_describe_image(unique_urls[0])
-    else:
-        try:
-            from concurrent.futures import ThreadPoolExecutor
-            with ThreadPoolExecutor(max_workers=min(4, len(unique_urls))) as ex:
-                futures = {ex.submit(_vision_describe_image, u): u for u in unique_urls}
-                for fut in futures:
-                    desc_map[futures[fut]] = fut.result() or ""
-        except Exception:
-            for u in unique_urls:
-                desc_map[u] = _vision_describe_image(u)
-    # 替换图片块为文字描述
-    seen = set()
-    changed = False
-    for m in messages:
-        content = m.get("content")
-        if not isinstance(content, list):
-            continue
-        new_blocks = []
-        for b in content:
-            if isinstance(b, dict) and b.get("type") == "image_url":
-                url = str((b.get("image_url") or {}).get("url") or "").strip()
-                if url and url not in seen and desc_map.get(url):
-                    seen.add(url)
-                    new_blocks.append({"type": "text", "text": "【引用图片】{}".format(desc_map[url])})
-                    changed = True
-                    continue
-                new_blocks.append(b)
-            else:
-                new_blocks.append(b)
-        if changed:
-            m["content"] = new_blocks
-    if changed:
-        append_log(LOG_FILE, "agent auto-vision: {} image(s) described via GLM (model={})".format(len(desc_map), model))
-    return messages
 
 
 def _codex_bridge_file_suffix(mime_type, fallback=".png"):
@@ -9392,7 +9144,6 @@ def submit_chat(payload):
         _agent_mark_task_failed(task, turn, _exc)
         raise
     messages = normalize_chat_messages(payload)
-    messages = _agent_auto_vision_messages(messages, model)
     messages = _agent_sanitize_messages(messages)
     tools = payload.get("tools") or canvas_agent_tools_schema()
     preset = payload.get("generation_preset")
@@ -9458,7 +9209,9 @@ def submit_chat(payload):
                 violation = _agent_detect_interaction_violation(text)
                 if violation and _interaction_retries < CANVAS_AGENT_MAX_INTERACTION_RETRIES:
                     append_log(LOG_FILE, "agent interaction violation turn={} type={} retrying".format(_turn + 1, violation))
-                    messages.append({"role": "assistant", "content": message.get("content") or "", "tool_calls": []})
+                    # 本轮模型没返回工具调用，回灌时不能带 tool_calls 字段：
+                    # 空数组会被 OpenAI 兼容上游拒收（400 Empty tool_calls is not supported）
+                    messages.append({"role": "assistant", "content": message.get("content") or ""})
                     messages.append({"role": "user", "content": _agent_interaction_correction_prompt(violation)})
                     _interaction_retries += 1
                     continue
@@ -11973,9 +11726,9 @@ def runninghub_probe_payload(payload, action="test"):
 
 
 def submit_official(payload):
-    key = read_env_key()
+    key = read_env_balance_key()
     if not key:
-        raise RuntimeError("未找到 RunningHub API Key，请检查 API/.env")
+        raise RuntimeError("未找到 RunningHub API Key，请在 API 设置填写「账户余额 API Key」（标准模型需企业级 Key）")
     refs = payload.get("reference_images") or []
     provider_id = str(payload.get("provider_id") or "runninghub").strip()
     if provider_id == "custom-api-3":
@@ -11986,6 +11739,10 @@ def submit_official(payload):
     data = _rh_request_with_retry(endpoint, "POST", body, {"Authorization": f"Bearer {key}"}, timeout=120)
     task_id = data.get("taskId") or ""
     if not task_id:
+        if str(data.get("errorCode") or "") == "1014":
+            raise RuntimeError(
+                "标准模型 API 需要企业级 Key：请在 API 设置把企业级 Key 填入「账户余额 API Key」"
+                f"（当前错误：{str(data.get('errorMessage') or '')[:80]}）")
         raise RuntimeError(f"RunningHub 未返回 taskId：{data}")
     return task_id, data
 
@@ -12159,11 +11916,18 @@ def enhance_previz_prompt_with_llm(prompt, payload):
         "【坐标规则】"
         "Blender 地面为 z=0。x 轴：东(+)/西(-)；y 轴：北(+)/南(-)；z 轴：上(+)。"
         "资产位置是落地中心点；人物位置是脚底点。人物、资产、相机必须处在同一个可见空间内。"
+        "全部坐标与尺寸均为米。人物默认身高约 1.7 米；电驱车约 1.9×0.7×1.1 米；普通门洞净高至少 2.1 米；"
+        "早餐铺等小型棚架约 3×2×2.5 米；路边立杆设备高度约 2 至 4 米。"
         "只创建镜头看得见、会遮挡、承托人物、形成构图层次或影响走位的资产；画外和相机背后不创建。"
         "普通物体一件只用一个 box；地面由系统创建，无需输出。"
         "镜头看得见的墙面、窗墙、门墙可用 box；门洞用门洞框，棚架用棚架，车辆用电驱车，路边设备用立杆设备。"
         "【资产输出格式】资产 | 名称 | 类型 | [x,y,z] | [宽,深,高] | 颜色 | 镜头用途。"
         "类型只能使用：box、cylinder、sphere、门洞框、棚架、电驱车、立杆设备。"
+        "【街道尺度规则】只要镜头可见街道、车辆行驶或人物沿街奔跑，就必须输出一条可见路面资产："
+        "资产 | 单向车道 | box | [x,y,0] | [可见长度,3.5,0.04] | 深灰 | Sxx人物走位与车辆行驶承托。"
+        "单向机动车道宽固定 3.5 米；道路沿 y 轴时写 [3.5,可见长度,0.04]。"
+        "车、人、路边资产都必须落在道路或人行区域内：电驱车宽约 0.7 米，车身中心距车道边至少 0.5 米；"
+        "人物横向站位不能与车身重叠。"
         "镜头用途必须写对应镜号及空间职责，例如：S01可见背景墙、S01人物承托、S01前景遮挡、S01前景掠过、S01收束主体。"
         "【前景掠过硬规则】当镜头内容出现“某资产前景掠过”时，该资产用途必须严格写为：Sxx前景掠过。"
         "例如：资产 | 早餐铺棚架 | 棚架 | [3.5,1.0,0] | [2.5,1.5,2.4] | 棕 | S01前景掠过。"
@@ -12182,6 +11946,11 @@ def enhance_previz_prompt_with_llm(prompt, payload):
         "动作只能使用：跟拍、横移、横移加速、横移减速、下压、上升、慢推、变焦、冲击变焦、固定。"
         "第一段从 0 秒开始，最后一段必须在镜头结束秒结束。"
         "人物有终点且存在跟拍时，人物从跟拍开始移动，在跟拍结束时到达终点。"
+        "【速度与避碰硬规则】坐标单位按米规划。人物写“奔跑/冲出/全力跑”时，走位距离应约为每秒 3 至 5 米；"
+        "若镜头先跟拍跑者、后段发生车辆事件，跑者须在车辆动作开始前抵达终点。"
+        "写“高速驶入/飞驰/甩尾急停/漂移”的车辆动作时，车辆路径应约为每秒 5 至 8 米，且至少 5.5 米；"
+        "车辆从镜头外快速进入时，起点可置于画外，终点仍是镜头内的车辆资产位置。"
+        "人物的行走或跑动终点不可落在车辆、墙体、桌子等资产包围盒内；人物在车辆旁收步时，须与车身边缘至少留出 0.8 米。"
         "前景掠过通常与横移时间重叠；例如横移[1-3秒]，系统会在约 2 秒时使前景资产进入画面。"
         "后段冲击变焦、下压或变焦只改变相机，不得让已到终点的人物继续移动。"
         "【空间关系规则】从门洞出来的人物起点必须位于门洞开口范围内。"
@@ -13206,8 +12975,6 @@ class Handler(BaseHTTPRequestHandler):
             if request_path == "/api/canvas-agent-config":
                 if "rules" in payload:
                     write_canvas_agent_rules(payload.get("rules") or "")
-                if "vision" in payload and isinstance(payload.get("vision"), dict):
-                    save_canvas_agent_vision_config(payload["vision"])
                 self._send(200, canvas_agent_config_payload())
                 return
             if request_path == "/api/canvas-agent-skill":

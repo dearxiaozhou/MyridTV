@@ -19,10 +19,10 @@
     <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.06.29.9"></script>
     <script src="/static/vendor/js/lucide.js?v=2026.06.29.9"></script>
     <script src="/static/js/theme.js?v=2026.06.29.9"></script>
-    <script src="/static/js/i18n.js?v=2026.09.20.uifix12"></script>
+    <script src="/static/js/i18n.js?v=2026.09.22.comfyconsole13"></script>
     <link rel="icon" href="/static/images/myrid-icon.png" type="image/png">
     <link rel="stylesheet" href="/static/css/theme.css?v=2026.09.16.skill3col1">
-<link rel="stylesheet" href="/static/css/api-settings.css?v=2026.09.20.uifix12">
+<link rel="stylesheet" href="/static/css/api-settings.css?v=2026.09.22.comfyconsole13">
 <link rel="stylesheet" href="/static/css/api-settings-prism.css?v=2026.09.16.skill3col1">
 </head>
 <body>
@@ -42,7 +42,7 @@ body.prism-api-page .layout { grid-template-columns: 300px minmax(0, 1fr) !impor
             <header class="page-head">
                 <div class="title">API 设置</div>
                 <div class="page-head-meta">
-                    <span class="head-meta-line">平台 <strong id="apiPlatformCount">0</strong><span class="dot-sep">·</span>视觉模型 <strong id="apiAgentCount">1</strong></span>
+                    <span class="head-meta-line">平台 <strong id="apiPlatformCount">0</strong></span>
                     <div id="status" class="head-status-badge" style="display:none"></div>
                 </div>
             </header>
@@ -51,9 +51,7 @@ body.prism-api-page .layout { grid-template-columns: 300px minmax(0, 1fr) !impor
                 <aside class="sidebar">
 <div class="side-section-title" data-i18n="api.providersTitle">自定义平台列表</div>
                     <div id="providerList" class="provider-list"></div>
-<div class="side-section-title agent-side-title">多模态配置</div>
-<div id="agentList" class="provider-list agent-provider-list"></div>
-</aside>
+                    </aside>
 
                 <main id="settingsContent" class="content">
                     <div class="content-head">
@@ -63,56 +61,10 @@ body.prism-api-page .layout { grid-template-columns: 300px minmax(0, 1fr) !impor
 <div class="content-actions">
 <button id="deleteBtn" class="action-btn danger-btn api-page-delete-btn" type="button" onclick="deleteProvider()"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i><span data-i18n="api.delete">删除</span></button>
 <button class="action-btn save-btn api-page-save-btn" type="button" onclick="handlePageSave()"><i data-lucide="save" class="w-3.5 h-3.5"></i><span data-i18n="api.save">保存</span></button>
-<button id="agentSaveBtn" class="action-btn save-btn agent-head-btn" type="button" onclick="saveAgentConfig()"><i data-lucide="save" class="w-3.5 h-3.5"></i><span>保存视觉配置</span></button>
 </div>
 </div>
 
                     <section id="apiConfigSteps" class="api-config-steps" aria-label="API 配置步骤"></section>
-
-                    <section class="block agent-config-block">
-                        <div class="block-head">
-                            <div>
-                                <div class="block-title"><span id="agentBlockTitle">视觉模型配置</span></div>
-                            </div>
-                        </div>
-                        <div class="form agent-config-form">
-                            <div class="field full">
-                                <span class="label">视觉模型</span>
-                                <div class="key-input-line">
-                                    <div class="field-frame">
-                                        <input id="visionModelSelect" list="visionModelList" placeholder="glm-4v-flash（免费，可输入任意视觉模型）">
-                                        <datalist id="visionModelList">
-                                            <option value="glm-4v-flash"></option>
-                                            <option value="glm-4.5v"></option>
-                                            <option value="glm-4v-plus"></option>
-                                            <option value="glm-4v-plus-0111"></option>
-                                            <option value="qwen-vl-plus"></option>
-                                            <option value="qwen-vl-max"></option>
-                                            <option value="doubao-1-5-vision-pro"></option>
-                                            <option value="google/gemini-2.0-flash"></option>
-                                        </datalist>
-                                    </div>
-                                    <div class="key-actions">
-                                        <div class="key-btn vision-enable-box" title="勾选启用视觉识别，不勾选则关闭"><input type="checkbox" id="visionEnabledCheck" checked title="勾选启用视觉识别，不勾选则关闭"></div>
-                                    </div>
-                                </div>
-                            </div>
-                            <label class="field">
-                                <span class="label">地址</span>
-                                <div class="field-frame"><input id="visionBaseInput" type="text" placeholder="https://open.bigmodel.cn/api/paas/v4（默认智谱）"></div>
-                            </label>
-                            <label class="field">
-                                <span class="label">API Key</span>
-                                <div class="key-input-line">
-                                    <div class="field-frame"><input id="visionKeyInput" type="password" placeholder="留空则用环境变量 GLM_API_KEY"></div>
-                                    <div class="key-actions">
-                                        <button class="key-btn" type="button" onclick="saveVisionConfig()" title="保存视觉配置"><i data-lucide="check" class="w-4 h-4"></i></button>
-                                    </div>
-                                </div>
-                                <span id="visionSaveHint" class="hint"></span>
-                            </label>
-                        </div>
-                    </section>
 
                     <section class="block">
                         <div class="block-head">
@@ -466,9 +418,9 @@ body.prism-api-page .layout { grid-template-columns: 300px minmax(0, 1fr) !impor
     </div>
 
 <script src="/static/js/rh-model-aliases.js?v=2026.06.21.rh-alias-fix1"></script>
-<script src="/static/js/api-settings-provider-repair.js?v=2026.09.20.uifix12"></script>
+<script src="/static/js/api-settings-provider-repair.js?v=2026.09.22.comfyconsole13"></script>
 <script src="/static/js/api-settings-picker.js?v=2026.06.22.picker-fresh1"></script>
-<script src="/static/js/api-settings.js?v=2026.09.20.uifix12"></script>
+<script src="/static/js/api-settings.js?v=2026.09.22.comfyconsole13"></script>
 <script src="/static/js/api-settings-prism.js?v=2026.06.29.7"></script>
 </body>
 </html>
