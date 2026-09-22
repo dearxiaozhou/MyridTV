@@ -10,7 +10,9 @@ import os
 import re
 import shutil
 import socket
+import ssl
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -373,7 +375,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.20.uifix10"
+STATIC_VERSION = "2026.09.20.uifix11"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -508,7 +510,7 @@ STATIC_PATCHES = {
         "/static/comfyui-settings.html",
         "/static/asset-manager.html",
     ],
-    ROOT / "static" / "smart-canvas.html": ["/static/css/smart-canvas.css", "/static/js/smart-canvas.js", "/static/js/canvas-node-registry.js", "/static/js/canvas-draft-store.js", "/static/js/i18n.js"],
+    ROOT / "static" / "smart-canvas.html": ["/static/css/smart-canvas.css", "/static/js/smart-canvas.js", "/static/js/canvas-node-registry.js", "/static/js/canvas-draft-store.js", "/static/js/canvas-viewport-engine.js", "/static/js/i18n.js"],
     ROOT / "static" / "canvas.html": [
         "/static/css/canvas.css",
         "/static/css/canvas-prism.css",
@@ -1305,6 +1307,47 @@ def sync_canvas_agent_history_index(canvas_id="", history_list=None, canvas_titl
     return write_canvas_agent_history_index(current)
 
 
+_RH_TLS_CTX_CACHE = {}
+
+
+def _rh_forced_tls_context(url=""):
+    """RunningHub 网关（OpenResty）与部分 OpenSSL 版本（如 3.0.x）的 TLS 1.3 记录层
+    存在兼容缺陷，表现为 SSLV3_ALERT_BAD_RECORD_MAC（同机同网 TLS 1.2 实测 100% 通、
+    TLS 1.3 约半数失败）。对 RH 域名请求强制 TLS 1.2，证书验证保持完整（实测 8/8）。
+
+    2026-09-22 根治画布 Flare 出图「直接报错」。仅匹配 RH 主机名，其它上游不受影响。"""
+    try:
+        host = urllib.parse.urlparse(str(url or "")).hostname or ""
+    except Exception:
+        return None
+    base = runninghub_api_base()
+    rh_host = ""
+    try:
+        rh_host = urllib.parse.urlparse(base).hostname or "runninghub.ai"
+    except Exception:
+        rh_host = "runninghub.ai"
+    if not host or (host != rh_host and not host.endswith(".runninghub.ai") and "runninghub" not in host):
+        return None
+    key = (sys.version_info[:2], ssl.OPENSSL_VERSION)
+    ctx = _RH_TLS_CTX_CACHE.get(key)
+    if ctx is not None:
+        return ctx
+    try:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+        ctx.maximum_version = ssl.TLSVersion.TLSv1_2
+        ctx.load_default_certs()
+        ctx.load_verify_locations(cafile=ssl.get_default_verify_paths().openssl_cafile)
+    except Exception:
+        try:
+            ctx = ssl._create_default_https_context()
+            ctx.maximum_version = ssl.TLSVersion.TLSv1_2
+        except Exception:
+            ctx = None
+    _RH_TLS_CTX_CACHE[key] = ctx
+    return ctx
+
+
 def request_json(url, method="GET", payload=None, headers=None, timeout=120):
     data = None if payload is None else json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, method=method)
@@ -1315,8 +1358,9 @@ def request_json(url, method="GET", payload=None, headers=None, timeout=120):
         req.add_header("Content-Type", "application/json")
     for key, value in (headers or {}).items():
         req.add_header(key, value)
+    ssl_ctx = _rh_forced_tls_context(url)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout, context=ssl_ctx) as resp:
             raw = resp.read().decode("utf-8", "replace")
             return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as exc:
@@ -1405,8 +1449,9 @@ def request_multipart_json(url, fields=None, files=None, headers=None, timeout=1
     req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
     for key, value in (headers or {}).items():
         req.add_header(key, value)
+    ssl_ctx = _rh_forced_tls_context(url)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout, context=ssl_ctx) as resp:
             raw = resp.read().decode("utf-8", "replace")
             return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as exc:
@@ -1445,8 +1490,9 @@ def request_multipart_text(url, fields=None, files=None, headers=None, timeout=1
     req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
     for key, value in (headers or {}).items():
         req.add_header(key, value)
+    ssl_ctx = _rh_forced_tls_context(url)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout, context=ssl_ctx) as resp:
             return resp.read().decode("utf-8", "replace").strip()
     except urllib.error.HTTPError as exc:
         raw = exc.read().decode("utf-8", "replace")
@@ -11283,7 +11329,7 @@ def runninghub_fetch_workflow_config(payload):
     fetch_error = ""
     try:
         key = runninghub_task_key()
-        raw = request_json(
+        raw = _rh_request_with_retry(
             runninghub_api_url("/api/openapi/getJsonApiFormat"),
             "POST",
             {"apiKey": key, "workflowId": workflow_id},
@@ -11858,7 +11904,7 @@ def submit_official(payload):
     model = _agent_select_configured_image_model(provider_id, payload.get("model"), refs)
     endpoint = f"{runninghub_api_base()}/openapi/v2/{model}"
     body = build_official_body(payload, model, refs)
-    data = request_json(endpoint, "POST", body, {"Authorization": f"Bearer {key}"}, timeout=120)
+    data = _rh_request_with_retry(endpoint, "POST", body, {"Authorization": f"Bearer {key}"}, timeout=120)
     task_id = data.get("taskId") or ""
     if not task_id:
         raise RuntimeError(f"RunningHub 未返回 taskId：{data}")
@@ -12047,7 +12093,7 @@ def enhance_previz_prompt_with_llm(prompt, payload):
         "【镜头输出格式】镜头 | 镜号 | 时长 | 景别 | 运镜 | 内容 | 人物 | 相机。"
         "镜号固定为 S01、S02……。景别只能使用：特写、近景、中近景、中景、全景、远景、大远景。"
         "人物格式：静止 名称[x,y,z]颜色姿态=站；移动 名称[x,y,z]→[x,y,z]颜色姿态=站；多人用空格分隔。"
-        "姿态只能使用：站、坐、躺。"
+        "姿态只能使用：站、坐、躺。坐在有动作车辆上的人物必须追加绑定=车辆资产名，例如 周烬[2.0,0.5,0]红姿态=坐绑定=电驱车。"
         "相机格式：相机[x,y,z]→[目标x,目标y,目标z] 焦距mm。"
         "相机目标必须是主角头部、动作关键点或关键道具；禁止指向场景原点、空墙或无关背景。"
         "主体有走位且镜头有跟拍时，相机目标必须锁定该主体，而不是静止配角。"
@@ -12064,7 +12110,7 @@ def enhance_previz_prompt_with_llm(prompt, payload):
         "多人物镜头：主角是相机目标；配角只能作为同画面关系、前景肩部、反应对象或对话对象出现。"
         "车辆有甩尾急停、驶入或漂移时，在内容列镜头节拍后追加："
         "车辆动作：资产名从[x,y,z]→[x,y,z]，朝向=东→南，甩尾急停[开始秒-结束秒]。"
-        "车辆动作终点必须等于车辆资产位置；坐车人物必须贴近车辆终点。"
+        "车辆动作终点必须等于车辆资产位置；坐车人物必须贴近车辆终点，且人物列必须写绑定=该车辆资产名，使人物随车辆位移和转向。"
         "【输出示例】\n"
         "3D预演场景资产\n"
         "资产 | 居民楼门洞 | 门洞框 | [-3.0,0.5,0] | [3.0,0.6,2.4] | 灰 | S01起点通道\n"

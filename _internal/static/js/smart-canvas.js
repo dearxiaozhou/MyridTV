@@ -410,7 +410,6 @@ let nodeClipboard = null;
 let imageClickTimer = null;
 let suppressImageClickUntil = 0;
 let lastMouseWorld = null;
-let lastCanvasPointerClient = null;
 let lastConfigRefreshAt = 0;
 let smartMinimapState = null;
 let minimapOpen = true;
@@ -418,9 +417,6 @@ let smartMinimapDrag = false;
 let minimapRenderFrame = 0;
 let connectionRenderFrame = 0;
 let imageMeasureRenderFrame = 0;
-let viewportApplyFrame = 0;
-let viewportMotionTimer = 0;
-let zoomPreviewState = null;
 let runTimerInterval = null;
 let smartCascadeRunning = false;
 let smartCascadeActiveLoopId = '';
@@ -645,7 +641,6 @@ let panoramaState = {
     loadToken:0
 };
 window.__smartCanvasPanoramaState = panoramaState;
-let viewport = {x:0, y:0, scale:1};
 let settings = {
     engine:'api',
     apiKind:'image',
@@ -5084,10 +5079,21 @@ function isEditableTarget(target){
     const candidates = [target, document.activeElement].filter(Boolean);
     return candidates.some(el => el.closest?.('input, textarea, select, option, [contenteditable="true"], .prompt-input'));
 }
-function safeScale(value){
-    const n = Number(value);
-    return Number.isFinite(n) && n > 0 ? n : 1;
-}
+// ===== 视口内核（canvas-viewport-engine.js）：viewport 权威状态在该模块，这里是主文件侧注入与薄别名 =====
+const viewport = CanvasViewport.viewport;
+CanvasViewport.configure({
+    shell, world,
+    scheduleSave: () => scheduleSave(),
+    scheduleCullCheck: () => scheduleCullCheck(),
+    scheduleMinimapRender: () => scheduleMinimapRender(),
+    scheduleImageUpgrade: () => scheduleImageUpgrade(),
+    closeCreateMenu: () => closeCreateMenu(),
+    getNodes: () => nodes,
+    nodeRect: (n) => nodeRect(n)
+});
+
+// 兼容别名：safeScale 实现已入视口内核
+const safeScale = CanvasViewport.safeScale;
 function nodeScale(node){
     const v = Number(node?.scale);
     if((node?.images || []).length > 1 && v === MEDIA_GROUP_PREVIOUS_DEFAULT_SCALE) return MEDIA_GROUP_DEFAULT_SCALE;
@@ -5449,40 +5455,16 @@ function upgradeVisibleImageSources(){
     return upgraded;
 }
 function applyViewport(){
-    world.style.transform = `translate3d(${viewport.x}px, ${viewport.y}px, 0) scale(${viewport.scale})`;
-    shell.classList.add('viewport-motion');
-    world.classList.add('is-viewport-motion');
-    clearTimeout(viewportMotionTimer);
-    viewportMotionTimer = setTimeout(() => {
-        shell.classList.remove('viewport-motion');
-        // 摘掉合成层提升 + 强制回流，让 Chrome 按最终缩放重新栅格化，文字恢复清晰
-        world.classList.remove('is-viewport-motion');
-        void world.offsetWidth;
-        scheduleCullCheck();
-        scheduleImageUpgrade();
-        scheduleMinimapRender();
-    }, 140);
-    scheduleCullCheck();
+    CanvasViewport.applyViewport();
 }
 function scheduleViewportApply(){
-    if(viewportApplyFrame) return;
-    viewportApplyFrame = requestAnimationFrame(() => {
-        viewportApplyFrame = 0;
-        applyViewport();
-    });
+    CanvasViewport.scheduleViewportApply();
 }
 function screenToWorld(event){
-    const rect = shell.getBoundingClientRect();
-    return {
-        x:(event.clientX - rect.left - viewport.x) / viewport.scale,
-        y:(event.clientY - rect.top - viewport.y) / viewport.scale
-    };
+    return CanvasViewport.screenToWorld(event);
 }
 function viewportCenter(){
-    return {
-        x:(shell.clientWidth / 2 - viewport.x) / viewport.scale,
-        y:(shell.clientHeight / 2 - viewport.y) / viewport.scale
-    };
+    return CanvasViewport.viewportCenter();
 }
 function scheduleMinimapRender(){
     if(minimapRenderFrame) return;
@@ -5587,124 +5569,37 @@ window.addEventListener('message', function(event){
 });
 
 function centerViewportOnWorldPoint(point){
-    viewport.x = shell.clientWidth / 2 - point.x * viewport.scale;
-    viewport.y = shell.clientHeight / 2 - point.y * viewport.scale;
-    applyViewport();
-    scheduleSave();
+    CanvasViewport.centerViewportOnWorldPoint(point);
 }
 function fitAllNodesViewport(){
-    if(!nodes.length){
-        viewport.scale = 0.45;
-        viewport.x = shell.clientWidth / 2;
-        viewport.y = shell.clientHeight / 2;
-        applyViewport();
-        scheduleSave();
-        return;
-    }
-    const rects = nodes.map(nodeRect);
-    const minX = Math.min(...rects.map(r => r.x));
-    const minY = Math.min(...rects.map(r => r.y));
-    const maxX = Math.max(...rects.map(r => r.x + r.width));
-    const maxY = Math.max(...rects.map(r => r.y + r.height));
-    const pad = 160;
-    const width = Math.max(1, maxX - minX + pad * 2);
-    const height = Math.max(1, maxY - minY + pad * 2);
-    const nextScale = Math.max(0.06, Math.min(0.82, (shell.clientWidth - 80) / width, (shell.clientHeight - 80) / height));
-    const cx = (minX + maxX) / 2;
-    const cy = (minY + maxY) / 2;
-    viewport.scale = nextScale;
-    viewport.x = shell.clientWidth / 2 - cx * viewport.scale;
-    viewport.y = shell.clientHeight / 2 - cy * viewport.scale;
-    applyViewport();
-    scheduleSave();
+    CanvasViewport.fitAllNodesViewport();
 }
 function enterZoomPreview(){
-    if(zoomPreviewState) return;
-    zoomPreviewState = {...viewport};
-    shell.classList.add('zoom-preview');
-    closeCreateMenu();
-    fitAllNodesViewport();
+    CanvasViewport.enterZoomPreview();
 }
 function exitZoomPreview(point=null){
-    if(!zoomPreviewState) return false;
-    const prev = zoomPreviewState;
-    zoomPreviewState = null;
-    shell.classList.remove('zoom-preview');
-    viewport.scale = prev.scale;
-    if(point){
-        viewport.x = shell.clientWidth / 2 - point.x * viewport.scale;
-        viewport.y = shell.clientHeight / 2 - point.y * viewport.scale;
-    } else {
-        viewport.x = prev.x;
-        viewport.y = prev.y;
-    }
-    applyViewport();
-    scheduleSave();
-    return true;
+    return CanvasViewport.exitZoomPreview(point);
 }
 function exitZoomPreviewToNode(nodeId){
-    if(!zoomPreviewState) return false;
-    const node = nodes.find(n => n.id === nodeId);
-    if(!node) return exitZoomPreview();
-    const prev = zoomPreviewState;
-    const rect = nodeRect(node);
-    const cx = rect.x + rect.width / 2;
-    const cy = rect.y + rect.height / 2;
-    const fitScale = Math.min(
-        1.15,
-        (shell.clientWidth - 160) / Math.max(1, rect.width),
-        (shell.clientHeight - 160) / Math.max(1, rect.height)
-    );
-    const readableScale = Math.min(1.15, Math.max(0.72, fitScale));
-    zoomPreviewState = null;
-    shell.classList.remove('zoom-preview');
-    viewport.scale = Math.max(safeScale(prev.scale), readableScale);
-    viewport.x = shell.clientWidth / 2 - cx * viewport.scale;
-    viewport.y = shell.clientHeight / 2 - cy * viewport.scale;
-    applyViewport();
-    scheduleSave();
-    return true;
+    return CanvasViewport.exitZoomPreviewToNode(nodeId);
 }
 function toggleZoomPreview(){
-    if(zoomPreviewState) exitZoomPreview();
-    else enterZoomPreview();
+    CanvasViewport.toggleZoomPreview();
 }
 function isCanvasWheelExcludedTarget(target){
-    return !!target?.closest?.('.composer,.smart-back,.canvas-tool-dock,.canvas-bottom-tools,.image-edit-modal,.asset-panel,.asset-toggle,.style-panel,.style-toggle,.canvas-agent-panel,.canvas-agent-toggle,.smart-log-toggle,.smart-shortcut-toggle,.log-modal,.shortcut-modal,.prompt-template-panel,.prompt-preset-panel');
+    return CanvasViewport.isCanvasWheelExcludedTarget(target);
 }
 function isCanvasWheelScrollableOverlay(target){
-    return !!target?.closest?.('.asset-panel,.asset-grid,.style-panel,.style-grid,.canvas-agent-panel,.canvas-agent-messages,.prompt-template-panel,.prompt-template-list,.prompt-template-preview-content,.mention-picker,.smart-table-wrap,.prompt-node-text,.loop-smart-text,.loop-smart-upstream-text,textarea,[contenteditable="true"]');
+    return CanvasViewport.isCanvasWheelScrollableOverlay(target);
 }
-let smartCanvasScrollLockUntil = 0;
 function resetSmartCanvasRootScroll(){
-    const root = document.scrollingElement || document.documentElement;
-    if(root && (root.scrollTop || root.scrollLeft)){
-        root.scrollTop = 0;
-        root.scrollLeft = 0;
-    }
-    if(document.documentElement){
-        document.documentElement.scrollTop = 0;
-        document.documentElement.scrollLeft = 0;
-    }
-    if(document.body){
-        document.body.scrollTop = 0;
-        document.body.scrollLeft = 0;
-    }
-    if(window.scrollX || window.scrollY) window.scrollTo(0, 0);
-    try { window.parent?.postMessage({type:'smart-canvas-lock-scroll'}, '*'); } catch(_) {}
+    CanvasViewport.resetSmartCanvasRootScroll();
 }
 function lockSmartCanvasRootScroll(){
-    smartCanvasScrollLockUntil = Math.max(smartCanvasScrollLockUntil, performance.now() + 320);
-    resetSmartCanvasRootScroll();
-}
-function maintainSmartCanvasScrollLock(){
-    resetSmartCanvasRootScroll();
-    if(performance.now() < smartCanvasScrollLockUntil) requestAnimationFrame(maintainSmartCanvasScrollLock);
+    CanvasViewport.lockSmartCanvasRootScroll();
 }
 function beginSmartCanvasScrollLock(){
-    const wasInactive = performance.now() >= smartCanvasScrollLockUntil;
-    lockSmartCanvasRootScroll();
-    if(wasInactive) requestAnimationFrame(maintainSmartCanvasScrollLock);
+    CanvasViewport.beginSmartCanvasScrollLock();
 }
 function openImagePreviewFromCanvasDblClick(event){
     if(event.target.closest('.image-delete, .smart-crop-action, .smart-node-action, .smart-image-name-label, .smart-image-name-input, .canvas-group-header, .node-port, button, input, textarea, select')) return false;
@@ -5727,43 +5622,13 @@ function openImagePreviewFromCanvasDblClick(event){
     return true;
 }
 function rememberCanvasPointerClient(event){
-    const rect = shell.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-    if(x < 0 || y < 0 || x > rect.width || y > rect.height) return;
-    lastCanvasPointerClient = {x, y, at:performance.now()};
+    CanvasViewport.rememberCanvasPointerClient(event);
 }
 function canvasWheelAnchorPoint(event){
-    const rect = shell.getBoundingClientRect();
-    const eventX = event.clientX - rect.left;
-    const eventY = event.clientY - rect.top;
-    const eventInside = eventX >= 0 && eventY >= 0 && eventX <= rect.width && eventY <= rect.height;
-    const recentPointer = lastCanvasPointerClient && performance.now() - lastCanvasPointerClient.at < 15000;
-    const point = recentPointer ? lastCanvasPointerClient : {x:eventX, y:eventY};
-    const x = eventInside || recentPointer ? point.x : rect.width / 2;
-    const y = eventInside || recentPointer ? point.y : rect.height / 2;
-    return {
-        x:Math.max(0, Math.min(rect.width, x)),
-        y:Math.max(0, Math.min(rect.height, y))
-    };
+    return CanvasViewport.canvasWheelAnchorPoint(event);
 }
 function zoomViewportAtClientPoint(event){
-    const oldScale = safeScale(viewport.scale);
-    const pointer = canvasWheelAnchorPoint(event);
-    const pointerX = pointer.x;
-    const pointerY = pointer.y;
-    const worldX = (pointerX - viewport.x) / oldScale;
-    const worldY = (pointerY - viewport.y) / oldScale;
-    const deltaPixels = Math.max(-180, Math.min(180, Number(event.deltaY || 0) * (event.deltaMode === 1 ? 16 : 1)));
-    const factor = Math.exp(-deltaPixels * 0.001);
-    const nextScale = Math.max(0.15, Math.min(3, safeScale(oldScale * factor)));
-    if(Math.abs(nextScale - oldScale) < 0.0001) return false;
-    viewport.scale = nextScale;
-    viewport.x = pointerX - worldX * nextScale;
-    viewport.y = pointerY - worldY * nextScale;
-    applyViewport();
-    scheduleSave();
-    return true;
+    return CanvasViewport.zoomViewportAtClientPoint(event);
 }
 function imageProviders(){
     // RunningHub 内置平台带标准生图模型（rhart/seedream 等），需作为生图平台出现在节点；
@@ -10694,7 +10559,7 @@ async function loadCanvas(){
         });
         canvas.connections = cleanedCanvas.connections;
         pruneCanvasObjectReferences();
-        viewport = {...viewport, ...(canvas.viewport || {})};
+        Object.assign(viewport, canvas.viewport || {});
         viewport.scale = safeScale(viewport.scale);
         if(canvas.settings) settings = {...settings, ...canvas.settings};
         canvasDefaultSmartSettings = cloneSmartSettings(settings);
@@ -10779,7 +10644,7 @@ async function restoreCanvasDraftIfNewer(serverCanvas){
         canvas.connections = Array.isArray(draft.connections) ? draft.connections : (canvas.connections || []);
         if(Array.isArray(draft.artifacts)) canvasAgentArtifactsState = draft.artifacts.slice();
         if(draft.inputMode === 'objects' || draft.inputMode === 'connections') canvas.inputMode = draft.inputMode;
-        if(draft.viewport) viewport = {...draft.viewport};
+        if(draft.viewport) Object.assign(viewport, draft.viewport);
         render();
         applyViewport();
         toast(tr('smart.draftRestored'));
@@ -21116,14 +20981,14 @@ if(type === 'loop') return createLoopNode(p.x - 135, p.y - 95);
     return createImageNodeAt(p);
 }
 shell.addEventListener('mousedown', e => {
-    if(!zoomPreviewState) return;
+    if(!CanvasViewport.inZoomPreview()) return;
     if(e.button !== 0) return;
     if(e.target.closest('.composer,.smart-back,.asset-panel,.asset-toggle,.style-panel,.style-toggle,.canvas-tool-dock,.canvas-bottom-tools,.canvas-agent-panel,.canvas-agent-toggle,.smart-log-toggle,.smart-shortcut-toggle,.log-modal,.shortcut-modal,.image-edit-modal,.create-menu,.smart-minimap')) return;
     e.preventDefault();
     e.stopPropagation();
 }, true);
 shell.addEventListener('click', e => {
-    if(!zoomPreviewState) return;
+    if(!CanvasViewport.inZoomPreview()) return;
     if(e.button !== 0) return;
     if(e.target.closest('.composer,.smart-back,.asset-panel,.asset-toggle,.style-panel,.style-toggle,.canvas-tool-dock,.canvas-bottom-tools,.canvas-agent-panel,.canvas-agent-toggle,.smart-log-toggle,.smart-shortcut-toggle,.log-modal,.shortcut-modal,.image-edit-modal,.create-menu,.smart-minimap')) return;
     e.preventDefault();
@@ -21169,7 +21034,7 @@ document.addEventListener('mousemove', e => {
     }
 }, true);
 shell.onmousedown = e => {
-    if(zoomPreviewState && e.button === 0 && !isCanvasOverlayTarget(e.target)) return;
+    if(CanvasViewport.inZoomPreview() && e.button === 0 && !isCanvasOverlayTarget(e.target)) return;
     // 左键点击画布（节点/空白）时主动 blur 输入框，避免焦点残留导致 Del 删除偶发失效（用户要求 2026-08-16）
     if(e.button === 0 && !isEditableTarget(e.target)){
         if(document.activeElement?.blur) document.activeElement.blur();
