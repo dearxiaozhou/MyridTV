@@ -510,7 +510,7 @@ STATIC_PATCHES = {
         "/static/comfyui-settings.html",
         "/static/asset-manager.html",
     ],
-    ROOT / "static" / "smart-canvas.html": ["/static/css/smart-canvas.css", "/static/js/smart-canvas.js", "/static/js/canvas-node-registry.js", "/static/js/canvas-draft-store.js", "/static/js/canvas-viewport-engine.js", "/static/js/canvas-render-scheduler.js", "/static/js/canvas-comfy-job-engine.js", "/static/js/i18n.js"],
+    ROOT / "static" / "smart-canvas.html": ["/static/css/smart-canvas.css", "/static/js/smart-canvas.js", "/static/js/canvas-node-registry.js", "/static/js/canvas-draft-store.js", "/static/js/canvas-viewport-engine.js", "/static/js/canvas-render-scheduler.js", "/static/js/canvas-comfy-job-engine.js", "/static/js/canvas-agent-history-store.js", "/static/js/i18n.js"],
     ROOT / "static" / "canvas.html": [
         "/static/css/canvas.css",
         "/static/css/canvas-prism.css",
