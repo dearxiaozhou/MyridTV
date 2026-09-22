@@ -13,7 +13,7 @@
     })();
   </script>
   <script src="/static/js/theme.js?v=2026.06.21"></script>
-  <script src="/static/js/i18n.js?v=2026.09.20.uifix11"></script>
+  <script src="/static/js/i18n.js?v=2026.09.20.uifix12"></script>
   <style>
     :root {
       --line: rgba(255, 255, 255, 0.1);
@@ -403,6 +403,12 @@ transition: transform 0.22s ease, opacity 0.22s ease;
     .tc-meta b { color: var(--text); font-weight: 800; }
     .tc-detail { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 3px; font-size: 10px; color: var(--muted); opacity: 0.85; }
     .tc-detail b { color: var(--text); font-weight: 600; }
+    .tc-params { margin-top: 5px; font-size: 10px; color: var(--muted); }
+    .tc-params summary { cursor: pointer; color: var(--dock-accent, #50708c); font-weight: 700; user-select: none; }
+    .tc-params[open] { background: rgba(255,255,255,0.03); border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; max-height: 180px; overflow-y: auto; }
+    html.theme-light .tc-params[open] { background: rgba(0,0,0,0.03); }
+    .tc-param-line { padding: 1px 0; word-break: break-all; border-bottom: 1px dashed var(--line); }
+    .tc-param-line:last-child { border-bottom: none; }
     .tc-stat.run .tc-stat-num { color: #4ade80; }
     html.theme-light .tc-stat.run .tc-stat-num { color: #16a34a; }
     .tc-err { margin-top: 5px; font-size: 10px; color: #fca5a5; white-space: pre-wrap; word-break: break-all; }
@@ -419,16 +425,16 @@ transition: transform 0.22s ease, opacity 0.22s ease;
 <body>
   <main class="app-shell">
     <section class="stage" aria-label="内容区域">
-  <iframe id="frame-canvas" data-page="canvas" data-src="/static/canvas.html?v=2026.09.20.uifix11" scrolling="yes"></iframe>
+  <iframe id="frame-canvas" data-page="canvas" data-src="/static/canvas.html?v=2026.09.20.uifix12" scrolling="yes"></iframe>
       <iframe id="frame-zimage" data-page="zimage" data-src="/static/zimage.html?v=2026.06.21" scrolling="yes"></iframe>
       <iframe id="frame-enhance" data-page="enhance" data-src="/static/enhance.html?v=2026.06.21" scrolling="yes"></iframe>
       <iframe id="frame-klein" data-page="klein" data-src="/static/klein.html?v=2026.06.21" scrolling="yes"></iframe>
       <iframe id="frame-angle" data-page="angle" data-src="/static/angle.html?v=2026.06.21" scrolling="yes"></iframe>
-      <iframe id="frame-online" data-page="online" data-src="/static/online.html?v=2026.09.20.uifix11" scrolling="yes"></iframe>
-      <iframe id="frame-asset-manager" data-page="asset-manager" data-src="/static/asset-manager.html?v=2026.09.20.uifix11" scrolling="yes"></iframe>
-      <iframe id="frame-api-settings" data-page="api-settings" data-src="/static/api-settings.html?v=2026.09.20.uifix11" scrolling="yes"></iframe>
-    <iframe id="frame-comfyui-settings" data-page="comfyui-settings" data-src="/static/comfyui-settings.html?v=2026.09.20.uifix11" scrolling="yes"></iframe>
-<iframe id="frame-smart-canvas" data-page="smart-canvas" data-src="/static/smart-canvas.html?v=2026.09.20.uifix11" scrolling="no"></iframe>
+      <iframe id="frame-online" data-page="online" data-src="/static/online.html?v=2026.09.20.uifix12" scrolling="yes"></iframe>
+      <iframe id="frame-asset-manager" data-page="asset-manager" data-src="/static/asset-manager.html?v=2026.09.20.uifix12" scrolling="yes"></iframe>
+      <iframe id="frame-api-settings" data-page="api-settings" data-src="/static/api-settings.html?v=2026.09.20.uifix12" scrolling="yes"></iframe>
+    <iframe id="frame-comfyui-settings" data-page="comfyui-settings" data-src="/static/comfyui-settings.html?v=2026.09.20.uifix12" scrolling="yes"></iframe>
+<iframe id="frame-smart-canvas" data-page="smart-canvas" data-src="/static/smart-canvas.html?v=2026.09.20.uifix12" scrolling="no"></iframe>
     </section>
 
     <button class="dock-toggle left" type="button" onclick="toggleBottomDock()" title="向下收起/显示底部菜单">
@@ -442,7 +448,7 @@ transition: transform 0.22s ease, opacity 0.22s ease;
       <button class="dock-logo" type="button" onclick="goHomeCanvas()" title="返回主页面"><img src="/static/images/myrid-icon-dock.png?v=20260629" alt="MyridTV"></button>
       <button class="dock-pill" type="button" onclick="toggleTheme()" id="dock-theme-btn" title="深色模式"><span class="dock-icon">TH</span><span class="dock-pill-label">深色模式</span></button>
       <button class="dock-pill" type="button" onclick="toggleTaskConsole()" id="dock-console-btn" title="任务控制台"><span class="dock-icon">TC</span><span class="dock-pill-label">控制台</span></button>
-        <button class="dock-pill dock-version" type="button" disabled title="版本"><span class="dock-icon">V</span><span class="dock-pill-label app-version">版本：V0.3.24</span></button>
+        <button class="dock-pill dock-version" type="button" disabled title="版本"><span class="dock-icon">V</span><span class="dock-pill-label app-version">版本：V0.3.27</span></button>
     </nav>
 
     <button class="dock-toggle right" type="button" onclick="toggleBottomDock()" title="向下收起/显示底部菜单">
@@ -822,7 +828,7 @@ function toggleTaskConsole() {
 }
 
 function tcStatusText(s) {
-    return ({ running: '运行中', queued: '排队', succeeded: '完成', failed: '失败', cancelled: '已停止', unknown: '未知' })[s] || s;
+    return ({ running: '运行中', queued: '排队', succeeded: '完成', failed: '失败', cancelled: '已停止', interrupted: '已中断', unknown: '未知' })[s] || s;
 }
 
 function tcFmtTime(ts) {
@@ -966,7 +972,15 @@ function tcRender() {
                 (t.duration ? '<span>耗时 <b>' + tcFmtDur(t.duration) + '</b></span>' : '') +
                 (t.checked_at ? '<span>更新 <b>' + tcFmtTime(t.checked_at) + '</b></span>' : '') +
                 '</div>';
-            var canStop = t.status === 'running';
+            // ComfyUI 提交参数区（默认折叠两行摘要，点开看全部）
+            var paramsHtml = '';
+            if (t.params && Array.isArray(t.params.flat) && t.params.flat.length) {
+                var esc = function (x) { return String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+                var items = t.params.flat.map(function (line) { return '<div class="tc-param-line">' + esc(line) + '</div>'; }).join('');
+                var bypass = t.params.modes ? Object.keys(t.params.modes).length : 0;
+                paramsHtml = '<details class="tc-params" onclick="event.stopPropagation()"><summary>提交参数（' + t.params.flat.length + ' 项' + (bypass ? ' · 旁路 ' + bypass + ' 节点' : '') + '）</summary>' + items + '</details>';
+            }
+            var canStop = t.status === 'running' || t.status === 'queued';
             return '<div class="tc-item' + (sel ? ' selected' : '') + '" onclick="tcToggleSel(\'' + t.task_id + '\')">' +
                 '<div class="tc-item-top">' +
                 '<span class="tc-kind">' + t.kind + '</span>' +
@@ -975,7 +989,7 @@ function tcRender() {
                 '<span class="tc-time-col"><span class="tc-time">' + tcFmtTime(t.created_at) + '</span>' +
                 ((t.node_id && t.canvas_id) ? '<button type="button" class="tc-btn tc-btn-ghost tc-locate" title="定位到画布节点" onclick="tcLocateTask(event,\'' + t.canvas_id + '\',\'' + t.node_id + '\',\'' + t.kind + '\')">定位</button>' : '') +
                 '</span>' +
-                '</div>' + meta + detail +
+                '</div>' + meta + detail + paramsHtml +
                 (t.error ? '<div class="tc-err" title="' + t.error + '">' + t.error + '</div>' : '') +
                 (canStop ? '<button type="button" class="tc-btn tc-btn-danger tc-stop-one" onclick="tcStopOne(event,\'' + t.task_id + '\')">停止</button>' : '') +
                 '</div>';

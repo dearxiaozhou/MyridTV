@@ -375,7 +375,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.20.uifix11"
+STATIC_VERSION = "2026.09.20.uifix12"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -510,7 +510,7 @@ STATIC_PATCHES = {
         "/static/comfyui-settings.html",
         "/static/asset-manager.html",
     ],
-    ROOT / "static" / "smart-canvas.html": ["/static/css/smart-canvas.css", "/static/js/smart-canvas.js", "/static/js/canvas-node-registry.js", "/static/js/canvas-draft-store.js", "/static/js/canvas-viewport-engine.js", "/static/js/i18n.js"],
+    ROOT / "static" / "smart-canvas.html": ["/static/css/smart-canvas.css", "/static/js/smart-canvas.js", "/static/js/canvas-node-registry.js", "/static/js/canvas-draft-store.js", "/static/js/canvas-viewport-engine.js", "/static/js/canvas-render-scheduler.js", "/static/js/i18n.js"],
     ROOT / "static" / "canvas.html": [
         "/static/css/canvas.css",
         "/static/css/canvas-prism.css",
@@ -2023,6 +2023,71 @@ def _task_console_origin(task_id, state):
     return str(state.get("source") or "画布节点执行")
 
 
+def _comfy_console_items():
+    """把 ComfyUI 独立账本（comfy_flow_service.MANAGER）映射成控制台条目。
+
+    只读合并，不写 TASKS、不改 ComfyJob 存储 —— ComfyUI 与主账本就是两套落盘。
+    task_id 前缀 comfy: 供 /api/task-console-stop 反解出 job_id 走 MANAGER.cancel。
+    """
+    items = []
+    try:
+        jobs = comfy_flow_service.MANAGER.list_jobs(limit=500)
+    except Exception as exc:
+        append_log(LOG_FILE, f"comfy console merge failed: {exc}")
+        return items
+    status_map = {
+        "queued": "queued",
+        "running": "running",
+        "done": "succeeded",
+        "error": "failed",
+        "cancelled": "cancelled",
+        "gone": "interrupted",
+    }
+    for job in jobs:
+        if not isinstance(job, dict):
+            continue
+        meta = job.get("meta") if isinstance(job.get("meta"), dict) else {}
+        out_count = len(job.get("images") or []) + len(job.get("videos") or [])
+        created_ts = _task_console_ts(job.get("created_at"))
+        finished_ts = _task_console_ts(job.get("finished_at"))
+        duration = None
+        if created_ts and finished_ts and finished_ts >= created_ts:
+            duration = int(finished_ts - created_ts)
+        items.append({
+            "task_id": "comfy:" + str(job.get("job_id") or ""),
+            "kind": "ComfyUI",
+            "status": status_map.get(str(job.get("status") or ""), "unknown"),
+            "platform": "ComfyUI",
+            "model": str(job.get("workflow_name") or "—"),
+            "resolution": "—",
+            "count": max(1, out_count) if out_count else 1,
+            "origin": str(meta.get("origin") or "ComfyUI 工作流"),
+            "canvas_id": str(meta.get("canvas_id") or ""),
+            "canvas_title": str(meta.get("canvas_title") or ""),
+            "node_id": str(meta.get("node_id") or ""),
+            "node_title": str(meta.get("node_title") or ""),
+            "mode": str(meta.get("mode") or "comfy"),
+            "ratio": "",
+            "quality": "",
+            "provider_task_id": str(job.get("prompt_id") or ""),
+            "created_at": created_ts,
+            "completed_at": finished_ts,
+            "checked_at": _task_console_ts(job.get("finished_at") or job.get("started_at")),
+            "duration": duration,
+            "error": str(job.get("error") or "")[:2000],
+            "outputs": out_count,
+            "progress": job.get("progress"),
+            "current_node": str(job.get("current_node_title") or job.get("current_node") or ""),
+            "risks": [],
+            "params": {
+                "flat": meta.get("params_flat") if isinstance(meta.get("params_flat"), list) else [],
+                "modes": meta.get("modes") if isinstance(meta.get("modes"), dict) else {},
+                "node_titles": meta.get("node_titles") if isinstance(meta.get("node_titles"), dict) else {},
+            },
+        })
+    return items
+
+
 def task_console_snapshot():
     now = time.time()
     items = []
@@ -2072,6 +2137,7 @@ def task_console_snapshot():
             "outputs": len(out_images) + len(out_videos),
             "risks": _task_console_risks(tid, st),
         })
+    items.extend(_comfy_console_items())
     items.sort(key=lambda x: _task_console_ts(x.get("created_at")), reverse=True)
     # 统计：今日
     day_start = time.mktime(time.localtime(now)[:3] + (0, 0, 0, 0, 0, 0))
@@ -2110,6 +2176,19 @@ def task_console_stop(payload):
     if not task_ids and payload.get("task_id"):
         task_ids = [payload.get("task_id")]
     stopped, missing = [], []
+    # ComfyUI 任务（comfy:<job_id>）走独立账本的 cancel，不查 TASKS
+    comfy_ids = [str(t or "").strip() for t in task_ids if str(t or "").startswith("comfy:")]
+    for cid in comfy_ids:
+        job_id = cid.split(":", 1)[1]
+        try:
+            job = comfy_flow_service.MANAGER.cancel(job_id)
+        except Exception:
+            job = None
+        if job:
+            stopped.append(cid)
+        else:
+            missing.append(cid)
+    task_ids = [t for t in task_ids if not str(t or "").startswith("comfy:")]
     with TASKS_LOCK:
         for tid in task_ids:
             tid = str(tid or "").strip()
@@ -12093,7 +12172,8 @@ def enhance_previz_prompt_with_llm(prompt, payload):
         "【镜头输出格式】镜头 | 镜号 | 时长 | 景别 | 运镜 | 内容 | 人物 | 相机。"
         "镜号固定为 S01、S02……。景别只能使用：特写、近景、中近景、中景、全景、远景、大远景。"
         "人物格式：静止 名称[x,y,z]颜色姿态=站；移动 名称[x,y,z]→[x,y,z]颜色姿态=站；多人用空格分隔。"
-        "姿态只能使用：站、坐、躺。坐在有动作车辆上的人物必须追加绑定=车辆资产名，例如 周烬[2.0,0.5,0]红姿态=坐绑定=电驱车。"
+        "姿态只能使用：站、坐、躺。坐在有动作车辆上的人物仍只写车辆最终停位的地面坐标，例如 周烬[2.0,0.5,0]红姿态=坐；"
+        "不得手填座位高度或绑定字段。只要内容写“跨坐车上/坐在车上/骑在车上”且该车有车辆动作，后端会自动绑定人物并放到座垫锚点。"
         "相机格式：相机[x,y,z]→[目标x,目标y,目标z] 焦距mm。"
         "相机目标必须是主角头部、动作关键点或关键道具；禁止指向场景原点、空墙或无关背景。"
         "主体有走位且镜头有跟拍时，相机目标必须锁定该主体，而不是静止配角。"
@@ -12110,7 +12190,8 @@ def enhance_previz_prompt_with_llm(prompt, payload):
         "多人物镜头：主角是相机目标；配角只能作为同画面关系、前景肩部、反应对象或对话对象出现。"
         "车辆有甩尾急停、驶入或漂移时，在内容列镜头节拍后追加："
         "车辆动作：资产名从[x,y,z]→[x,y,z]，朝向=东→南，甩尾急停[开始秒-结束秒]。"
-        "车辆动作终点必须等于车辆资产位置；坐车人物必须贴近车辆终点，且人物列必须写绑定=该车辆资产名，使人物随车辆位移和转向。"
+        "车辆动作终点必须等于车辆资产位置；坐车人物必须写在车辆终点附近。车辆的起始朝向必须与从起点到终点的主要移动方向一致；"
+        "甩尾急停时结束朝向可与移动方向不同。"
         "【输出示例】\n"
         "3D预演场景资产\n"
         "资产 | 居民楼门洞 | 门洞框 | [-3.0,0.5,0] | [3.0,0.6,2.4] | 灰 | S01起点通道\n"
@@ -13210,6 +13291,13 @@ class Handler(BaseHTTPRequestHandler):
                         payload.get("modes") if isinstance(payload.get("modes"), dict) else {},
                         payload.get("prefs") if isinstance(payload.get("prefs"), dict) else {},
                         str(payload.get("client_id") or ""),
+                        meta={
+                            "canvas_id": str(payload.get("canvas_id") or "").strip(),
+                            "canvas_title": str(payload.get("canvas_title") or "").strip(),
+                            "node_id": str(payload.get("node_id") or "").strip(),
+                            "node_title": str(payload.get("node_title") or "").strip(),
+                            "origin": str(payload.get("origin") or "comfyui").strip(),
+                        },
                     )
                     self._send(200, {"ok": True, **job.to_dict()})
                 except ComfyCompileError as exc:

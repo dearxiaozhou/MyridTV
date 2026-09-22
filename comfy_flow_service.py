@@ -272,11 +272,13 @@ def _ws_endpoint():
 
 
 class ComfyJob:
-    def __init__(self, job_id, workflow_name, prompt, client_id=""):
+    def __init__(self, job_id, workflow_name, prompt, client_id="", meta=None):
         self.id = job_id
         self.workflow_name = workflow_name
         self.prompt = prompt
         self.client_id = client_id
+        # 提交参数快照（overrides/modes/refs 计数等），供任务控制台展示"当时提交了什么"
+        self.meta = meta if isinstance(meta, dict) else {}
         self.status = STATUS_QUEUED
         self.progress = 0
         self.current_node = ""
@@ -297,6 +299,7 @@ class ComfyJob:
             "job_id": self.id,
             "workflow_name": self.workflow_name,
             "status": self.status,
+            "meta": self.meta,
             "progress": self.progress,
             "current_node": self.current_node,
             "current_node_title": self.current_node_title,
@@ -337,7 +340,7 @@ class JobManager:
             for job_id, item in raw.items():
                 if not isinstance(item, dict):
                     continue
-                job = ComfyJob(str(job_id), str(item.get("workflow_name") or ""), {}, "")
+                job = ComfyJob(str(job_id), str(item.get("workflow_name") or ""), {}, "", meta=item.get("meta") if isinstance(item.get("meta"), dict) else {})
                 job.prompt_id = str(item.get("prompt_id") or "")
                 try:
                     job.created_at = float(item.get("created_at") or now)
@@ -375,6 +378,7 @@ class JobManager:
                         "images": list(job.images),
                         "videos": list(job.videos),
                         "error": job.error,
+                        "meta": job.meta,
                     }
                     for job in self._jobs.values()
                 }
@@ -387,8 +391,8 @@ class JobManager:
         except Exception:
             pass
 
-    def submit(self, workflow_name, prompt, client_id="", node_titles=None):
-        job = ComfyJob(uuid.uuid4().hex[:12], workflow_name, prompt, client_id)
+    def submit(self, workflow_name, prompt, client_id="", node_titles=None, meta=None):
+        job = ComfyJob(uuid.uuid4().hex[:12], workflow_name, prompt, client_id, meta=meta)
         with self._lock:
             self._jobs[job.id] = job
             self._prune()
@@ -585,7 +589,7 @@ def _save_asset(item, prompt_id, kind):
 MANAGER = JobManager()
 
 
-def submit_job(workflow_record, overrides=None, modes=None, prefs=None, client_id=""):
+def submit_job(workflow_record, overrides=None, modes=None, prefs=None, client_id="", meta=None):
     """编译 + 提交，返回 job 字典。工作流图在这里被改写成最终 prompt。"""
     from comfy_flow_compiler import describe_workflow  # 局部导入保持模块边界清晰
 
@@ -597,11 +601,57 @@ def submit_job(workflow_record, overrides=None, modes=None, prefs=None, client_i
     titles = {}
     for item in describe_workflow(workflow, object_info, prefs):
         titles[item["id"]] = item["title"]
+    job_meta = {
+        "overrides": _compact_param_map(overrides),
+        "modes": dict(modes or {}),
+        "prefs": dict(prefs or {}),
+        "node_titles": {str(k): str(v) for k, v in (titles or {}).items()},
+        "params_flat": _flatten_overrides(overrides, titles),
+    }
+    if isinstance(meta, dict):
+        job_meta.update(meta)
     job = MANAGER.submit(
         str(workflow_record.get("name") or ""),
         prompt,
         client_id,
         node_titles=titles,
+        meta=job_meta,
     )
     job.report = report
     return job
+
+
+def _flatten_overrides(overrides, node_titles=None, max_len=200):
+    """把 {节点id: {输入名: 值}} 展平成 ["节点标题.输入名 = 值", ...]，供控制台展示。
+
+    提示词类长文本截断；节点 id 翻译成人类可读标题（拿不到标题时退回 id）。
+    """
+    titles = {str(k): str(v) for k, v in (node_titles or {}).items()}
+    flat = []
+    for node_id, inputs in (overrides or {}).items():
+        label = titles.get(str(node_id), str(node_id))
+        if not isinstance(inputs, dict):
+            continue
+        for input_name, value in inputs.items():
+            if isinstance(value, (dict, list)):
+                value = json.dumps(value, ensure_ascii=False)
+            text = str(value if value is not None else "")
+            if len(text) > max_len:
+                text = text[:max_len] + "…"
+            flat.append("{}.{} = {}".format(label, input_name, text))
+            if len(flat) >= 40:
+                return flat
+    return flat
+
+
+def _compact_param_map(mapping, max_len=400):
+    """参数快照压缩：值截断，总键数封顶，避免超长提示词/二进制值撑爆落盘。"""
+    out = {}
+    for key, value in (mapping or {}).items():
+        if isinstance(value, (dict, list)):
+            value = json.dumps(value, ensure_ascii=False)
+        text = str(value if value is not None else "")
+        out[str(key)] = text if len(text) <= max_len else text[:max_len] + "…"
+        if len(out) >= 60:
+            break
+    return out

@@ -144,7 +144,6 @@ audio,
     }
 }
 installAudioThumbCleanup();
-let minimapViewport = document.getElementById('minimapViewport');
 let canvas = null;
 let nodes = [];
 // ============ 节点单一写入口（nodeStore）============
@@ -411,10 +410,6 @@ let imageClickTimer = null;
 let suppressImageClickUntil = 0;
 let lastMouseWorld = null;
 let lastConfigRefreshAt = 0;
-let smartMinimapState = null;
-let minimapOpen = true;
-let smartMinimapDrag = false;
-let minimapRenderFrame = 0;
 let connectionRenderFrame = 0;
 let imageMeasureRenderFrame = 0;
 let runTimerInterval = null;
@@ -5079,6 +5074,31 @@ function isEditableTarget(target){
     const candidates = [target, document.activeElement].filter(Boolean);
     return candidates.some(el => el.closest?.('input, textarea, select, option, [contenteditable="true"], .prompt-input'));
 }
+// ===== 渲染调度与小地图（canvas-render-scheduler.js）：主文件侧注入 =====
+CanvasRenderScheduler.configure({
+    shell, world,
+    viewport: CanvasViewport.viewport,
+    getNodes: () => nodes,
+    nodeRect: (n) => nodeRect(n),
+    canvasObjectsMode: () => canvasObjectsMode(),
+    canvasThumbnailUrl: (u, e2) => canvasThumbnailUrl(u, e2),
+    forceNodeIds: () => {
+        const force = [];
+        if(selectedId) force.push(selectedId);
+        (selectedIds || []).forEach(id => force.push(id));
+        if(dragState?.id) force.push(dragState.id);
+        (dragState?.groupIds || []).forEach(id => force.push(id));
+        if(resizeState?.id) force.push(resizeState.id);
+        if(uploadTargetId) force.push(uploadTargetId);
+        return force;
+    },
+    isInteracting: () => !!(dragState || resizeState || portDragState || thumbDragState),
+    render: () => render(),
+    minimapEl: document.getElementById('minimap'),
+    minimapContentEl: document.getElementById('minimapContent'),
+    minimapToggleEl: document.getElementById('minimapToggle')
+});
+
 // ===== 视口内核（canvas-viewport-engine.js）：viewport 权威状态在该模块，这里是主文件侧注入与薄别名 =====
 const viewport = CanvasViewport.viewport;
 CanvasViewport.configure({
@@ -5304,81 +5324,10 @@ function nodeRect(node){
     const layout = imageLayout(node.images || [], nodeScale(node), node);
     return {x:node.x || 0, y:node.y || 0, width:layout.width, height:layout.height};
 }
-// ── 视口裁剪 ────────────────────────────────────────────────────────────
-// 节点数超过阈值时，DOM 里只保留「视野内 + 外扩缓冲」的节点。
-// 配合 render() 的 renderKey 复用，平移时只有新进入视野的节点会被真正创建，
-// 已经在视野里的节点原地复用，所以平移中的补渲染几乎免费。
-const CULL_MIN_NODES = 80;      // 低于这个数量完全不裁剪，小画布行为与之前一致
-const CULL_MARGIN_RATIO = 0.6;  // 视口四周各外扩 60%，避免边缘闪进闪出
+// （视口裁剪实现已拆入 canvas-render-scheduler.js）
 let nodeRenderStamp = 0;
-let lastCullKey = '';
-let cullCheckTimer = 0;
-let lastCullCheckAt = 0;
-function cullEnabled(){
-    return nodes.length >= CULL_MIN_NODES && !canvasObjectsMode();
-}
-function viewportWorldRect(){
-    const k = safeScale(viewport?.scale);
-    const w = (shell?.clientWidth || window.innerWidth || 1280) / k;
-    const h = (shell?.clientHeight || window.innerHeight || 800) / k;
-    const x = -Number(viewport?.x || 0) / k;
-    const y = -Number(viewport?.y || 0) / k;
-    const mx = w * CULL_MARGIN_RATIO;
-    const my = h * CULL_MARGIN_RATIO;
-    return {x:x - mx, y:y - my, w:w + mx * 2, h:h + my * 2};
-}
-function nodeCullRect(node){
-    const x = Number(node?.x) || 0;
-    const y = Number(node?.y) || 0;
-    let w = Number(node?.w);
-    let h = Number(node?.h);
-    if(!(w > 0) || !(h > 0)){
-        const r = nodeRect(node);
-        w = r.width;
-        h = r.height;
-    }
-    return {x, y, w, h};
-}
 function visibleNodeList(){
-    if(!cullEnabled()) return nodes;
-    const rect = viewportWorldRect();
-    // 选中/正在拖/正在缩放/正在上传的节点永远保留，避免交互目标在 DOM 里失踪
-    const force = new Set();
-    if(selectedId) force.add(selectedId);
-    (selectedIds || []).forEach(id => force.add(id));
-    if(dragState?.id) force.add(dragState.id);
-    (dragState?.groupIds || []).forEach(id => force.add(id));
-    if(resizeState?.id) force.add(resizeState.id);
-    if(uploadTargetId) force.add(uploadTargetId);
-    return nodes.filter(node => {
-        if(force.has(node.id)) return true;
-        const r = nodeCullRect(node);
-        return r.x + r.w > rect.x && r.x < rect.x + rect.w && r.y + r.h > rect.y && r.y < rect.y + rect.h;
-    });
-}
-function cullSignature(){
-    if(!cullEnabled()) return 'off';
-    return visibleNodeList().map(node => node.id).join(',');
-}
-function scheduleCullCheck(){
-    if(!cullEnabled()) return;
-    if(cullCheckTimer) return;
-    const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-    const wait = Math.max(0, 130 - (now - lastCullCheckAt));
-    cullCheckTimer = setTimeout(() => {
-        cullCheckTimer = 0;
-        lastCullCheckAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-        scheduleCullRender();
-    }, wait);
-}
-function scheduleCullRender(){
-    if(!cullEnabled()) return;
-    // 正在输入 / 正在拖拽时不打断用户
-    const active = document.activeElement;
-    if(active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
-    if(dragState || resizeState || portDragState || thumbDragState) return;
-    if(cullSignature() === lastCullKey) return;   // 可见集合没变，一次 render 都不做
-    render();
+    return CanvasRenderScheduler.visibleNodeList();
 }
 function nodeRenderKey(html){
     let h = 2166136261;
@@ -5388,71 +5337,11 @@ function nodeRenderKey(html){
     }
     return (h >>> 0).toString(36);
 }
-// ── 静止后渐进升清 ──────────────────────────────────────────────────────
-// 平移/缩放时继续用低清缩略图（便宜）；视口停稳后按「屏幕实际像素」把视野内的图换成更高分辨率。
-// 关键：只改 img.src，绝不动 HTML 模板里的 src —— 那个参与 renderKey，
-// 一旦随 viewport.scale 变化，每次缩放都会让所有节点 key 失效，把增量复用全部摧毁。
-const UPGRADE_MAX_EDGE = 2048;      // 后端 clamp 已同步放宽到 2048
-const UPGRADE_MEM_BUDGET_MB = 320;  // 一轮升清的位图内存预算，超了就不再升
-let upgradeRafId = 0;
-function scheduleImageUpgrade(){
-    if(upgradeRafId) return;
-    upgradeRafId = requestAnimationFrame(() => {
-        upgradeRafId = 0;
-        upgradeVisibleImageSources();
-    });
+function scheduleCullCheck(){
+    CanvasRenderScheduler.scheduleCullCheck();
 }
-function upgradeVisibleImageSources(){
-    if(!world) return;
-    const imgs = world.querySelectorAll('.image-node img.node-img[data-original-src]');
-    if(!imgs.length) return;
-    const k = safeScale(viewport?.scale);
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const shellW = (shell?.clientWidth || 0) + 200;
-    const shellH = (shell?.clientHeight || 0) + 200;
-    let budget = UPGRADE_MEM_BUDGET_MB;
-    let upgraded = 0;
-    imgs.forEach(imgEl => {
-        const base = Number(imgEl.dataset.baseEdge) || 0;
-        if(!(base > 0)) return;
-        if(imgEl.dataset.upgrading === '1') return;
-        const box = imgEl.getBoundingClientRect();
-        if(box.right < -200 || box.left > shellW || box.bottom < -200 || box.top > shellH) return;
-        const cur = Number(imgEl.dataset.currentEdge) || base;
-        const cssMax = Math.max(parseFloat(imgEl.style.width) || 0, parseFloat(imgEl.style.height) || 0)
-            || (Math.max(box.width, box.height) / (k || 1));
-        if(!(cssMax > 0)) return;
-        let want = Math.ceil(cssMax * k * dpr);
-        if(!(want > cur * 1.15)) return;                      // 提升不明显就不折腾
-        want = Math.max(384, Math.min(UPGRADE_MAX_EDGE, want));
-        if(want <= cur) return;
-        const estMb = (want * want * 4) / 1048576;            // 保守按正方形估算
-        if(estMb > budget) return;
-        const original = imgEl.getAttribute('data-original-src') || '';
-        if(!original) return;
-        budget -= estMb;
-        upgraded += 1;
-        imgEl.dataset.currentEdge = String(want);
-        imgEl.dataset.upgrading = '1';
-        // 先在后台把高清解码好，再替换 src —— 避免先白一下再变清晰
-        const hi = new Image();
-        const applySrc = () => {
-            if(!imgEl.isConnected) return;
-            if(String(imgEl.dataset.currentEdge || '') !== String(want)) return;  // 期间又变了，放弃
-            imgEl.src = hi.src;
-            imgEl.dataset.upgrading = '';
-        };
-        hi.onload = applySrc;
-        hi.onerror = () => {
-            // 高清生成失败就退回低清，绝不能掉到原图上（一张 4K 原图 31.7MB）
-            imgEl.dataset.upgrading = '';
-            imgEl.dataset.currentEdge = String(base);
-            const back = canvasThumbnailUrl(original, base);
-            if(imgEl.getAttribute('src') !== back) imgEl.src = back;
-        };
-        hi.src = canvasThumbnailUrl(original, want);
-    });
-    return upgraded;
+function scheduleImageUpgrade(){
+    CanvasRenderScheduler.scheduleImageUpgrade();
 }
 function applyViewport(){
     CanvasViewport.applyViewport();
@@ -5467,11 +5356,13 @@ function viewportCenter(){
     return CanvasViewport.viewportCenter();
 }
 function scheduleMinimapRender(){
-    if(minimapRenderFrame) return;
-    minimapRenderFrame = requestAnimationFrame(() => {
-        minimapRenderFrame = 0;
-        renderMinimap();
-    });
+    CanvasRenderScheduler.scheduleMinimapRender();
+}
+function renderMinimap(){
+    CanvasRenderScheduler.renderMinimap();
+}
+function minimapEventToWorld(event){
+    return CanvasRenderScheduler.minimapEventToWorld(event);
 }
 function scheduleConnectionLayerRefresh(){
     if(connectionRenderFrame) return;
@@ -5487,54 +5378,6 @@ function scheduleImageMeasureRender(){
         render();
     });
 }
-function renderMinimap(){
-    if(!minimapContent || !minimapViewport) return;
-    const width = minimapContent.clientWidth || 170;
-    const height = minimapContent.clientHeight || 108;
-    const viewW = shell.clientWidth / viewport.scale;
-    const viewH = shell.clientHeight / viewport.scale;
-    const viewX = -viewport.x / viewport.scale;
-    const viewY = -viewport.y / viewport.scale;
-    const rects = nodes.map(nodeRect);
-    // Keep the minimap coordinate system stable. The viewport is an overlay;
-    // using it in these bounds makes the whole minimap resize while zooming.
-    const worldBounds = {x:0, y:0, width:6000, height:4000};
-    const bounds = [worldBounds, ...rects];
-    const minX = Math.min(...bounds.map(r => r.x), -200);
-    const minY = Math.min(...bounds.map(r => r.y), -200);
-    const maxX = Math.max(...bounds.map(r => r.x + r.width), 6200);
-    const maxY = Math.max(...bounds.map(r => r.y + r.height), 4200);
-    const scale = Math.min(width / Math.max(1, maxX - minX), height / Math.max(1, maxY - minY));
-    const offsetX = (width - (maxX - minX) * scale) / 2;
-    const offsetY = (height - (maxY - minY) * scale) / 2;
-    smartMinimapState = {minX, minY, scale, offsetX, offsetY, width, height};
-    const project = r => ({
-        left:offsetX + (r.x - minX) * scale,
-        top:offsetY + (r.y - minY) * scale,
-        width:Math.max(4, r.width * scale),
-        height:Math.max(4, r.height * scale)
-    });
-    const nodeHtml = rects.map(r => {
-        const p = project(r);
-        return `<div class="minimap-node" style="left:${p.left}px;top:${p.top}px;width:${p.width}px;height:${p.height}px"></div>`;
-    }).join('');
-    const view = project({x:viewX, y:viewY, width:viewW, height:viewH});
-    minimapContent.innerHTML = `${nodeHtml}<div id="minimapViewport" class="smart-minimap-viewport" style="left:${view.left}px;top:${view.top}px;width:${view.width}px;height:${view.height}px"></div>`;
-    minimapViewport = document.getElementById('minimapViewport');
-}
-function minimapEventToWorld(event){
-    if(!smartMinimapState) renderMinimap();
-    const state = smartMinimapState;
-    if(!state) return viewportCenter();
-    const rect = minimapContent.getBoundingClientRect();
-    const mx = event.clientX - rect.left;
-    const my = event.clientY - rect.top;
-    return {
-        x:state.minX + (mx - state.offsetX) / Math.max(0.0001, state.scale),
-        y:state.minY + (my - state.offsetY) / Math.max(0.0001, state.scale)
-    };
-}
-
 // ===== 任务控制台定位（tc-locate）=====
 function tcLocateNode(nodeId){
     if(!nodeId) return false;
@@ -12829,7 +12672,7 @@ const html = `<div class="image-node ${isEmpty ? 'empty-node' : ''} ${isGroup ? 
     queueRemoteGeneratedMediaLocalization();
     refreshRunTimerPills();
     installAudioThumbCleanup();
-    lastCullKey = cullSignature();
+    CanvasRenderScheduler.markCullRendered();
     scheduleImageUpgrade();
     return;
     world.innerHTML = '';
@@ -20960,12 +20803,7 @@ function openCreateMenu(event){
     refreshIcons();
 }
 function setMinimapOpen(open){
-    minimapOpen = Boolean(open);
-    minimap?.classList.toggle('is-hidden', !minimapOpen);
-    minimapToggle?.classList.toggle('active', minimapOpen);
-    minimapToggle?.setAttribute('aria-pressed', minimapOpen ? 'true' : 'false');
-    try { localStorage.setItem('smart_canvas_minimap_open', minimapOpen ? '1' : '0'); } catch(_) {}
-    if(minimapOpen) renderMinimap();
+    CanvasRenderScheduler.setMinimapOpen(open);
 }
 function createNodeFromMenu(type){
     const p = createMenuPoint || viewportCenter();
@@ -21108,7 +20946,7 @@ minimap?.addEventListener('mousedown', e => {
     if(e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
-    smartMinimapDrag = true;
+    CanvasRenderScheduler.beginMinimapDrag();
     centerViewportOnWorldPoint(minimapEventToWorld(e));
 });
 function updateNodeDragFrame(e){
@@ -21142,7 +20980,7 @@ window.onmousemove = e => {
         updateConnectionCutGesture(e);
         return;
     }
-    if(smartMinimapDrag){
+    if(CanvasRenderScheduler.inMinimapDrag()){
         e.preventDefault();
         centerViewportOnWorldPoint(minimapEventToWorld(e));
         return;
@@ -21398,8 +21236,8 @@ window.onmouseup = e => {
         scheduleSave();
         setTimeout(() => { didPan = false; }, 0);
     }
-    if(smartMinimapDrag){
-        smartMinimapDrag = false;
+    if(CanvasRenderScheduler.inMinimapDrag()){
+        CanvasRenderScheduler.endMinimapDrag();
     }
     if(dragState){
         const draggedNode = nodes.find(n => n.id === dragState.id);
@@ -21691,10 +21529,7 @@ fileInput.onchange = () => {
     uploadTargetId = '';
     fileInput.value = '';
 };
-try {
-    minimapOpen = localStorage.getItem('smart_canvas_minimap_open') !== '0';
-} catch(_) {}
-setMinimapOpen(minimapOpen);
+setMinimapOpen(CanvasRenderScheduler.isMinimapOpen());
 if(canvasAddToggle) canvasAddToggle.onclick = e => {
     e.preventDefault();
     e.stopPropagation();
@@ -21704,7 +21539,7 @@ if(canvasAddToggle) canvasAddToggle.onclick = e => {
 if(minimapToggle) minimapToggle.onclick = e => {
     e.preventDefault();
     e.stopPropagation();
-    setMinimapOpen(!minimapOpen);
+    setMinimapOpen(!CanvasRenderScheduler.isMinimapOpen());
 };
 if(assetToggle) assetToggle.onclick = () => toggleAssetLibrary();
 if(assetCloseBtn) assetCloseBtn.onclick = () => toggleAssetLibrary(false);
