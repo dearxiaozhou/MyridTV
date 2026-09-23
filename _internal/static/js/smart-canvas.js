@@ -2531,7 +2531,7 @@ canvasAgentMessages.querySelectorAll('[data-agent-run]').forEach(btn => {
             previewCanvasAgentActionPlan(msg.actionPlan, msg.id);
             return;
         }
-        await canvasAgentExecuteRecentNodes();
+        await canvasAgentExecuteRecentNodes(btn.dataset.agentRun);
     };
 });
 canvasAgentMessages.querySelectorAll('[data-bs-pick]').forEach(btn => {
@@ -3755,23 +3755,15 @@ function canvasAgentCreateBrainstormNodes(candidates=[], chosenTitle=''){
 async function canvasAgentRunBrainstormNodes(messageId=''){
     const msg = messageId ? canvasAgentMessagesState.find(m => m.id === messageId) : null;
     const nodeIds = Array.isArray(msg?.brainstormNodeIds) ? msg.brainstormNodeIds : [];
-    const targets = nodeIds.map(id => (nodes || []).find(n => n.id === id)).filter(n => n && n.type === 'smart-image' && !(n.images || []).some(img => img?.url));
+    const targets = nodeIds.map(id => (nodes || []).find(n => n.id === id)).filter(canvasAgentPendingGenNode);
     if(!targets.length){
         toast('未找到待执行的生成节点');
         return;
     }
     msg.brainstormExecuted = true;
     renderCanvasAgentMessages();
-    for(const target of targets){
-        selectedId = target.id;
-        selectedIds = [target.id];
-        render();
-        try{
-            await runGeneration();
-        }catch(e){
-            toast((e.message || '生成失败').slice(0, 160));
-        }
-    }
+    // 候选节点全部并行生成（各用自身 runPrompt），不再借道 composer 逐个 runGeneration
+    await canvasAgentBatchRunNodes(targets);
     if(msg) renderCanvasAgentMessages();
 }
 function canvasAgentCopyMessageText(messageId){
@@ -3936,14 +3928,96 @@ function bindCanvasAgentBrainstormButtons(){
         };
     });
 }
+function canvasAgentPendingGenNode(n){
+    // 「待生成」判据：节点没有「生成结果图」（generatedResult）。
+    // 旧判据 !img?.url 会把 Agent 建节点时挂上的输入参考图当成已有输出，
+    // 导致消息明明建了 3 个节点、执行时却挑不出目标或行为漂移。
+    return Boolean(n && n.type === 'smart-image' && !(n.images || []).some(img => img?.generatedResult));
+}
+async function canvasAgentBatchRunNodes(targets){
+    // 批量生成：各节点用「自己的 runPrompt」并行提交，绝不借道 composer 的 runGeneration。
+    // 旧实现逐个 selectedId=节点 → runGeneration()：会改写 composer 草稿/选中态，
+    // 且首个节点跑完出图后，后续若再回到该节点会被判成「覆盖重跑」，
+    // 把刚生成的图压进历史、新图叠在同一节点上（用户 2026-09-23 报告的根因）。
+    const apiItems = [];
+    const otherNodes = [];
+    for(const node of targets){
+        const rs = smartSettingsForNode(node);
+        const prompt = String(node.runPrompt || node.promptDraftText || '').trim();
+        let refs = Array.isArray(node.runPromptRefs) ? node.runPromptRefs.filter(r => r && r.url) : [];
+        if(!refs.length){
+            // Agent 建的链式节点可能没存 runPromptRefs：回退用上游连线输入（与 composer 首跑同源）
+            try{
+                refs = defaultInputImagesFor(node, false)
+                    .filter(img => img && img.url)
+                    .map(img => ({url:img.url, name:img.name || '图片', nodeId:img.nodeId || '', imageIndex:img.imageIndex ?? '', kind:'image'}));
+            }catch(_){ refs = []; }
+        }
+        const parallelOk = prompt && (isApiLikeEngine(rs.engine) || rs.engine === 'modelscope') && rs.apiKind !== 'video';
+        if(parallelOk) apiItems.push({node, rs:cloneSmartSettings(rs), prompt, refs});
+        else otherNodes.push(node);
+    }
+    let okCount = 0, failCount = 0;
+    const jobs = apiItems.map(async ({node, rs, prompt, refs}) => {
+        const label = node.title || node.id;
+        try{
+            const result = await runApiGeneration(prompt, refs, rs, node);
+            const taskIds = Array.isArray(result?.taskIds) ? result.taskIds.filter(Boolean) : [];
+            if(!taskIds.length) throw new Error('提交生成任务失败');
+            node.pendingTasks = taskIds.map(taskId => ({taskId, kind:'image'}));
+            rememberSmartTaskIds(node, taskIds);
+            node.pending = taskIds.length;
+            node.apiRunning = true;
+            node.runStartedAt = nowMs();
+            delete node.runFinishedAt;
+            delete node.runError;
+            // 与 composer 首跑语义一致：回填前清掉挂在节点上的输入参考图，只留生成结果
+            if(!(node.images || []).some(img => img?.generatedResult)) node.images = [];
+            render();
+            scheduleSave();
+            // 与单节点「运行」共用同一条轮询/回填路径（含即梦排队、失败清理、apiRunning 复位）
+            await resumeSmartPendingNode(node);
+            if((node.images || []).some(img => img?.generatedResult)) okCount += 1;
+            else failCount += 1;
+            render();
+            scheduleSave();
+        }catch(e){
+            node.apiRunning = false;
+            node.runError = (e?.message || '生成失败').slice(0, 160);
+            failCount += 1;
+            toast(`${label}：${node.runError}`);
+            render();
+        }
+    });
+    await Promise.all(jobs);
+    // comfy / runninghub / 无自身提示词的节点：回退到逐个 runGeneration（这些引擎的提交流程依赖 composer 状态）
+    for(const node of otherNodes){
+        try{
+            selectedId = node.id;
+            selectedIds = [node.id];
+            render();
+            await runGeneration();
+            if((node.images || []).some(img => img?.generatedResult)) okCount += 1;
+            else failCount += 1;
+        }catch(e){
+            failCount += 1;
+            toast((e?.message || '生成失败').slice(0, 160));
+        }
+    }
+    if(targets.length > 1 || apiItems.length){
+        toast(`批量生成完成：成功 ${okCount} 个，失败 ${failCount} 个`);
+    }
+    scheduleSave();
+    return {ok: okCount, failed: failCount};
+}
 async function canvasAgentExecuteRecentNodes(messageId=''){
     const msg = messageId ? canvasAgentMessagesState.find(m => m.id === messageId) : null;
-    // 收集本轮对话应执行的全部待生成节点（该消息 nodeIds 里的 smart-image 且无图）
+    // 收集本轮对话应执行的全部待生成节点（该消息 nodeIds 里的 smart-image 且无生成结果）
     let targets = [];
     if(Array.isArray(msg?.nodeIds) && msg.nodeIds.length){
         targets = msg.nodeIds
             .map(id => (nodes || []).find(n => n.id === id))
-            .filter(n => n && n.type === 'smart-image' && !(n.images || []).some(img => img?.url));
+            .filter(canvasAgentPendingGenNode);
     }
     // Phase 1 (P7): 移除"agent_ 前缀 + 无图"兜底自动执行。
     // 旧逻辑会把历史分组、pending、甚至垃圾节点也当成本轮节点批量执行，既烧配额又放大污染。
@@ -3952,21 +4026,8 @@ async function canvasAgentExecuteRecentNodes(messageId=''){
         toast('未找到待执行的生成节点，请在画布中选择节点后点击运行');
         return;
     }
-    // 依次执行每个节点（"执行全部" = 当前对话生成的全部节点逐个生成）
-    for(const target of targets){
-        selectedId = target.id;
-        selectedIds = [target.id];
-        render();
-        try{
-            await runGeneration();
-            toast(`生成完成：${target.title || target.id}`);
-        }catch(e){
-            toast((e.message || '生成失败').slice(0, 160));
-            // 单个失败不阻塞其它，继续下一个
-        }
-    }
+    await canvasAgentBatchRunNodes(targets);
     renderCanvasAgentMessages();
-    toast(`全部执行完成，共 ${targets.length} 个节点`);
 }
 async function previewCanvasAgentActionPlan(plan, messageId){
     if(!plan || !Array.isArray(plan.steps) || !plan.steps.length){
@@ -4131,17 +4192,8 @@ async function executeCanvasAgentActionPlan(plan){
         return;
     }
     toast(`已创建 ${created.length} 个节点，开始生成 ${imageNodes.length} 张图片…`);
-    for(const item of imageNodes){
-        selectedId = item.node.id;
-        selectedIds = [item.node.id];
-        render();
-        try{
-            await runGeneration();
-        }catch(e){
-            toast((e.message || '生成失败').slice(0, 160));
-        }
-    }
-    toast(`全部生成完成：${imageNodes.length} 张图片已回填节点`);
+    // 并行生成（各节点用自身 runPrompt），不再逐个借道 composer 的 runGeneration
+    await canvasAgentBatchRunNodes(imageNodes.map(item => item.node));
 }
 async function canvasAgentSubmitInteractionReceipt({card_id='', intent='', selection=null, fields={}, confirmed=false}){
     if(!card_id) return;
@@ -4574,6 +4626,29 @@ CanvasComfyControls.configure({
     getWorkflows: () => comfyWorkflows
 });
 
+// ===== 交互观察者（canvas-interaction-observer.js，状态机改造第0步）：只读采样，零行为影响 =====
+if (typeof CanvasInteractionObserver !== 'undefined') {
+    CanvasInteractionObserver.configure({
+        probes: [
+            {name: 'panState',            get: () => panState},
+            {name: 'dragState',           get: () => dragState},
+            {name: 'selectionState',      get: () => selectionState},
+            {name: 'resizeState',         get: () => resizeState},
+            {name: 'portDragState',       get: () => portDragState},
+            {name: 'connectionCutState',  get: () => connectionCutState},
+            {name: 'thumbDragState',      get: () => thumbDragState},
+            {name: 'inputThumbDragState', get: () => inputThumbDragState},
+            {name: 'cropDrag',            get: () => cropDrag},
+            {name: 'previewPanDrag',      get: () => previewPanDrag},
+            {name: 'previewCompareDrag',  get: () => previewCompareDrag},
+            {name: 'imageEditPanDrag',    get: () => imageEditPanDrag},
+            {name: 'panoramaDrag',        get: () => panoramaState && panoramaState.drag},
+            {name: 'promptResizeState',   get: () => promptResizeState},
+            {name: 'minimapDrag',         get: () => (typeof CanvasRenderScheduler !== 'undefined' && CanvasRenderScheduler.inMinimapDrag && CanvasRenderScheduler.inMinimapDrag())}
+        ]
+    });
+}
+
 // ===== 参数控件渲染层（canvas-param-controls.js）：主文件侧注入 =====
 CanvasParamControls.configure({
     escapeHtml: (...a) => escapeHtml(...a),
@@ -4772,7 +4847,9 @@ function imageLayout(images, scale=1, node=null){
     if(count === 0){
         const explicitW = Number(node?.w);
         const explicitH = Number(node?.h);
-        const pending = Number(node?.pending) > 0 || Boolean(node?.queued);
+        // comfyStatus queued/running 也按 pending 档取尺寸：这些节点（级联槽位等）可能没有
+        // pending 标志，若落进 empty 档会跟其它状态尺寸不一致，交互中看起来「窗口忽大忽小」。
+        const pending = Number(node?.pending) > 0 || Boolean(node?.queued) || node?.comfyStatus === 'queued' || node?.comfyStatus === 'running';
         const fallbackW = pending ? 260 * s : EMPTY_UPLOAD_NODE_WIDTH;
         const fallbackH = pending ? 180 * s : EMPTY_UPLOAD_NODE_HEIGHT;
         return {
@@ -10615,6 +10692,7 @@ function addSmartGenerationLog({run, outputs=[], runMs=0, error=''}) {
     };
     canvas.logs = [entry, ...canvas.logs].slice(0, 500);
     scheduleSave();
+    refreshSmartLogPanel();
 }
 function smartLogPreviewNode(url, kind='image'){
     if(kind === 'video' || outputUrlLooksVideo(url)){
@@ -10632,7 +10710,23 @@ function smartLogPreviewNode(url, kind='image'){
         selectedImage = prevSelectedImage;
     }
 }
+// 2026-09-23：日志面板原本只在点开那一刻渲染一次，之后新生成的日志永远不出现。
+// 这里加指纹比对 —— 只有 logs 真的变了才重建 DOM，避免每 2s 全量重排 + 重新请求缩略图。
+function smartLogFingerprint(){
+    const logs = canvas?.logs || [];
+    return `${logs.length}:${logs[0]?.id || ''}:${logs[0]?.createdAt || 0}`;
+}
+let smartLogPollTimer = null;
+let smartLogLastFingerprint = '';
+function refreshSmartLogPanel(force=false){
+    if(!smartLogModal || !smartLogModal.classList.contains('open')) return;
+    const fp = smartLogFingerprint();
+    if(!force && fp === smartLogLastFingerprint) return;
+    smartLogLastFingerprint = fp;
+    renderSmartCanvasLog();
+}
 function renderSmartCanvasLog(){
+    const keepScroll = smartLogList ? Number(smartLogList.scrollTop || 0) : 0;
     const logs = canvas?.logs || [];
     smartLogList.innerHTML = logs.length ? logs.map(log => {
         const thumbs = (log.outputs || []).slice(0, 8).map(url => {
@@ -10686,14 +10780,20 @@ function renderSmartCanvasLog(){
         };
     });
     refreshIcons();
+    // 重建后把滚动位置还回去，正在翻旧日志时不会被弹回顶部
+    if(smartLogList && keepScroll > 0) smartLogList.scrollTop = keepScroll;
 }
 function openSmartCanvasLog(){
     if(!canvas) return;
     renderSmartCanvasLog();
     smartLogModal.classList.add('open');
+    smartLogLastFingerprint = smartLogFingerprint();
+    // 兜底轮询：日志也可能由其它窗口/实例写入画布，开着面板时也要跟得上
+    if(!smartLogPollTimer) smartLogPollTimer = setInterval(() => refreshSmartLogPanel(), 2000);
 }
 function closeSmartCanvasLog(){
     smartLogModal.classList.remove('open');
+    if(smartLogPollTimer){ clearInterval(smartLogPollTimer); smartLogPollTimer = null; }
 }
 function openSmartCanvasShortcuts(){
     smartShortcutModal?.classList.add('open');
@@ -10939,7 +11039,11 @@ function nodeBodyHtml(node, layout){
     if(node.jimengPending && node.jimengPending.submitId && imgs.length === 0){
         return jimengPendingBodyHtml(node, layout);
     }
-    if(node.queued && imgs.length === 0 && !node.pending){
+    // 2026-09-23：comfyStatus queued/running 的节点（级联槽位等没有 pending 标志）也走加载占位，
+    // 不能掉进下面的「空节点上传占位」—— 否则会出现一个大黑窗 + 三个幽灵图标 + 排队徽标的怪状态，
+    // 且尺寸沿用节点上次的 w/h，看起来就是「点开排队节点窗口变大」。
+    const comfyBusy = node.comfyStatus === 'queued' || node.comfyStatus === 'running';
+    if((node.queued || comfyBusy) && imgs.length === 0 && !node.pending){
         return `<div class="loading-cell single queued" style="width:${layout.width}px;height:${layout.height}px">${comfyNodeProgressBarHtml(node)}</div>`;
     }
     if(node.pending && imgs.length === 0){
@@ -11301,22 +11405,55 @@ function nodeRunElapsedMs(node){
 }
 function runTimePillHtml(node){
     if(!node || node.runTimerHidden || node.type === 'smart-prompt') return '';
-    const running = Boolean(node.pending || node.running || node.jimengPending);
-    if(!running && !node.runFinishedAt) return '';
+    // 2026-09-23：comfyStatus==='running' 也要算运行中 —— 级联槽位等路径创建的节点没有
+    // pending/running 标志，只带 comfyStatus，漏掉它会导致「正在跑的节点计时 pill 消失」。
+    const running = Boolean(node.pending || node.running || node.jimengPending || node.comfyStatus === 'running');
+    // queued（哪怕没有 pending 标志，如级联槽位）也要显示「排队中」pill，不能直接不渲染
+    if(!running && !node.runFinishedAt && node.comfyStatus !== 'queued') return '';
+    // 2026-09-23：ComfyUI 排队中不走计时 —— 那段时间 ComfyUI 还没开工，跑秒没有意义，
+    // 也会让人误以为「等了这么久还没出图是生成慢」。排队位次由节点底部徽标显示。
+    if(node.comfyStatus === 'queued'){
+        return `<span class="run-time-pill queued" data-run-timer="${escapeHtml(node.id)}">排队中</span>`;
+    }
     const cls = running ? '' : ' done';
     return `<span class="run-time-pill${cls}" data-run-timer="${escapeHtml(node.id)}">${formatRunDuration(nodeRunElapsedMs(node))}</span>`;
 }
 // comfy 轮询期间的轻量 DOM 更新：只动进度条/状态类/计时pill/运行按钮，避免全量 render() 重建节点
 // 导致选中/hover 每 900ms 丢失（「选中一下又没了」bug）。
-function updateComfyNodeLiveState(node){
+function updateComfyNodeLiveState(node, job){
     if(!node) return;
+    // 2026-09-23：计时起点以后端「真正开工」为准（job.started_at），排队等待不计入耗时。
+    // 以前 runStartedAt 在提交那一刻就定了，排了 2 分钟队再跑，秒表一上来就是 2:00。
+    if(job){
+        const startedAt = Math.round(Number(job.started_at || 0) * 1000);
+        if(startedAt > 0 && Number(node.comfyStartedAt || 0) !== startedAt){
+            node.comfyStartedAt = startedAt;
+            node.runStartedAt = startedAt;   // 通用计时（含完成后的 finished-started）一并校正
+        }
+    }
+    // 刚从排队转入运行、但后端 started_at 还没随本次轮询返回的空窗（最多一次轮询间隔）：
+    // 先按本地时间起算，别拿提交时刻当起点闪一下大数字，等后端值到了再校正。
+    if(node.comfyStatus === 'running' && !node.comfyStartedAt){
+        node.comfyStartedAt = nowMs();
+        node.runStartedAt = node.comfyStartedAt;
+    }
     const el = world.querySelector(`.image-node[data-id="${CSS.escape(node.id)}"]`);
     if(!el) { render(); return; } // 节点不在 DOM（如首次提交），退回全量渲染
-    // 2026-09-17：queued（已提交、ComfyUI 还没开工）也要当成运行态显示进度条，
-    // 与 syncRunButtonAvailability 的判定保持一致，否则按钮红了节点却没任何进度反馈。
-    const running = ['running', 'queued'].includes(node.comfyStatus);
+    // 排队 ≠ 运行：queued 只给「排队中 · 第 N 位」徽标 + 静态描边，不显示进度、不跑流光。
+    // （以前把 queued 也算进 running，排在队尾的节点会亮蓝框 + 进度环空转，看着像在生成。）
+    const isQueued = node.comfyStatus === 'queued';
+    const running = node.comfyStatus === 'running';
     el.classList.toggle('comfy-running', running);
+    el.classList.toggle('comfy-queued', isQueued);
     el.setAttribute('data-comfy-status', node.comfyStatus || '');
+    // 排队位次：只在「还在队列里等待」时挂属性，由 CSS ::after 渲染成「排队中 · 第 N 位」。
+    // 位次从 1 起（1 = 下一个就跑）；正在执行的任务已被 worker 出队，位次为 -1，不显示。
+    const queuePos = Number(node.comfyQueuePosition ?? -1);
+    if(isQueued && queuePos > 0){
+        el.setAttribute('data-comfy-queue', String(queuePos));
+    } else {
+        el.removeAttribute('data-comfy-queue');
+    }
     // 进度环：running 时确保存在并按当前进度沿边框绘制；否则移除
     let bar = el.querySelector(':scope > .comfy-node-progress');
     if(running){
@@ -11330,6 +11467,21 @@ function updateComfyNodeLiveState(node){
         if(fill) fill.style.width = Math.max(0, Math.min(100, Number(node.comfyProgress || 0))) + '%';
     } else if(bar){
         bar.remove();
+    }
+    // 运行期提示 / 失败原因：挂一条顶部横幅（底部已被「排队中 · 第 N 位」徽标占了）。
+    // 以前失败只体现在「转圈停了」，用户不知道是显存炸了还是工作流填错。
+    const noteText = node.comfyError ? ('失败：' + node.comfyError) : (node.comfyNotice || '');
+    el.classList.toggle('comfy-failed', Boolean(node.comfyError));
+    let note = el.querySelector(':scope > .comfy-node-note');
+    if(noteText){
+        if(!note){
+            el.insertAdjacentHTML('beforeend', '<div class="comfy-node-note"></div>');
+            note = el.querySelector(':scope > .comfy-node-note');
+        }
+        note.textContent = noteText;
+        note.classList.toggle('error', Boolean(node.comfyError));
+    } else if(note){
+        note.remove();
     }
     refreshRunTimerPills();
     syncRunButtonAvailability(node);
@@ -11422,13 +11574,22 @@ function hideRunTimerForNode(node){
     return true;
 }
 function refreshRunTimerPills(){
-    const active = nodes.some(n => n.type !== 'smart-prompt' && !n.runTimerHidden && (n.pending || n.running || n.jimengPending || n.runFinishedAt));
+    // active 判定与 runTimePillHtml 同口径：comfyStatus queued/running 的节点（无 pending 标志的级联槽位）也要让秒表继续走
+    const active = nodes.some(n => n.type !== 'smart-prompt' && !n.runTimerHidden && (n.pending || n.running || n.jimengPending || n.runFinishedAt || n.comfyStatus === 'queued' || n.comfyStatus === 'running'));
     document.querySelectorAll('[data-run-timer]').forEach(el => {
         const node = nodes.find(n => n.id === el.dataset.runTimer);
         if(!node || node.runTimerHidden || node.type === 'smart-prompt') {
             el.remove();
             return;
         }
+        // 排队中不计时：显示「排队中」占位，等后端真正开工（job.started_at）后自动切回秒数
+        if(node.comfyStatus === 'queued'){
+            el.textContent = '排队中';
+            el.classList.add('queued');
+            el.classList.remove('done');
+            return;
+        }
+        el.classList.remove('queued');
         el.textContent = formatRunDuration(nodeRunElapsedMs(node));
         el.classList.toggle('done', Boolean(!node.pending && !node.running && !node.jimengPending && node.runFinishedAt));
     });
@@ -11463,16 +11624,19 @@ const title = isScript ? '剧本' : isTable ? '镜头表' : node.type === 'smart
         const isLoop = node.type === 'smart-loop';
         const isImageNode = node.type === 'smart-image' || !node.type;
         const isJimengPending = Boolean(node.jimengPending && node.jimengPending.submitId && imgs.length === 0);
-        const isQueued = Boolean(node.queued && imgs.length === 0 && !node.pending && !isJimengPending);
-        const isEmpty = isImageNode && imgs.length === 0 && !node.pending && !isQueued && !isJimengPending;
+        // comfyBusy：comfyStatus queued/running 的节点（级联槽位等无 pending 标志）按忙碌渲染，
+        // 不算空节点（否则会渲染成上传占位大黑窗）、尺寸走 pending 档而不是 empty 档。
+        const comfyBusy = !isJimengPending && (node.comfyStatus === 'queued' || node.comfyStatus === 'running') && imgs.length === 0;
+        const isQueued = Boolean((node.queued || node.comfyStatus === 'queued') && imgs.length === 0 && !node.pending && !isJimengPending);
+        const isEmpty = isImageNode && imgs.length === 0 && !node.pending && !isQueued && !isJimengPending && !comfyBusy;
         const isHistory = isHistoryGroupNode(node);
         const isGroup = isImageNode && imgs.length > 1;
-        const isPending = ((node.pending || node.status === 'pending' || isQueued || isJimengPending) && imgs.length === 0);
+        const isPending = ((node.pending || node.status === 'pending' || isQueued || isJimengPending || comfyBusy) && imgs.length === 0);
         const isBlenderPreview = node.runSettings?.engine === 'blender' || node.runSettings?.provider_id === 'blender' || node.title === '3D预演';
         const body = nodeBodyHtml(node, layout);
         const deleteBtn = `<button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button>`;
         const hint = isPending ? escapeHtml(tr('smart.hintPending')) : (imgs.length > 1 ? escapeHtml(tr('smart.hintMulti')) : imgs.length ? escapeHtml(tr('smart.hintSingle')) : escapeHtml(tr('smart.hintEmpty')));
-const html = `<div class="image-node ${isEmpty ? 'empty-node' : ''} ${isGroup ? 'group-node' : ''} ${node.groupLayout?.mode === 'preserve' ? 'preserved-group-node' : ''} ${isCanvasGroupNode(node) ? 'canvas-group-node' : ''} ${isHistory ? 'history-group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isScript ? 'script-smart-node' : ''} ${isTable ? 'table-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isBlenderPreview ? 'blender-preview-node' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''} ${node.comfyStatus === 'running' ? 'comfy-running' : ''} node-status-${escapeHtml(node.status || 'ready')} node-role-${escapeHtml(node.role || 'media')}" data-id="${escapeHtml(node.id)}" data-status="${escapeHtml(node.status || 'ready')}" data-role="${escapeHtml(node.role || 'media')}" data-comfy-status="${escapeHtml(node.comfyStatus || '')}" style="left:${node.x || 0}px;top:${node.y || 0}px;width:${layout.width}px;height:${layout.height}px;z-index:${isCanvasGroupNode(node) ? 1 : nodeLayerZ(node)}">
+const html = `<div class="image-node ${isEmpty ? 'empty-node' : ''} ${isGroup ? 'group-node' : ''} ${node.groupLayout?.mode === 'preserve' ? 'preserved-group-node' : ''} ${isCanvasGroupNode(node) ? 'canvas-group-node' : ''} ${isHistory ? 'history-group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isScript ? 'script-smart-node' : ''} ${isTable ? 'table-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isBlenderPreview ? 'blender-preview-node' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''} ${node.comfyStatus === 'running' ? 'comfy-running' : ''} ${node.comfyStatus === 'queued' ? 'comfy-queued' : ''} node-status-${escapeHtml(node.status || 'ready')} node-role-${escapeHtml(node.role || 'media')}" data-id="${escapeHtml(node.id)}" data-status="${escapeHtml(node.status || 'ready')}" data-role="${escapeHtml(node.role || 'media')}" data-comfy-status="${escapeHtml(node.comfyStatus || '')}" ${(node.comfyStatus === 'queued' && Number(node.comfyQueuePosition ?? -1) > 0) ? `data-comfy-queue="${Number(node.comfyQueuePosition)}"` : ''} style="left:${node.x || 0}px;top:${node.y || 0}px;width:${layout.width}px;height:${layout.height}px;z-index:${isCanvasGroupNode(node) ? 1 : nodeLayerZ(node)}">
             <div class="node-head"><div class="node-title">${node.canvasSetEnabled === true ? `<span class="node-set-badge" title="${escapeAttr(tr('smart.setBadgeTip'))}">SET</span>` : ''}${title}</div><div class="node-actions">${deleteBtn}</div></div>
             ${isCanvasGroupNode(node) ? `<div class="canvas-group-header"><span class="canvas-group-title-display" title="双击重命名">${escapeHtml(node.title || '未命名组')}</span><button class="canvas-group-delete node-delete" type="button" title="删除组"><i data-lucide="trash-2"></i></button></div>` : ''}
             ${!isCanvasGroupNode(node) ? (!isEmpty ? `<div class="floating-node-set">${canvasNodeSetToggleHtml(node)}</div><div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>` : `<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>`) : ''}
@@ -17164,7 +17328,11 @@ function syncRunButtonAvailability(node=selectedNode()){
     // node.apiRunning 由运行流程显式置位/清除，只管「动效」，不参与「禁用」判定。
     const isApRunning = Boolean(node && (node.running || node.apiRunning) && !isComfyRunning && apScope);
     // 选中节点正在 ComfyUI 运行时，按钮变"停止"，可点击；否则按原逻辑
-    runBtn.disabled = isComfyRunning ? false : (Boolean(node?.running) || smartCascadeAnyRunning());
+    // 2026-09-23：smartCascadeAnyRunning() 是「级联批量运行」的标志位，它一旦卡在 true，
+    // 会把普通单节点的运行按钮一起禁用 —— 表现就是「跑了一个之后别的节点全点不动」。
+    // 任务现已改走后端 FIFO 队列，多节点提交只会排队、不会互相冲突，
+    // 所以这里只保留「当前节点自己在跑」的禁用判定。
+    runBtn.disabled = isComfyRunning ? false : Boolean(node?.running);
     runBtn.classList.toggle('is-running', isComfyRunning);
     runBtn.classList.toggle('is-stop', isComfyRunning);
     runBtn.classList.toggle('is-ap-running', isApRunning);
@@ -18745,6 +18913,8 @@ async function buildComfyWorkflowJobPayload(node, runSettings, prompt, refs){
 }
 async function submitComfyWorkflowJob(node, payload, meta=null){
     const target = node || null;
+    // 重跑前清掉上一轮的失败提示，否则旧错误会一直挂在节点上
+    if(target){ delete target.comfyError; delete target.comfyNotice; }
     // 任务控制台定位：提交时带上画布/节点信息（与 RH 提交链的 canvas_id/node_id 同构）
     const consoleMeta = {
         canvas_id:canvasId || '',
@@ -18771,6 +18941,7 @@ async function submitComfyWorkflowJob(node, payload, meta=null){
         target.comfyCurrentNode = submitted.current_node || '';
         target.comfyCurrentNodeTitle = submitted.current_node_title || '';
         target.comfyPromptId = submitted.prompt_id || '';
+        target.comfyQueuePosition = Number(submitted.queue_position ?? -1);
         render();
         syncRunButtonAvailability(target);
         scheduleSave();
@@ -18798,7 +18969,9 @@ async function submitComfyWorkflowJob(node, payload, meta=null){
             target.comfyCurrentNode = job.current_node || '';
             target.comfyCurrentNodeTitle = job.current_node_title || '';
             target.comfyPromptId = job.prompt_id || target.comfyPromptId || '';
-            updateComfyNodeLiveState(target);
+            target.comfyError = job.error || '';
+            target.comfyNotice = job.notice || '';
+            updateComfyNodeLiveState(target, job);
             if(i % 3 === 0) scheduleSave();
         }
         if(job.status === 'done'){
@@ -19613,6 +19786,7 @@ document.addEventListener('mousemove', e => {
     }
 }, true);
 shell.onmousedown = e => {
+    if (typeof CanvasInteractionObserver !== 'undefined') CanvasInteractionObserver.tick();
     if(CanvasViewport.inZoomPreview() && e.button === 0 && !isCanvasOverlayTarget(e.target)) return;
     // 左键点击画布（节点/空白）时主动 blur 输入框，避免焦点残留导致 Del 删除偶发失效（用户要求 2026-08-16）
     if(e.button === 0 && !isEditableTarget(e.target)){
@@ -19715,6 +19889,7 @@ function updateNodeDragFrame(e){
     setDropHighlight(canvasGroupDropTargetFor(node)?.id || '');
 }
 window.onmousemove = e => {
+    if (typeof CanvasInteractionObserver !== 'undefined') CanvasInteractionObserver.tick();
     lastMouseWorld = screenToWorld(e);
     if(connectionCutState){
         e.preventDefault();

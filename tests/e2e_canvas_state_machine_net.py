@@ -302,6 +302,26 @@ def main():
         check("[alt复制] 节点总数+1", cnt_a == cnt_b + 1, f"{cnt_b}->{cnt_a}")
         check("[alt复制] 原节点位置不动", p_src_after == p_src, f"{p_src} vs {p_src_after}")
 
+        # ==================================================================
+        # 11. 交互观察者：多态并存计数基线（白名单外的并存 = 状态机要消灭的债）
+        # ==================================================================
+        obs = page.evaluate("""() => {
+            const O = window.CanvasInteractionObserver;
+            if (!O) return {missing: true};
+            // 静置片刻让残余事件落定
+            return O.dbg;
+        }""")
+        check("观察者存在（canvas-interaction-observer.js 已加载）", not obs.get("missing"), json.dumps(obs)[:120])
+        if not obs.get("missing"):
+            check("观察者已采样（mouse 操作计数>0）", obs["samples"] > 0, f"samples={obs['samples']}")
+            # 基线快照：当前已知债=「框选+中键」组合（用例3钉死项）。迁移推进后
+            # 此数应趋向 0；若冒出白名单外的新组合，combos 键会暴露它。
+            combos = obs.get("combos", {})
+            known_debts = {"panState+selectionState"}
+            unknown = [k for k in combos.keys() if k not in known_debts]
+            check("并存组合无白名单外新增（已知债: pan+框选瞬态）", len(unknown) == 0,
+                  f"combos={json.dumps(combos, ensure_ascii=False)}")
+
         real_js = [e for e in js_errors if "WebSocket" not in e and "stats" not in e]
         check("全程无 JS 报错", len(real_js) == 0, str(real_js[:2]))
         browser.close()

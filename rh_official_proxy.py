@@ -375,7 +375,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.22.comfyconsole13"
+STATIC_VERSION = "2026.09.22.comfyconsole15"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -510,7 +510,7 @@ STATIC_PATCHES = {
         "/static/comfyui-settings.html",
         "/static/asset-manager.html",
     ],
-    ROOT / "static" / "smart-canvas.html": ["/static/css/smart-canvas.css", "/static/js/smart-canvas.js", "/static/js/canvas-node-registry.js", "/static/js/canvas-draft-store.js", "/static/js/canvas-viewport-engine.js", "/static/js/canvas-render-scheduler.js", "/static/js/canvas-comfy-job-engine.js", "/static/js/canvas-agent-history-store.js", "/static/js/canvas-artifact-model.js", "/static/js/canvas-artifact-view.js", "/static/js/canvas-agent-message-render.js", "/static/js/canvas-rh-controls.js", "/static/js/canvas-comfy-controls.js", "/static/js/canvas-param-controls.js", "/static/js/canvas-spec-controls.js", "/static/js/i18n.js"],
+    ROOT / "static" / "smart-canvas.html": ["/static/css/smart-canvas.css", "/static/js/smart-canvas.js", "/static/js/canvas-node-registry.js", "/static/js/canvas-draft-store.js", "/static/js/canvas-viewport-engine.js", "/static/js/canvas-render-scheduler.js", "/static/js/canvas-comfy-job-engine.js", "/static/js/canvas-agent-history-store.js", "/static/js/canvas-artifact-model.js", "/static/js/canvas-artifact-view.js", "/static/js/canvas-agent-message-render.js", "/static/js/canvas-rh-controls.js", "/static/js/canvas-comfy-controls.js", "/static/js/canvas-param-controls.js", "/static/js/canvas-spec-controls.js", "/static/js/canvas-interaction-observer.js", "/static/js/i18n.js"],
     ROOT / "static" / "canvas.html": [
         "/static/css/canvas.css",
         "/static/css/canvas-prism.css",
@@ -1075,6 +1075,9 @@ def normalize_canvas_agent_history_item(item):
             safe_msg["brainstormNodeIds"] = [str(nid) for nid in raw["brainstormNodeIds"] if str(nid or "").strip()]
         if raw.get("brainstormExecuted"):
             safe_msg["brainstormExecuted"] = bool(raw["brainstormExecuted"])
+        # 保留本轮生成的节点 ID，历史重开后「执行/定位」按钮仍能定位本条消息的节点
+        if isinstance(raw.get("nodeIds"), list):
+            safe_msg["nodeIds"] = [str(nid) for nid in raw["nodeIds"] if str(nid or "").strip()]
         # 保留交互卡片（选择/表单/确认/进度/产物），历史重开后选项卡可重建
         if isinstance(raw.get("interaction"), dict):
             safe_msg["interaction"] = raw["interaction"]
@@ -3512,7 +3515,8 @@ def select_comfy_output_nodes(history):
     return video_nodes
 
 
-def run_comfy_workflow(name, payload):
+def build_comfy_workflow_prompt(name, payload):
+    """按 payload 构造最终要提交给 ComfyUI 的 prompt（字段覆盖 / 节点开关编译都在这里）。"""
     record = read_workflow_record(name)
     config = payload.get("config") if isinstance(payload.get("config"), dict) else record.get("config")
     modes = payload.get("modes") if isinstance(payload.get("modes"), dict) else None
@@ -3550,42 +3554,66 @@ def run_comfy_workflow(name, payload):
         prompt = apply_comfy_workflow_fields(record.get("workflow"), config, payload.get("fields"))
     if not prompt:
         raise ApiError(400, "工作流为空")
-    base = comfy_instance_base()
+    return prompt
+
+
+def submit_comfy_workflow_job(name, payload, prompt=None):
+    """走全局 FIFO 队列提交一条工作流，立即返回 job（HTTP 不阻塞）。
+
+    以前这里是直接 POST /prompt 再 while 轮询 /history，会把 HTTP 请求一直挂到
+    工作流跑完（上限 3600 秒），而且绕开队列、可能和画布节点抢显存。
+    """
+    payload = payload if isinstance(payload, dict) else {}
+    if prompt is None:
+        prompt = build_comfy_workflow_prompt(name, payload)
     client_id = str(payload.get("client_id") or uuid.uuid4().hex)
-    submitted = comfy_request_json(base, "/prompt", "POST", {"prompt": prompt, "client_id": client_id}, timeout=120)
-    prompt_id = str(submitted.get("prompt_id") or "")
-    if not prompt_id:
-        raise ApiError(502, "ComfyUI 未返回 prompt_id")
-    started_at = time.time()
-    append_log(LOG_FILE, f"comfy workflow submitted name={name} prompt_id={prompt_id} timeout={COMFY_WORKFLOW_POLL_TIMEOUT_SECONDS}s")
-    history = {}
-    deadline = started_at + COMFY_WORKFLOW_POLL_TIMEOUT_SECONDS
-    while time.time() < deadline:
-        history_all = comfy_request_json(base, "/history/" + urllib.parse.quote(prompt_id), "GET", timeout=30)
-        history = history_all.get(prompt_id) if isinstance(history_all, dict) else None
-        if history:
-            break
-        time.sleep(1)
-    if not history:
-        elapsed = int(time.time() - started_at)
-        append_log(LOG_FILE, f"comfy workflow timeout name={name} prompt_id={prompt_id} elapsed={elapsed}s")
+    meta = {
+        "source": "workflow_run",
+        "workflow": str(name or ""),
+        "canvas_id": str(payload.get("canvas_id") or "").strip(),
+        "canvas_title": str(payload.get("canvas_title") or "").strip(),
+    }
+    job = comfy_flow_service.MANAGER.submit(str(name or ""), prompt, client_id, meta=meta)
+    append_log(LOG_FILE, f"comfy workflow queued name={name} job_id={job.id} position={job.queue_position}")
+    return job
+
+
+def run_comfy_workflow(name, payload):
+    """同步执行一条工作流：底层走统一 FIFO 队列，外层等结果。
+
+    payload['async'] = True 时只入队并立即返回 job_id，HTTP 不再挂到跑完
+    （设置页试跑走这条，免得一个请求卡一小时）。
+    """
+    payload = payload if isinstance(payload, dict) else {}
+    prompt = build_comfy_workflow_prompt(name, payload)
+    job = submit_comfy_workflow_job(name, payload, prompt=prompt)
+    if payload.get("async") is True or payload.get("wait") is False:
+        return {
+            "ok": True,
+            "async": True,
+            "job_id": job.id,
+            "status": job.status,
+            "queue_position": job.queue_position,
+        }
+    finished = comfy_flow_service.MANAGER.wait(job.id, timeout=COMFY_WORKFLOW_POLL_TIMEOUT_SECONDS)
+    if finished is None:
+        raise ApiError(504, "任务记录已丢失，后端可能重启过")
+    if finished.status == comfy_flow_service.STATUS_ERROR:
+        raise ApiError(502, finished.error or "ComfyUI 执行失败")
+    if finished.status == comfy_flow_service.STATUS_CANCELLED:
+        raise ApiError(409, "任务已取消")
+    if finished.status != comfy_flow_service.STATUS_DONE:
+        elapsed = int(time.time() - (job.created_at or time.time()))
+        append_log(LOG_FILE, f"comfy workflow timeout name={name} job_id={job.id} elapsed={elapsed}s")
         raise ApiError(504, f"ComfyUI 执行超时：已等待 {elapsed} 秒，工作流可能仍在后台运行。")
-    canvas_title = str(payload.get("canvas_title") or "").strip()
-    canvas_id = str(payload.get("canvas_id") or "").strip()
-    images = []
-    videos = []
-    output_nodes = select_comfy_output_nodes(history)
-    for _node_id, node_output in output_nodes:
-        for item in node_output.get("images") or []:
-            url = comfy_output_asset_url(base, item, prompt_id, "image", canvas_title, canvas_id)
-            if url:
-                images.append(url)
-        for item in (node_output.get("videos") or []) + (node_output.get("gifs") or []):
-            url = comfy_output_asset_url(base, item, prompt_id, "video", canvas_title, canvas_id)
-            if url:
-                videos.append(url)
-    append_log(LOG_FILE, f"comfy workflow succeeded name={name} prompt_id={prompt_id} elapsed={int(time.time() - started_at)}s images={len(images)} videos={len(videos)}")
-    return {"ok": True, "prompt_id": prompt_id, "images": images, "videos": videos}
+    append_log(LOG_FILE, f"comfy workflow succeeded name={name} prompt_id={finished.prompt_id} job_id={finished.id} images={len(finished.images)} videos={len(finished.videos)}")
+    return {
+        "ok": True,
+        "prompt_id": finished.prompt_id,
+        "images": finished.images,
+        "videos": finished.videos,
+        "job_id": finished.id,
+    }
 
 
 def recent_comfy_outputs(payload=None):
@@ -4980,19 +5008,21 @@ def chat_media_url_to_model_url(url):
         try:
             resolved = local_path.resolve()
             user_root = USER_DATA_DIR.resolve()
-            # Only inline local files from the MyridTV data directory or explicit absolute files.
-            if resolved.exists() and (str(resolved).startswith(str(user_root)) or Path(clean).is_absolute()):
+            assets_root = ASSETS_DIR.resolve()
+            # Only inline local files from the MyridTV data dir, the assets dir (资产根已迁到安装目录 D:\APP\MyridTV\assets，2026-09 迁移后这里必须同步放行，否则画布节点图全部静默不内联、Agent 读图=瞎猜), or explicit absolute files.
+            if resolved.exists() and (str(resolved).startswith(str(user_root)) or str(resolved).startswith(str(assets_root)) or Path(clean).is_absolute()):
                 mime_type = mimetypes.guess_type(str(resolved))[0] or "image/png"
                 if not mime_type.startswith("image/"):
                     return ""
                 raw = resolved.read_bytes()
                 data = raw
-                # 压缩大图，控制上下文 token 用量（最长边 2048 / JPEG 82）
+                # 压缩大图，控制上下文 token 用量（最长边 1280 / JPEG 82）
+                # 2048 时一张 2K 输出图≈21万 token；1280 对"看图理解/风格判断"足够，token 降约 60%
                 try:
                     from PIL import Image
                     if len(raw) > 256 * 1024:
                         img = Image.open(io.BytesIO(raw))
-                        img.thumbnail((2048, 2048), Image.LANCZOS)
+                        img.thumbnail((1280, 1280), Image.LANCZOS)
                         if img.mode in ("RGBA", "LA", "P", "L"):
                             out = io.BytesIO()
                             img.save(out, format="PNG", optimize=True)
@@ -12704,6 +12734,10 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(404, {"ok": False, "error": "任务不存在或已过期", "status": "gone"})
                     return
                 self._send(200, {"ok": True, **job.to_dict()})
+                return
+            if request_path == "/api/comfyui/queue":
+                # 排队视图：正在跑的 + 还在排的（含位次），供前端显示「排队中 · 第 N 位」
+                self._send(200, comfy_flow_service.MANAGER.queue_snapshot())
                 return
             if request_path == "/api/comfyui/jobs":
                 self._send(200, {"ok": True, "jobs": comfy_flow_service.MANAGER.list_jobs()})
