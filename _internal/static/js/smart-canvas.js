@@ -19926,31 +19926,35 @@ function smChainModeProbe(){
     if(imageEditPanDrag) return null;
     if(cropDrag && cropState) return null;
     if(resizeState) return 'resizing';
-    if(thumbDragState) return null;
+    if(thumbDragState && !thumbDragState.detached) return null; // 未拆分时原链直接 return，语义对齐
     if(inputThumbDragState) return null;
     if(panState) return 'panning';
     if(dragState) return 'dragging-node';
     return 'idle';
 }
 
+if (typeof CanvasInteractionMachine !== 'undefined') {
+    CanvasInteractionMachine.configure({ route: () => smChainModeProbe() });
+}
+
 window.onmousemove = e => {
     if (typeof CanvasInteractionObserver !== 'undefined') CanvasInteractionObserver.tick();
-    if (typeof CanvasInteractionMachine !== 'undefined') {
-        const smChainMode = smChainModeProbe();
-        if (smChainMode) CanvasInteractionMachine.dispatchShadow(smChainMode);
+    const smRoute = smChainModeProbe();
+    if (typeof CanvasInteractionMachine !== 'undefined' && smRoute) {
+        CanvasInteractionMachine.dispatchShadow(smRoute);
     }
-    lastMouseWorld = screenToWorld(e);
-    if(connectionCutState){
+lastMouseWorld = screenToWorld(e);
+    if(smRoute === 'cutting'){
         e.preventDefault();
         updateConnectionCutGesture(e);
         return;
     }
-    if(CanvasRenderScheduler.inMinimapDrag()){
+    if(smRoute === 'minimap-panning'){
         e.preventDefault();
         centerViewportOnWorldPoint(minimapEventToWorld(e));
         return;
     }
-    if(portDragState){
+    if(smRoute === 'connecting'){
         e.preventDefault();
         const p = screenToWorld(e);
         portDragState.currentWorld = p;
@@ -19985,7 +19989,7 @@ window.onmousemove = e => {
         persistActiveSmartSettings();
         return;
     }
-    if(selectionState){
+    if(smRoute === 'box-selecting'){
         e.preventDefault();
         updateSelectionBox(e);
         return;
@@ -20041,7 +20045,7 @@ window.onmousemove = e => {
         renderCropBox();
         return;
     }
-    if(resizeState){
+    if(smRoute === 'resizing'){
         const node = nodes.find(n => n.id === resizeState.id);
         if(!node) return;
         const dx = (e.clientX - resizeState.startX) / viewport.scale;
@@ -20109,7 +20113,7 @@ window.onmousemove = e => {
         }
         return;
     }
-    if(panState){
+    if(smRoute === 'panning'){
         const dx = e.clientX - panState.startX;
         const dy = e.clientY - panState.startY;
         if(Math.abs(dx) + Math.abs(dy) > 3) didPan = true;
@@ -20118,7 +20122,7 @@ window.onmousemove = e => {
         scheduleViewportApply();
         return;
     }
-    if(!dragState) return;
+    if(smRoute !== 'dragging-node') return;
     dragState.pendingClientX = e.clientX;
     dragState.pendingClientY = e.clientY;
     if(dragState.frame) return;

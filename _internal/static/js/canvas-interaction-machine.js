@@ -31,6 +31,16 @@
     // 白名单：允许并存的过渡瞬态组合（迁移期逐个消灭后清空的清单）
     var overlaps = [];
 
+    // —— 5步b第二刀：路由权移交 ——
+    // routeFn 由主文件 configure 注入（smChainModeProbe：逐字复刻旧链优先级的
+    // 单一判定函数）。巨链的 7 个受管分支全部改读 route()，不再各自 if(旧变量)。
+    // 「任一时刻只有一种交互」从此由一个函数说了算，且它可被 e2e 直接断言。
+    var routeFn = null;
+    function route() { return routeFn ? routeFn() : mode; }
+    function configure(opts) {
+        if (typeof opts.route === 'function') routeFn = opts.route;
+    }
+
     function isOverlapped(next) {
         for (var i = 0; i < overlaps.length; i++) {
             if (overlaps[i](mode, next)) return true;
@@ -121,8 +131,10 @@
     }
 
     global.CanvasInteractionMachine = {
+        configure: configure,
         begin: begin,
         end: end,
+        route: route,
         current: current,
         reset: reset,
         audit: audit,
