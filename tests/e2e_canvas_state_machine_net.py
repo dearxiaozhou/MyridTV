@@ -401,6 +401,41 @@ def main():
         m_d2 = page.evaluate("() => window.CanvasInteractionMachine.current()")
         check("[影子机] undo 后 mode 仍 idle（undo 不改交互态）", m_d2 == "idle", str(m_d2))
 
+        # connecting 接管自检：端口拖出连线 begin+end 成对、零违规、归 idle
+        m_c0 = page.evaluate("() => ({t: window.CanvasInteractionMachine.dbg.transitions, v: window.CanvasInteractionMachine.dbg.violations})")
+        page.mouse.click(60, 60); page.wait_for_timeout(300)
+        ports2 = page.evaluate("""() => {
+            const out = [];
+            document.querySelectorAll('.image-node').forEach(n => {
+                const ps = n.querySelector('.node-port.port-out') || n.querySelector('.node-port');
+                if (ps) { const r = ps.getBoundingClientRect(); out.push({x: r.x + r.width/2, y: r.y + r.height/2}); }
+            });
+            return out;
+        }""")
+        if ports2:
+            pc = ports2[0]
+            page.mouse.move(pc["x"], pc["y"])
+            page.mouse.down()
+            page.mouse.move(pc["x"] + 130, pc["y"] + 70, steps=6)
+            page.mouse.up()
+            page.wait_for_timeout(500)
+            m_c1 = page.evaluate("""() => {
+                const M = window.CanvasInteractionMachine;
+                return {t: M.dbg.transitions, v: M.dbg.violations, mode: M.current()};
+            }""")
+            check("[影子机] 连线 begin+end 成对（+2、归 idle、零违规）",
+                  m_c1["t"] >= m_c0["t"] + 2 and m_c1["mode"] == "idle" and m_c1["v"] == m_c0["v"],
+                  json.dumps(m_c1))
+            # 连到空白断开：不应残留 connecting 态（end 已在 mouseup 主链走完）
+            residue = page.evaluate("""() => ({
+                mode: window.CanvasInteractionMachine.current(),
+                port_dragging: document.querySelector('.shell') ? document.querySelector('.shell').classList.contains('port-dragging') : null
+            })""")
+            check("[影子机] 断线后无 connecting 残留（mode=idle 且无 port-dragging 类）",
+                  residue["mode"] == "idle" and residue["port_dragging"] is False, json.dumps(residue))
+        else:
+            check("[影子机] 端口存在（跳过：无端口）", False, str(ports2))
+
         real_js = [e for e in js_errors if "WebSocket" not in e and "stats" not in e]
         check("全程无 JS 报错", len(real_js) == 0, str(real_js[:2]))
         browser.close()

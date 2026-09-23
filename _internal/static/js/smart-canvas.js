@@ -12919,6 +12919,7 @@ function bindNodeEvents(){
                     hoverPort:'',
                     moved:false
                 };
+                if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.begin('connecting');
                 shell.classList.add('port-dragging');
                 capturePendingUndo();
                 ensurePortDragPathElement();
@@ -20115,6 +20116,7 @@ window.onmouseup = e => {
     if(portDragState){
         const drag = portDragState;
         portDragState = null;
+        if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('connecting');
         shell.classList.remove('port-dragging');
         clearPortDragVisual();
         handlePortDrop(drag, e);
