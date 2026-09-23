@@ -263,6 +263,7 @@ if (Test-Path -LiteralPath $UpgradeHelperScript) {
             (Join-Path $AppDir 'myridtv_media_localize.py'),
             (Join-Path $AppDir 'myridtv_comfy.py'),
             (Join-Path $AppDir 'myridtv_runninghub.py'),
+            (Join-Path $AppDir 'myridtv_rh_catalog.py'),
             (Join-Path $AppDir 'startup_upgrade.ps1')
         )
         $upgradeResult = Invoke-WcsTvUpgradeSafety -AppDir $AppDir -UserDataRoot $UserDataRoot -ArtifactPaths $upgradeArtifacts
