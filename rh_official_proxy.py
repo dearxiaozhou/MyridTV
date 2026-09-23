@@ -510,7 +510,7 @@ STATIC_PATCHES = {
         "/static/comfyui-settings.html",
         "/static/asset-manager.html",
     ],
-    ROOT / "static" / "smart-canvas.html": ["/static/css/smart-canvas.css", "/static/js/smart-canvas.js", "/static/js/canvas-node-registry.js", "/static/js/canvas-draft-store.js", "/static/js/canvas-viewport-engine.js", "/static/js/canvas-render-scheduler.js", "/static/js/canvas-comfy-job-engine.js", "/static/js/canvas-agent-history-store.js", "/static/js/canvas-artifact-model.js", "/static/js/canvas-artifact-view.js", "/static/js/canvas-agent-message-render.js", "/static/js/canvas-rh-controls.js", "/static/js/canvas-comfy-controls.js", "/static/js/canvas-param-controls.js", "/static/js/canvas-spec-controls.js", "/static/js/canvas-interaction-observer.js", "/static/js/canvas-interaction-machine.js", "/static/js/i18n.js"],
+    ROOT / "static" / "smart-canvas.html": ["/static/css/smart-canvas.css", "/static/js/smart-canvas.js", "/static/js/canvas-node-registry.js", "/static/js/canvas-draft-store.js", "/static/js/canvas-overlay-registry.js", "/static/js/canvas-viewport-engine.js", "/static/js/canvas-render-scheduler.js", "/static/js/canvas-comfy-job-engine.js", "/static/js/canvas-agent-history-store.js", "/static/js/canvas-artifact-model.js", "/static/js/canvas-artifact-view.js", "/static/js/canvas-agent-message-render.js", "/static/js/canvas-rh-controls.js", "/static/js/canvas-comfy-controls.js", "/static/js/canvas-param-controls.js", "/static/js/canvas-spec-controls.js", "/static/js/canvas-interaction-observer.js", "/static/js/canvas-interaction-machine.js", "/static/js/i18n.js"],
     ROOT / "static" / "canvas.html": [
         "/static/css/canvas.css",
         "/static/css/canvas-prism.css",
@@ -11311,105 +11311,6 @@ def is_runninghub_request(payload):
     provider_id = str((payload or {}).get("provider_id") or "").strip().lower()
     base_url = str((payload or {}).get("base_url") or "").strip().lower()
     return protocol == "runninghub" or provider_id == "runninghub" or "runninghub" in base_url
-
-
-def runninghub_model_catalog(provider_id="", base_url=""):
-    selected_id = str(provider_id or "").strip()
-    normalized_base = str(base_url or "").strip().lower()
-    models = []
-    providers = [item for item in read_api_providers() if isinstance(item, dict)]
-    for item in providers:
-        item_id = str(item.get("id") or "").strip()
-        item_protocol = str(item.get("protocol") or "").strip().lower()
-        item_base = str(item.get("base_url") or "").strip().lower()
-        include = False
-        if item_protocol == "runninghub" or item_id == "runninghub":
-            include = True
-        if selected_id and item_id == selected_id:
-            include = True
-        if normalized_base and "runninghub" in normalized_base and "runninghub" in item_base:
-            include = True
-        if not include:
-            continue
-        models.extend(item for item in (item.get("image_models") or []) if isinstance(item, str))
-        models.extend(
-            f"app:{entry_id}"
-            for entry in (item.get("rh_apps") or [])
-            if isinstance(entry, dict)
-            and entry.get("enabled", True) is not False
-            and entry.get("hidden", False) is not True
-            for entry_id in [str(entry.get("appId") or entry.get("webappId") or entry.get("id") or "").strip()]
-            if entry_id
-        )
-        models.extend(
-            f"workflow:{entry_id}"
-            for entry in (item.get("rh_workflows") or [])
-            if isinstance(entry, dict)
-            and entry.get("enabled", True) is not False
-            and entry.get("hidden", False) is not True
-            for entry_id in [str(entry.get("workflowId") or entry.get("id") or "").strip()]
-            if entry_id
-        )
-    all_models = unique_strings(models + RUNNINGHUB_DEFAULT_IMAGE_MODELS)
-    return {
-        "ok": True,
-        "protocol": "runninghub",
-        "all": all_models,
-        "image_models": all_models,
-        "chat_models": [],
-        "video_models": [],
-        "total": len(all_models),
-        "model_count": len(all_models),
-    }
-
-
-def runninghub_probe_payload(payload, action="test"):
-    if action != "probe":
-        try:
-            runninghub_doc_origin(payload.get("base_url"))
-        except Exception as exc:
-            return {
-                "ok": False,
-                "protocol": "runninghub",
-                "status": 0,
-                "status_code": 0,
-                "source": "runninghub-address-check",
-                "all": [],
-                "image_models": [],
-                "chat_models": [],
-                "video_models": [],
-                "total": 0,
-                "model_count": 0,
-                "message": str(exc),
-                "detail": str(exc),
-            }
-        image_models = unique_strings(RUNNINGHUB_DEFAULT_IMAGE_MODELS)
-        result = {
-            "ok": True,
-            "protocol": "runninghub",
-            "source": "runninghub-address-check",
-            "all": image_models,
-            "image_models": image_models,
-            "chat_models": [],
-            "video_models": [],
-            "total": len(image_models),
-            "model_count": len(image_models),
-        }
-    else:
-        result = runninghub_model_catalog(payload.get("provider_id"), payload.get("base_url"))
-    result["status"] = 200
-    result["status_code"] = 200
-    result["raw"] = {
-        "provider_id": payload.get("provider_id") or "",
-        "base_url": payload.get("base_url") or "",
-        "protocol": "runninghub",
-        "total": result["total"],
-    }
-    if action == "probe":
-        result["message"] = "RunningHub 协议已识别，模型列表来自内置/手动维护配置。"
-    else:
-        result["message"] = "RunningHub 地址验证通过，模型列表来自内置/手动维护配置。"
-    return result
 
 
 RUNNINGHUB_DOC_INDEX_PATH = "/runninghub-api-doc-en/llms.txt"
