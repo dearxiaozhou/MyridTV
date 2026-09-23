@@ -479,6 +479,17 @@ def main():
             check("[影子机] resize handle 直驱进 resizing", False,
                   str(hr_pos) + " " + json.dumps(m_r0))
 
+        # ==================================================================
+        # 13. 审计器（第5步量化）：全链交互跑完后，记账漏网必须为 0
+        #     divergence = 观察者探到的活跃态与机器 mode 不一致（白名单除外）
+        # ==================================================================
+        aud = page.evaluate("""() => {
+            const M = window.CanvasInteractionMachine;
+            return {divergences: M.dbg.divergences, log: M.dbg.divergenceLog.slice(0, 6)};
+        }""")
+        check("[审计] 全链跑完零 divergence（begin/end 记账与真实状态无漏网）",
+              aud["divergences"] == 0, json.dumps(aud, ensure_ascii=False))
+
         real_js = [e for e in js_errors if "WebSocket" not in e and "stats" not in e]
         check("全程无 JS 报错", len(real_js) == 0, str(real_js[:2]))
         browser.close()

@@ -20,7 +20,7 @@
         }
     ];
 
-    var dbg = { samples: 0, multistateCount: 0, peak: 0, combos: {}, lastCombos: [] };
+    var dbg = { samples: 0, multistateCount: 0, peak: 0, combos: {}, lastCombos: [], lastActive: [] };
 
     function configure(opts) {
         if (Array.isArray(opts.probes)) probes = probes.concat(opts.probes);
@@ -35,6 +35,12 @@
                 if (probes[i].get()) active.push(probes[i].name);
             } catch (_e) { /* 探针永不影响页面 */ }
         }
+        dbg.lastActive = active;   // 供状态机 audit 比对当前 mode
+        try {
+            if (global.CanvasInteractionMachine && global.CanvasInteractionMachine.audit) {
+                global.CanvasInteractionMachine.audit();
+            }
+        } catch (_e) { /* 审计永不影响页面 */ }
         if (active.length > dbg.peak) dbg.peak = active.length;
         if (active.length >= 2) {
             var whitelisted = false;
