@@ -122,6 +122,8 @@
         if (mode !== next) {
             // 结束的不是当前态：可能是重复 end 或顺序错——记 sticky 信号，不强断言
             dbg.stickyEndCount++;
+            (dbg.stickyEndLog = dbg.stickyEndLog || []).push({ attempt: next, mode: mode, at: Date.now() });
+            if (dbg.stickyEndLog.length > 30) dbg.stickyEndLog.shift();
             if (global.console && console.warn) console.warn('SM_STICKY end ' + next + ' while ' + mode);
             return false;
         }

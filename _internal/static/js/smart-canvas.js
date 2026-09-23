@@ -20310,7 +20310,7 @@ window.onmouseup = e => {
     }
     if(promptResizeState){ promptResizeState = null; scheduleSave(); if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('prompt-resize'); }
     if(selectionState && e.button === 0) finishSelection(e); // 只认左键松手（中键叠加不打残框选）
-    if(previewCompareDrag) previewCompareDrag = false; if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('preview-compare');
+    if(previewCompareDrag){ previewCompareDrag = false; if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('preview-compare'); }
     if(panoramaState.drag){
         panoramaState.drag = null; if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('panorama-drag');
         document.getElementById('previewStage')?.classList.remove('panning');
@@ -20319,7 +20319,7 @@ window.onmouseup = e => {
         previewPanDrag = null; if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('preview-pan');
         document.getElementById('previewStage')?.classList.remove('panning');
     }
-    if(imageEditPanDrag) imageEditPanDrag = null; if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('image-edit-pan');
+    if(imageEditPanDrag){ imageEditPanDrag = null; if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('image-edit-pan'); }
     if(cropDrag){
         document.getElementById('cropCanvas')?.classList.remove('dragging-image');
         cropDrag = null; if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('crop-drag');
