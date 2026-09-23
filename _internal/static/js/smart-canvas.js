@@ -12066,6 +12066,7 @@ function startConnectionCutGesture(event, initialIndex=-1){
         lastClientX:Number(event?.clientX || 0),
         lastClientY:Number(event?.clientY || 0)
     };
+    if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.begin('cutting');
     shell.classList.add('cutting-connections');
     if(event) updateConnectionCutGesture(event);
 }
@@ -12084,6 +12085,7 @@ function finishConnectionCutGesture(){
     shell.classList.remove('panning');
     const indexes = [...connectionCutState.indexes];
     connectionCutState = null;
+    if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('cutting');
     if(!indexes.length) return true;
     cutConnectionIndexes(indexes, {renderNow:true, saveNow:true, pushUndoSnapshot:true});
     return true;
@@ -12873,6 +12875,7 @@ function bindNodeEvents(){
             if(!node) return;
             const rect = nodeRect(node);
             resizeState = {id, startX:e.clientX, startY:e.clientY, startW:rect.width, startH:rect.height, aspect:rect.width / Math.max(1, rect.height)};
+            if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.begin('resizing');
             document.body.classList.add('smart-node-resize');
             capturePendingUndo();
         });
@@ -19882,6 +19885,7 @@ minimap?.addEventListener('mousedown', e => {
     e.preventDefault();
     e.stopPropagation();
     CanvasRenderScheduler.beginMinimapDrag();
+    if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.begin('minimap-panning');
     centerViewportOnWorldPoint(minimapEventToWorld(e));
 });
 function updateNodeDragFrame(e){
@@ -20146,6 +20150,7 @@ window.onmouseup = e => {
             commitPendingUndo();
         } else { discardPendingUndo(); }
         resizeState = null;
+        if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('resizing');
         if(changed) render();
         scheduleSave();
     }
@@ -20177,6 +20182,7 @@ window.onmouseup = e => {
     }
     if(CanvasRenderScheduler.inMinimapDrag()){
         CanvasRenderScheduler.endMinimapDrag();
+        if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('minimap-panning');
     }
     if(dragState){
         const draggedNode = nodes.find(n => n.id === dragState.id);

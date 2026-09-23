@@ -37,6 +37,15 @@ def create_test_canvas():
          "x": 640, "y": 280, "w": 240, "h": 240, "scale": 1, "status": "ready",
          "role": "media", "created_at": 0, "artifactId": "n2",
          "runSettings": {"engine": "comfy", "workflowName": "Krea2-文生图"}, "images": []},
+        # n3 带图 → 渲染 .node-resize-handle（L11740 条件），仅 resize 用例用；
+        # 放远处避免进框选/连线用例的命中区（n1 带图会连图片遮端口）。
+        {"id": "n3", "type": "smart-image", "title": "net3",
+         "x": 1150, "y": 200, "w": 240, "h": 240, "scale": 1, "status": "ready",
+         "role": "media", "created_at": 0, "artifactId": "n3",
+         "runSettings": {"engine": "comfy", "workflowName": "Krea2-文生图"},
+         "images": [{"url": "/assets/output/e2e/rz.png", "name": "rz.png", "kind": "image",
+                     "local_path": "_test_userdata/rz.png", "display_name": "rz.png",
+                     "generatedResult": True, "natural_w": 512, "natural_h": 512}]},
     ]
     body = json.dumps({"name": "SMNET-" + str(__import__("time").time()),
                        "nodes": nodes, "connections": []}).encode()
@@ -83,10 +92,10 @@ def main():
                                              "els => els.map(e => ({id: e.dataset.id, left: e.style.left, top: e.style.top}))")
 
         for _ in range(20):
-            if page.eval_on_selector_all(".image-node", "els => els.length") >= 2:
+            if page.eval_on_selector_all(".image-node", "els => els.length") >= 3:
                 break
             page.wait_for_timeout(500)
-        check("画布渲染 2 节点", page.eval_on_selector_all(".image-node", "els => els.length") >= 2)
+        check("画布渲染 3 节点", page.eval_on_selector_all(".image-node", "els => els.length") >= 3)
 
         # ==================================================================
         # 1. 滚轮缩放锚点：光标处节点向光标外扩（不整体漂移）
@@ -235,7 +244,14 @@ def main():
         # ==================================================================
         # 8. 空白双击 → create-menu 弹出；Escape 关
         # ==================================================================
-        page.mouse.dblclick(1500, 900)
+        blank = page.evaluate("""() => {
+            for (const [x, y] of [[1500, 900], [1500, 950], [900, 900], [1620, 900], [1400, 850]]) {
+                const el = document.elementFromPoint(x, y);
+                if (el && (el.classList.contains('world') || el.classList.contains('shell'))) return {x, y};
+            }
+            return {x: 1500, y: 900};
+        }""")
+        page.mouse.dblclick(blank["x"], blank["y"])
         page.wait_for_timeout(700)
         menu = page.evaluate("""() => {
             const els = [...document.querySelectorAll('#createMenu,.create-menu,[id*=create][class*=menu]')];
@@ -255,18 +271,19 @@ def main():
         # ==================================================================
         page.mouse.click(60, 60)
         page.wait_for_timeout(300)
-        ports = page.evaluate("""() => {
-            const out = [];
-            document.querySelectorAll('.image-node').forEach(n => {
-                const ps = n.querySelector('.node-port.port-out') || n.querySelector('.node-port');
-                if (ps) { const r = ps.getBoundingClientRect(); out.push({id: n.dataset.id, x: r.x + r.width/2, y: r.y + r.height/2}); }
-            });
-            return out;
+        # 端口可能被节点盒遮挡（elementFromPoint 命中 image-node，Playwright 真点会开框选）：
+        # 起手用 dispatchEvent 直接打 port mousedown，随后真实鼠标 move/wheel/up
+        po = page.evaluate("""() => {
+            const port = document.querySelector(".image-node[data-id='n1'] .node-port.port-out")
+                      || document.querySelector(".image-node .node-port.port-out")
+                      || document.querySelector(".image-node .node-port");
+            if (!port) return null;
+            const r = port.getBoundingClientRect();
+            port.dispatchEvent(new MouseEvent('mousedown', {bubbles:true, cancelable:true, button:0, clientX: r.x+r.width/2, clientY: r.y+r.height/2}));
+            return {x: r.x + r.width/2, y: r.y + r.height/2};
         }""")
-        if len(ports) >= 1:
-            po = ports[0]
+        if po:
             page.mouse.move(po["x"], po["y"])
-            page.mouse.down()
             page.mouse.move(po["x"] + 120, po["y"] + 60, steps=5)
             page.mouse.wheel(0, -120)              # 连线中途滚轮
             page.wait_for_timeout(400)
@@ -282,7 +299,7 @@ def main():
             check("[连线+滚轮] 松手后无 port-drag-temp/port-dragging 残留",
                   not residue["temp"] and not residue["cls"], str(residue))
         else:
-            check("[连线+滚轮] 端口存在（跳过：无端口）", False, str(ports))
+            check("[连线+滚轮] n1 端口存在", False, str(po))
 
         # ==================================================================
         # 10. Alt+拖拽复制：原不动、副本出现、总数+1
@@ -404,18 +421,17 @@ def main():
         # connecting 接管自检：端口拖出连线 begin+end 成对、零违规、归 idle
         m_c0 = page.evaluate("() => ({t: window.CanvasInteractionMachine.dbg.transitions, v: window.CanvasInteractionMachine.dbg.violations})")
         page.mouse.click(60, 60); page.wait_for_timeout(300)
-        ports2 = page.evaluate("""() => {
-            const out = [];
-            document.querySelectorAll('.image-node').forEach(n => {
-                const ps = n.querySelector('.node-port.port-out') || n.querySelector('.node-port');
-                if (ps) { const r = ps.getBoundingClientRect(); out.push({x: r.x + r.width/2, y: r.y + r.height/2}); }
-            });
-            return out;
+        pc = page.evaluate("""() => {
+            const port = document.querySelector(".image-node[data-id='n1'] .node-port.port-out")
+                      || document.querySelector(".image-node .node-port.port-out")
+                      || document.querySelector(".image-node .node-port");
+            if (!port) return null;
+            const r = port.getBoundingClientRect();
+            port.dispatchEvent(new MouseEvent('mousedown', {bubbles:true, cancelable:true, button:0, clientX: r.x+r.width/2, clientY: r.y+r.height/2}));
+            return {x: r.x + r.width/2, y: r.y + r.height/2};
         }""")
-        if ports2:
-            pc = ports2[0]
+        if pc:
             page.mouse.move(pc["x"], pc["y"])
-            page.mouse.down()
             page.mouse.move(pc["x"] + 130, pc["y"] + 70, steps=6)
             page.mouse.up()
             page.wait_for_timeout(500)
@@ -434,7 +450,34 @@ def main():
             check("[影子机] 断线后无 connecting 残留（mode=idle 且无 port-dragging 类）",
                   residue["mode"] == "idle" and residue["port_dragging"] is False, json.dumps(residue))
         else:
-            check("[影子机] 端口存在（跳过：无端口）", False, str(ports2))
+            check("[影子机] n1 端口存在", False, str(pc))
+
+        # resizing 接管自检：handle 直驱 mousedown（前序用例缩放平移后，
+        # n3 可能被推出视口——坐标真点会落空），随后真实鼠标 move/up 走 window 链
+        page.mouse.click(60, 60); page.wait_for_timeout(300)
+        hr_pos = page.evaluate("""() => {
+            const h = document.querySelector(".image-node[data-id='n3'] .node-resize-handle");
+            if (!h) return null;
+            const r = h.getBoundingClientRect();
+            h.dispatchEvent(new MouseEvent('mousedown', {bubbles:true, cancelable:true, button:0, clientX:r.x+4, clientY:r.y+4}));
+            return {x: r.x + 4, y: r.y + 4};
+        }""")
+        m_r0 = page.evaluate("() => ({t: window.CanvasInteractionMachine.dbg.transitions, v: window.CanvasInteractionMachine.dbg.violations, mode: window.CanvasInteractionMachine.current()})")
+        if hr_pos and m_r0["mode"] == "resizing":
+            page.mouse.move(100, 100)
+            page.mouse.move(max(20, hr_pos["x"] + 60), max(20, hr_pos["y"] + 40), steps=6)
+            page.mouse.up()
+            page.wait_for_timeout(500)
+            m_r1 = page.evaluate("""() => {
+                const M = window.CanvasInteractionMachine;
+                return {t: M.dbg.transitions, v: M.dbg.violations, mode: M.current()};
+            }""")
+            check("[影子机] resize begin 进 resizing 且收尾全配对（归 idle 零违规）",
+                  m_r1["mode"] == "idle" and m_r1["v"] == m_r0["v"] and m_r1["t"] > m_r0["t"],
+                  json.dumps({"before": m_r0, "after": m_r1}))
+        else:
+            check("[影子机] resize handle 直驱进 resizing", False,
+                  str(hr_pos) + " " + json.dumps(m_r0))
 
         real_js = [e for e in js_errors if "WebSocket" not in e and "stats" not in e]
         check("全程无 JS 报错", len(real_js) == 0, str(real_js[:2]))
