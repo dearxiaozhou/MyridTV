@@ -162,10 +162,10 @@ def main():
         page.mouse.up()
         page.wait_for_timeout(600)
         sel = page.eval_on_selector_all(".image-node.selected", "els => els.length")
-        # 现状钉死（2026-09-23 实测）：框选中叠中键会把框选打残——中键 mouseup 走
-        # document 防御复位(L19753) 不看按钮强杀链，最终只选中部分。状态机迁移
-        # 后此行为应修复为 sel==2；届时把本断言改成 ==2 = 过审点。
-        check("[框选+中键并存] 框选残留部分选中（现状钉死：≤2且≥0）", 0 <= sel <= 2, str(sel))
+        # 过审点兑现（第9步）：原"中键 mouseup 不看按钮强杀框选"已修——
+        # mouseup 主链只认对应按钮收尾 + 机器 end 栈语义（并存时 end 回剩余态）。
+        # 预期 sel==2：框选完整走完，n1+n2 全选中。
+        check("[框选+中键并存] 修复确认：框选不被中键打残（sel==2）", sel == 2, str(sel))
 
         # ==================================================================
         # 4. 多选成组拖拽：两节点位移一致（用 Shift 点击凑齐双选，绕开用例3现状残态）
@@ -635,6 +635,46 @@ def main():
               click_sticky["now"] and click_sticky["snap"].get("gesture:node-click") == "timed"
               and not click_after,
               json.dumps({"t0": click_sticky, "t480": click_after}))
+
+        # ==================================================================
+        # 12.8 第8步：OverlayRegistry 注册表语义
+        # ==================================================================
+        reg = page.evaluate("""() => {
+            const R = window.CanvasOverlayRegistry;
+            if (!R) return {err: 'no registry'};
+            const out = {};
+            out.kinds = Object.keys(R.BASE);
+            // 既有浮层判定：composer → overlay/wheel-exclude 真，pan-exclude 假（原链 composer 不在中键链）
+            const comp = document.querySelector('.composer');
+            out.composer_overlay = comp ? R.isOverlay(comp, 'overlay') : null;
+            out.composer_pan = comp ? R.isOverlay(comp, 'pan-exclude') : null;
+            out.composer_wheel = comp ? R.isOverlay(comp, 'wheel-exclude') : null;
+            // 动态注册：临时 div 挂 body，注册后所有 kind 立即命中，注销后恢复
+            const probe = document.createElement('div');
+            probe.className = 'e2e-registry-probe';
+            document.body.appendChild(probe);
+            out.before = R.isOverlay(probe, 'overlay');
+            R.register('.e2e-registry-probe');
+            out.after = R.isOverlay(probe, 'overlay') && R.isOverlay(probe, 'wheel-exclude');
+            R.unregister('.e2e-registry-probe');
+            out.removed = !R.isOverlay(probe, 'overlay');
+            probe.remove();
+            return out;
+        }""")
+        check("[第8步] OverlayRegistry 六 kind 齐备且既有浮层判定与原链一致",
+              "err" not in reg and len(reg.get("kinds", [])) == 6
+              and reg.get("composer_overlay") is True and reg.get("composer_pan") is False
+              and reg.get("composer_wheel") is True, json.dumps(reg))
+        check("[第8步] register 一处声明全局立即生效、unregister 干净回退",
+              reg.get("before") is False and reg.get("after") is True and reg.get("removed") is True,
+              json.dumps(reg))
+        # 委托真实生效（非 fallback）：主文件判定函数指向 registry
+        deleg = page.evaluate("""() => {
+            const R = window.CanvasOverlayRegistry;
+            const snapshot = R.snapshot();
+            return Object.keys(snapshot.dynamic).length === 0 && Object.values(snapshot.base).every(n => n >= 12);
+        }""")
+        check("[第8步] base 链完整迁移（每 kind ≥12 选择器、动态表初始为空）", deleg is True, str(deleg))
 
         # ==================================================================
         # 13. 审计器（第5步量化）：全链交互跑完后，记账漏网必须为 0

@@ -66,8 +66,15 @@
         try { if (fn) fn(); } catch (e) {
             if (global.console && console.warn) console.warn('SM_CANCEL error ' + m + ': ' + e);
         }
-        // 钩子没走完的记账由这里兜底
-        if (mode === m) { mode = 'idle'; delete began[m]; dbg.mode = 'idle'; }
+        // 与 end 栈语义一致：取消只弹掉当前态，并存时回到剩余态（如 box×pan
+        // 取消平移后框选继续），否则才归 idle
+        if (mode === m) {
+            delete began[m];
+            var oi = order.indexOf(m);
+            if (oi >= 0) order.splice(oi, 1);
+            mode = order.length ? order[order.length - 1] : 'idle';
+            dbg.mode = mode;
+        }
         return m;
     }
 
@@ -88,6 +95,8 @@
         return false;
     }
 
+    var order = [];   // begin 顺序栈：白名单并存时 end 回到剩余态而不是硬跳 idle
+
     function begin(next, payload) {
         dbg.transitions++;
         if (mode !== 'idle' && mode !== next && !isOverlapped(next)) {
@@ -98,27 +107,34 @@
         }
         mode = next;
         began[next] = payload || true;
+        var oi = order.indexOf(next);
+        if (oi >= 0) order.splice(oi, 1);
+        order.push(next);
         dbg.mode = mode;
         return true;
     }
 
     function end(next) {
         dbg.transitions++;
+        delete began[next];
+        var oi = order.indexOf(next);
+        if (oi >= 0) order.splice(oi, 1);
         if (mode !== next) {
             // 结束的不是当前态：可能是重复 end 或顺序错——记 sticky 信号，不强断言
             dbg.stickyEndCount++;
             if (global.console && console.warn) console.warn('SM_STICKY end ' + next + ' while ' + mode);
             return false;
         }
-        mode = 'idle';
-        delete began[next];
+        // 并存白名单场景：还有别的活跃态则回到最近 begin 的那个（如 box×pan 中
+        // 松中键后仍应处于 box-selecting），否则才归 idle
+        mode = order.length ? order[order.length - 1] : 'idle';
         dbg.mode = mode;
         return true;
     }
 
     // 机器接管前的登记辅助（探针/调试用）
     function current() { return mode; }
-    function reset() { mode = 'idle'; began = {}; dbg.mode = mode; }
+    function reset() { mode = 'idle'; began = {}; order = []; dbg.mode = mode; }
 
     // —— 审计（第5步量化）：观察者探到的旧状态 vs 机器 mode 是否一致 ——
     // state→mode 权威映射：任何被探到的活跃态若不是当前 mode（且不在并存白名单），

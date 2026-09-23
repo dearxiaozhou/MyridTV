@@ -19847,8 +19847,9 @@ document.addEventListener('mousemove', e => {
         if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('panning');
     }
 }, true);
-// 状态机白名单（已知债 2026-09-23）：框选中叠中键=box-selecting/panning 并存。
-// 修复该行为（用例3断言 sel==2）时同步删除本豁免。
+// 状态机白名单：框选中叠中键=box-selecting/panning 短暂并存（设计内瞬态：
+// 平移不抢路由、框选继续，见 smChainModeProbe 优先级）。2ca9b2a 后 mouseup
+// 主链只认对应按钮收尾，"打残框选"行为债已修，此豁免仅为并存窗口保留。
 if (typeof CanvasInteractionMachine !== 'undefined') {
     CanvasInteractionMachine.addOverlapWhitelist(function (from, to) {
         return (from === 'box-selecting' && to === 'panning') || (from === 'panning' && to === 'box-selecting');
@@ -20308,7 +20309,7 @@ window.onmouseup = e => {
         return;
     }
     if(promptResizeState){ promptResizeState = null; scheduleSave(); if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('prompt-resize'); }
-    if(selectionState) finishSelection(e);
+    if(selectionState && e.button === 0) finishSelection(e); // 只认左键松手（中键叠加不打残框选）
     if(previewCompareDrag) previewCompareDrag = false; if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('preview-compare');
     if(panoramaState.drag){
         panoramaState.drag = null; if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('panorama-drag');
@@ -20355,7 +20356,7 @@ window.onmouseup = e => {
             }
         }
     }
-    if(panState) {
+    if(panState && e.button === 1) { // 只认中键松手；防御链/watchdog 兜底丢事件
         panState = null;
         shell.classList.remove('panning');
         if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('panning');
