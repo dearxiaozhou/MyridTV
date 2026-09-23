@@ -19760,6 +19760,7 @@ function startCanvasMiddlePan(e){
     didPan = false;
     if(document.activeElement?.blur) document.activeElement.blur();
     panState = {button:e.button, startX:e.clientX, startY:e.clientY, ox:viewport.x, oy:viewport.y};
+    if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.begin('panning');
     shell.classList.add('panning');
     return true;
 }
@@ -19777,12 +19778,14 @@ document.addEventListener('mouseup', () => {
     if(panState){
         panState = null;
         shell.classList.remove('panning');
+        if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('panning');
     }
 }, true);
 document.addEventListener('mousemove', e => {
     if(panState && (e.buttons & 4) === 0){
         panState = null;
         shell.classList.remove('panning');
+        if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('panning');
     }
 }, true);
 shell.onmousedown = e => {
@@ -20149,6 +20152,7 @@ window.onmouseup = e => {
     if(panState) {
         panState = null;
         shell.classList.remove('panning');
+        if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('panning');
         scheduleSave();
         setTimeout(() => { didPan = false; }, 0);
     }

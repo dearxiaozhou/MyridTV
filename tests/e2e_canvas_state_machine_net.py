@@ -322,6 +322,31 @@ def main():
             check("并存组合无白名单外新增（已知债: pan+框选瞬态）", len(unknown) == 0,
                   f"combos={json.dumps(combos, ensure_ascii=False)}")
 
+        # ==================================================================
+        # 12. 交互状态机（影子模式）：begin/end 配对、迁移后归 idle、违规计数可读
+        # ==================================================================
+        m0 = page.evaluate("""() => {
+            const M = window.CanvasInteractionMachine;
+            return M ? {transitions: M.dbg.transitions, violations: M.dbg.violations, mode: M.current()} : {missing: true};
+        }""")
+        check("影子机器存在", not m0.get("missing"), json.dumps(m0)[:120])
+        # 专门做一次干净中键平移再观察：begin+end 各至少一次，结束后必须 idle
+        page.mouse.move(900, 600)
+        page.mouse.down(button="middle")
+        page.mouse.move(1000, 650, steps=5)
+        page.mouse.up(button="middle")
+        page.wait_for_timeout(400)
+        m1 = page.evaluate("""() => {
+            const M = window.CanvasInteractionMachine;
+            return {transitions: M.dbg.transitions, violations: M.dbg.violations, sticky: M.dbg.stickyEndCount, mode: M.current()};
+        }""")
+        check("[影子机] 干净平移后 transitions 增长", m1["transitions"] >= m0.get("transitions", 0) + 2,
+              f"{m0.get('transitions')}->{m1['transitions']}")
+        check("[影子机] 平移结束 mode 归 idle", m1["mode"] == "idle", m1["mode"])
+        # 违规口径：框选中叠中键是本文件用例3的已知现状（panState 先 begin 成功），
+        # 影子机器此刻只包 panning，其它态未接管——violations 应恒为 0（begin 时 mode 都是 idle）。
+        check("[影子机] 接管态范围内零违规", m1["violations"] == 0, json.dumps(m1))
+
         real_js = [e for e in js_errors if "WebSocket" not in e and "stats" not in e]
         check("全程无 JS 报错", len(real_js) == 0, str(real_js[:2]))
         browser.close()
