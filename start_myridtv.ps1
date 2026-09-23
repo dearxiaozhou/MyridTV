@@ -255,6 +255,9 @@ if (Test-Path -LiteralPath $UpgradeHelperScript) {
             (Join-Path $AppDir 'task_store.py'),
             (Join-Path $AppDir 'myridtv_core.py'),
             (Join-Path $AppDir 'myridtv_http.py'),
+            (Join-Path $AppDir 'myridtv_env.py'),
+            (Join-Path $AppDir 'myridtv_provider.py'),
+            (Join-Path $AppDir 'myridtv_agent.py'),
             (Join-Path $AppDir 'startup_upgrade.ps1')
         )
         $upgradeResult = Invoke-WcsTvUpgradeSafety -AppDir $AppDir -UserDataRoot $UserDataRoot -ArtifactPaths $upgradeArtifacts
