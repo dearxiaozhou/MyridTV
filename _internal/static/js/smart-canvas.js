@@ -1579,6 +1579,12 @@ function connectSelectedNodesToTarget(sourceIds, targetId){
 }
 function nodeLayerZ(nodeOrId){
     const id = typeof nodeOrId === 'string' ? nodeOrId : (nodeOrId?.id || '');
+    // 分组框(smart-group)永远压在成员之下：旧实现只在 render 模板里特判组=1，
+    // 但 syncSelectionUi/refreshNodeLayerStyles 用本函数直写 style.zIndex 时会把组
+    // 抬成 2，与未选中成员同层——谁在上面变成 DOM 追加顺序说了算，
+    // 组框整面积木随重渲染时前时后 → 「组内节点有时死活点不到、有时一点就中」。
+    const node = typeof nodeOrId === 'string' ? (nodes || []).find(n => n.id === nodeOrId) : nodeOrId;
+    if(node && node.type === 'smart-group') return 1;
     return (id && (frontNodeIds.includes(id) || isNodeSelected(id))) ? 4 : 2;
 }
 function refreshNodeLayerStyles(){
@@ -12895,6 +12901,7 @@ function bindNodeEvents(){
                 return n ? {id:n.id, ox:Number(n.x) || 0, oy:Number(n.y) || 0} : null;
             }).filter(Boolean);
             dragState = {id:node.id, startX:e.clientX, startY:e.clientY, ox:node.x || 0, oy:node.y || 0, group, groupIds:group.map(item => item.id), ctrlGroup:Boolean(e.ctrlKey), layoutRects:new Map(nodes.map(candidate => [candidate.id, nodeRect(candidate)]))};
+            if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.begin('dragging-node');
             document.body.classList.add('smart-node-drag');
             capturePendingUndo();
         };
@@ -20051,6 +20058,7 @@ window.onmousemove = e => {
                     const newNode = createImageNodeAt(point, [img], {select:false, skipUndo:true});
                     undoSuppressed = false;
                     dragState = {id:newNode.id, startX:e.clientX, startY:e.clientY, ox:newNode.x, oy:newNode.y, thumbDetached:true};
+                    if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.begin('dragging-node');
                     thumbDragState.detached = true;
                     render();
                 }
@@ -20184,6 +20192,7 @@ window.onmouseup = e => {
             discardPendingUndo();
             clearDropHighlight();
             dragState = null;
+            if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('dragging-node');
             document.body.classList.remove('smart-node-drag');
             render();
             scheduleSave();
@@ -20210,6 +20219,7 @@ window.onmouseup = e => {
         commitDraggedNodeElementPositions();
         scheduleMinimapRender();
         dragState = null;
+        if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('dragging-node');
         scheduleSave();
         refreshConnectionLayer();
     }

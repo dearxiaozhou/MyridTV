@@ -377,6 +377,29 @@ def main():
               json.dumps(m1b))
         # 复原：清选
         page.mouse.click(60, 60); page.wait_for_timeout(300)
+        # dragging-node 接管自检：干净拖拽 begin+end 成对、零违规、归 idle
+        m_d0 = page.evaluate("() => ({t: window.CanvasInteractionMachine.dbg.transitions, v: window.CanvasInteractionMachine.dbg.violations})")
+        rd = rect(".image-node[data-id='n1']")
+        page.mouse.click(rd["x"] + 40, rd["y"] + 3)   # 选中
+        page.wait_for_timeout(300)
+        rd = rect(".image-node[data-id='n1']")
+        page.mouse.move(rd["x"] + 40, rd["y"] + 3)
+        page.mouse.down()
+        page.mouse.move(rd["x"] + 170, rd["y"] + 110, steps=8)
+        page.mouse.up()
+        page.wait_for_timeout(500)
+        m_d1 = page.evaluate("""() => {
+            const M = window.CanvasInteractionMachine;
+            return {t: M.dbg.transitions, v: M.dbg.violations, sticky: M.dbg.stickyEndCount, mode: M.current()};
+        }""")
+        check("[影子机] 干净拖拽 begin+end 成对（+2、归 idle、零违规）",
+              m_d1["t"] >= m_d0["t"] + 2 and m_d1["mode"] == "idle" and m_d1["v"] == m_d0["v"],
+              json.dumps(m_d1))
+        # 拖拽 undo 收尾不产生孤儿 begin：Ctrl+Z 后 mode 仍 idle
+        page.keyboard.press("Control+z")
+        page.wait_for_timeout(500)
+        m_d2 = page.evaluate("() => window.CanvasInteractionMachine.current()")
+        check("[影子机] undo 后 mode 仍 idle（undo 不改交互态）", m_d2 == "idle", str(m_d2))
 
         real_js = [e for e in js_errors if "WebSocket" not in e and "stats" not in e]
         check("全程无 JS 报错", len(real_js) == 0, str(real_js[:2]))
