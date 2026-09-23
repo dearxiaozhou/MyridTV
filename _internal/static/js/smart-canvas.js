@@ -5901,6 +5901,13 @@ function renderDynamicParams(){
             ['横移揭示', '镜头节拍：横移[0%-100%]', '镜头平滑横移，逐步揭开主体与空间关系。节拍按镜头时长自动换算。'],
             ['固定→慢推', '镜头节拍：慢推[0%-100%]', '从稳定构图缓慢靠近主体，适合强调情绪或细节。节拍按镜头时长自动换算。']
         ];
+        const compositionOptions = [
+            ['环境建立→人物近景落幅', '镜头节拍：跟拍[0%-82%]；慢推[68%-100%] 构图起落幅：起幅[环境建立全景，主体左三分，右侧留白]；落幅[近景，主体右三分，视线左侧留白，头顶留白]', '起幅交代空间并给人物前进方向留白，结尾收近到右三分，保留视线空间与头顶余量。'],
+            ['中轴悬念→右三分收束', '镜头节拍：慢推[62%-100%] 构图起落幅：起幅[全景，主体居中，头顶留白]；落幅[近景，主体右三分，视线左侧留白，头顶留白]', '开场稳定居中建立期待，结尾落在右三分并为视线留空间。'],
+            ['左三分环境→居中定格', '镜头节拍：横移[0%-70%] 构图起落幅：起幅[全景，主体左三分，右侧留白]；落幅[中景，主体居中，头顶留白]', '开场保留右侧环境信息，横移后收在平衡的中轴构图。'],
+            ['大全景→特写情绪落幅', '镜头节拍：慢推[58%-100%] 构图起落幅：起幅[环境建立大全景，主体居中]；落幅[特写，主体左三分，右侧留白，头顶留白]', '从环境建立逐渐推进到情绪特写，结尾留出人物视线方向。'],
+            ['三分法跟拍起落幅', '镜头节拍：跟拍[0%-100%] 构图起落幅：起幅[中景，主体左三分，右侧留白，头顶留白]；落幅[中景，主体右三分，视线左侧留白，头顶留白]', '持续跟随动作，让主体从左三分过渡到右三分，开头与结尾都保留安全空间。']
+        ];
         // 隐藏 图片/视频 切换按钮
         const toggle = document.getElementById('apiKindToggle');
         if(toggle) toggle.style.display = 'none';
@@ -5932,6 +5939,8 @@ function renderDynamicParams(){
                             <div class="previz-lens-list">
                                 <div class="previz-lens-section">一键运镜节拍 · 自动适配镜头时长</div>
                                 ${beatOptions.map(l => `<button type="button" class="previz-lens-opt previz-beat-opt" data-lens-template="true" data-lens-label="${escapeAttr(l[0])}" data-lens-text="${escapeAttr(l[1])}" title="${escapeAttr(l[2])}"><span class="previz-lens-opt-name">${escapeHtml(l[0])}</span></button>`).join('')}
+                                <div class="previz-lens-section">电影构图起幅 → 落幅 · 主体位置与景别自动过渡</div>
+                                ${compositionOptions.map(l => `<button type="button" class="previz-lens-opt previz-beat-opt" data-lens-template="true" data-lens-label="${escapeAttr(l[0])}" data-lens-text="${escapeAttr(l[1])}" title="${escapeAttr(l[2])}"><span class="previz-lens-opt-name">${escapeHtml(l[0])}</span></button>`).join('')}
                                 <div class="previz-lens-section">单项镜头语言</div>
                                 ${lensOptions.map(l => `<button type="button" class="previz-lens-opt" data-lens-text="${escapeAttr(l[0])}" title="${escapeAttr(l[1])}"><span class="previz-lens-opt-name">${escapeHtml(l[0])}</span></button>`).join('')}
                             </div>
@@ -6013,7 +6022,7 @@ function renderDynamicParams(){
                         promptInput.focus();
                         if(opt.dataset.lensTemplate === 'true'){
                             const current = promptInput.innerText || promptInput.textContent || '';
-                            const cleaned = current.replace(/(?:镜头节拍|运镜节拍)\s*[：:]\s*[^\n]*/g, '').trim();
+                            const cleaned = current.replace(/(?:构图起落幅|起落幅构图)\s*[：:]\s*起幅\s*\[[^\]]+\]\s*[；;，,]\s*落幅\s*\[[^\]]+\]/g, '').replace(/(?:镜头节拍|运镜节拍)\s*[：:]\s*[^\n]*/g, '').trim();
                             promptInput.textContent = cleaned ? `${cleaned} ${text}` : text;
                             const range = document.createRange();
                             range.selectNodeContents(promptInput);
@@ -11941,10 +11950,23 @@ function bindConnectionEvents(){
 function isConnectionInteractionTarget(target){
     return Boolean(target?.closest?.('[data-conn-index], .connection-layer'));
 }
+function isCanvasZoomPreviewExcluded(target){
+  // 第8步：缩放预览吞事件浮层判定（原两处内联链收编）
+  if (typeof CanvasOverlayRegistry !== 'undefined') return CanvasOverlayRegistry.isOverlay(target, 'zoom-preview');
+  return Boolean(target?.closest?.('.composer,.smart-back,.asset-panel,.asset-toggle,.style-panel,.style-toggle,.canvas-tool-dock,.canvas-bottom-tools,.canvas-agent-panel,.canvas-agent-toggle,.smart-log-toggle,.smart-shortcut-toggle,.log-modal,.shortcut-modal,.image-edit-modal,.create-menu,.smart-minimap'));
+}
+function isCanvasClickEmptyExcluded(target){
+  // 第8步：空白点击清选中排除（含 .image-node=点节点不清选，原语义）
+  if (typeof CanvasOverlayRegistry !== 'undefined') return CanvasOverlayRegistry.isOverlay(target, 'click-empty');
+  return Boolean(target?.closest?.('.image-node,.composer,.smart-back,.canvas-tool-dock,.canvas-bottom-tools,.canvas-agent-panel,.canvas-agent-toggle,.smart-log-toggle,.smart-shortcut-toggle,.log-modal,.shortcut-modal,.image-edit-modal,.create-menu'));
+}
 function isCanvasOverlayTarget(target){
+  // 第8步：统一浮层注册表判定（CanvasOverlayRegistry.register 一处声明全局生效）
+  if (typeof CanvasOverlayRegistry !== 'undefined') return CanvasOverlayRegistry.isOverlay(target, 'overlay');
   return Boolean(target?.closest?.('.composer,.smart-back,.asset-panel,.asset-toggle,.style-panel,.style-toggle,.canvas-tool-dock,.canvas-bottom-tools,.canvas-agent-panel,.canvas-agent-toggle,.smart-log-toggle,.smart-shortcut-toggle,.log-modal,.shortcut-modal,.image-edit-modal,.create-menu,.smart-minimap,.smart-image-context-menu,#smartImageContextMenu'));
 }
 function isCanvasMiddlePanExcludedTarget(target){
+  if (typeof CanvasOverlayRegistry !== 'undefined') return CanvasOverlayRegistry.isOverlay(target, 'pan-exclude');
   return Boolean(target?.closest?.('.smart-back,.asset-panel,.asset-toggle,.style-panel,.style-toggle,.canvas-tool-dock,.canvas-bottom-tools,.canvas-agent-panel,.canvas-agent-toggle,.smart-log-toggle,.smart-shortcut-toggle,.log-modal,.shortcut-modal,.image-edit-modal,.create-menu,.smart-minimap,.smart-image-context-menu,#smartImageContextMenu'));
 }
 function connectionIndexFromTarget(target){
@@ -19772,14 +19794,14 @@ if(type === 'loop') return createLoopNode(p.x - 135, p.y - 95);
 shell.addEventListener('mousedown', e => {
     if(!CanvasViewport.inZoomPreview()) return;
     if(e.button !== 0) return;
-    if(e.target.closest('.composer,.smart-back,.asset-panel,.asset-toggle,.style-panel,.style-toggle,.canvas-tool-dock,.canvas-bottom-tools,.canvas-agent-panel,.canvas-agent-toggle,.smart-log-toggle,.smart-shortcut-toggle,.log-modal,.shortcut-modal,.image-edit-modal,.create-menu,.smart-minimap')) return;
+    if(isCanvasZoomPreviewExcluded(e.target)) return;
     e.preventDefault();
     e.stopPropagation();
 }, true);
 shell.addEventListener('click', e => {
     if(!CanvasViewport.inZoomPreview()) return;
     if(e.button !== 0) return;
-    if(e.target.closest('.composer,.smart-back,.asset-panel,.asset-toggle,.style-panel,.style-toggle,.canvas-tool-dock,.canvas-bottom-tools,.canvas-agent-panel,.canvas-agent-toggle,.smart-log-toggle,.smart-shortcut-toggle,.log-modal,.shortcut-modal,.image-edit-modal,.create-menu,.smart-minimap')) return;
+    if(isCanvasZoomPreviewExcluded(e.target)) return;
     e.preventDefault();
     e.stopPropagation();
     const nodeEl = e.target.closest('.image-node');
@@ -19970,7 +19992,7 @@ shell.oncontextmenu = e => {
 };
 shell.ondblclick = e => {
     if(isConnectionInteractionTarget(e.target)) return;
-    if(smPanSticky() || e.target.closest('.image-node,.composer,.smart-back,.canvas-tool-dock,.canvas-bottom-tools,.canvas-agent-panel,.canvas-agent-toggle,.smart-log-toggle,.smart-shortcut-toggle,.log-modal,.shortcut-modal,.image-edit-modal,.create-menu')) return;
+    if(smPanSticky() || isCanvasClickEmptyExcluded(e.target)) return;
     if(document.getElementById('imageEditModal')?.classList.contains('open')) return;
     e.preventDefault();
     openCreateMenu(e);
@@ -19979,7 +20001,7 @@ shell.onclick = e => {
     if(selectionJustFinished) return;
     closeSmartImageContextMenu();
     if(isConnectionInteractionTarget(e.target)) return;
-    if(smPanSticky() || e.target.closest('.image-node,.composer,.smart-back,.canvas-tool-dock,.canvas-bottom-tools,.canvas-agent-panel,.canvas-agent-toggle,.smart-log-toggle,.smart-shortcut-toggle,.log-modal,.shortcut-modal,.image-edit-modal,.create-menu')) return;
+    if(smPanSticky() || isCanvasClickEmptyExcluded(e.target)) return;
     if(document.getElementById('imageEditModal')?.classList.contains('open')) return;
     closeCreateMenu();
     clearSelection();

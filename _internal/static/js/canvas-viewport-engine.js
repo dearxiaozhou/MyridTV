@@ -183,10 +183,12 @@
 
     // ===== 滚轮归属判定（画布 vs 浮层）=====
     function isCanvasWheelExcludedTarget(target) {
+        if (typeof CanvasOverlayRegistry !== 'undefined') return CanvasOverlayRegistry.isOverlay(target, 'wheel-exclude');
         return !!target?.closest?.('.composer,.smart-back,.canvas-tool-dock,.canvas-bottom-tools,.image-edit-modal,.asset-panel,.asset-toggle,.style-panel,.style-toggle,.canvas-agent-panel,.canvas-agent-toggle,.smart-log-toggle,.smart-shortcut-toggle,.log-modal,.shortcut-modal,.prompt-template-panel,.prompt-preset-panel');
     }
 
     function isCanvasWheelScrollableOverlay(target) {
+        if (typeof CanvasOverlayRegistry !== 'undefined') return CanvasOverlayRegistry.isOverlay(target, 'wheel-scrollable');
         return !!target?.closest?.('.asset-panel,.asset-grid,.style-panel,.style-grid,.canvas-agent-panel,.canvas-agent-messages,.prompt-template-panel,.prompt-template-list,.prompt-template-preview-content,.mention-picker,.smart-table-wrap,.prompt-node-text,.loop-smart-text,.loop-smart-upstream-text,textarea,[contenteditable="true"]');
     }
 
