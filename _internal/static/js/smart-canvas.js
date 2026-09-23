@@ -12865,6 +12865,7 @@ function bindNodeEvents(){
                 if(!node || (node.images || []).length <= 1) return;
                 e.preventDefault(); e.stopPropagation();
                 thumbDragState = {nodeId:id, imgIndex:Number(item.dataset.imageIndex || 0), startX:e.clientX, startY:e.clientY, detached:false};
+                if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.begin('thumb-drag');
                 capturePendingUndo();
             });
         });
@@ -14977,6 +14978,7 @@ function beginCropDrag(event, mode){
     event.preventDefault(); event.stopPropagation();
     if(imageEditMode === 'outpaint' && mode === 'move') return;
     cropDrag = {mode, sx:event.clientX, sy:event.clientY, start:{...cropState}};
+    if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.begin('crop-drag');
 }
 function resizeOutpaintFromDrag(dx, dy){
     const start = cropDrag?.start;
@@ -15494,6 +15496,7 @@ function bindInputThumbsDrag(node, items){
                 active:false,
                 items
             };
+            if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.begin('input-thumb-drag');
         });
         el.addEventListener('click', e => {
             e.preventDefault();
@@ -19913,21 +19916,22 @@ function updateNodeDragFrame(e){
     setDropHighlight(canvasGroupDropTargetFor(node)?.id || '');
 }
 function smChainModeProbe(){
-    // 5步b dispatch 影子：按旧链真实优先级模拟首个命中分支的态。
-    // 命中未接管态返回 null（不参与比对，第二刀不会动它们）。
+    // 第三刀：15 态全覆盖的唯一路由源——按旧链真实优先级返回首个命中态 mode 名。
+    // 注意两条历史语义：cropDrag 非空但 cropState 空 → 原链跳过继续往下；
+    // thumb 未拆分 → 原链分支内 else return（链内重算兜住拆分升级后的 fall-through）。
     if(connectionCutState) return 'cutting';
     if(CanvasRenderScheduler.inMinimapDrag()) return 'minimap-panning';
     if(portDragState) return 'connecting';
-    if(promptResizeState) return null;
+    if(promptResizeState) return 'prompt-resize';
     if(selectionState) return 'box-selecting';
-    if(previewCompareDrag) return null;
-    if(panoramaState && panoramaState.drag) return null;
-    if(previewPanDrag) return null;
-    if(imageEditPanDrag) return null;
-    if(cropDrag && cropState) return null;
+    if(previewCompareDrag) return 'preview-compare';
+    if(panoramaState && panoramaState.drag) return 'panorama-drag';
+    if(previewPanDrag) return 'preview-pan';
+    if(imageEditPanDrag) return 'image-edit-pan';
+    if(cropDrag && cropState) return 'crop-drag';
     if(resizeState) return 'resizing';
-    if(thumbDragState && !thumbDragState.detached) return null; // 未拆分时原链直接 return，语义对齐
-    if(inputThumbDragState) return null;
+    if(thumbDragState) return 'thumb-drag';
+    if(inputThumbDragState) return 'input-thumb-drag';
     if(panState) return 'panning';
     if(dragState) return 'dragging-node';
     return 'idle';
@@ -19939,7 +19943,7 @@ if (typeof CanvasInteractionMachine !== 'undefined') {
 
 window.onmousemove = e => {
     if (typeof CanvasInteractionObserver !== 'undefined') CanvasInteractionObserver.tick();
-    const smRoute = smChainModeProbe();
+    let smRoute = smChainModeProbe();
     if (typeof CanvasInteractionMachine !== 'undefined' && smRoute) {
         CanvasInteractionMachine.dispatchShadow(smRoute);
     }
@@ -19981,7 +19985,7 @@ lastMouseWorld = screenToWorld(e);
         updatePortDragVisual();
         return;
     }
-    if(promptResizeState){
+    if(smRoute === 'prompt-resize'){
         e.preventDefault();
         const dy = e.clientY - promptResizeState.startY;
         settings.promptH = Math.max(60, Math.min(380, promptResizeState.startH + dy));
@@ -19994,12 +19998,12 @@ lastMouseWorld = screenToWorld(e);
         updateSelectionBox(e);
         return;
     }
-    if(previewCompareDrag){
+    if(smRoute === 'preview-compare'){
         e.preventDefault();
         setPreviewComparePos(e.clientX);
         return;
     }
-    if(panoramaState.drag){
+    if(smRoute === 'panorama-drag'){
         e.preventDefault();
         const dx = e.clientX - panoramaState.drag.clientX;
         const dy = e.clientY - panoramaState.drag.clientY;
@@ -20008,7 +20012,7 @@ lastMouseWorld = screenToWorld(e);
         document.getElementById('previewStage')?.classList.add('panning');
         return;
     }
-    if(previewPanDrag){
+    if(smRoute === 'preview-pan'){
         const stage = document.getElementById('previewStage');
         previewPan = {
             x:previewPanDrag.startX + (e.clientX - previewPanDrag.clientX),
@@ -20018,7 +20022,7 @@ lastMouseWorld = screenToWorld(e);
         applyPreviewTransform();
         return;
     }
-    if(imageEditPanDrag){
+    if(smRoute === 'image-edit-pan'){
         const stage = document.getElementById('imageEditStage');
         if(stage){
             stage.scrollLeft = imageEditPanDrag.scrollLeft - (e.clientX - imageEditPanDrag.clientX);
@@ -20026,7 +20030,7 @@ lastMouseWorld = screenToWorld(e);
         }
         return;
     }
-    if(cropDrag && cropState){
+    if(smRoute === 'crop-drag'){
         const dx = e.clientX - cropDrag.sx;
         const dy = e.clientY - cropDrag.sy;
         if(cropDrag.mode === 'move'){
@@ -20069,7 +20073,7 @@ lastMouseWorld = screenToWorld(e);
         updateNodeElementDuringResize(node);
         return;
     }
-    if(thumbDragState){
+    if(smRoute === 'thumb-drag'){
         const dx = e.clientX - thumbDragState.startX;
         const dy = e.clientY - thumbDragState.startY;
         const source = nodes.find(n => n.id === thumbDragState.nodeId);
@@ -20092,16 +20096,16 @@ lastMouseWorld = screenToWorld(e);
                     const newNode = createImageNodeAt(point, [img], {select:false, skipUndo:true});
                     undoSuppressed = false;
                     dragState = {id:newNode.id, startX:e.clientX, startY:e.clientY, ox:newNode.x, oy:newNode.y, thumbDetached:true};
-                    if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.begin('dragging-node');
+                    if (typeof CanvasInteractionMachine !== 'undefined') { CanvasInteractionMachine.end('thumb-drag'); CanvasInteractionMachine.begin('dragging-node'); }
                     thumbDragState.detached = true;
                     render();
                 }
             }
         }
-        if(thumbDragState.detached) thumbDragState = null;
+        if(thumbDragState.detached){ thumbDragState = null; smRoute = smChainModeProbe(); }
         else return;
     }
-    if(inputThumbDragState){
+    if(smRoute === 'input-thumb-drag'){
         const dx = e.clientX - inputThumbDragState.startX;
         const dy = e.clientY - inputThumbDragState.startY;
         if(!inputThumbDragState.active && Math.abs(dx) + Math.abs(dy) > 6){
@@ -20155,21 +20159,21 @@ window.onmouseup = e => {
         handlePortDrop(drag, e);
         return;
     }
-    if(promptResizeState){ promptResizeState = null; scheduleSave(); }
+    if(promptResizeState){ promptResizeState = null; scheduleSave(); if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('prompt-resize'); }
     if(selectionState) finishSelection(e);
-    if(previewCompareDrag) previewCompareDrag = false;
+    if(previewCompareDrag) previewCompareDrag = false; if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('preview-compare');
     if(panoramaState.drag){
-        panoramaState.drag = null;
+        panoramaState.drag = null; if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('panorama-drag');
         document.getElementById('previewStage')?.classList.remove('panning');
     }
     if(previewPanDrag){
-        previewPanDrag = null;
+        previewPanDrag = null; if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('preview-pan');
         document.getElementById('previewStage')?.classList.remove('panning');
     }
-    if(imageEditPanDrag) imageEditPanDrag = null;
+    if(imageEditPanDrag) imageEditPanDrag = null; if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('image-edit-pan');
     if(cropDrag){
         document.getElementById('cropCanvas')?.classList.remove('dragging-image');
-        cropDrag = null;
+        cropDrag = null; if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('crop-drag');
     }
     if(resizeState){
         const node = nodes.find(n => n.id === resizeState.id);
@@ -20185,11 +20189,12 @@ window.onmouseup = e => {
     }
     if(thumbDragState){
         if(!thumbDragState.detached) discardPendingUndo();
+        if(thumbDragState && !thumbDragState.detached && typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('thumb-drag');
         thumbDragState = null;
     }
     if(inputThumbDragState){
         const drag = inputThumbDragState;
-        inputThumbDragState = null;
+        inputThumbDragState = null; if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('input-thumb-drag');
         clearInputThumbDragClasses();
         if(drag.active){
             const rawInsert = Number.isFinite(Number(drag.insertIndex)) ? Number(drag.insertIndex) : drag.from;
@@ -20468,6 +20473,7 @@ if(promptResize){
             startY: e.clientY,
             startH: Number(settings.promptH) || promptInput.offsetHeight || 124
         };
+        if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.begin('prompt-resize');
     });
 }
 runBtn.onclick = async function(ev){
@@ -21138,10 +21144,12 @@ document.getElementById('previewStage').addEventListener('mousedown', event => {
             yaw:panoramaState.yaw,
             pitch:panoramaState.pitch
         };
+        if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.begin('panorama-drag');
         document.getElementById('previewStage')?.classList.add('panning');
         return;
     }
     previewPanDrag = {clientX:event.clientX, clientY:event.clientY, startX:previewPan.x, startY:previewPan.y};
+    if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.begin('preview-pan');
 });
 document.getElementById('imageEditStage').addEventListener('mousedown', event => {
     if(imageEditMode === 'preview' || event.button !== 0) return;
@@ -21157,6 +21165,7 @@ document.getElementById('imageEditStage').addEventListener('mousedown', event =>
         scrollLeft:stage.scrollLeft,
         scrollTop:stage.scrollTop
     };
+    if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.begin('image-edit-pan');
 });
 document.getElementById('previewCompareHandle').addEventListener('mousedown', event => {
     if(imageEditMode !== 'preview' || !previewCompareOn || previewCompareIndex < 0) return;
@@ -21164,6 +21173,7 @@ document.getElementById('previewCompareHandle').addEventListener('mousedown', ev
     event.stopPropagation();
     previewPanDrag = null;
     previewCompareDrag = true;
+    if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.begin('preview-compare');
     setPreviewComparePos(event.clientX);
 });
 document.getElementById('previewCompareHandle').addEventListener('pointerdown', event => {
@@ -21173,6 +21183,7 @@ document.getElementById('previewCompareHandle').addEventListener('pointerdown', 
     event.currentTarget.setPointerCapture?.(event.pointerId);
     previewPanDrag = null;
     previewCompareDrag = true;
+    if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.begin('preview-compare');
     setPreviewComparePos(event.clientX);
 });
 document.getElementById('previewCompareHandle').addEventListener('pointermove', event => {
@@ -21187,10 +21198,12 @@ document.getElementById('previewCompareHandle').addEventListener('pointerup', ev
         event.stopPropagation();
     }
     previewCompareDrag = false;
+    if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('preview-compare');
     event.currentTarget.releasePointerCapture?.(event.pointerId);
 });
 document.getElementById('previewCompareHandle').addEventListener('pointercancel', event => {
     previewCompareDrag = false;
+    if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('preview-compare');
     event.currentTarget.releasePointerCapture?.(event.pointerId);
 });
 bindPreviewWheelListeners();

@@ -90,7 +90,15 @@
         portDragState: 'connecting',
         resizeState: 'resizing',
         connectionCutState: 'cutting',
-        minimapDrag: 'minimap-panning'
+        minimapDrag: 'minimap-panning',
+        promptResizeState: 'prompt-resize',
+        thumbDragState: 'thumb-drag',
+        inputThumbDragState: 'input-thumb-drag',
+        previewCompareDrag: 'preview-compare',
+        panoramaDrag: 'panorama-drag',
+        previewPanDrag: 'preview-pan',
+        imageEditPanDrag: 'image-edit-pan',
+        cropDrag: 'crop-drag'
     };
 
     function audit() {
