@@ -317,7 +317,7 @@ def main():
             # 基线快照：当前已知债=「框选+中键」组合（用例3钉死项）。迁移推进后
             # 此数应趋向 0；若冒出白名单外的新组合，combos 键会暴露它。
             combos = obs.get("combos", {})
-            known_debts = {"panState+selectionState"}
+            known_debts = {"panState+selectionState"}  # 观察者探针债清单不变
             unknown = [k for k in combos.keys() if k not in known_debts]
             check("并存组合无白名单外新增（已知债: pan+框选瞬态）", len(unknown) == 0,
                   f"combos={json.dumps(combos, ensure_ascii=False)}")
@@ -345,7 +345,38 @@ def main():
         check("[影子机] 平移结束 mode 归 idle", m1["mode"] == "idle", m1["mode"])
         # 违规口径：框选中叠中键是本文件用例3的已知现状（panState 先 begin 成功），
         # 影子机器此刻只包 panning，其它态未接管——violations 应恒为 0（begin 时 mode 都是 idle）。
-        check("[影子机] 接管态范围内零违规", m1["violations"] == 0, json.dumps(m1))
+        # 已知债显式豁免（2026-09-23）：用例3 框选+中键并存——机器白名单放行
+        # box-selecting×panning，violations 应仍为 0；修复行为时本注释与豁免同删。
+        check("[影子机] 接管态范围内零违规（已知债走白名单）", m1["violations"] == 0, json.dumps(m1))
+        # box-selecting 接管自检：干净框选 begin+end 成对、归 idle
+        m_box = page.evaluate("""() => {
+            const M = window.CanvasInteractionMachine;
+            return {t0: M.dbg.transitions, mode0: M.current()};
+        }""")
+        # 此刻画布有 n1 + alt复制的2个副本（n2 已在用例7删除）：框住全部节点即可
+        page.mouse.click(60, 60); page.wait_for_timeout(300)
+        all_r = page.eval_on_selector_all(".image-node", """els => els.map(e => {
+            const r = e.getBoundingClientRect();
+            return {x: r.x, y: r.y, w: r.width, h: r.height};
+        })""")
+        x0 = min(r["x"] for r in all_r) - 40
+        y0 = min(r["y"] for r in all_r) - 40
+        x1 = max(r["x"] + r["w"] for r in all_r) + 40
+        y1 = max(r["y"] + r["h"] for r in all_r) + 40
+        page.mouse.move(max(30, x0), max(30, y0))
+        page.mouse.down()
+        page.mouse.move(min(1650, x1), min(950, y1), steps=8)
+        page.mouse.up()
+        page.wait_for_timeout(500)
+        m1b = page.evaluate("""() => {
+            const M = window.CanvasInteractionMachine;
+            return {transitions: M.dbg.transitions, violations: M.dbg.violations, mode: M.current()};
+        }""")
+        check("[影子机] 干净框选 begin+end 成对（transitions+2 且归 idle）",
+              m1b["transitions"] >= m_box["t0"] + 2 and m1b["mode"] == "idle" and m1b["violations"] == 0,
+              json.dumps(m1b))
+        # 复原：清选
+        page.mouse.click(60, 60); page.wait_for_timeout(300)
 
         real_js = [e for e in js_errors if "WebSocket" not in e and "stats" not in e]
         check("全程无 JS 报错", len(real_js) == 0, str(real_js[:2]))

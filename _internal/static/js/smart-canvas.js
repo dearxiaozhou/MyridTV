@@ -19476,6 +19476,7 @@ function finishSelection(event){
     selectedId = selectedIds.length === 1 ? selectedIds[0] : '';
     selectedImage = {nodeId:'', index:-1};
     selectionState = null;
+    if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('box-selecting');
     selectionJustFinished = true;
     selectionBox.style.display = 'none';
     focusCanvasWorld();
@@ -19788,6 +19789,13 @@ document.addEventListener('mousemove', e => {
         if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('panning');
     }
 }, true);
+// 状态机白名单（已知债 2026-09-23）：框选中叠中键=box-selecting/panning 并存。
+// 修复该行为（用例3断言 sel==2）时同步删除本豁免。
+if (typeof CanvasInteractionMachine !== 'undefined') {
+    CanvasInteractionMachine.addOverlapWhitelist(function (from, to) {
+        return (from === 'box-selecting' && to === 'panning') || (from === 'panning' && to === 'box-selecting');
+    });
+}
 shell.onmousedown = e => {
     if (typeof CanvasInteractionObserver !== 'undefined') CanvasInteractionObserver.tick();
     if(CanvasViewport.inZoomPreview() && e.button === 0 && !isCanvasOverlayTarget(e.target)) return;
@@ -19808,6 +19816,7 @@ shell.onmousedown = e => {
         e.preventDefault();
         didPan = false;
         selectionState = {startScreen:{x:e.clientX, y:e.clientY}, startWorld:screenToWorld(e)};
+        if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.begin('box-selecting');
         updateSelectionBox(e);
         return;
     }

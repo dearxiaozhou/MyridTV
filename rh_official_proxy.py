@@ -375,7 +375,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.22.comfyconsole16"
+STATIC_VERSION = "2026.09.22.comfyconsole17"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -7404,22 +7404,34 @@ def _agent_sanitize_messages(messages):
     for m in messages:
         content = m.get("content")
         if isinstance(content, list):
-            parts = []
+            # 2026-09-23 修「Agent 读图失明」真根因：旧逻辑把 image_url 块压平成
+            # "[图片: data:base64…]" 纯文本再发上游——模型收到的是一墙 base64 字符，
+            # 只能瞎猜。多模态消息必须保留 OpenAI parts 结构原样透传；
+            # 仅当整条消息没有图片块时才压回纯文本（兼容旧路径）。
+            has_image = False
+            blocks = []
+            texts = []
+            def flush_texts():
+                if texts:
+                    joined = "\n".join(t for t in texts if t)
+                    if joined.strip():
+                        blocks.append({"type": "text", "text": joined})
+                    texts.clear()
             for block in content:
-                if isinstance(block, dict):
-                    if block.get("type") == "text":
-                        parts.append(str(block.get("text") or ""))
-                    elif block.get("type") == "image_url":
-                        url = block.get("image_url")
-                        if isinstance(url, dict):
-                            url = url.get("url") or ""
-                        parts.append("[图片: {}]".format(url))
-                    else:
-                        parts.append(str(block))
+                if isinstance(block, dict) and block.get("type") == "image_url":
+                    url = block.get("image_url")
+                    url = str((url.get("url") if isinstance(url, dict) else url) or "").strip()
+                    if url:
+                        flush_texts()
+                        has_image = True
+                        blocks.append({"type": "image_url", "image_url": {"url": url}})
+                elif isinstance(block, dict) and block.get("type") == "text":
+                    texts.append(str(block.get("text") or ""))
                 else:
-                    parts.append(str(block))
+                    texts.append(str(block))
+            flush_texts()
             m = dict(m)
-            m["content"] = "\n".join(p for p in parts if p)
+            m["content"] = blocks if has_image else "\n".join(b.get("text", "") for b in blocks if b.get("type") == "text")
         # 协议防御：OpenAI 兼容上游会拒绝 assistant 消息携带空 tool_calls 数组
         # (400 invalid_parameter_error: Empty tool_calls is not supported in message)。
         # 历史存档会话里可能已存下 "tool_calls": [] 的坏消息，这里统一剔除，
