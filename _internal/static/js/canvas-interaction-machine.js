@@ -31,6 +31,29 @@
     // 白名单：允许并存的过渡瞬态组合（迁移期逐个消灭后清空的清单）
     var overlaps = [];
 
+    // —— 第7步：粘滞标志收编 ——
+    // 把散落在主文件的「指针手势后抑制后续点击」标志（didPan / suppressNodeClickUntil）
+    // 归一为一张可查询、可断言的表。两种生命周期精确复刻原布尔/时间戳语义：
+    //   setSticky(key, Infinity) = 旧 `flag = true`（不定长，直到 clearSticky）
+    //   setSticky(key, ms)       = 旧 `flagUntil = Date.now()+ms`（限时）
+    //   stickyActive(key)        = 旧 `if(flag)` / `if(Date.now()<until)`（过期自动清）
+    var sticky = {};
+    function setSticky(key, ms) { sticky[key] = (ms === Infinity) ? Infinity : Date.now() + (ms || 0); }
+    function clearSticky(key) { delete sticky[key]; }
+    function stickyActive(key) {
+        var t = sticky[key];
+        if (t === undefined) return false;
+        if (t === Infinity) return true;
+        if (Date.now() >= t) { delete sticky[key]; return false; }
+        return true;
+    }
+    function stickySnapshot() {
+        var out = {};
+        for (var k in sticky) out[k] = (sticky[k] === Infinity) ? 'sticky' : 'timed';
+        return out;
+    }
+    dbg.sticky = sticky;   // e2e 直接读这张表断言粘滞态
+
     // —— 第6步：Escape 一键取消 ——
     // 主文件按 mode 注册 cancel 钩子（清旧状态+视觉+必要还原）；
     // cancelActive() 在 Escape 时调用当前 mode 的钩子并强制回 idle。
@@ -159,6 +182,10 @@
         configure: configure,
         registerCancel: registerCancel,
         cancelActive: cancelActive,
+        setSticky: setSticky,
+        clearSticky: clearSticky,
+        stickyActive: stickyActive,
+        stickySnapshot: stickySnapshot,
         begin: begin,
         end: end,
         route: route,

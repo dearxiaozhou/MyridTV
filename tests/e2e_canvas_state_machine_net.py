@@ -585,6 +585,58 @@ def main():
               idle_esc["mode"] == "idle" and idle_esc["same"], json.dumps(idle_esc))
 
         # ==================================================================
+        # 12.7 第7步：粘滞标志收编断言
+        # ==================================================================
+        # (a) 真实平移一段距离 → sticky 表出现 gesture:pan；松手后宏任务清零
+        page.mouse.move(840, 500)
+        page.mouse.down(button="middle")
+        page.mouse.move(800, 470, steps=5)
+        pan_sticky_mid = page.evaluate("""() => {
+            const M = window.CanvasInteractionMachine;
+            return {sticky: M.stickySnapshot(), active: M.stickyActive('gesture:pan')};
+        }""")
+        # 原语义复刻：本画布中键松手走的是 document capture 防御链（抢先清
+        # panState），该路径不清粘滞——didPan 残留到下一次平移/框选 begin 才清。
+        # （window.onmouseup 的 setTimeout 复位只在没被防御链抢先时生效。）
+        page.mouse.up(button="middle")
+        page.wait_for_timeout(200)
+        pan_sticky_after = page.evaluate("""() => ({
+            sticky: window.CanvasInteractionMachine.stickySnapshot(),
+            active: window.CanvasInteractionMachine.stickyActive('gesture:pan')
+        })""")
+        page.mouse.move(700, 420)
+        page.mouse.down(button="middle")
+        page.mouse.up(button="middle")
+        page.wait_for_timeout(150)
+        pan_sticky_next = page.evaluate("""() => ({
+            activeMid: window.CanvasInteractionMachine.stickyActive('gesture:pan')
+        })""")
+        check("[第7步] 平移中粘滞在机器表且生效；begin 重进时按原语义清零",
+              pan_sticky_mid["active"] and pan_sticky_mid["sticky"].get("gesture:pan") == "sticky"
+              and pan_sticky_after["active"]           # 残留=原布尔行为（忠实复刻）
+              and not pan_sticky_next["activeMid"]     # begin 清零路径有效
+              , json.dumps({"mid": pan_sticky_mid, "after": pan_sticky_after, "next": pan_sticky_next}))
+
+        # (b) 拖拽节点提交后 gesture:node-click 限时粘滞出现，400ms 后自动过期
+        page.mouse.click(60, 60); page.wait_for_timeout(250)
+        r2 = page.eval_on_selector(".image-node[data-id='n2'], .image-node",
+            "el=>{const q=el.getBoundingClientRect();return{x:q.x+40,y:q.y+3}}")
+        page.mouse.move(r2["x"], r2["y"]); page.mouse.down()
+        page.mouse.move(r2["x"] + 100, r2["y"] + 60, steps=6)
+        page.mouse.up()
+        page.wait_for_timeout(80)
+        click_sticky = page.evaluate("""() => {
+            const M = window.CanvasInteractionMachine;
+            return {now: M.stickyActive('gesture:node-click'), snap: M.stickySnapshot()};
+        }""")
+        page.wait_for_timeout(400)
+        click_after = page.evaluate("() => window.CanvasInteractionMachine.stickyActive('gesture:node-click')")
+        check("[第7步] 拖拽提交后 node-click 限时粘滞（180ms）到期自动清",
+              click_sticky["now"] and click_sticky["snap"].get("gesture:node-click") == "timed"
+              and not click_after,
+              json.dumps({"t0": click_sticky, "t480": click_after}))
+
+        # ==================================================================
         # 13. 审计器（第5步量化）：全链交互跑完后，记账漏网必须为 0
         #     divergence = 观察者探到的活跃态与机器 mode 不一致（白名单除外）
         # ==================================================================

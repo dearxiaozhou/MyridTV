@@ -262,7 +262,7 @@ let uploadTargetId = '';
 let pendingGroupUploadPoint = null;
 let mentionRange = null;
 let panState = null;
-let didPan = false;
+// didPan 已收编进 CanvasInteractionMachine 粘滞表 'gesture:pan'（第7步）
 let portDragState = null;
 let connectionCutState = null;
 let saveTimer = null;
@@ -438,7 +438,7 @@ const smartNodeRunTokens = new Map();
 let smartRhRandomValues = {};
 let lastImagePasteAt = 0;
 let lastNodePasteAt = 0;
-let suppressNodeClickUntil = 0;
+// suppressNodeClickUntil 已收编进 CanvasInteractionMachine 粘滞表 'gesture:node-click'（第7步）
 let textSelectionGuard = null;
 const UNDO_LIMIT = 40;
 const undoStack = [];
@@ -5894,6 +5894,13 @@ function renderDynamicParams(){
             ['缝隙窥视推进','从栏杆、门缝、前景间慢推，制造观察、秘密或窥探感。'],
             ['180° 环绕','绕主体半圈，展示环境与人物关系，适合人物出场、情绪高点。']
         ];
+        const beatOptions = [
+            ['跟拍→横移→慢推', '镜头节拍：跟拍[0%-82%]；横移[30%-80%]；慢推[68%-100%]', '人物持续跟随，途中横移展示空间，结尾慢推收近。节拍按镜头时长自动换算。'],
+            ['跟拍→慢推收镜', '镜头节拍：跟拍[0%-82%]；慢推[68%-100%]', '持续跟随人物，尾段推进到情绪近景。节拍按镜头时长自动换算。'],
+            ['环绕亮相', '镜头节拍：环绕[0%-100%]', '镜头围绕主体运动一周，适合人物或场景亮相。节拍按镜头时长自动换算。'],
+            ['横移揭示', '镜头节拍：横移[0%-100%]', '镜头平滑横移，逐步揭开主体与空间关系。节拍按镜头时长自动换算。'],
+            ['固定→慢推', '镜头节拍：慢推[0%-100%]', '从稳定构图缓慢靠近主体，适合强调情绪或细节。节拍按镜头时长自动换算。']
+        ];
         // 隐藏 图片/视频 切换按钮
         const toggle = document.getElementById('apiKindToggle');
         if(toggle) toggle.style.display = 'none';
@@ -5923,6 +5930,9 @@ function renderDynamicParams(){
                         <button class="smart-pill previz-lens-pill" type="button" title="${(() => { try { const last = localStorage.getItem('previz_last_lens'); if(last){ const hit = lensOptions.find(l => l[0] === last); return '镜头语言：' + last + (hit ? '（' + hit[1] + '）' : '') + '。点击打开列表重新选择'; } } catch(_){} return '镜头语言：点击打开列表，选中即插入提示词框光标处'; })()}""><i data-lucide="clapperboard"></i><span>镜头语言</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
                         <div class="smart-popover previz-lens-popover">
                             <div class="previz-lens-list">
+                                <div class="previz-lens-section">一键运镜节拍 · 自动适配镜头时长</div>
+                                ${beatOptions.map(l => `<button type="button" class="previz-lens-opt previz-beat-opt" data-lens-template="true" data-lens-label="${escapeAttr(l[0])}" data-lens-text="${escapeAttr(l[1])}" title="${escapeAttr(l[2])}"><span class="previz-lens-opt-name">${escapeHtml(l[0])}</span></button>`).join('')}
+                                <div class="previz-lens-section">单项镜头语言</div>
                                 ${lensOptions.map(l => `<button type="button" class="previz-lens-opt" data-lens-text="${escapeAttr(l[0])}" title="${escapeAttr(l[1])}"><span class="previz-lens-opt-name">${escapeHtml(l[0])}</span></button>`).join('')}
                             </div>
                         </div>
@@ -5997,24 +6007,36 @@ function renderDynamicParams(){
                 opt.addEventListener('click', e => {
                     e.preventDefault(); e.stopPropagation();
                     const text = opt.dataset.lensText || '';
+                    const label = opt.dataset.lensLabel || text;
                     if(!text) return;
                     if(promptInput){
                         promptInput.focus();
-                        const sel = window.getSelection();
-                        const range = sel && sel.rangeCount && promptInput.contains(sel.anchorNode) ? sel.getRangeAt(0) : null;
-                        const node = document.createTextNode(text + ' ');
-                        if(range){
-                            range.deleteContents();
-                            range.insertNode(node);
+                        if(opt.dataset.lensTemplate === 'true'){
+                            const current = promptInput.innerText || promptInput.textContent || '';
+                            const cleaned = current.replace(/(?:镜头节拍|运镜节拍)\s*[：:]\s*[^\n]*/g, '').trim();
+                            promptInput.textContent = cleaned ? `${cleaned} ${text}` : text;
+                            const range = document.createRange();
+                            range.selectNodeContents(promptInput);
                             range.collapse(false);
+                            const sel = window.getSelection();
+                            if(sel){ sel.removeAllRanges(); sel.addRange(range); }
                         } else {
-                            promptInput.insertAdjacentHTML('beforeend', escapeHtml(text) + ' ');
+                            const sel = window.getSelection();
+                            const range = sel && sel.rangeCount && promptInput.contains(sel.anchorNode) ? sel.getRangeAt(0) : null;
+                            const node = document.createTextNode(text + ' ');
+                            if(range){
+                                range.deleteContents();
+                                range.insertNode(node);
+                                range.collapse(false);
+                            } else {
+                                promptInput.insertAdjacentHTML('beforeend', escapeHtml(text) + ' ');
+                            }
                         }
                         promptInput.dispatchEvent(new Event('input', {bubbles:true}));
                     }
                     // 记录最近一次选中的镜头语言，用于按钮 hover 显示作用说明
-                    try{ localStorage.setItem('previz_last_lens', text); }catch(_){}
-                    if(pill) pill.title = `镜头语言：${text}（${opt.title || '已插入提示词框'}）。点击打开列表重新选择`;
+                    try{ localStorage.setItem('previz_last_lens', label); }catch(_){}
+                    if(pill) pill.title = `镜头语言：${label}（${opt.title || '已插入提示词框'}）。点击打开列表重新选择`;
                     closeAllSmartPopovers();
                 });
             });
@@ -12677,7 +12699,7 @@ function bindNodeEvents(){
         };
         el.onclick = e => {
             e.stopPropagation();
-            if(Date.now() < suppressNodeClickUntil) return;
+            if(smNodeClickSuppressed()) return;
             const node = nodes.find(n => n.id === id);
             hideRunTimerForNode(node);
             selectNodeFromPointer(id, e);
@@ -19772,7 +19794,7 @@ function startCanvasMiddlePan(e){
     e.stopPropagation();
     e.stopImmediatePropagation?.();
     closeSmartImageContextMenu();
-    didPan = false;
+    smMarkPanSticky(false);
     if(document.activeElement?.blur) document.activeElement.blur();
     panState = {button:e.button, startX:e.clientX, startY:e.clientY, ox:viewport.x, oy:viewport.y};
     if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.begin('panning');
@@ -19818,7 +19840,7 @@ if (typeof CanvasInteractionMachine !== 'undefined') {
         if(panState){
             viewport.x = panState.ox; viewport.y = panState.oy;
             scheduleViewportApply();
-            didPan = true;
+            SM.setSticky('gesture:pan', Infinity);
             panState = null;
         }
         shell.classList.remove('panning');
@@ -19835,7 +19857,7 @@ if (typeof CanvasInteractionMachine !== 'undefined') {
                 if(n){ n.x = item.ox; n.y = item.oy; }
             });
             discardPendingUndo();
-            suppressNodeClickUntil = Date.now() + 180;
+            SM.setSticky('gesture:node-click', 180);
             dragState = null;
             render();
             scheduleSave();
@@ -19921,7 +19943,7 @@ shell.onmousedown = e => {
     closeCreateMenu();
     if(e.button === 0){
         e.preventDefault();
-        didPan = false;
+        smMarkPanSticky(false);
         selectionState = {startScreen:{x:e.clientX, y:e.clientY}, startWorld:screenToWorld(e)};
         if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.begin('box-selecting');
         updateSelectionBox(e);
@@ -19948,7 +19970,7 @@ shell.oncontextmenu = e => {
 };
 shell.ondblclick = e => {
     if(isConnectionInteractionTarget(e.target)) return;
-    if(didPan || e.target.closest('.image-node,.composer,.smart-back,.canvas-tool-dock,.canvas-bottom-tools,.canvas-agent-panel,.canvas-agent-toggle,.smart-log-toggle,.smart-shortcut-toggle,.log-modal,.shortcut-modal,.image-edit-modal,.create-menu')) return;
+    if(smPanSticky() || e.target.closest('.image-node,.composer,.smart-back,.canvas-tool-dock,.canvas-bottom-tools,.canvas-agent-panel,.canvas-agent-toggle,.smart-log-toggle,.smart-shortcut-toggle,.log-modal,.shortcut-modal,.image-edit-modal,.create-menu')) return;
     if(document.getElementById('imageEditModal')?.classList.contains('open')) return;
     e.preventDefault();
     openCreateMenu(e);
@@ -19957,7 +19979,7 @@ shell.onclick = e => {
     if(selectionJustFinished) return;
     closeSmartImageContextMenu();
     if(isConnectionInteractionTarget(e.target)) return;
-    if(didPan || e.target.closest('.image-node,.composer,.smart-back,.canvas-tool-dock,.canvas-bottom-tools,.canvas-agent-panel,.canvas-agent-toggle,.smart-log-toggle,.smart-shortcut-toggle,.log-modal,.shortcut-modal,.image-edit-modal,.create-menu')) return;
+    if(smPanSticky() || e.target.closest('.image-node,.composer,.smart-back,.canvas-tool-dock,.canvas-bottom-tools,.canvas-agent-panel,.canvas-agent-toggle,.smart-log-toggle,.smart-shortcut-toggle,.log-modal,.shortcut-modal,.image-edit-modal,.create-menu')) return;
     if(document.getElementById('imageEditModal')?.classList.contains('open')) return;
     closeCreateMenu();
     clearSelection();
@@ -20008,6 +20030,17 @@ function updateNodeDragFrame(e){
     moveNodeElementsDuringDrag();
     setDropHighlight(canvasGroupDropTargetFor(node)?.id || '');
 }
+
+// —— 第7步：粘滞标志统一入口（表在 CanvasInteractionMachine，语义与原布尔/时间戳一致）
+function smPanSticky(){ return (typeof CanvasInteractionMachine !== 'undefined') && CanvasInteractionMachine.stickyActive('gesture:pan'); }
+function smMarkPanSticky(v){
+    if (typeof CanvasInteractionMachine === 'undefined') return;
+    if (v) CanvasInteractionMachine.setSticky('gesture:pan', Infinity);
+    else CanvasInteractionMachine.clearSticky('gesture:pan');
+}
+function smNodeClickSuppressed(){ return (typeof CanvasInteractionMachine !== 'undefined') && CanvasInteractionMachine.stickyActive('gesture:node-click'); }
+function smSuppressNodeClick(ms){ if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.setSticky('gesture:node-click', ms || 180); }
+
 function smChainModeProbe(){
     // 第三刀：15 态全覆盖的唯一路由源——按旧链真实优先级返回首个命中态 mode 名。
     // 注意两条历史语义：cropDrag 非空但 cropState 空 → 原链跳过继续往下；
@@ -20213,7 +20246,7 @@ lastMouseWorld = screenToWorld(e);
     if(smRoute === 'panning'){
         const dx = e.clientX - panState.startX;
         const dy = e.clientY - panState.startY;
-        if(Math.abs(dx) + Math.abs(dy) > 3) didPan = true;
+        if(Math.abs(dx) + Math.abs(dy) > 3) smMarkPanSticky(true);
         viewport.x = panState.ox + dx;
         viewport.y = panState.oy + dy;
         scheduleViewportApply();
@@ -20305,7 +20338,7 @@ window.onmouseup = e => {
         shell.classList.remove('panning');
         if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('panning');
         scheduleSave();
-        setTimeout(() => { didPan = false; }, 0);
+        setTimeout(() => { smMarkPanSticky(false); }, 0);
     }
     if(CanvasRenderScheduler.inMinimapDrag()){
         CanvasRenderScheduler.endMinimapDrag();
@@ -20348,7 +20381,7 @@ window.onmouseup = e => {
         if(dragState.thumbDetached) stateChanged = true;
         if(stateChanged) commitPendingUndo();
         else discardPendingUndo();
-        if(stateChanged || dragState.thumbDetached) suppressNodeClickUntil = Date.now() + 180;
+        if(stateChanged || dragState.thumbDetached) smSuppressNodeClick(180);
         clearDropHighlight();
         loopInsertPreview = null;
         commitDraggedNodeElementPositions();
