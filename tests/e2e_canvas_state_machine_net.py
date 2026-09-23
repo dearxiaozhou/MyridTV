@@ -505,6 +505,86 @@ def main():
             check("[第三刀] promptResize 柄存在", False, str(pr))
 
         # ==================================================================
+        # 12.5 第6步：Escape 一键取消（拖拽/框选取消+还原；idle 时不劫持）
+        # ==================================================================
+        page.mouse.click(60, 60); page.wait_for_timeout(300)
+
+        # (a) 拖拽中途 Escape：节点回到原位、机器归 idle
+        rx = page.evaluate("""() => {
+            const n = document.querySelector(".image-node[data-id='n1']");
+            if (!n) return null;
+            n.dispatchEvent(new MouseEvent('mousedown', {bubbles:true, button:0,
+                clientX: n.getBoundingClientRect().x + 40, clientY: n.getBoundingClientRect().y + 3}));
+            n.dispatchEvent(new MouseEvent('mouseup', {bubbles:true, button:0,
+                clientX: n.getBoundingClientRect().x + 40, clientY: n.getBoundingClientRect().y + 3}));
+            return 1;
+        }""")
+        page.wait_for_timeout(300)
+        pos_before = page.evaluate("""() => {
+            const n = document.querySelector(".image-node[data-id='n1']");
+            return {left: n.style.left, top: n.style.top};
+        }""")
+        if pos_before.get("left"):
+            r1 = page.eval_on_selector(".image-node[data-id='n1']",
+                "el=>{const q=el.getBoundingClientRect();return{x:q.x+40,y:q.y+3}}")
+            page.mouse.move(r1["x"], r1["y"]); page.mouse.down()
+            page.mouse.move(r1["x"] + 120, r1["y"] + 80, steps=6)
+            page.wait_for_timeout(120)
+            m_mid = page.evaluate("() => window.CanvasInteractionMachine.current()")
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(150)
+            try:
+                page.mouse.up()
+            except Exception:
+                pass
+            page.wait_for_timeout(250)
+            pos_after = page.evaluate("""() => {
+                const M = window.CanvasInteractionMachine;
+                const n = document.querySelector(".image-node[data-id='n1']");
+                return {left: n.style.left, top: n.style.top, mode: M.current(),
+                        v: M.dbg.violations, div: M.dbg.divergences};
+            }""")
+            check("[Escape] 拖拽中途取消：mode 曾进 dragging-node", m_mid == "dragging-node", str(m_mid))
+            check("[Escape] 拖拽取消后归位 + 归 idle + 双零",
+                  pos_after["left"] == pos_before["left"] and pos_after["top"] == pos_before["top"]
+                  and pos_after["mode"] == "idle" and pos_after["v"] == 0 and pos_after["div"] == 0,
+                  json.dumps({"before": pos_before, "after": pos_after}))
+        else:
+            check("[Escape] n1 位置可读", False, json.dumps(pos_before))
+
+        # (b) 框选中 Escape：selectionBox 隐藏、归 idle
+        page.mouse.move(400, 350); page.mouse.down()
+        page.mouse.move(700, 550, steps=5)
+        page.wait_for_timeout(100)
+        sel_mode = page.evaluate("() => window.CanvasInteractionMachine.current()")
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(120)
+        try:
+            page.mouse.up()
+        except Exception:
+            pass
+        page.wait_for_timeout(150)
+        sel_state = page.evaluate("""() => {
+            const sb = document.getElementById('selectionBox');
+            return {mode: window.CanvasInteractionMachine.current(),
+                    box: sb ? sb.style.display : 'gone'};
+        }""")
+        check("[Escape] 框选取消：mode 曾进 box-selecting", sel_mode == "box-selecting", str(sel_mode))
+        check("[Escape] 框选取消后框隐藏 + 归 idle",
+              sel_state["mode"] == "idle" and sel_state["box"] in ("none", "gone"),
+              json.dumps(sel_state))
+
+        # (c) idle 时 Escape 不被机器劫持（cancelActive 不被调用：靠 current()==='idle' 放行）
+        idle_esc = page.evaluate("""() => {
+            const M = window.CanvasInteractionMachine;
+            const before = M.dbg.transitions;
+            document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
+            return {mode: M.current(), same: M.dbg.transitions === before};
+        }""")
+        check("[Escape] idle 时 Escape 零干预（不改 mode 不产生迁移）",
+              idle_esc["mode"] == "idle" and idle_esc["same"], json.dumps(idle_esc))
+
+        # ==================================================================
         # 13. 审计器（第5步量化）：全链交互跑完后，记账漏网必须为 0
         #     divergence = 观察者探到的活跃态与机器 mode 不一致（白名单除外）
         # ==================================================================

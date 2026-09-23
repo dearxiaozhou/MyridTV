@@ -31,6 +31,23 @@
     // 白名单：允许并存的过渡瞬态组合（迁移期逐个消灭后清空的清单）
     var overlaps = [];
 
+    // —— 第6步：Escape 一键取消 ——
+    // 主文件按 mode 注册 cancel 钩子（清旧状态+视觉+必要还原）；
+    // cancelActive() 在 Escape 时调用当前 mode 的钩子并强制回 idle。
+    var cancels = {};
+    function registerCancel(modeName, fn) { cancels[modeName] = fn; }
+    function cancelActive() {
+        var m = mode;
+        if (m === 'idle') return false;
+        var fn = cancels[m];
+        try { if (fn) fn(); } catch (e) {
+            if (global.console && console.warn) console.warn('SM_CANCEL error ' + m + ': ' + e);
+        }
+        // 钩子没走完的记账由这里兜底
+        if (mode === m) { mode = 'idle'; delete began[m]; dbg.mode = 'idle'; }
+        return m;
+    }
+
     // —— 5步b第二刀：路由权移交 ——
     // routeFn 由主文件 configure 注入（smChainModeProbe：逐字复刻旧链优先级的
     // 单一判定函数）。巨链的 7 个受管分支全部改读 route()，不再各自 if(旧变量)。
@@ -140,6 +157,8 @@
 
     global.CanvasInteractionMachine = {
         configure: configure,
+        registerCancel: registerCancel,
+        cancelActive: cancelActive,
         begin: begin,
         end: end,
         route: route,

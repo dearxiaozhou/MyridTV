@@ -19810,6 +19810,99 @@ if (typeof CanvasInteractionMachine !== 'undefined') {
         return (from === 'box-selecting' && to === 'panning') || (from === 'panning' && to === 'box-selecting');
     });
 }
+
+// —— 第6步：Escape 一键取消（cancel 钩子=清状态+清视觉+还原必要副作用；不做未完成的提交）
+if (typeof CanvasInteractionMachine !== 'undefined') {
+    const SM = CanvasInteractionMachine;
+    SM.registerCancel('panning', () => {
+        if(panState){
+            viewport.x = panState.ox; viewport.y = panState.oy;
+            scheduleViewportApply();
+            didPan = true;
+            panState = null;
+        }
+        shell.classList.remove('panning');
+    });
+    SM.registerCancel('box-selecting', () => {
+        selectionState = null;
+        const sb = document.getElementById('selectionBox');
+        if(sb) sb.style.display = 'none';
+    });
+    SM.registerCancel('dragging-node', () => {
+        if(dragState){
+            (dragState.group || [{id:dragState.id, ox:dragState.ox, oy:dragState.oy}]).forEach(item => {
+                const n = nodes.find(x => x.id === item.id);
+                if(n){ n.x = item.ox; n.y = item.oy; }
+            });
+            discardPendingUndo();
+            suppressNodeClickUntil = Date.now() + 180;
+            dragState = null;
+            render();
+            scheduleSave();
+        }
+    });
+    SM.registerCancel('connecting', () => {
+        if(portDragState){
+            portDragState = null;
+            shell.classList.remove('port-dragging');
+            clearPortDragVisual();
+        }
+    });
+    SM.registerCancel('cutting', () => {
+        // 取消=不剪任何连线：直接清手势（不走 finish 的 cut 提交）
+        connectionCutState = null;
+        shell.classList.remove('cutting-connections');
+        shell.classList.remove('panning');
+    });
+    SM.registerCancel('resizing', () => {
+        if(resizeState){
+            const node = nodes.find(n => n.id === resizeState.id);
+            if(node){
+                node.w = resizeState.startW; node.h = resizeState.startH; node.scale = 1;
+                discardPendingUndo();
+                render();
+            }
+            resizeState = null;
+            scheduleSave();
+        }
+    });
+    SM.registerCancel('minimap-panning', () => {
+        if (typeof CanvasRenderScheduler !== 'undefined') CanvasRenderScheduler.endMinimapDrag();
+    });
+    SM.registerCancel('prompt-resize', () => {
+        if(promptResizeState){ promptResizeState = null; scheduleSave(); }
+    });
+    SM.registerCancel('thumb-drag', () => {
+        if(thumbDragState){
+            if(!thumbDragState.detached) discardPendingUndo();
+            thumbDragState = null;
+        }
+    });
+    SM.registerCancel('input-thumb-drag', () => {
+        inputThumbDragState = null;
+        clearInputThumbDragClasses();
+    });
+    SM.registerCancel('preview-compare', () => { previewCompareDrag = false; });
+    SM.registerCancel('panorama-drag', () => {
+        panoramaState.drag = null;
+        document.getElementById('previewStage')?.classList.remove('panning');
+    });
+    SM.registerCancel('preview-pan', () => {
+        previewPanDrag = null;
+        document.getElementById('previewStage')?.classList.remove('panning');
+    });
+    SM.registerCancel('image-edit-pan', () => { imageEditPanDrag = null; });
+    SM.registerCancel('crop-drag', () => {
+        cropDrag = null;
+        document.getElementById('cropCanvas')?.classList.remove('dragging-image');
+    });
+    window.addEventListener('keydown', e => {
+        if(e.key !== 'Escape' || e.repeat) return;
+        if(SM.current() === 'idle') return;              // 无交互进行中：交还给既有 Escape 语义
+        const canceled = SM.cancelActive();
+        if(canceled){ e.preventDefault(); e.stopPropagation(); }
+    }, true);
+}
 shell.onmousedown = e => {
     if (typeof CanvasInteractionObserver !== 'undefined') CanvasInteractionObserver.tick();
     if(CanvasViewport.inZoomPreview() && e.button === 0 && !isCanvasOverlayTarget(e.target)) return;
