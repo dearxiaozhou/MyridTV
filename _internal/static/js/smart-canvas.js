@@ -19912,8 +19912,33 @@ function updateNodeDragFrame(e){
     moveNodeElementsDuringDrag();
     setDropHighlight(canvasGroupDropTargetFor(node)?.id || '');
 }
+function smChainModeProbe(){
+    // 5步b dispatch 影子：按旧链真实优先级模拟首个命中分支的态。
+    // 命中未接管态返回 null（不参与比对，第二刀不会动它们）。
+    if(connectionCutState) return 'cutting';
+    if(CanvasRenderScheduler.inMinimapDrag()) return 'minimap-panning';
+    if(portDragState) return 'connecting';
+    if(promptResizeState) return null;
+    if(selectionState) return 'box-selecting';
+    if(previewCompareDrag) return null;
+    if(panoramaState && panoramaState.drag) return null;
+    if(previewPanDrag) return null;
+    if(imageEditPanDrag) return null;
+    if(cropDrag && cropState) return null;
+    if(resizeState) return 'resizing';
+    if(thumbDragState) return null;
+    if(inputThumbDragState) return null;
+    if(panState) return 'panning';
+    if(dragState) return 'dragging-node';
+    return 'idle';
+}
+
 window.onmousemove = e => {
     if (typeof CanvasInteractionObserver !== 'undefined') CanvasInteractionObserver.tick();
+    if (typeof CanvasInteractionMachine !== 'undefined') {
+        const smChainMode = smChainModeProbe();
+        if (smChainMode) CanvasInteractionMachine.dispatchShadow(smChainMode);
+    }
     lastMouseWorld = screenToWorld(e);
     if(connectionCutState){
         e.preventDefault();

@@ -21,6 +21,8 @@
         transitions: 0,
         violations: 0,
         divergences: 0,      // 巨链里「状态非空但 mode 不配」=记账漏网/行为债，第5步核心指标
+        dispatchDiff: 0,     // 5步b：按链优先级模拟选出的态 ≠ machine.current() 的次数
+        dispatchLog: [],     // 最近 20 条：{chain, mode, at}
         violationLog: [],     // 最近 20 条：{from,to,at}
         divergenceLog: [],    // 最近 20 条：{state,mode,at}
         stickyEndCount: 0     // end(未知态) 次数 = 复位路径遗漏的信号
@@ -109,12 +111,22 @@
         }
     }
 
+    // —— 5步b dispatch 影子：主文件链顶每帧把「按旧链优先级模拟出的态」送进来比对。
+    // 不改路由、不改行为，只量化差异；差异清零（或只剩已知债）才允许第二刀换真路由。
+    function dispatchShadow(chainMode) {
+        if (chainMode === mode) return;
+        dbg.dispatchDiff++;
+        dbg.dispatchLog.push({ chain: chainMode, mode: mode, at: Date.now() });
+        if (dbg.dispatchLog.length > 20) dbg.dispatchLog.shift();
+    }
+
     global.CanvasInteractionMachine = {
         begin: begin,
         end: end,
         current: current,
         reset: reset,
         audit: audit,
+        dispatchShadow: dispatchShadow,
         dbg: dbg,
         addOverlapWhitelist: function (fn) { if (typeof fn === 'function') overlaps.push(fn); }
     };

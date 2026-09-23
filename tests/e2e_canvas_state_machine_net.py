@@ -490,6 +490,20 @@ def main():
         check("[审计] 全链跑完零 divergence（begin/end 记账与真实状态无漏网）",
               aud["divergences"] == 0, json.dumps(aud, ensure_ascii=False))
 
+        # ==================================================================
+        # 14. dispatch 影子（5步b 第一刀）：链优先级模拟 vs machine.current()
+        #     允许的唯一分叉=已知债 box-selecting↔panning 重叠窗口；
+        #     其余任何 (chain,mode) 不一致 = 记账或行为错位，当场红。
+        # ==================================================================
+        dsp = page.evaluate("""() => {
+            const M = window.CanvasInteractionMachine;
+            return {diff: M.dbg.dispatchDiff, log: M.dbg.dispatchLog};
+        }""")
+        bad = [e for e in (dsp.get("log") or [])
+               if {e.get("chain"), e.get("mode")} != {"box-selecting", "panning"}]
+        check("[dispatch影子] 链-机器分叉仅允许 box×pan 已知债（其余组合必须零）",
+              len(bad) == 0, json.dumps({"diff": dsp["diff"], "bad": bad[:5]}, ensure_ascii=False))
+
         real_js = [e for e in js_errors if "WebSocket" not in e and "stats" not in e]
         check("全程无 JS 报错", len(real_js) == 0, str(real_js[:2]))
         browser.close()
