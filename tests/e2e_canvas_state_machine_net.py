@@ -479,6 +479,31 @@ def main():
             check("[影子机] resize handle 直驱进 resizing", False,
                   str(hr_pos) + " " + json.dumps(m_r0))
 
+        # 第三刀新入机态驱动自检：prompt-resize（composer 提示词高度拖柄）
+        # handle 直驱 mousedown（可能被浮层遮），真实 move/up 收尾
+        page.mouse.click(60, 60); page.wait_for_timeout(300)
+        pr = page.evaluate("""() => {
+            const h = document.getElementById('promptResize');
+            if (!h) return null;
+            const r = h.getBoundingClientRect();
+            if (r.width < 2) return null;
+            h.dispatchEvent(new MouseEvent('mousedown', {bubbles:true, cancelable:true, button:0, clientX:r.x+r.width/2, clientY:r.y+r.height/2}));
+            return {x: r.x + r.width/2, y: r.y + r.height/2};
+        }""")
+        if pr:
+            m_p0 = page.evaluate("() => ({mode: window.CanvasInteractionMachine.current(), h: (document.querySelector('.prompt-input')||document.getElementById('promptInput')||{offsetHeight:0}).offsetHeight})")
+            page.mouse.move(pr["x"], pr["y"])
+            page.mouse.move(pr["x"], pr["y"] + 60, steps=5)
+            page.mouse.up()
+            page.wait_for_timeout(400)
+            m_p1 = page.evaluate("() => ({mode: window.CanvasInteractionMachine.current(), v: window.CanvasInteractionMachine.dbg.violations, div: window.CanvasInteractionMachine.dbg.divergences})")
+            check("[第三刀] prompt-resize begin 进态且收尾归 idle 零违规",
+                  m_p0["mode"] == "prompt-resize" and m_p1["mode"] == "idle"
+                  and m_p1["v"] == 0 and m_p1["div"] == 0,
+                  json.dumps({"begin": m_p0, "end": m_p1}))
+        else:
+            check("[第三刀] promptResize 柄存在", False, str(pr))
+
         # ==================================================================
         # 13. 审计器（第5步量化）：全链交互跑完后，记账漏网必须为 0
         #     divergence = 观察者探到的活跃态与机器 mode 不一致（白名单除外）
