@@ -794,11 +794,6 @@ myridtv_libraries.configure(
     USER_DATA_DIR, ROOT, lambda: LOG_FILE,
 )
 
-myridtv_codex.configure(
-    ASSETS_DIR, CODEX_LOCAL_IMAGE_CACHE_DIR, lambda: LOG_FILE,
-    lambda cid, nid: _agent_canvas_node_image_by_id(cid, nid),
-    lambda msgs: _agent_sanitize_messages(msgs),
-)
 
 _cmm = myridtv_canvas_store._cmm  # 第4刀：try/except 定义随块入模块，块外守卫处用同一对象
 
@@ -1121,6 +1116,22 @@ class CodexAppServerBridge:
 
 
 CODEX_APP_SERVER_BRIDGE = CodexAppServerBridge()
+
+myridtv_codex.configure(
+    ASSETS_DIR, CODEX_LOCAL_IMAGE_CACHE_DIR, lambda: LOG_FILE,
+    lambda cid, nid: _agent_canvas_node_image_by_id(cid, nid),
+    lambda msgs: _agent_sanitize_messages(msgs),
+    {
+        'USER_DATA_DIR': USER_DATA_DIR,
+        'CODEX_APP_SERVER_BRIDGE': CODEX_APP_SERVER_BRIDGE,
+        'CODEX_LOCAL_DEFAULT_MODEL': CODEX_LOCAL_DEFAULT_MODEL,
+        'CODEX_LOCAL_DEFAULT_RUNTIME_MODEL': CODEX_LOCAL_DEFAULT_RUNTIME_MODEL,
+        'CODEX_LOCAL_REPLY_DIR': CODEX_LOCAL_REPLY_DIR,
+        'CODEX_LOCAL_WORKSPACE': CODEX_LOCAL_WORKSPACE,
+        'CODEX_LOCAL_PERSIST_SESSIONS': CODEX_LOCAL_PERSIST_SESSIONS,
+    },
+    lambda: resolve_codex_executable(),
+)
 
 
 def persist_tasks_locked(task_id=None):
@@ -3565,144 +3576,11 @@ def _build_canvas_agent_result(text, tool_log=None, raw=None, output_mode="", ex
     return myridtv_agent_guard._build_canvas_agent_result(text, tool_log, raw, output_mode, extra, session_id)
 
 
-def _codex_bridge_extract_thread_id(stdout_lines):
-    for line in stdout_lines:
-        try:
-            event = json.loads(line)
-        except Exception:
-            continue
-        if event.get("type") == "thread.started":
-            thread_id = str(event.get("thread_id") or "").strip()
-            if thread_id:
-                return thread_id
-    return ""
-
-
 def _run_codex_bridge_exec(prompt_text, model, attachment_files, session_id=""):
-    model = str(model or "").strip()
-    if model == CODEX_LOCAL_DEFAULT_MODEL:
-        model = CODEX_LOCAL_DEFAULT_RUNTIME_MODEL
-    codex_executable = resolve_codex_executable()
-    CODEX_LOCAL_REPLY_DIR.mkdir(parents=True, exist_ok=True)
-    output_file = CODEX_LOCAL_REPLY_DIR / ("codex_bridge_reply_{}.txt".format(uuid.uuid4().hex))
-    base_args = [
-        "--ignore-user-config",
-        "--skip-git-repo-check",
-        "--json",
-        "--output-last-message",
-        str(output_file),
-    ]
-    if session_id:
-        cmd = [codex_executable, "exec", "resume", session_id]
-        if model:
-            cmd.extend(["-m", model])
-        for image_path in attachment_files:
-            cmd.extend(["-i", image_path])
-        cmd.extend(base_args)
-        cmd.append("-")
-    else:
-        cmd = [
-            codex_executable,
-            "exec",
-            "--ephemeral",
-            "--skip-git-repo-check",
-            "--ignore-user-config",
-            "--sandbox",
-            "read-only",
-            "--json",
-            "--color",
-            "never",
-            "-C",
-            str(CODEX_LOCAL_WORKSPACE),
-            "--add-dir",
-            str(USER_DATA_DIR),
-            "--output-last-message",
-            str(output_file),
-            "-",
-        ]
-        if model:
-            cmd[2:2] = ["-m", model]
-        for image_path in attachment_files:
-            cmd[2:2] = ["-i", image_path]
-    timeout = 300
-    try:
-        proc = subprocess.run(
-            cmd,
-            input=prompt_text,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            encoding="utf-8",
-            errors="replace",
-        )
-    except subprocess.TimeoutExpired:
-        raise RuntimeError("本地 Myrid-Agent Bridge 超时，请稍后重试。")
-    except FileNotFoundError as exc:
-        raise RuntimeError("本地 Myrid-Agent Bridge 未找到可执行文件：{}".format(exc))
-    stdout_lines = [line.strip() for line in str(proc.stdout or "").splitlines() if line.strip()]
-    thread_id = _codex_bridge_extract_thread_id(stdout_lines) or str(session_id or "").strip()
-    final_text = ""
-    if output_file.exists():
-        try:
-            final_text = output_file.read_text(encoding="utf-8", errors="replace").strip()
-        except Exception:
-            final_text = ""
-        try:
-            output_file.unlink(missing_ok=True)
-        except Exception:
-            pass
-    if not final_text:
-        for line in stdout_lines:
-            try:
-                event = json.loads(line)
-            except Exception:
-                continue
-            if event.get("type") == "item.completed":
-                item = event.get("item") or {}
-                if item.get("type") == "agent_message":
-                    final_text = str(item.get("text") or "").strip()
-    if not final_text:
-        combined = "\n".join(stdout_lines)
-        for chunk in re.findall(r"\{.*?\}(?=\s*\{|$)", combined):
-            try:
-                event = json.loads(chunk)
-            except Exception:
-                continue
-            if event.get("type") == "item.completed":
-                item = event.get("item") or {}
-                if item.get("type") == "agent_message":
-                    final_text = str(item.get("text") or "").strip()
-    if proc.returncode != 0 and not final_text:
-        detail = (proc.stderr or proc.stdout or "").strip()
-        raise RuntimeError(("本地 Myrid-Agent Bridge 调用失败: " + detail[:600]).strip())
-    if not final_text:
-        raise RuntimeError("本地 Myrid-Agent Bridge 没有返回有效回复。")
-    return {
-        "text": final_text,
-        "returncode": proc.returncode,
-        "stdout_events": len(stdout_lines),
-        "thread_id": thread_id,
-    }
-
+    return myridtv_codex._run_codex_bridge_exec(prompt_text, model, attachment_files, session_id)
 
 def _run_codex_bridge_persistent(prompt_text, model, attachment_files, session_id=""):
-    runtime_model = str(model or "").strip()
-    if runtime_model == CODEX_LOCAL_DEFAULT_MODEL or not runtime_model:
-        runtime_model = CODEX_LOCAL_DEFAULT_RUNTIME_MODEL
-    thread_id = str(session_id or "").strip()
-    try:
-        thread_id = CODEX_APP_SERVER_BRIDGE.ensure_thread(thread_id, runtime_model)
-        result = CODEX_APP_SERVER_BRIDGE.run_turn(thread_id, prompt_text, runtime_model, attachment_files)
-    except Exception as exc:
-        CODEX_APP_SERVER_BRIDGE.reset()
-        raise RuntimeError("本地 Myrid-Agent 常驻 Bridge 调用失败: {}".format(str(exc)[:400]))
-    return {
-        "text": str(result.get("text") or "").strip(),
-        "returncode": 0,
-        "stdout_events": 0,
-        "thread_id": thread_id,
-        "bridge_mode": "app_server_ws",
-    }
+    return myridtv_codex._run_codex_bridge_persistent(prompt_text, model, attachment_files, session_id)
 
 
 def _agent_short_drama_mode_card_result(payload):

@@ -31,15 +31,42 @@ _r_canvas_node_image_by_id = None
 _r_sanitize_messages = None
 
 
+_G_USER_DATA_DIR = None
+_G_CODEX_APP_SERVER_BRIDGE = None
+_G_CODEX_LOCAL_DEFAULT_MODEL = None
+_G_CODEX_LOCAL_DEFAULT_RUNTIME_MODEL = None
+_G_CODEX_LOCAL_REPLY_DIR = None
+_G_CODEX_LOCAL_WORKSPACE = None
+_G_CODEX_LOCAL_PERSIST_SESSIONS = None
+_r_resolve_codex_executable = None
+
+
 def configure(assets_dir, image_cache_dir, log_file_getter,
-              canvas_node_image_by_id, sanitize_messages):
+              canvas_node_image_by_id, sanitize_messages,
+              codex_globals, resolve_codex_executable):
     global _ASSETS_DIR, _IMAGE_CACHE_DIR, _log_file
     global _r_canvas_node_image_by_id, _r_sanitize_messages
+    global _r_resolve_codex_executable
+    global _G_USER_DATA_DIR
+    global _G_CODEX_APP_SERVER_BRIDGE
+    global _G_CODEX_LOCAL_DEFAULT_MODEL
+    global _G_CODEX_LOCAL_DEFAULT_RUNTIME_MODEL
+    global _G_CODEX_LOCAL_REPLY_DIR
+    global _G_CODEX_LOCAL_WORKSPACE
+    global _G_CODEX_LOCAL_PERSIST_SESSIONS
     _ASSETS_DIR = assets_dir
     _IMAGE_CACHE_DIR = image_cache_dir
     _log_file = log_file_getter
     _r_canvas_node_image_by_id = canvas_node_image_by_id
     _r_sanitize_messages = sanitize_messages
+    _r_resolve_codex_executable = resolve_codex_executable
+    _G_USER_DATA_DIR = codex_globals['USER_DATA_DIR']
+    _G_CODEX_APP_SERVER_BRIDGE = codex_globals['CODEX_APP_SERVER_BRIDGE']
+    _G_CODEX_LOCAL_DEFAULT_MODEL = codex_globals['CODEX_LOCAL_DEFAULT_MODEL']
+    _G_CODEX_LOCAL_DEFAULT_RUNTIME_MODEL = codex_globals['CODEX_LOCAL_DEFAULT_RUNTIME_MODEL']
+    _G_CODEX_LOCAL_REPLY_DIR = codex_globals['CODEX_LOCAL_REPLY_DIR']
+    _G_CODEX_LOCAL_WORKSPACE = codex_globals['CODEX_LOCAL_WORKSPACE']
+    _G_CODEX_LOCAL_PERSIST_SESSIONS = codex_globals['CODEX_LOCAL_PERSIST_SESSIONS']
 
 
 def _codex_bridge_file_suffix(mime_type, fallback=".png"):
@@ -545,3 +572,142 @@ def _codex_bridge_should_reset_session(error_text, had_session=False):
     return any(marker in lowered for marker in reset_markers)
 
 
+# ===== 第15刀追加：codex bridge 执行族（app-server/persistent） =====
+def _codex_bridge_extract_thread_id(stdout_lines):
+    for line in stdout_lines:
+        try:
+            event = json.loads(line)
+        except Exception:
+            continue
+        if event.get("type") == "thread.started":
+            thread_id = str(event.get("thread_id") or "").strip()
+            if thread_id:
+                return thread_id
+    return ""
+
+
+def _run_codex_bridge_exec(prompt_text, model, attachment_files, session_id=""):
+    model = str(model or "").strip()
+    if model == _G_CODEX_LOCAL_DEFAULT_MODEL:
+        model = _G_CODEX_LOCAL_DEFAULT_RUNTIME_MODEL
+    codex_executable = _r_resolve_codex_executable()
+    _G_CODEX_LOCAL_REPLY_DIR.mkdir(parents=True, exist_ok=True)
+    output_file = _G_CODEX_LOCAL_REPLY_DIR / ("codex_bridge_reply_{}.txt".format(uuid.uuid4().hex))
+    base_args = [
+        "--ignore-user-config",
+        "--skip-git-repo-check",
+        "--json",
+        "--output-last-message",
+        str(output_file),
+    ]
+    if session_id:
+        cmd = [codex_executable, "exec", "resume", session_id]
+        if model:
+            cmd.extend(["-m", model])
+        for image_path in attachment_files:
+            cmd.extend(["-i", image_path])
+        cmd.extend(base_args)
+        cmd.append("-")
+    else:
+        cmd = [
+            codex_executable,
+            "exec",
+            "--ephemeral",
+            "--skip-git-repo-check",
+            "--ignore-user-config",
+            "--sandbox",
+            "read-only",
+            "--json",
+            "--color",
+            "never",
+            "-C",
+            str(_G_CODEX_LOCAL_WORKSPACE),
+            "--add-dir",
+            str(_G_USER_DATA_DIR),
+            "--output-last-message",
+            str(output_file),
+            "-",
+        ]
+        if model:
+            cmd[2:2] = ["-m", model]
+        for image_path in attachment_files:
+            cmd[2:2] = ["-i", image_path]
+    timeout = 300
+    try:
+        proc = subprocess.run(
+            cmd,
+            input=prompt_text,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("本地 Myrid-Agent Bridge 超时，请稍后重试。")
+    except FileNotFoundError as exc:
+        raise RuntimeError("本地 Myrid-Agent Bridge 未找到可执行文件：{}".format(exc))
+    stdout_lines = [line.strip() for line in str(proc.stdout or "").splitlines() if line.strip()]
+    thread_id = _codex_bridge_extract_thread_id(stdout_lines) or str(session_id or "").strip()
+    final_text = ""
+    if output_file.exists():
+        try:
+            final_text = output_file.read_text(encoding="utf-8", errors="replace").strip()
+        except Exception:
+            final_text = ""
+        try:
+            output_file.unlink(missing_ok=True)
+        except Exception:
+            pass
+    if not final_text:
+        for line in stdout_lines:
+            try:
+                event = json.loads(line)
+            except Exception:
+                continue
+            if event.get("type") == "item.completed":
+                item = event.get("item") or {}
+                if item.get("type") == "agent_message":
+                    final_text = str(item.get("text") or "").strip()
+    if not final_text:
+        combined = "\n".join(stdout_lines)
+        for chunk in re.findall(r"\{.*?\}(?=\s*\{|$)", combined):
+            try:
+                event = json.loads(chunk)
+            except Exception:
+                continue
+            if event.get("type") == "item.completed":
+                item = event.get("item") or {}
+                if item.get("type") == "agent_message":
+                    final_text = str(item.get("text") or "").strip()
+    if proc.returncode != 0 and not final_text:
+        detail = (proc.stderr or proc.stdout or "").strip()
+        raise RuntimeError(("本地 Myrid-Agent Bridge 调用失败: " + detail[:600]).strip())
+    if not final_text:
+        raise RuntimeError("本地 Myrid-Agent Bridge 没有返回有效回复。")
+    return {
+        "text": final_text,
+        "returncode": proc.returncode,
+        "stdout_events": len(stdout_lines),
+        "thread_id": thread_id,
+    }
+
+
+def _run_codex_bridge_persistent(prompt_text, model, attachment_files, session_id=""):
+    runtime_model = str(model or "").strip()
+    if runtime_model == _G_CODEX_LOCAL_DEFAULT_MODEL or not runtime_model:
+        runtime_model = _G_CODEX_LOCAL_DEFAULT_RUNTIME_MODEL
+    thread_id = str(session_id or "").strip()
+    try:
+        thread_id = _G_CODEX_APP_SERVER_BRIDGE.ensure_thread(thread_id, runtime_model)
+        result = _G_CODEX_APP_SERVER_BRIDGE.run_turn(thread_id, prompt_text, runtime_model, attachment_files)
+    except Exception as exc:
+        _G_CODEX_APP_SERVER_BRIDGE.reset()
+        raise RuntimeError("本地 Myrid-Agent 常驻 Bridge 调用失败: {}".format(str(exc)[:400]))
+    return {
+        "text": str(result.get("text") or "").strip(),
+        "returncode": 0,
+        "stdout_events": 0,
+        "thread_id": thread_id,
+        "bridge_mode": "app_server_ws",
+    }
