@@ -375,7 +375,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.23.previzcomposition38"
+STATIC_VERSION = "2026.09.23.previzcomposition40"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -3404,6 +3404,315 @@ class Handler(BaseHTTPRequestHandler):
         "/api/agent-models": "_post_api_agent_models",
     }
 
+    def _post2_api_online_image(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/online-image 机械表化（体逐字）"""
+        rh_task_id, _ = submit_official(payload)
+        result = poll_result(rh_task_id)
+        self._send(200, {
+            "images": result["images"],
+            "timestamp": int(time.time() * 1000),
+            "prompt": payload.get("prompt") or "",
+            "params": payload,
+            "task_id": rh_task_id,
+        })
+        return
+
+    def _post2_api_generate(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/generate 机械表化（体逐字）"""
+        self._send(200, handle_legacy_generate(payload))
+        return
+
+    def _post2_api_runninghub_upload_asset(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/runninghub/upload-asset 机械表化（体逐字）"""
+        url = str(payload.get("url") or "").strip()
+        if not url:
+            raise ApiError(400, "缺少 url")
+        uploaded = runninghub_upload_task_asset(url)
+        self._send(200, {"success": True, "data": uploaded})
+        return
+
+    def _post2_api_runninghub_workflows_fetch(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/runninghub/workflows/fetch 机械表化（体逐字）"""
+        workflow = runninghub_fetch_workflow_config(payload)
+        self._send(200, {"success": True, "data": workflow})
+        return
+
+    def _post2_api_volcengine_upload_asset(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/volcengine/upload-asset 机械表化（体逐字）"""
+        url = str(payload.get("url") or "").strip()
+        if not url:
+            raise ApiError(400, "缺少 url")
+        uploaded = volcengine_upload_asset(url)
+        self._send(200, {"success": True, "data": uploaded})
+        return
+
+    def _post2_api_cloud_video_upload(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/cloud-video/upload 机械表化（体逐字）"""
+        url = str(payload.get("url") or "").strip()
+        if not url:
+            raise ApiError(400, "缺少 url")
+        uploaded = upload_cloud_media_direct(url)
+        self._send(200, uploaded)
+        return
+
+    def _post2_api_runninghub_submit(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/runninghub/submit 机械表化（体逐字）"""
+        self._send(200, {"success": True, "data": runninghub_submit_app(payload)})
+        return
+
+    def _post2_api_runninghub_workflow_submit(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/runninghub/workflow-submit 机械表化（体逐字）"""
+        self._send(200, {"success": True, "data": runninghub_submit_workflow(payload)})
+        return
+
+    def _post2_api_providers_fetch_models(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/providers/fetch-models 机械表化（体逐字）"""
+        if is_runninghub_request(payload):
+            # 用户点「拉取模型」= 显式要最新清单，强制重爬文档（约 25 秒）
+            self._send(200, runninghub_model_catalog(payload.get("provider_id"), payload.get("base_url"), force=True))
+            return
+        if str(payload.get("protocol") or "").strip().lower() == "volcengine":
+            self._send(200, volcengine_fetch_models(payload))
+            return
+        if str(payload.get("protocol") or "").strip().lower() == "openai":
+            self._send(200, openai_probe_payload(payload, "fetch"))
+            return
+
+    def _post2_api_canvas_image_tasks(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/canvas-image-tasks 机械表化（体逐字）"""
+        task_id = "rhproxy_" + uuid.uuid4().hex
+        set_task_state(task_id, {
+            "status": "running",
+            "persistent": True,
+            "backend": "runninghub-official",
+            "created_at": time.time(),
+            "canvas_title": str(payload.get("canvas_title") or _volcengine_canvas_title_for_output(payload.get("canvas_id"))).strip(),
+            "canvas_id": str(payload.get("canvas_id") or "").strip(),
+            # 控制台明细快照：平台/模型/模式/分辨率/数量
+            "model": str(payload.get("model") or ""),
+            "provider_id": str(payload.get("provider_id") or payload.get("engine") or ""),
+            "resolution": str(payload.get("resolution") or ""),
+            "ratio": str(payload.get("ratio") or payload.get("size") or ""),
+            "quality": str(payload.get("quality") or ""),
+            "count": payload.get("count") or payload.get("n") or 1,
+            "mode": "i2i" if (payload.get("reference_images") or payload.get("reference_image_urls") or payload.get("input_images")) else "t2i",
+            "node_id": str(payload.get("node_id") or "").strip(),
+            "node_title": str(payload.get("node_title") or "").strip(),
+        }, persistent=True)
+        threading.Thread(target=run_task, args=(task_id, payload), daemon=True).start()
+        self._send(200, {"task_id": task_id})
+        return
+
+    def _post2_api_canvas_llm_stop(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/canvas-llm-stop 机械表化（体逐字）"""
+        request_id = str(payload.get("request_id") or "").strip()
+        self._send(200, {"ok": request_canvas_agent_stop(request_id), "request_id": request_id})
+        return
+
+    def _post2_api_canvas_agent_interaction(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/canvas-agent-interaction 机械表化（体逐字）"""
+        session_id = str(payload.get("session_id") or payload.get("agent_session_id") or "").strip()
+        self._send(200, get_canvas_agent_interaction(session_id))
+        return
+
+    def _post2_api_canvas_agent_interaction_receipt(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/canvas-agent-interaction-receipt 机械表化（体逐字）"""
+        self._send(200, submit_canvas_agent_interaction_receipt(payload))
+        return
+
+    def _post2_api_canvas_agent_undo_batch(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/canvas-agent-undo-batch 机械表化（体逐字）"""
+        try:
+            self._send(200, _agent_tool_undo_batch(payload))
+        except Exception as exc:
+            self._send(200, {"ok": False, "error": str(exc)[:300]})
+        return
+
+    def _post2_api_canvas_agent_config(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/canvas-agent-config 机械表化（体逐字）"""
+        if "rules" in payload:
+            write_canvas_agent_rules(payload.get("rules") or "")
+        self._send(200, canvas_agent_config_payload())
+        return
+
+    def _post2_api_canvas_agent_skill(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/canvas-agent-skill 机械表化（体逐字）"""
+        name = str(payload.get("name") or "").strip()
+        if bool(payload.get("delete")):
+            result = delete_canvas_agent_skill(name)
+            self._send(200, {"ok": True, **result, "skills": list_canvas_agent_skills()})
+            return
+        skill = write_canvas_agent_skill(name, payload.get("content") or "")
+        self._send(200, {"ok": True, "skill": skill, "skills": list_canvas_agent_skills()})
+        return
+
+    def _post2_api_frontend_log(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/frontend-log 机械表化（体逐字）"""
+        try:
+            append_log(LOG_FILE, "frontend-log " + json.dumps(payload, ensure_ascii=False)[:2000])
+        except Exception as log_exc:
+            print("frontend-log write failed:", log_exc)
+        self._send(200, {"ok": True})
+        return
+
+    def _post2_api_canvas_agent_history(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/canvas-agent-history 机械表化（体逐字）"""
+        canvas_id = str(payload.get("canvas_id") or "").strip()
+        history_list = payload.get("history")
+        if not isinstance(history_list, list):
+            raise RuntimeError("历史数据格式错误")
+        saved_history = write_canvas_agent_history(canvas_id, history_list)
+        sync_canvas_agent_history_index(canvas_id, saved_history, payload.get("canvas_title") or "")
+        self._send(200, {"ok": True, "canvas_id": canvas_id, "history": saved_history})
+        return
+
+    def _post2_api_agent_key(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/agent-key 机械表化（体逐字）"""
+        key_name = str(payload.get("key_env") or AGENT_CONFIG.get("api_key_env") or "MYRIDTV_AGENT_API_KEY").strip()
+        clear_requested = bool(payload.get("clear"))
+        key_value = "" if clear_requested else str(payload.get("api_key") or "").strip()
+        if not clear_requested and not key_value:
+            raise RuntimeError("请输入 Agent API Key")
+        if clear_requested:
+            write_env_values({}, [key_name])
+        else:
+            write_env_values({key_name: key_value})
+        self._send(200, {"ok": True, "agent": agents_meta_payload()})
+        return
+
+    def _post2_api_agent_active(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/agent-active 机械表化（体逐字）"""
+        agent_id = str(payload.get("agent_id") or "").strip()
+        section = APP_CONFIG.get("agent") or {}
+        agents = section.get("agents") if isinstance(section.get("agents"), dict) else {}
+        if agent_id not in agents:
+            raise ApiError(400, "未知 Agent: {}".format(agent_id))
+        write_app_config(deep_merge(APP_CONFIG, {"agent": {"active_id": agent_id}}))
+        self._send(200, {"ok": True, "agent": agents_meta_payload()})
+        return
+
+    def _post2_api_integrations_blender_push_batch(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/integrations/blender/push-batch 机械表化（体逐字）"""
+        self._send(200, append_blender_batch_to_canvas(payload))
+        return
+
+    def _post2_api_integrations_blender_push_animation(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/integrations/blender/push-animation 机械表化（体逐字）"""
+        self._send(200, append_blender_animation_to_canvas(payload))
+        return
+
+    def _post2_app_config(self, payload):
+        """do_POST 路由表 handler：原精确分支 /app-config 机械表化（体逐字）"""
+        saved = write_app_config(payload)
+        self._send(200, {"ok": True, "config": saved})
+        return
+
+    def _post2_api_comfyui_jobs(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/comfyui/jobs 机械表化（体逐字）"""
+        try:
+            record = read_workflow_record(str(payload.get("workflow") or "").strip())
+            job = comfy_flow_service.submit_job(
+                record,
+                payload.get("overrides") if isinstance(payload.get("overrides"), dict) else {},
+                payload.get("modes") if isinstance(payload.get("modes"), dict) else {},
+                payload.get("prefs") if isinstance(payload.get("prefs"), dict) else {},
+                str(payload.get("client_id") or ""),
+                meta={
+                    "canvas_id": str(payload.get("canvas_id") or "").strip(),
+                    "canvas_title": str(payload.get("canvas_title") or "").strip(),
+                    "node_id": str(payload.get("node_id") or "").strip(),
+                    "node_title": str(payload.get("node_title") or "").strip(),
+                    "origin": str(payload.get("origin") or "comfyui").strip(),
+                },
+            )
+            self._send(200, {"ok": True, **job.to_dict()})
+        except ComfyCompileError as exc:
+            self._send(400, {"ok": False, "error": str(exc)})
+        except Exception as exc:
+            self._send(500, {"ok": False, "error": "提交失败: {}".format(str(exc)[:200])})
+        return
+
+    def _post2_api_comfyui_compile(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/comfyui/compile 机械表化（体逐字）"""
+        # 只编译不执行：前端用它做节点清单预览与开关调试
+        try:
+            record = read_workflow_record(str(payload.get("workflow") or "").strip())
+            workflow = record.get("workflow") if isinstance(record.get("workflow"), dict) else {}
+            object_info = comfy_flow_service.load_object_info()
+            prompt, report = compile_comfy_prompt(
+                workflow,
+                payload.get("overrides") if isinstance(payload.get("overrides"), dict) else {},
+                payload.get("modes") if isinstance(payload.get("modes"), dict) else {},
+                object_info,
+            )
+            nodes = describe_comfy_workflow(
+                workflow,
+                object_info,
+                payload.get("prefs") if isinstance(payload.get("prefs"), dict) else {},
+            )
+            self._send(200, {"ok": True, "prompt": prompt, "report": report, "nodes": nodes})
+        except ComfyCompileError as exc:
+            self._send(400, {"ok": False, "error": str(exc)})
+        return
+
+    def _post2_api_comfyui_instances(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/comfyui/instances 机械表化（体逐字）"""
+        saved_instances = write_comfy_instances(payload.get("instances"))
+        self._send(200, {"ok": True, "instances": saved_instances})
+        return
+
+    def _post2_api_open_folder(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/open-folder 机械表化（体逐字）"""
+        url = str(payload.get("url") or "").strip()
+        name = str(payload.get("name") or "").strip()
+        local_path = str(payload.get("local_path") or payload.get("localPath") or "").strip()
+        target = resolve_open_folder_target(url, name, local_path)
+        opened = False
+        if target.exists() and target.is_file():
+            import subprocess
+            subprocess.Popen(["explorer", "/select,", str(target.resolve())])
+            opened = True
+        elif target.exists() and target.is_dir():
+            import subprocess
+            subprocess.Popen(["explorer", str(target.resolve())])
+            opened = True
+        elif target.parent.exists():
+            import subprocess
+            subprocess.Popen(["explorer", "/select,", str(target.resolve())])
+            opened = True
+        self._send(200, {"ok": True, "opened": opened, "path": str(target)})
+        return
+
+    _POST_ROUTES_B2 = {
+        "/api/online-image": "_post2_api_online_image",
+        "/api/generate": "_post2_api_generate",
+        "/api/runninghub/upload-asset": "_post2_api_runninghub_upload_asset",
+        "/api/runninghub/workflows/fetch": "_post2_api_runninghub_workflows_fetch",
+        "/api/volcengine/upload-asset": "_post2_api_volcengine_upload_asset",
+        "/api/cloud-video/upload": "_post2_api_cloud_video_upload",
+        "/api/runninghub/submit": "_post2_api_runninghub_submit",
+        "/api/runninghub/workflow-submit": "_post2_api_runninghub_workflow_submit",
+        "/api/providers/fetch-models": "_post2_api_providers_fetch_models",
+        "/api/canvas-image-tasks": "_post2_api_canvas_image_tasks",
+        "/api/canvas-llm-stop": "_post2_api_canvas_llm_stop",
+        "/api/canvas-agent-interaction": "_post2_api_canvas_agent_interaction",
+        "/api/canvas-agent-interaction-receipt": "_post2_api_canvas_agent_interaction_receipt",
+        "/api/canvas-agent-undo-batch": "_post2_api_canvas_agent_undo_batch",
+        "/api/canvas-agent-config": "_post2_api_canvas_agent_config",
+        "/api/canvas-agent-skill": "_post2_api_canvas_agent_skill",
+        "/api/frontend-log": "_post2_api_frontend_log",
+        "/api/canvas-agent-history": "_post2_api_canvas_agent_history",
+        "/api/agent-key": "_post2_api_agent_key",
+        "/api/agent-active": "_post2_api_agent_active",
+        "/api/integrations/blender/push-batch": "_post2_api_integrations_blender_push_batch",
+        "/api/integrations/blender/push-animation": "_post2_api_integrations_blender_push_animation",
+        "/app-config": "_post2_app_config",
+        "/api/comfyui/jobs": "_post2_api_comfyui_jobs",
+        "/api/comfyui/compile": "_post2_api_comfyui_compile",
+        "/api/comfyui/instances": "_post2_api_comfyui_instances",
+        "/api/open-folder": "_post2_api_open_folder",
+    }
+
     def do_POST(self):
         try:
             length = int(self.headers.get("Content-Length") or 0)
@@ -3422,6 +3731,10 @@ class Handler(BaseHTTPRequestHandler):
             _rm = Handler._POST_ROUTES_B1.get(request_path)
             if _rm is not None:
                 getattr(self, _rm)(payload)
+                return
+            _rm2 = Handler._POST_ROUTES_B2.get(request_path)
+            if _rm2 is not None:
+                getattr(self, _rm2)(payload)
                 return
             canvas_route, canvas_id = parse_canvas_route(request_path)
             workflow_route, workflow_name = parse_workflow_route(request_path)
@@ -3459,68 +3772,12 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     self._send(200, {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": f"Unknown: {method}"}})
                 return
-            if request_path == "/api/online-image":
-                rh_task_id, _ = submit_official(payload)
-                result = poll_result(rh_task_id)
-                self._send(200, {
-                    "images": result["images"],
-                    "timestamp": int(time.time() * 1000),
-                    "prompt": payload.get("prompt") or "",
-                    "params": payload,
-                    "task_id": rh_task_id,
-                })
-                return
-            if request_path == "/api/generate":
-                self._send(200, handle_legacy_generate(payload))
-                return
-            if request_path == "/api/runninghub/upload-asset":
-                url = str(payload.get("url") or "").strip()
-                if not url:
-                    raise ApiError(400, "缺少 url")
-                uploaded = runninghub_upload_task_asset(url)
-                self._send(200, {"success": True, "data": uploaded})
-                return
-            if request_path == "/api/runninghub/workflows/fetch":
-                workflow = runninghub_fetch_workflow_config(payload)
-                self._send(200, {"success": True, "data": workflow})
-                return
-            if request_path == "/api/volcengine/upload-asset":
-                url = str(payload.get("url") or "").strip()
-                if not url:
-                    raise ApiError(400, "缺少 url")
-                uploaded = volcengine_upload_asset(url)
-                self._send(200, {"success": True, "data": uploaded})
-                return
-            if request_path == "/api/cloud-video/upload":
-                url = str(payload.get("url") or "").strip()
-                if not url:
-                    raise ApiError(400, "缺少 url")
-                uploaded = upload_cloud_media_direct(url)
-                self._send(200, uploaded)
-                return
             if request_path == "/api/canvas-video" and is_volcengine_canvas_video_payload(payload):
                 self._send(200, submit_volcengine_canvas_video_task(payload))
                 return
             if request_path in ("/api/asset-library/items", "/api/asset-library/items/batch"):
                 self._send(200, add_asset_library_items(payload))
                 return
-            if request_path == "/api/runninghub/submit":
-                self._send(200, {"success": True, "data": runninghub_submit_app(payload)})
-                return
-            if request_path == "/api/runninghub/workflow-submit":
-                self._send(200, {"success": True, "data": runninghub_submit_workflow(payload)})
-                return
-            if request_path == "/api/providers/fetch-models":
-                if is_runninghub_request(payload):
-                    # 用户点「拉取模型」= 显式要最新清单，强制重爬文档（约 25 秒）
-                    self._send(200, runninghub_model_catalog(payload.get("provider_id"), payload.get("base_url"), force=True))
-                    return
-                if str(payload.get("protocol") or "").strip().lower() == "volcengine":
-                    self._send(200, volcengine_fetch_models(payload))
-                    return
-                if str(payload.get("protocol") or "").strip().lower() == "openai":
-                    self._send(200, openai_probe_payload(payload, "fetch"))
-                    return
             if request_path == "/api/providers/test-connection" and is_runninghub_request(payload):
                 self._send(200, runninghub_probe_payload(payload, "test"))
                 return
@@ -3548,109 +3805,8 @@ class Handler(BaseHTTPRequestHandler):
             if request_path == "/api/providers/verify-base" and is_volcengine_request(payload):
                 self._send(200, volcengine_probe_payload(payload, "verify"))
                 return
-            if request_path == "/api/canvas-image-tasks":
-                task_id = "rhproxy_" + uuid.uuid4().hex
-                set_task_state(task_id, {
-                    "status": "running",
-                    "persistent": True,
-                    "backend": "runninghub-official",
-                    "created_at": time.time(),
-                    "canvas_title": str(payload.get("canvas_title") or _volcengine_canvas_title_for_output(payload.get("canvas_id"))).strip(),
-                    "canvas_id": str(payload.get("canvas_id") or "").strip(),
-                    # 控制台明细快照：平台/模型/模式/分辨率/数量
-                    "model": str(payload.get("model") or ""),
-                    "provider_id": str(payload.get("provider_id") or payload.get("engine") or ""),
-                    "resolution": str(payload.get("resolution") or ""),
-                    "ratio": str(payload.get("ratio") or payload.get("size") or ""),
-                    "quality": str(payload.get("quality") or ""),
-                    "count": payload.get("count") or payload.get("n") or 1,
-                    "mode": "i2i" if (payload.get("reference_images") or payload.get("reference_image_urls") or payload.get("input_images")) else "t2i",
-                    "node_id": str(payload.get("node_id") or "").strip(),
-                    "node_title": str(payload.get("node_title") or "").strip(),
-                }, persistent=True)
-                threading.Thread(target=run_task, args=(task_id, payload), daemon=True).start()
-                self._send(200, {"task_id": task_id})
-                return
-            if request_path == "/api/canvas-llm-stop":
-                request_id = str(payload.get("request_id") or "").strip()
-                self._send(200, {"ok": request_canvas_agent_stop(request_id), "request_id": request_id})
-                return
-            if request_path == "/api/canvas-agent-interaction":
-                session_id = str(payload.get("session_id") or payload.get("agent_session_id") or "").strip()
-                self._send(200, get_canvas_agent_interaction(session_id))
-                return
-            if request_path == "/api/canvas-agent-interaction-receipt":
-                self._send(200, submit_canvas_agent_interaction_receipt(payload))
-                return
-            if request_path == "/api/canvas-agent-undo-batch":
-                try:
-                    self._send(200, _agent_tool_undo_batch(payload))
-                except Exception as exc:
-                    self._send(200, {"ok": False, "error": str(exc)[:300]})
-                return
-            if request_path == "/api/canvas-agent-config":
-                if "rules" in payload:
-                    write_canvas_agent_rules(payload.get("rules") or "")
-                self._send(200, canvas_agent_config_payload())
-                return
-            if request_path == "/api/canvas-agent-skill":
-                name = str(payload.get("name") or "").strip()
-                if bool(payload.get("delete")):
-                    result = delete_canvas_agent_skill(name)
-                    self._send(200, {"ok": True, **result, "skills": list_canvas_agent_skills()})
-                    return
-                skill = write_canvas_agent_skill(name, payload.get("content") or "")
-                self._send(200, {"ok": True, "skill": skill, "skills": list_canvas_agent_skills()})
-                return
-            if request_path == "/api/frontend-log":
-                try:
-                    append_log(LOG_FILE, "frontend-log " + json.dumps(payload, ensure_ascii=False)[:2000])
-                except Exception as log_exc:
-                    print("frontend-log write failed:", log_exc)
-                self._send(200, {"ok": True})
-                return
-            if request_path == "/api/canvas-agent-history":
-                canvas_id = str(payload.get("canvas_id") or "").strip()
-                history_list = payload.get("history")
-                if not isinstance(history_list, list):
-                    raise RuntimeError("历史数据格式错误")
-                saved_history = write_canvas_agent_history(canvas_id, history_list)
-                sync_canvas_agent_history_index(canvas_id, saved_history, payload.get("canvas_title") or "")
-                self._send(200, {"ok": True, "canvas_id": canvas_id, "history": saved_history})
-                return
-            if request_path == "/api/agent-key":
-                key_name = str(payload.get("key_env") or AGENT_CONFIG.get("api_key_env") or "MYRIDTV_AGENT_API_KEY").strip()
-                clear_requested = bool(payload.get("clear"))
-                key_value = "" if clear_requested else str(payload.get("api_key") or "").strip()
-                if not clear_requested and not key_value:
-                    raise RuntimeError("请输入 Agent API Key")
-                if clear_requested:
-                    write_env_values({}, [key_name])
-                else:
-                    write_env_values({key_name: key_value})
-                self._send(200, {"ok": True, "agent": agents_meta_payload()})
-                return
-            if request_path == "/api/agent-active":
-                agent_id = str(payload.get("agent_id") or "").strip()
-                section = APP_CONFIG.get("agent") or {}
-                agents = section.get("agents") if isinstance(section.get("agents"), dict) else {}
-                if agent_id not in agents:
-                    raise ApiError(400, "未知 Agent: {}".format(agent_id))
-                write_app_config(deep_merge(APP_CONFIG, {"agent": {"active_id": agent_id}}))
-                self._send(200, {"ok": True, "agent": agents_meta_payload()})
-                return
             if request_path in ("/api/integrations/blender/push-frame", "/api/integrations/blender/push-snapshot"):
                 self._send(200, append_blender_frame_to_canvas(payload))
-                return
-            if request_path == "/api/integrations/blender/push-batch":
-                self._send(200, append_blender_batch_to_canvas(payload))
-                return
-            if request_path == "/api/integrations/blender/push-animation":
-                self._send(200, append_blender_animation_to_canvas(payload))
-                return
-            if request_path == "/app-config":
-                saved = write_app_config(payload)
-                self._send(200, {"ok": True, "config": saved})
                 return
             if workflow_route == "collection":
                 created = create_workflow_record(payload.get("name"), payload.get("workflow"))
@@ -3662,29 +3818,6 @@ class Handler(BaseHTTPRequestHandler):
                 comfy_payload.setdefault("canvas_title", str((payload or {}).get("canvas_title") or _volcengine_canvas_title_for_output(canvas_id)).strip())
                 self._send(200, run_comfy_workflow(workflow_name, comfy_payload))
                 return
-            if request_path == "/api/comfyui/jobs":
-                try:
-                    record = read_workflow_record(str(payload.get("workflow") or "").strip())
-                    job = comfy_flow_service.submit_job(
-                        record,
-                        payload.get("overrides") if isinstance(payload.get("overrides"), dict) else {},
-                        payload.get("modes") if isinstance(payload.get("modes"), dict) else {},
-                        payload.get("prefs") if isinstance(payload.get("prefs"), dict) else {},
-                        str(payload.get("client_id") or ""),
-                        meta={
-                            "canvas_id": str(payload.get("canvas_id") or "").strip(),
-                            "canvas_title": str(payload.get("canvas_title") or "").strip(),
-                            "node_id": str(payload.get("node_id") or "").strip(),
-                            "node_title": str(payload.get("node_title") or "").strip(),
-                            "origin": str(payload.get("origin") or "comfyui").strip(),
-                        },
-                    )
-                    self._send(200, {"ok": True, **job.to_dict()})
-                except ComfyCompileError as exc:
-                    self._send(400, {"ok": False, "error": str(exc)})
-                except Exception as exc:
-                    self._send(500, {"ok": False, "error": "提交失败: {}".format(str(exc)[:200])})
-                return
             if request_path.startswith("/api/comfyui/jobs/") and (
                 request_path.endswith("/cancel") or request_path.endswith("/interrupt")
             ):
@@ -3693,31 +3826,6 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(404, {"ok": False, "error": "任务不存在或已过期"})
                     return
                 self._send(200, {"ok": True, **job.to_dict()})
-                return
-            if request_path == "/api/comfyui/compile":
-                # 只编译不执行：前端用它做节点清单预览与开关调试
-                try:
-                    record = read_workflow_record(str(payload.get("workflow") or "").strip())
-                    workflow = record.get("workflow") if isinstance(record.get("workflow"), dict) else {}
-                    object_info = comfy_flow_service.load_object_info()
-                    prompt, report = compile_comfy_prompt(
-                        workflow,
-                        payload.get("overrides") if isinstance(payload.get("overrides"), dict) else {},
-                        payload.get("modes") if isinstance(payload.get("modes"), dict) else {},
-                        object_info,
-                    )
-                    nodes = describe_comfy_workflow(
-                        workflow,
-                        object_info,
-                        payload.get("prefs") if isinstance(payload.get("prefs"), dict) else {},
-                    )
-                    self._send(200, {"ok": True, "prompt": prompt, "report": report, "nodes": nodes})
-                except ComfyCompileError as exc:
-                    self._send(400, {"ok": False, "error": str(exc)})
-                return
-            if request_path == "/api/comfyui/instances":
-                saved_instances = write_comfy_instances(payload.get("instances"))
-                self._send(200, {"ok": True, "instances": saved_instances})
                 return
             if canvas_route == "collection":
                 created = create_canvas_record(payload)
@@ -3737,26 +3845,6 @@ class Handler(BaseHTTPRequestHandler):
             if canvas_route == "restore":
                 restored = restore_canvas_record(canvas_id)
                 self._send(200, {"ok": True, "canvas": restored})
-                return
-            if request_path == "/api/open-folder":
-                url = str(payload.get("url") or "").strip()
-                name = str(payload.get("name") or "").strip()
-                local_path = str(payload.get("local_path") or payload.get("localPath") or "").strip()
-                target = resolve_open_folder_target(url, name, local_path)
-                opened = False
-                if target.exists() and target.is_file():
-                    import subprocess
-                    subprocess.Popen(["explorer", "/select,", str(target.resolve())])
-                    opened = True
-                elif target.exists() and target.is_dir():
-                    import subprocess
-                    subprocess.Popen(["explorer", str(target.resolve())])
-                    opened = True
-                elif target.parent.exists():
-                    import subprocess
-                    subprocess.Popen(["explorer", "/select,", str(target.resolve())])
-                    opened = True
-                self._send(200, {"ok": True, "opened": opened, "path": str(target)})
                 return
             if request_path.startswith("/api/"):
                 if self._forward_upstream("POST", self.path, raw_body):
