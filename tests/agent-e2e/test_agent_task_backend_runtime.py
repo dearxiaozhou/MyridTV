@@ -29,10 +29,20 @@ class AgentTaskBackendRuntimeTest(unittest.TestCase):
 
         beh._agent_get_canvas = fake_get_canvas
         beh._agent_http = fake_http
+        # 第22刀后生成工具住在 myridtv_agent_generation（属性链调 state），
+        # 打桩须同打属主模块（X2/test_backend_wiring 同款处方）
+        import myridtv_agent_state as _st
+        self.old_st_get_canvas = _st._agent_get_canvas
+        self.old_st_http = _st._agent_http
+        _st._agent_get_canvas = fake_get_canvas
+        _st._agent_http = fake_http
         beh.resolve_chat_target = lambda payload: ("fake", "fake-model", "http://fake.local/v1", "key")
         beh.payload_prefers_codex_local = lambda payload: False
 
     def tearDown(self):
+        import myridtv_agent_state as _st
+        _st._agent_get_canvas = self.old_st_get_canvas
+        _st._agent_http = self.old_st_http
         beh.request_chat_json_with_retry = self.old_request
         beh._agent_get_canvas = self.old_get_canvas
         beh._agent_http = self.old_http
