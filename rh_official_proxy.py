@@ -375,7 +375,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.23.previzcomposition40"
+STATIC_VERSION = "2026.09.23.previzcomposition41"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -3898,6 +3898,45 @@ class Handler(BaseHTTPRequestHandler):
             append_log(LOG_FILE, f"{self.command} {self.path} failed: {exc}\n{traceback.format_exc()}")
             self._send(502, {"detail": str(exc)})
 
+    def _put_api_providers(self, payload, request_path, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_PUT 路由表 handler：原分支 exact /api/providers 机械表化（体逐字）"""
+        providers = write_api_providers(payload)
+        self._send(200, {"ok": True, "providers": providers})
+        return
+
+    def _put_api_runninghub_workflows(self, payload, request_path, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_PUT 路由表 handler：原分支 prefix /api/runninghub/workflows/ 机械表化（体逐字）"""
+        workflow_id = urllib.parse.unquote(request_path.rsplit("/", 1)[-1])
+        saved = save_runninghub_workflow_config(workflow_id, payload)
+        self._send(200, {"success": True, "workflow": saved})
+        return
+
+    def _put_api_comfyui_instances(self, payload, request_path, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_PUT 路由表 handler：原分支 exact /api/comfyui/instances 机械表化（体逐字）"""
+        saved_instances = write_comfy_instances(payload.get("instances"))
+        self._send(200, {"ok": True, "instances": saved_instances})
+        return
+
+    def _put_workflow_config(self, payload, request_path, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_PUT 路由表 handler：原分支 route ('workflow', 'config') 机械表化（体逐字）"""
+        saved = save_workflow_config(workflow_name, payload)
+        self._send(200, {"ok": True, **saved})
+        return
+
+    def _put_canvas_item(self, payload, request_path, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_PUT 路由表 handler：原分支 route ('canvas', 'item') 机械表化（体逐字）"""
+        saved = save_canvas_record(canvas_id, payload)
+        self._send(200, {"ok": True, "canvas": saved})
+        return
+
+    _PUT_ROUTES = [
+        ('exact', '/api/providers', "_put_api_providers"),
+        ('prefix', '/api/runninghub/workflows/', "_put_api_runninghub_workflows"),
+        ('exact', '/api/comfyui/instances', "_put_api_comfyui_instances"),
+        ('route', ('workflow', 'config'), "_put_workflow_config"),
+        ('route', ('canvas', 'item'), "_put_canvas_item"),
+    ]
+
     def do_PUT(self):
         try:
             length = int(self.headers.get("Content-Length") or 0)
@@ -3906,27 +3945,14 @@ class Handler(BaseHTTPRequestHandler):
             request_path = self.path.split("?", 1)[0]
             canvas_route, canvas_id = parse_canvas_route(request_path)
             workflow_route, workflow_name = parse_workflow_route(request_path)
-            if request_path == "/api/providers":
-                providers = write_api_providers(payload)
-                self._send(200, {"ok": True, "providers": providers})
-                return
-            if request_path.startswith("/api/runninghub/workflows/"):
-                workflow_id = urllib.parse.unquote(request_path.rsplit("/", 1)[-1])
-                saved = save_runninghub_workflow_config(workflow_id, payload)
-                self._send(200, {"success": True, "workflow": saved})
-                return
-            if request_path == "/api/comfyui/instances":
-                saved_instances = write_comfy_instances(payload.get("instances"))
-                self._send(200, {"ok": True, "instances": saved_instances})
-                return
-            if workflow_route == "config":
-                saved = save_workflow_config(workflow_name, payload)
-                self._send(200, {"ok": True, **saved})
-                return
-            if canvas_route == "item":
-                saved = save_canvas_record(canvas_id, payload)
-                self._send(200, {"ok": True, "canvas": saved})
-                return
+            for _k, _key, _m in Handler._PUT_ROUTES:
+                if (_k == "exact" and request_path == _key) \
+                    or (_k == "prefix" and request_path.startswith(_key)) \
+                    or (_k == "route" and (
+                        (_key[0] == "workflow" and workflow_route == _key[1])
+                        or (_key[0] == "canvas" and canvas_route == _key[1]))):
+                    getattr(self, _m)(payload, request_path, canvas_route, canvas_id, workflow_route, workflow_name)
+                    break
             if request_path.startswith("/api/"):
                 if self._forward_upstream("PUT", self.path, raw_body):
                     return
@@ -3939,48 +3965,89 @@ class Handler(BaseHTTPRequestHandler):
             append_log(LOG_FILE, f"{self.command} {self.path} failed: {exc}\n{traceback.format_exc()}")
             self._send(502, {"detail": str(exc)})
 
+    def _del_api_asset_library_categories(self, request_path, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_DELETE 路由表 handler：原分支 prefix /api/asset-library/categories/ 机械表化（体逐字）"""
+        category_id = urllib.parse.unquote(request_path.rsplit("/", 1)[-1])
+        self._send(200, delete_asset_category_record(category_id))
+        return
+
+    def _del_api_asset_library_items(self, request_path, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_DELETE 路由表 handler：原分支 prefix /api/asset-library/items/ 机械表化（体逐字）"""
+        item_id = urllib.parse.unquote(request_path.rsplit("/", 1)[-1])
+        self._send(200, delete_asset_item_record(item_id))
+        return
+
+    def _del_api_asset_library_libraries(self, request_path, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_DELETE 路由表 handler：原分支 prefix /api/asset-library/libraries/ 机械表化（体逐字）"""
+        library_id = urllib.parse.unquote(request_path.rsplit("/", 1)[-1])
+        self._send(200, delete_asset_library_record(library_id))
+        return
+
+    def _del_api_prompt_libraries_categories(self, request_path, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_DELETE 路由表 handler：原分支 prefix /api/prompt-libraries/categories/ 机械表化（体逐字）"""
+        category_id = urllib.parse.unquote(request_path.rsplit("/", 1)[-1])
+        self._send(200, delete_prompt_category_record(category_id))
+        return
+
+    def _del_api_prompt_libraries_items(self, request_path, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_DELETE 路由表 handler：原分支 prefix /api/prompt-libraries/items/ 机械表化（体逐字）"""
+        item_id = urllib.parse.unquote(request_path.rsplit("/", 1)[-1])
+        self._send(200, delete_prompt_item_record(item_id))
+        return
+
+    def _del_api_prompt_libraries(self, request_path, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_DELETE 路由表 handler：原分支 prefix /api/prompt-libraries/ 机械表化（体逐字）"""
+        library_id = urllib.parse.unquote(request_path.rsplit("/", 1)[-1])
+        self._send(200, delete_prompt_library_record(library_id))
+        return
+
+    def _del_workflow_item(self, request_path, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_DELETE 路由表 handler：原分支 route ('workflow', 'item') 机械表化（体逐字）"""
+        self._send(200, delete_workflow_record(workflow_name))
+        return
+
+    def _del_canvas_item(self, request_path, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_DELETE 路由表 handler：原分支 route ('canvas', 'item') 机械表化（体逐字）"""
+        deleted = trash_canvas_record(canvas_id)
+        self._send(200, {"ok": True, "canvas": deleted})
+        return
+
+    def _del_canvas_trashPurgeAll(self, request_path, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_DELETE 路由表 handler：原分支 route ('canvas', 'trashPurgeAll') 机械表化（体逐字）"""
+        self._send(200, purge_all_trash_records())
+        return
+
+    def _del_canvas_purge(self, request_path, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_DELETE 路由表 handler：原分支 route ('canvas', 'purge') 机械表化（体逐字）"""
+        self._send(200, purge_canvas_record(canvas_id))
+        return
+
+    _DELETE_ROUTES = [
+        ('prefix', '/api/asset-library/categories/', "_del_api_asset_library_categories"),
+        ('prefix', '/api/asset-library/items/', "_del_api_asset_library_items"),
+        ('prefix', '/api/asset-library/libraries/', "_del_api_asset_library_libraries"),
+        ('prefix', '/api/prompt-libraries/categories/', "_del_api_prompt_libraries_categories"),
+        ('prefix', '/api/prompt-libraries/items/', "_del_api_prompt_libraries_items"),
+        ('prefix', '/api/prompt-libraries/', "_del_api_prompt_libraries"),
+        ('route', ('workflow', 'item'), "_del_workflow_item"),
+        ('route', ('canvas', 'item'), "_del_canvas_item"),
+        ('route', ('canvas', 'trashPurgeAll'), "_del_canvas_trashPurgeAll"),
+        ('route', ('canvas', 'purge'), "_del_canvas_purge"),
+    ]
+
     def do_DELETE(self):
         request_path = self.path.split("?", 1)[0]
         canvas_route, canvas_id = parse_canvas_route(request_path)
         workflow_route, workflow_name = parse_workflow_route(request_path)
         try:
-            if request_path.startswith("/api/asset-library/categories/"):
-                category_id = urllib.parse.unquote(request_path.rsplit("/", 1)[-1])
-                self._send(200, delete_asset_category_record(category_id))
-                return
-            if request_path.startswith("/api/asset-library/items/"):
-                item_id = urllib.parse.unquote(request_path.rsplit("/", 1)[-1])
-                self._send(200, delete_asset_item_record(item_id))
-                return
-            if request_path.startswith("/api/asset-library/libraries/"):
-                library_id = urllib.parse.unquote(request_path.rsplit("/", 1)[-1])
-                self._send(200, delete_asset_library_record(library_id))
-                return
-            if request_path.startswith("/api/prompt-libraries/categories/"):
-                category_id = urllib.parse.unquote(request_path.rsplit("/", 1)[-1])
-                self._send(200, delete_prompt_category_record(category_id))
-                return
-            if request_path.startswith("/api/prompt-libraries/items/"):
-                item_id = urllib.parse.unquote(request_path.rsplit("/", 1)[-1])
-                self._send(200, delete_prompt_item_record(item_id))
-                return
-            if request_path.startswith("/api/prompt-libraries/"):
-                library_id = urllib.parse.unquote(request_path.rsplit("/", 1)[-1])
-                self._send(200, delete_prompt_library_record(library_id))
-                return
-            if workflow_route == "item":
-                self._send(200, delete_workflow_record(workflow_name))
-                return
-            if canvas_route == "item":
-                deleted = trash_canvas_record(canvas_id)
-                self._send(200, {"ok": True, "canvas": deleted})
-                return
-            if canvas_route == "trashPurgeAll":
-                self._send(200, purge_all_trash_records())
-                return
-            if canvas_route == "purge":
-                self._send(200, purge_canvas_record(canvas_id))
-                return
+            for _k, _key, _m in Handler._DELETE_ROUTES:
+                if (_k == "exact" and request_path == _key) \
+                    or (_k == "prefix" and request_path.startswith(_key)) \
+                    or (_k == "route" and (
+                        (_key[0] == "workflow" and workflow_route == _key[1])
+                        or (_key[0] == "canvas" and canvas_route == _key[1]))):
+                    getattr(self, _m)(request_path, canvas_route, canvas_id, workflow_route, workflow_name)
+                    break
             if request_path.startswith("/api/"):
                 if self._forward_upstream("DELETE", self.path):
                     return
