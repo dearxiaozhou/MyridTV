@@ -9,14 +9,19 @@ import sys
 sys.path.insert(0, "D:/APP/MyridTV")
 
 import rh_official_proxy as beh
+import myridtv_agent_short_drama as sd
+import myridtv_agent_batch as batch_mod
 
 # 打桩：记录 batch 调用；并强制命中短剧分支
+# 第13刀C-X4 后 board_result 住在 myridtv_agent_short_drama：
+# - batch 调用走 myridtv_agent_batch 属性链 → 打桩 batch_mod
+# - is_short_drama 是模块内裸名自调用 → 打桩 sd 属主
 _called = {"count": 0}
-_original_batch = beh._agent_tool_batch_operations
-_original_is_short = beh._agent_is_short_drama_request
+_original_batch = batch_mod._agent_tool_batch_operations
+_original_is_short = sd._agent_is_short_drama_request
 
 
-def fake_batch_operations(batch_args, preset=None):
+def fake_batch_operations(batch_args, preset=None, session_id=""):
     _called["count"] += 1
     _called["ops"] = len(batch_args.get("operations", []))
     return {"ok": True, "save_ok": True}
@@ -26,8 +31,8 @@ def always_short(text):
     return True
 
 
-beh._agent_tool_batch_operations = fake_batch_operations
-beh._agent_is_short_drama_request = always_short
+batch_mod._agent_tool_batch_operations = fake_batch_operations
+sd._agent_is_short_drama_request = always_short
 
 
 def make_payload(latest_text):
@@ -42,6 +47,7 @@ def make_payload(latest_text):
 
 def test_confirm_only_does_not_create():
     _called["count"] = 0
+    sd._AGENT_SHORT_DRAMA_BOARD_EXECUTED.clear()
     payload = make_payload("""
 idea=都市反转短剧：一次意外消息引发误会
 故事一句话=都市反转短剧：一次意外消息引发误会
@@ -62,6 +68,7 @@ style=写实短剧
 
 def test_execute_creates_nodes():
     _called["count"] = 0
+    sd._AGENT_SHORT_DRAMA_BOARD_EXECUTED.clear()
     payload = make_payload("""
 idea=都市反转短剧：一次意外消息引发误会
 duration=30秒
@@ -83,5 +90,6 @@ if __name__ == "__main__":
         test_execute_creates_nodes()
         print("RESULT: PASS")
     finally:
-        beh._agent_tool_batch_operations = _original_batch
-        beh._agent_is_short_drama_request = _original_is_short
+        batch_mod._agent_tool_batch_operations = _original_batch
+        sd._agent_is_short_drama_request = _original_is_short
+        sd._AGENT_SHORT_DRAMA_BOARD_EXECUTED.clear()

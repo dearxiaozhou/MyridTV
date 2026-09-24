@@ -268,6 +268,7 @@ if (Test-Path -LiteralPath $UpgradeHelperScript) {
             (Join-Path $AppDir 'myridtv_agent_guard.py'),
             (Join-Path $AppDir 'myridtv_agent_artifact.py'),
             (Join-Path $AppDir 'myridtv_agent_batch.py'),
+            (Join-Path $AppDir 'myridtv_agent_short_drama.py'),
             (Join-Path $AppDir 'myridtv_comfy.py'),
             (Join-Path $AppDir 'myridtv_runninghub.py'),
             (Join-Path $AppDir 'myridtv_rh_catalog.py'),
