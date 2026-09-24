@@ -15,14 +15,20 @@ import json
 import mimetypes
 import os
 import re
+import socket
 import subprocess
 import tempfile
+import threading
 import time
 import urllib.parse
+import urllib.request
 import uuid
 from pathlib import Path
 
+from websockets.sync.client import connect as ws_connect
+
 from myridtv_core import append_log
+from myridtv_core import read_json_file as _core_read_json_file, write_json_file as _core_write_json_file
 
 _ASSETS_DIR = None
 _IMAGE_CACHE_DIR = None
@@ -41,12 +47,18 @@ _G_CODEX_LOCAL_PERSIST_SESSIONS = None
 _r_resolve_codex_executable = None
 
 
+_G_CODEX_APP_SERVER_PORT_FILE = None
+_r_resolve_codex_executable = None
+CODEX_APP_SERVER_BRIDGE = None
+
 def configure(assets_dir, image_cache_dir, log_file_getter,
               canvas_node_image_by_id, sanitize_messages,
               codex_globals, resolve_codex_executable):
     global _ASSETS_DIR, _IMAGE_CACHE_DIR, _log_file
     global _r_canvas_node_image_by_id, _r_sanitize_messages
     global _r_resolve_codex_executable
+    global _G_CODEX_APP_SERVER_PORT_FILE
+    global CODEX_APP_SERVER_BRIDGE
     global _G_USER_DATA_DIR
     global _G_CODEX_APP_SERVER_BRIDGE
     global _G_CODEX_LOCAL_DEFAULT_MODEL
@@ -60,6 +72,9 @@ def configure(assets_dir, image_cache_dir, log_file_getter,
     _r_canvas_node_image_by_id = canvas_node_image_by_id
     _r_sanitize_messages = sanitize_messages
     _r_resolve_codex_executable = resolve_codex_executable
+    _G_CODEX_APP_SERVER_PORT_FILE = codex_globals.get('CODEX_APP_SERVER_PORT_FILE')
+    global _G_CODEX_APP_SERVER_BRIDGE
+    _G_CODEX_APP_SERVER_BRIDGE = codex_globals['CODEX_APP_SERVER_BRIDGE']
     _G_USER_DATA_DIR = codex_globals['USER_DATA_DIR']
     _G_CODEX_APP_SERVER_BRIDGE = codex_globals['CODEX_APP_SERVER_BRIDGE']
     _G_CODEX_LOCAL_DEFAULT_MODEL = codex_globals['CODEX_LOCAL_DEFAULT_MODEL']
@@ -711,3 +726,213 @@ def _run_codex_bridge_persistent(prompt_text, model, attachment_files, session_i
         "thread_id": thread_id,
         "bridge_mode": "app_server_ws",
     }
+
+# ===== 第25刀追加：codex app-server 桥（进程内 WS 单例） =====
+def _codex_app_server_find_port():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(("127.0.0.1", 0))
+    port = int(sock.getsockname()[1])
+    sock.close()
+    return port
+
+
+def _codex_app_server_image_block(image_path):
+    try:
+        resolved = str(Path(image_path).resolve())
+    except Exception:
+        return None
+    return {
+        "type": "localImage",
+        "path": resolved,
+    }
+
+
+class CodexAppServerBridge:
+    def __init__(self):
+        self._lock = threading.RLock()
+        self._proc = None
+        self._ws = None
+        self._ws_url = ""
+        self._http_readyz = ""
+        self._seq = 0
+        self._initialized = False
+
+    def _next_id(self):
+        self._seq += 1
+        return "myrid-{}".format(self._seq)
+
+    def _creationflags(self):
+        return getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+    def _close_ws(self):
+        try:
+            if self._ws is not None:
+                self._ws.close()
+        except Exception:
+            pass
+        self._ws = None
+
+    def _stop_proc(self):
+        proc = self._proc
+        self._proc = None
+        if not proc:
+            return
+        try:
+            proc.terminate()
+            proc.wait(timeout=5)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+
+    def reset(self):
+        with self._lock:
+            self._close_ws()
+            self._stop_proc()
+            self._initialized = False
+            self._ws_url = ""
+            self._http_readyz = ""
+
+    def ensure_ready(self):
+        with self._lock:
+            if self._proc and self._proc.poll() is None and self._ws is not None and self._initialized:
+                return
+            self.reset()
+            port = _codex_app_server_find_port()
+            self._ws_url = "ws://127.0.0.1:{}".format(port)
+            self._http_readyz = "http://127.0.0.1:{}/readyz".format(port)
+            cmd = [_r_resolve_codex_executable(), "app-server", "--listen", self._ws_url]
+            self._proc = subprocess.Popen(
+                cmd,
+                cwd=str(_G_CODEX_LOCAL_WORKSPACE),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                creationflags=self._creationflags(),
+            )
+            deadline = time.time() + 20
+            last_error = ""
+            while time.time() < deadline:
+                if self._proc.poll() is not None:
+                    break
+                try:
+                    with urllib.request.urlopen(self._http_readyz, timeout=1.5) as resp:
+                        if resp.status == 200:
+                            break
+                except Exception as exc:
+                    last_error = str(exc)
+                time.sleep(0.25)
+            if self._proc.poll() is not None:
+                output = ""
+                try:
+                    output = str(self._proc.stdout.read() or "").strip()
+                except Exception:
+                    pass
+                self.reset()
+                raise RuntimeError("Myrid-Agent app-server 启动失败: {}".format((output or last_error or "unknown error")[:400]))
+            self._ws = ws_connect(self._ws_url, open_timeout=60, close_timeout=5, max_size=10_000_000)
+            init_id = self._next_id()
+            self._send({"jsonrpc": "2.0", "id": init_id, "method": "initialize", "params": {
+                "clientInfo": {"name": "myridtv-codex-bridge", "version": "0.1"},
+                "capabilities": {"experimentalApi": True, "requestAttestation": False, "optOutNotificationMethods": []},
+            }})
+            self._read_until_response(init_id)
+            self._send({"jsonrpc": "2.0", "method": "initialized", "params": {}})
+            self._initialized = True
+            _core_write_json_file(_G_CODEX_APP_SERVER_PORT_FILE, {"ws_url": self._ws_url, "readyz": self._http_readyz, "updated_at": int(time.time())})
+
+    def _send(self, payload):
+        self._ws.send(json.dumps(payload, ensure_ascii=False))
+
+    def _recv(self):
+        raw = self._ws.recv()
+        return json.loads(raw)
+
+    def _read_until_response(self, request_id):
+        while True:
+            message = self._recv()
+            if message.get("id") == request_id:
+                return message
+
+    def _start_thread(self, model):
+        request_id = self._next_id()
+        self._send({
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": "thread/start",
+            "params": {
+                "model": model or _G_CODEX_LOCAL_DEFAULT_RUNTIME_MODEL,
+                "cwd": str(_G_CODEX_LOCAL_WORKSPACE),
+                "approvalPolicy": "never",
+                "sandbox": "read-only",
+            },
+        })
+        response = self._read_until_response(request_id)
+        if response.get("error"):
+            raise RuntimeError("Codex thread/start 失败: {}".format(str(response.get("error"))[:300]))
+        return str((((response.get("result") or {}).get("thread") or {}).get("id") or "")).strip()
+
+    def _turn(self, thread_id, message_text, model, attachment_files):
+        request_id = self._next_id()
+        input_blocks = [{"type": "text", "text": message_text, "text_elements": []}]
+        for image_path in attachment_files[:4]:
+            block = _codex_app_server_image_block(image_path)
+            if block:
+                input_blocks.append(block)
+        self._send({
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": "turn/start",
+            "params": {
+                "threadId": thread_id,
+                "input": input_blocks,
+                "model": model or _G_CODEX_LOCAL_DEFAULT_RUNTIME_MODEL,
+            },
+        })
+        response = self._read_until_response(request_id)
+        if response.get("error"):
+            raise RuntimeError("Codex turn/start 失败: {}".format(str(response.get("error"))[:300]))
+        turn = (response.get("result") or {}).get("turn") or {}
+        turn_id = str(turn.get("id") or "").strip()
+        final_text = ""
+        while True:
+            message = self._recv()
+            method = str(message.get("method") or "")
+            params = message.get("params") or {}
+            if method == "item/completed":
+                item = params.get("item") or {}
+                if item.get("type") == "agentMessage":
+                    final_text = str(item.get("text") or final_text or "").strip()
+            if method == "turn/completed":
+                turn_info = params.get("turn") or {}
+                if str(turn_info.get("id") or "").strip() != turn_id:
+                    continue
+                if not final_text:
+                    for item in turn_info.get("items") or []:
+                        if isinstance(item, dict) and item.get("type") == "agentMessage":
+                            final_text = str(item.get("text") or "").strip()
+                return {
+                    "text": final_text,
+                    "turn_id": turn_id,
+                    "thread_id": thread_id,
+                }
+
+    def run_turn(self, thread_id, message_text, model, attachment_files):
+        with self._lock:
+            self.ensure_ready()
+            return self._turn(thread_id, message_text, model, attachment_files)
+
+    def ensure_thread(self, thread_id, model):
+        with self._lock:
+            self.ensure_ready()
+            if thread_id:
+                return thread_id
+            return self._start_thread(model)
+
+
+CODEX_APP_SERVER_BRIDGE = CodexAppServerBridge()
+_G_CODEX_APP_SERVER_BRIDGE = CODEX_APP_SERVER_BRIDGE
