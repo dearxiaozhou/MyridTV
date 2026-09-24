@@ -375,7 +375,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.23.previzcomposition44"
+STATIC_VERSION = "2026.09.23.previzcomposition45"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -654,6 +654,7 @@ import myridtv_libraries
 import myridtv_codex
 import myridtv_chat
 import myridtv_asset_resolver
+import myridtv_rh_taskflow
 import myridtv_agent_tools
 import myridtv_agent_state
 import myridtv_agent_guard
@@ -1584,6 +1585,14 @@ myridtv_agent_stop.configure(
     CANVAS_AGENT_RECEIPTS_LOCK,
 )
 
+myridtv_rh_taskflow.configure(
+    lambda: LOG_FILE,
+    {
+        'runninghub_api_base': lambda *a, **k: runninghub_api_base(*a, **k),
+    },
+    lambda: RUNNINGHUB_POLL_TIMEOUT_SECONDS,
+)
+
 myridtv_asset_resolver.configure(
     {
         'ASSETS_DIR': lambda: ASSETS_DIR,
@@ -2176,213 +2185,31 @@ def volcengine_probe_payload(payload, action="test"):
     return myridtv_volcengine.volcengine_probe_payload(payload, action)
 
 def submit_official(payload):
-    key = read_env_balance_key()
-    if not key:
-        raise RuntimeError("未找到 RunningHub API Key，请在 API 设置填写「账户余额 API Key」（标准模型需企业级 Key）")
-    refs = payload.get("reference_images") or []
-    provider_id = str(payload.get("provider_id") or "runninghub").strip()
-    if provider_id == "custom-api-3":
-        provider_id = "runninghub"
-    model = _agent_select_configured_image_model(provider_id, payload.get("model"), refs)
-    endpoint = f"{runninghub_api_base()}/openapi/v2/{model}"
-    body = build_official_body(payload, model, refs)
-    data = _rh_request_with_retry(endpoint, "POST", body, {"Authorization": f"Bearer {key}"}, timeout=120)
-    task_id = data.get("taskId") or ""
-    if not task_id:
-        if str(data.get("errorCode") or "") == "1014":
-            raise RuntimeError(
-                "标准模型 API 需要企业级 Key：请在 API 设置把企业级 Key 填入「账户余额 API Key」"
-                f"（当前错误：{str(data.get('errorMessage') or '')[:80]}）")
-        raise RuntimeError(f"RunningHub 未返回 taskId：{data}")
-    return task_id, data
+    return myridtv_rh_taskflow.submit_official(payload)
 
 
 def poll_result(task_id):
-    deadline = time.time() + RUNNINGHUB_POLL_TIMEOUT_SECONDS
-    last = ""
-    while time.time() < deadline:
-        if _task_console_is_cancelled(task_id):
-            raise _TaskConsoleCancelled()
-        try:
-            info = runninghub_query_task(task_id)
-        except Exception as exc:
-            last = str(exc)
-            time.sleep(5)
-            continue
-        last = json.dumps(info, ensure_ascii=False)
-        status = str(info.get("status") or "").upper()
-        if status == "SUCCESS":
-            urls = info.get("urls") or []
-            if not urls:
-                raise RuntimeError(f"RunningHub 成功但没有返回图片：{info}")
-            return {
-                "images": urls,
-                "task_id": task_id,
-                "backend": "runninghub-official-proxy",
-                "raw": info.get("raw") or info,
-            }
-        if status == "FAILED":
-            raise RuntimeError(info.get("failReason") or json.dumps(info, ensure_ascii=False))
-        time.sleep(3)
-    raise RuntimeError(f"RunningHub 查询超时：{last}")
+    return myridtv_rh_taskflow.poll_result(task_id)
 
 
 def localize_canvas_task_result(result, payload):
-    if not isinstance(result, dict):
-        return result
-    canvas_title = str((payload or {}).get("canvas_title") or "").strip()
-    canvas_id = str((payload or {}).get("canvas_id") or "").strip()
-    node_title = str((payload or {}).get("node_title") or "").strip()
-    localized = dict(result)
-    try:
-        if localized.get("images"):
-            localized["images"] = localize_generated_media_items(localized.get("images") or [], "image", canvas_title, canvas_id, node_title)
-        if localized.get("videos"):
-            localized["videos"] = localize_generated_media_items(localized.get("videos") or [], "video", canvas_title, canvas_id, node_title)
-        if localized.get("audios"):
-            localized["audios"] = localize_generated_media_items(localized.get("audios") or [], "audio", canvas_title, canvas_id, node_title)
-    except Exception as exc:
-        localized["localize_error"] = str(exc)
-        append_log(LOG_FILE, f"canvas task localize failed task={localized.get('task_id')}: {exc}")
-    return localized
+    return myridtv_rh_taskflow.localize_canvas_task_result(result, payload)
 
-
-def localize_canvas_task_result_background(task_id, result, payload):
-    try:
-        localized = localize_canvas_task_result(result, payload)
-        if isinstance(localized, dict) and localized != result:
-            current = get_task_state(task_id)
-            if current and current.get("status") == "succeeded":
-                update_task_state(task_id, result=localized, localized_at=time.time())
-                append_log(LOG_FILE, f"canvas task localized in background task={task_id}")
-    except Exception as exc:
-        append_log(LOG_FILE, f"canvas task background localize failed task={task_id}: {exc}")
-
-
-def submit_volcengine_agent_task(payload):
-    return myridtv_volcengine.submit_volcengine_agent_task(payload)
-
-def poll_volcengine_agent_task(local_task_id):
-    return myridtv_volcengine.poll_volcengine_agent_task(local_task_id)
 
 def _previz_ratio_size(aspect_ratio):
-    text = str(aspect_ratio or "").strip().lower().replace(" ", "")
-    mapping = {
-        "16:9": (1280, 720), "wide": (1280, 720),
-        "9:16": (720, 1280), "story": (720, 1280),
-        "1:1": (720, 720), "square": (720, 720),
-        "3:2": (1080, 720), "landscape": (1080, 720),
-        "2:3": (720, 1080), "portrait": (720, 1080),
-        "4:3": (960, 720), "landscape43": (960, 720),
-        "3:4": (720, 960), "portrait43": (720, 960),
-        "21:9": (1680, 720), "ultrawide": (1680, 720),
-        "9:21": (720, 1680), "ultratall": (720, 1680),
-    }
-    return mapping.get(text, (1280, 720))
+    return myridtv_rh_taskflow._previz_ratio_size(aspect_ratio)
 
 
 def _strip_llm_fenced_text(text):
-    text = str(text or "").strip()
-    fence = re.match(r"^```(?:\w+)?\s*([\s\S]*?)\s*```$", text)
-    if fence:
-        text = fence.group(1).strip()
-    return text.strip()
-
-
-def run_blender_previz(payload):
-    return myridtv_blender_previz.run_blender_previz(payload)
+    return myridtv_rh_taskflow._strip_llm_fenced_text(text)
 
 
 def run_task(task_id, payload):
-    try:
-        provider_id = str((payload or {}).get("provider_id") or "").strip()
-        if provider_id == "blender":
-            update_task_state(task_id, status="running", backend="blender-previz", provider_id="blender", checked_at=time.time())
-            result = run_blender_previz(payload)
-            update_task_state(task_id, status="succeeded", result=result, completed_at=time.time(), localized_at=time.time())
-            return
-        if provider_id == "volcengine":
-            provider_task_id, submit_raw = submit_volcengine_agent_task(payload)
-            update_task_state(task_id, status="running", provider_task_id=provider_task_id, submit=submit_raw, checked_at=time.time(), backend="volcengine-ark", provider_id="volcengine")
-            threading.Thread(target=poll_volcengine_agent_task, args=(task_id,), daemon=True).start()
-            return
-        if provider_id == "runninghub":
-            workflow_name = str((payload or {}).get("model") or "").strip()
-            entry = None
-            for provider in read_api_providers():
-                if str(provider.get("id") or "") != "runninghub":
-                    continue
-                for item in provider.get("rh_workflows") or []:
-                    if isinstance(item, dict) and str(item.get("title") or item.get("name") or "") == workflow_name:
-                        entry = item
-                        break
-                if entry:
-                    break
-            if entry:
-                workflow_id = str(entry.get("workflowId") or entry.get("id") or "").strip()
-                if not workflow_id:
-                    raise RuntimeError("RunningHub 云端工作流缺少 workflowId")
-                submit = runninghub_submit_workflow({"workflowId": workflow_id, "nodeInfoList": []})
-                rh_task_id = str(submit.get("taskId") or "").strip()
-                if not rh_task_id:
-                    raise RuntimeError("RunningHub 云端工作流提交失败")
-                update_task_state(task_id, status="running", rh_task_id=rh_task_id, submit=submit.get("raw") or submit, checked_at=time.time())
-                result = poll_result(rh_task_id)
-                current = get_task_state(task_id)
-                if current.get("status") == "succeeded" and current.get("localized_at"):
-                    return
-                result = localize_canvas_task_result(result, payload)
-                update_task_state(task_id, status="succeeded", result=result, completed_at=time.time(), localized_at=time.time())
-                return
-        rh_task_id, submit_raw = submit_official(payload)
-        update_task_state(task_id, status="running", rh_task_id=rh_task_id, submit=submit_raw, checked_at=time.time())
-        result = poll_result(rh_task_id)
-        # If refresh_canvas_task_state already localized the result (race condition), skip.
-        with _canvas_task_localize_lock(task_id):
-            if _canvas_task_already_localized(task_id):
-                append_log(LOG_FILE, f"run_task skip localize, already done by refresh task={task_id}")
-                return
-            # Localize before publishing success so the frontend never localizes the same remote files again.
-            result = localize_canvas_task_result(result, payload)
-            update_task_state(task_id, status="succeeded", result=result, completed_at=time.time(), localized_at=time.time())
-    except Exception as exc:
-        if _task_console_is_cancelled(task_id):
-            # 控制台手动停止：保持 cancelled 状态，不被轮询异常覆盖
-            return
-        error = str(exc)
-        append_log(LOG_FILE, "[CanvasTaskFailed] task={} provider={} model={} err={}".format(task_id, (payload or {}).get("provider_id"), (payload or {}).get("model"), error[:400]))
-        if "RunningHub 查询超时" in error:
-            update_task_state(task_id, status="running", checked_at=time.time(), last_error=error, poll_window_expired_at=time.time())
-        else:
-            update_task_state(task_id, status="failed", error=error, completed_at=time.time())
+    return myridtv_rh_taskflow.run_task(task_id, payload)
 
 
 def handle_localize_generated_media(payload):
-    safe_payload = payload if isinstance(payload, dict) else {}
-    raw_items = safe_payload.get("items")
-    if not isinstance(raw_items, list):
-        raw_items = safe_payload.get("images")
-    if not isinstance(raw_items, list):
-        raw_items = []
-    kind = str(safe_payload.get("kind") or "image")
-    canvas_title = str(safe_payload.get("canvas_title") or "").strip()
-    canvas_id = str(safe_payload.get("canvas_id") or "").strip()
-    try:
-        node_title = str(safe_payload.get("node_title") or "").strip()
-        items = localize_generated_media_items(raw_items, kind, canvas_title, canvas_id, node_title)
-        return {
-            "ok": True,
-            "items": items,
-        }
-    except Exception as exc:
-        append_log(LOG_FILE, f"localize generated media route fallback: {exc}")
-        return {
-            "ok": True,
-            "items": [fallback_generated_media_item(item, kind, exc) for item in raw_items],
-            "localize_error": str(exc),
-            "fallback": True,
-        }
-
+    return myridtv_rh_taskflow.handle_localize_generated_media(payload)
 import myridtv_mcp
 
 # 26刀：MCP 域住 myridtv_mcp；Handler 消费的表与分发器走引用别名。
