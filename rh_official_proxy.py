@@ -775,6 +775,7 @@ myridtv_volcengine.configure(
     lambda: volcengine_ark_api_key(),
     lambda source_url, service='auto': upload_cloud_media_direct(source_url, service=service),
     lambda task_id: _task_console_is_cancelled(task_id),
+    lambda provider_id='', agent_entry=None: read_chat_key(provider_id, agent_entry),
 )
 
 _cmm = myridtv_canvas_store._cmm  # 第4刀：try/except 定义随块入模块，块外守卫处用同一对象
@@ -7982,160 +7983,23 @@ def request_text(url, timeout=60):
 
 # 火山「推理计划」plan 端点（.../api/plan/v3）是 OpenAI 兼容对话入口，不提供 /models 列表。
 # 这里在后端固化该端点可用的对话模型清单，Agent 模型下拉直接可选，无需手动输入或在线拉取。
-VOLCENGINE_PLAN_DEFAULT_CHAT_MODELS = [
-    "deepseek-v4-flash",
-    "glm-5.3-flash",
-    "doubao-seed-2.1-turbo",
-    "minimax-m3",
-    "glm-5.3",
-    "kimi-k2.7-code",
-    "deepseek-v4-pro",
-    "kimi-k3",
-]
-
-
 def is_volcengine_plan_base(base_url=""):
-    return "/api/plan/" in str(base_url or "").strip().lower()
-
+    return myridtv_volcengine.is_volcengine_plan_base(base_url)
 
 def volcengine_plan_chat_models(extra=None):
-    merged = list(VOLCENGINE_PLAN_DEFAULT_CHAT_MODELS)
-    for item in (extra or []):
-        text = str(item or "").strip()
-        if text and text not in merged:
-            merged.append(text)
-    return merged
-
+    return myridtv_volcengine.volcengine_plan_chat_models(extra)
 
 def volcengine_fetch_models(payload):
-    base_url = str(payload.get("base_url") or "").strip().rstrip("/")
-    api_key = str(payload.get("api_key") or "").strip()
-    # Fallback: read from env file if not provided in payload
-    if not api_key:
-        api_key = volcengine_ark_api_key()
-    if not api_key:
-        return {"ok": False, "status": 0, "message": "请先填写或保存方舟 API Key", "detail": "缺少 API Key", "all": [], "image_models": [], "video_models": [], "chat_models": [], "model_count": 0, "total": 0}
-    # 火山「推理计划」plan 端点是 OpenAI 兼容对话入口，只提供 /chat/completions，不提供 /models。
-    # 这类地址用于 Agent 对话，不用于图像/视频任务，因此验证地址按对话端点处理（404 属正常）。
-    if "/api/plan/" in base_url:
-        plan_models = volcengine_plan_chat_models()
-        return {
-            "ok": True,
-            "protocol": "volcengine",
-            "source": "volcengine-plan-chat",
-            "all": plan_models,
-            "image_models": [],
-            "video_models": [],
-            "chat_models": plan_models,
-            "total": len(plan_models),
-            "model_count": len(plan_models),
-            "status": 200,
-            "message": "方舟推理计划(plan)对话端点可用。该端点不提供模型列表，Agent 模型可直接输入模型名（如 deepseek-v4-flash）。",
-        }
-    models_url = f"{base_url}/models"
-    try:
-        data = request_json(models_url, "GET", headers={"Authorization": f"Bearer {api_key}"}, timeout=30)
-    except Exception as exc:
-        return {"ok": False, "status": 0, "message": f"请求失败: {exc}", "detail": f"请求失败: {exc}", "all": [], "image_models": [], "video_models": [], "chat_models": [], "model_count": 0, "total": 0}
-    raw_models = data.get("data") or []
-    all_models = unique_strings([str(m.get("id") or "").strip() for m in raw_models if isinstance(m, dict) and str(m.get("id") or "").strip()])
-    image_models = [m for m in all_models if re.search(r"seedream|seededit|t2i|i2i|image", m, re.I)]
-    video_models = [m for m in all_models if re.search(r"seedance|t2v|i2v|wan2", m, re.I)]
-    chat_models = [m for m in all_models if not re.search(r"seedream|seededit|seedance|t2i|i2v|t2v|wan2|seed3d|3d-|embedding", m, re.I)]
-    return {
-        "ok": True,
-        "protocol": "volcengine",
-        "source": "volcengine-ark-api",
-        "all": all_models,
-        "image_models": image_models,
-        "video_models": video_models,
-        "chat_models": chat_models,
-        "total": len(all_models),
-        "model_count": len(all_models),
-    }
-
+    return myridtv_volcengine.volcengine_fetch_models(payload)
 
 def is_volcengine_request(payload):
-    protocol = str((payload or {}).get("protocol") or "").strip().lower()
-    provider_id = str((payload or {}).get("provider_id") or "").strip().lower()
-    base_url = str((payload or {}).get("base_url") or "").strip().lower()
-    return protocol == "volcengine" or provider_id == "volcengine" or "volces.com" in base_url
-
+    return myridtv_volcengine.is_volcengine_request(payload)
 
 def openai_probe_payload(payload, action="test"):
-    """自定义 OpenAI 兼容平台：本地(:3107)直接探 {base_url}/models，不再转发 :3000 内部服务。"""
-    payload = payload if isinstance(payload, dict) else {}
-    base_url = str(payload.get("base_url") or "").strip().rstrip("/")
-    provider_id = str(payload.get("provider_id") or "").strip()
-    api_key = str(payload.get("api_key") or "").strip()
-    if not api_key and provider_id:
-        try:
-            api_key = read_chat_key(provider_id) or ""
-        except Exception:
-            api_key = ""
-    empty = {"all": [], "image_models": [], "video_models": [], "chat_models": [], "model_count": 0, "total": 0}
-    if not base_url:
-        return {"ok": False, "protocol": "openai", "status": 0, "status_code": 0,
-                "source": "openai-models", "message": "请先填写请求地址", "detail": "缺少请求地址", **empty}
-    urls = [f"{base_url}/models"]
-    if not base_url.endswith("/v1"):
-        urls.append(f"{base_url}/v1/models")
-    data = None
-    last_error = None
-    for url in urls:
-        try:
-            data = request_json(url, "GET", headers={"Authorization": f"Bearer {api_key}"} if api_key else {}, timeout=30)
-            break
-        except Exception as exc:
-            last_error = exc
-    if data is None:
-        msg = f"请求失败: {last_error}"
-        return {"ok": False, "protocol": "openai", "status": 0, "status_code": 0,
-                "source": "openai-models", "message": msg, "detail": msg, **empty}
-    raw_models = data.get("data") or []
-    all_models = unique_strings([str(m.get("id") or "").strip() for m in raw_models if isinstance(m, dict) and str(m.get("id") or "").strip()])
-    image_models = [m for m in all_models if re.search(r"image|seedream|seededit|t2i|i2i|flux|sd3|dalle", m, re.I)]
-    video_models = [m for m in all_models if re.search(r"video|seedance|t2v|i2v|kling", m, re.I) and m not in image_models]
-    chat_models = [m for m in all_models if m not in image_models and m not in video_models]
-    result = {
-        "ok": True,
-        "protocol": "openai",
-        "source": "openai-models",
-        "status": 200,
-        "status_code": 200,
-        "all": all_models,
-        "image_models": image_models,
-        "video_models": video_models,
-        "chat_models": chat_models,
-        "total": len(all_models),
-        "model_count": len(all_models),
-    }
-    if api_key:
-        result["message"] = f"地址与 API Key 验证通过，共 {len(all_models)} 个模型。"
-    else:
-        result["message"] = f"地址可达（共 {len(all_models)} 个模型），但未填写 API Key——保存 Key 后才能确认鉴权通过。"
-    result["raw"] = {"provider_id": provider_id, "base_url": base_url, "protocol": "openai", "total": len(all_models)}
-    return result
-
+    return myridtv_volcengine.openai_probe_payload(payload, action)
 
 def volcengine_probe_payload(payload, action="test"):
-    result = volcengine_fetch_models(payload if isinstance(payload, dict) else {})
-    result["protocol"] = "volcengine"
-    result["source"] = "volcengine-ark-api"
-    result["status_code"] = result.get("status") or (200 if result.get("ok") else 0)
-    result["raw"] = {
-        "provider_id": (payload or {}).get("provider_id") or "",
-        "base_url": (payload or {}).get("base_url") or "",
-        "protocol": "volcengine",
-        "total": result.get("total") or 0,
-    }
-    if result.get("ok"):
-        result["status"] = 200
-        result["message"] = result.get("message") or "火山引擎方舟地址验证通过，模型列表已同步。"
-    else:
-        result["message"] = result.get("message") or result.get("detail") or "火山引擎方舟地址验证失败"
-    return result
-
+    return myridtv_volcengine.volcengine_probe_payload(payload, action)
 
 def submit_official(payload):
     key = read_env_balance_key()
@@ -8222,62 +8086,10 @@ def localize_canvas_task_result_background(task_id, result, payload):
 
 
 def submit_volcengine_agent_task(payload):
-    """Agent 生图链路：火山引擎生成（图像/视频统一走 contents/generations/tasks）"""
-    provider_id = str((payload or {}).get("provider_id") or "volcengine").strip()
-    provider = volcengine_provider_config(provider_id)
-    base_url = volcengine_base_url(provider)
-    api_key = volcengine_ark_api_key()
-    model = str((payload or {}).get("model") or "").strip()
-    if not model:
-        raise RuntimeError("缺少火山生成模型")
-    content = [{"type": "text", "text": str((payload or {}).get("prompt") or "").strip()}]
-    refs = (payload or {}).get("reference_images") or []
-    if isinstance(refs, list):
-        for ref in refs:
-            url = str(ref or "").strip()
-            if url:
-                content.append({"type": "image_url", "image_url": {"url": url}, "role": "reference_image"})
-    body = {"model": model, "content": content}
-    ratio = volcengine_normalize_ratio((payload or {}).get("aspect_ratio") or (payload or {}).get("ratio"))
-    if ratio:
-        body["ratio"] = ratio
-    resolution = volcengine_normalize_resolution((payload or {}).get("resolution"))
-    if resolution:
-        body["resolution"] = resolution
-    body["watermark"] = False
-    try:
-        submit = request_json(f"{base_url}/contents/generations/tasks", "POST", body, headers={"Authorization": f"Bearer {api_key}"}, timeout=180)
-    except Exception as exc:
-        raise RuntimeError(volcengine_user_error_message(exc)) from exc
-    provider_task_id = volcengine_extract_task_id(submit)
-    if not provider_task_id:
-        raise RuntimeError(f"火山生成任务提交失败，未返回任务 ID：{submit}")
-    return provider_task_id, submit
-
+    return myridtv_volcengine.submit_volcengine_agent_task(payload)
 
 def poll_volcengine_agent_task(local_task_id):
-    for _ in range(720):
-        time.sleep(2500 / 1000)
-        state = get_task_state(local_task_id)
-        if not state or state.get("status") != "running":
-            return
-        provider_task_id = state.get("provider_task_id") or state.get("volcengine_task_id")
-        try:
-            queried = query_volcengine_video_task(state.get("provider_id") or "volcengine", provider_task_id, localize=True, canvas_title=str(state.get("canvas_title") or ""), canvas_id=str(state.get("canvas_id") or ""))
-            if queried.get("status") == "succeeded":
-                update_task_state(local_task_id, status="succeeded", result=queried.get("result") or {}, completed_at=time.time(), raw_status=queried.get("raw_status") or "")
-                append_log(LOG_FILE, f"volcengine agent task succeeded local_task_id={local_task_id} provider_task_id={provider_task_id}")
-                return
-            if queried.get("status") == "failed":
-                update_task_state(local_task_id, status="failed", error=queried.get("error") or "火山生成任务失败", completed_at=time.time(), raw=queried.get("raw"), raw_status=queried.get("raw_status") or "")
-                append_log(LOG_FILE, f"volcengine agent task failed local_task_id={local_task_id} provider_task_id={provider_task_id} error={queried.get('error')}")
-                return
-            update_task_state(local_task_id, status="running", checked_at=time.time(), raw_status=queried.get("raw_status") or "running")
-        except Exception as exc:
-            update_task_state(local_task_id, status="running", checked_at=time.time(), last_error=str(exc))
-            append_log(LOG_FILE, f"volcengine agent task poll failed local_task_id={local_task_id}: {exc}")
-    update_task_state(local_task_id, status="failed", error="火山生成任务超时", completed_at=time.time())
-
+    return myridtv_volcengine.poll_volcengine_agent_task(local_task_id)
 
 def _previz_ratio_size(aspect_ratio):
     text = str(aspect_ratio or "").strip().lower().replace(" ", "")
