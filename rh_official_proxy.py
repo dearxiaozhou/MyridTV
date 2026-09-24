@@ -663,6 +663,7 @@ import myridtv_agent_guidance
 import myridtv_agent_tasks
 import myridtv_agent_submit
 import myridtv_agent_generation
+import myridtv_runninghub_build
 import myridtv_blender_previz
 import myridtv_comfy
 import myridtv_runninghub
@@ -2547,6 +2548,12 @@ myridtv_agent_generation.configure(
     lambda: LOG_FILE,
     lambda *a, **k: localize_canvas_task_result(*a, **k),
 )
+
+myridtv_runninghub_build.configure(
+    lambda *a, **k: runninghub_upload_binary_media(*a, **k),
+    RUNNINGHUB_ALLOWED_RESOLUTIONS,
+    RUNNINGHUB_DEFAULT_IMAGE_MODELS,
+)
 CANVAS_AGENT_ALLOW_TEXT_FALLBACK_NODES = myridtv_agent_short_drama.CANVAS_AGENT_ALLOW_TEXT_FALLBACK_NODES
 AGENT_BATCH_DIR = myridtv_agent_artifact.AGENT_BATCH_DIR
 AGENT_OP_TYPES = myridtv_agent_artifact.AGENT_OP_TYPES
@@ -2867,195 +2874,20 @@ def submit_chat(payload):
     return myridtv_agent_submit.submit_chat(payload)
 
 
-def upload_reference(ref):
-    url = ref.get("url") if isinstance(ref, dict) else str(ref or "")
-    if not url:
-        return ""
-    if url.startswith("http://") or url.startswith("https://"):
-        return url
-    uploaded = runninghub_upload_binary_media(url)
-    return uploaded.get("downloadUrl") or ""
-
-
 def normalize_model(model, refs):
-    model = str(model or "").strip().replace("rhart-image-g-2-offcial", "rhart-image-g-2-official")
-    if not refs and model.endswith("/image-to-image"):
-        return model.replace("/image-to-image", "/text-to-image")
-    if refs and model.endswith("/text-to-image"):
-        image_model = model.replace("/text-to-image", "/image-to-image")
-        if image_model.startswith("rhart-image-g-2-official/"):
-            return image_model
-    return model
-
-
-def parse_size_dimensions(value):
-    match = re.match(r"^\s*(\d+)\s*[xX*]\s*(\d+)\s*$", str(value or ""))
-    if not match:
-        return None
-    width = int(match.group(1))
-    height = int(match.group(2))
-    if width <= 0 or height <= 0:
-        return None
-    return width, height
-
-
-def derive_resolution_from_size(value):
-    dims = parse_size_dimensions(value)
-    if not dims:
-        return ""
-    width, height = dims
-    longest = max(width, height)
-    if longest <= 1024:
-        return "1k"
-    if longest <= 2048:
-        return "2k"
-    return "4k"
-
-
-def derive_aspect_ratio_from_size(value):
-    dims = parse_size_dimensions(value)
-    if not dims:
-        return ""
-    width, height = dims
-    # 精确约分（如 3840x2160 -> 16:9）；若结果不在 RH 白名单（如 2480x3312 -> 155:207），
-    # 按宽高比误差最小匹配白名单比例，避免 size 非标准倍数时静默兜底成 16:9。
-    divisor = math.gcd(width, height) or 1
-    exact = f"{width // divisor}:{height // divisor}"
-    if exact in RH_ALLOWED_ASPECT_RATIOS:
-        return exact
-    if width <= 0 or height <= 0:
-        return ""
-    ratio = width / height
-    best = "16:9"
-    best_err = float("inf")
-    for cand in RH_ALLOWED_ASPECT_RATIOS:
-        try:
-            w, h = (int(p) for p in cand.split(":"))
-        except ValueError:
-            continue
-        if w <= 0 or h <= 0:
-            continue
-        cand_ratio = w / h
-        err = abs(cand_ratio - ratio)
-        if err < best_err:
-            best_err = err
-            best = cand
-    return best
-
-
-RH_ALLOWED_ASPECT_RATIOS = ("1:1","3:2","2:3","5:4","4:5","16:9","9:16","21:9","3:4","4:3","9:21","1:2","2:1","1:3","3:1")
-RH_ASPECT_KEY_ALIASES = {
-    "square":"1:1","landscape":"3:2","portrait":"2:3","landscape43":"4:3",
-    "portrait43":"3:4","wide":"16:9","story":"9:16","ultrawide":"21:9","ultratall":"9:21",
-}
-def _normalize_rh_aspect_ratio(value, size=None):
-    """出口防御：把比例 key(wide/square…)或畸形写法规范成 RunningHub 合法文本，绝不把 'wide' 原样发出去。"""
-    text = str(value or "").strip()
-    key = text.lower().replace(" ", "").replace("：", ":")
-    if key in RH_ASPECT_KEY_ALIASES:
-        return RH_ASPECT_KEY_ALIASES[key]
-    cand = key.replace("x", ":").replace("/", ":")
-    if ":" in cand and cand.replace(":", "").isdigit() and cand in RH_ALLOWED_ASPECT_RATIOS:
-        return cand
-    if text in RH_ALLOWED_ASPECT_RATIOS:
-        return text
-    derived = derive_aspect_ratio_from_size(size) if size else ""
-    return derived if derived in RH_ALLOWED_ASPECT_RATIOS else "16:9"
-
+    return myridtv_runninghub_build.normalize_model(model, refs)
 
 def build_official_body(payload, model, refs):
-    resolution = str(payload.get("resolution") or "").strip().lower()
-    if resolution not in RUNNINGHUB_ALLOWED_RESOLUTIONS:
-        size_value = str(payload.get("size") or "").strip()
-        size_lower = size_value.lower()
-        resolution = size_lower if size_lower in RUNNINGHUB_ALLOWED_RESOLUTIONS else derive_resolution_from_size(size_value) or "1k"
-    aspect_ratio = str(payload.get("aspectRatio") or "").strip() or derive_aspect_ratio_from_size(payload.get("size")) or "16:9"
-    aspect_ratio = _normalize_rh_aspect_ratio(aspect_ratio, payload.get("size"))
-    body = {
-        "prompt": payload.get("prompt") or "",
-        "resolution": resolution,
-        "aspectRatio": aspect_ratio,
-    }
-    if model.startswith("rhart-image-g-2-official/"):
-        body["quality"] = payload.get("quality") or "medium"
-    if refs:
-        body["imageUrls"] = [upload_reference(ref) for ref in refs]
-    return body
-
-
-def runninghub_provider_models(providers=None):
-    items = providers if isinstance(providers, list) else read_api_providers()
-    models = []
-    for provider in items or []:
-        if not isinstance(provider, dict):
-            continue
-        protocol = str(provider.get("protocol") or "").strip().lower()
-        provider_id = str(provider.get("id") or "").strip().lower()
-        base_url = str(provider.get("base_url") or "").strip().lower()
-        if protocol == "runninghub" or provider_id == "runninghub" or "runninghub" in base_url or provider_id == "custom-api-3":
-            models.extend(item for item in (provider.get("image_models") or []) if isinstance(item, str))
-    return unique_strings(models or RUNNINGHUB_DEFAULT_IMAGE_MODELS)
-
-
-def runninghub_preferred_image_model(reference_images=None, providers=None):
-    refs = reference_images or []
-    models = runninghub_provider_models(providers)
-    preferred_suffixes = ["/image-to-image", "/edit"] if refs else ["/text-to-image"]
-    for suffix in preferred_suffixes:
-        for model in models:
-            if str(model).endswith(suffix):
-                return normalize_model(model, refs)
-    for model in models:
-        normalized = normalize_model(model, refs)
-        if refs and normalized.endswith("/image-to-image"):
-            return normalized
-        if not refs and normalized.endswith("/text-to-image"):
-            return normalized
-    raise RuntimeError("未找到可用的 RunningHub 生图模型：请在 API 设置中配置 image_models")
-
-
-def legacy_generate_reference_images(payload):
-    refs = []
-    for ref in (payload.get("reference_images") or []):
-        text = str(ref.get("url") if isinstance(ref, dict) else ref or "").strip()
-        if text and text not in refs:
-            refs.append(text)
-    params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
-    for value in params.values():
-        if not isinstance(value, dict):
-            continue
-        text = str(value.get("image") or value.get("url") or "").strip()
-        if text and text not in refs:
-            refs.append(text)
-    return refs
-
+    return myridtv_runninghub_build.build_official_body(payload, model, refs)
 
 def resolve_legacy_generate_payload(payload, providers=None):
-    refs = legacy_generate_reference_images(payload or {})
-    width = parse_positive_int((payload or {}).get("width")) or 1024
-    height = parse_positive_int((payload or {}).get("height")) or 1024
-    resolved = {
-        "prompt": str((payload or {}).get("prompt") or ""),
-        "model": runninghub_preferred_image_model(refs, providers),
-        "reference_images": refs,
-        "size": str((payload or {}).get("size") or f"{width}x{height}"),
-    }
-    for key in ("resolution", "aspectRatio", "quality"):
-        value = str((payload or {}).get(key) or "").strip()
-        if value:
-            resolved[key] = value
-    return resolved
-
+    return myridtv_runninghub_build.resolve_legacy_generate_payload(payload, providers)
 
 def runninghub_task_key():
-    key = read_env_key()
-    if not key:
-        raise RuntimeError("未找到 RunningHub API Key，请检查 API/.env")
-    return key
-
+    return myridtv_runninghub_build.runninghub_task_key()
 
 def runninghub_task_auth_headers():
-    return {"Authorization": f"Bearer {runninghub_task_key()}"}
+    return myridtv_runninghub_build.runninghub_task_auth_headers()
 
 
 def local_media_source_bytes(source_url):
