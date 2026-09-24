@@ -375,7 +375,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.23.previzcomposition37"
+STATIC_VERSION = "2026.09.23.previzcomposition38"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -3311,6 +3311,99 @@ class Handler(BaseHTTPRequestHandler):
             append_log(LOG_FILE, f"{self.command} {self.path} failed: {exc}\n{traceback.format_exc()}")
             self._send(502, {"detail": str(exc)})
 
+    def _post_api_asset_library_libraries(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/asset-library/libraries 机械表化（体逐字）"""
+        self._send(200, create_asset_library_record(payload))
+        return
+
+    def _post_api_asset_library_categories(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/asset-library/categories 机械表化（体逐字）"""
+        self._send(200, create_asset_category_record(payload))
+        return
+
+    def _post_api_asset_library_items_versions(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/asset-library/items/versions 机械表化（体逐字）"""
+        self._send(200, add_asset_library_version(payload))
+        return
+
+    def _post_api_asset_library_items_delete(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/asset-library/items/delete 机械表化（体逐字）"""
+        self._send(200, delete_asset_items_record(payload))
+        return
+
+    def _post_api_asset_library_items_move(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/asset-library/items/move 机械表化（体逐字）"""
+        self._send(200, move_asset_items_record(payload))
+        return
+
+    def _post_api_asset_library_items_crop(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/asset-library/items/crop 机械表化（体逐字）"""
+        self._send(200, crop_asset_items_record(payload))
+        return
+
+    def _post_api_prompt_libraries(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/prompt-libraries 机械表化（体逐字）"""
+        self._send(200, create_prompt_library_record(payload))
+        return
+
+    def _post_api_prompt_libraries_categories(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/prompt-libraries/categories 机械表化（体逐字）"""
+        self._send(200, create_prompt_category_record(payload))
+        return
+
+    def _post_api_prompt_libraries_items(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/prompt-libraries/items 机械表化（体逐字）"""
+        self._send(200, create_prompt_item_record(payload))
+        return
+
+    def _post_api_prompt_libraries_items_delete(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/prompt-libraries/items/delete 机械表化（体逐字）"""
+        self._send(200, delete_prompt_items_record(payload))
+        return
+
+    def _post_api_localize_generated_media(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/localize-generated-media 机械表化（体逐字）"""
+        self._send(200, handle_localize_generated_media(payload))
+        return
+
+    def _post_api_move_to_history(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/move-to-history 机械表化（体逐字）"""
+        self._send(200, move_output_asset_to_history(payload))
+        return
+
+    def _post_api_task_console_stop(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/task-console-stop 机械表化（体逐字）"""
+        self._send(200, task_console_stop(payload))
+        return
+
+    def _post_api_canvas_llm(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/canvas-llm 机械表化（体逐字）"""
+        self._send(200, submit_chat(payload))
+        return
+
+    def _post_api_agent_models(self, payload):
+        """do_POST 路由表 handler：原精确分支 /api/agent-models 机械表化（体逐字）"""
+        self._send(200, fetch_agent_models(payload))
+        return
+
+    _POST_ROUTES_B1 = {
+        "/api/asset-library/libraries": "_post_api_asset_library_libraries",
+        "/api/asset-library/categories": "_post_api_asset_library_categories",
+        "/api/asset-library/items/versions": "_post_api_asset_library_items_versions",
+        "/api/asset-library/items/delete": "_post_api_asset_library_items_delete",
+        "/api/asset-library/items/move": "_post_api_asset_library_items_move",
+        "/api/asset-library/items/crop": "_post_api_asset_library_items_crop",
+        "/api/prompt-libraries": "_post_api_prompt_libraries",
+        "/api/prompt-libraries/categories": "_post_api_prompt_libraries_categories",
+        "/api/prompt-libraries/items": "_post_api_prompt_libraries_items",
+        "/api/prompt-libraries/items/delete": "_post_api_prompt_libraries_items_delete",
+        "/api/localize-generated-media": "_post_api_localize_generated_media",
+        "/api/move-to-history": "_post_api_move_to_history",
+        "/api/task-console-stop": "_post_api_task_console_stop",
+        "/api/canvas-llm": "_post_api_canvas_llm",
+        "/api/agent-models": "_post_api_agent_models",
+    }
+
     def do_POST(self):
         try:
             length = int(self.headers.get("Content-Length") or 0)
@@ -3326,6 +3419,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, handle_ai_upload(raw_body, content_type))
                 return
             payload = json.loads(raw_body.decode("utf-8") or "{}") if raw_body else {}
+            _rm = Handler._POST_ROUTES_B1.get(request_path)
+            if _rm is not None:
+                getattr(self, _rm)(payload)
+                return
             canvas_route, canvas_id = parse_canvas_route(request_path)
             workflow_route, workflow_name = parse_workflow_route(request_path)
             if request_path == "/mcp":
@@ -3407,42 +3504,6 @@ class Handler(BaseHTTPRequestHandler):
             if request_path in ("/api/asset-library/items", "/api/asset-library/items/batch"):
                 self._send(200, add_asset_library_items(payload))
                 return
-            if request_path == "/api/asset-library/libraries":
-                self._send(200, create_asset_library_record(payload))
-                return
-            if request_path == "/api/asset-library/categories":
-                self._send(200, create_asset_category_record(payload))
-                return
-            if request_path == "/api/asset-library/items/versions":
-                self._send(200, add_asset_library_version(payload))
-                return
-            if request_path == "/api/asset-library/items/delete":
-                self._send(200, delete_asset_items_record(payload))
-                return
-            if request_path == "/api/asset-library/items/move":
-                self._send(200, move_asset_items_record(payload))
-                return
-            if request_path == "/api/asset-library/items/crop":
-                self._send(200, crop_asset_items_record(payload))
-                return
-            if request_path == "/api/prompt-libraries":
-                self._send(200, create_prompt_library_record(payload))
-                return
-            if request_path == "/api/prompt-libraries/categories":
-                self._send(200, create_prompt_category_record(payload))
-                return
-            if request_path == "/api/prompt-libraries/items":
-                self._send(200, create_prompt_item_record(payload))
-                return
-            if request_path == "/api/prompt-libraries/items/delete":
-                self._send(200, delete_prompt_items_record(payload))
-                return
-            if request_path == "/api/localize-generated-media":
-                self._send(200, handle_localize_generated_media(payload))
-                return
-            if request_path == "/api/move-to-history":
-                self._send(200, move_output_asset_to_history(payload))
-                return
             if request_path == "/api/runninghub/submit":
                 self._send(200, {"success": True, "data": runninghub_submit_app(payload)})
                 return
@@ -3487,9 +3548,6 @@ class Handler(BaseHTTPRequestHandler):
             if request_path == "/api/providers/verify-base" and is_volcengine_request(payload):
                 self._send(200, volcengine_probe_payload(payload, "verify"))
                 return
-            if request_path == "/api/task-console-stop":
-                self._send(200, task_console_stop(payload))
-                return
             if request_path == "/api/canvas-image-tasks":
                 task_id = "rhproxy_" + uuid.uuid4().hex
                 set_task_state(task_id, {
@@ -3512,9 +3570,6 @@ class Handler(BaseHTTPRequestHandler):
                 }, persistent=True)
                 threading.Thread(target=run_task, args=(task_id, payload), daemon=True).start()
                 self._send(200, {"task_id": task_id})
-                return
-            if request_path == "/api/canvas-llm":
-                self._send(200, submit_chat(payload))
                 return
             if request_path == "/api/canvas-llm-stop":
                 request_id = str(payload.get("request_id") or "").strip()
@@ -3583,9 +3638,6 @@ class Handler(BaseHTTPRequestHandler):
                     raise ApiError(400, "未知 Agent: {}".format(agent_id))
                 write_app_config(deep_merge(APP_CONFIG, {"agent": {"active_id": agent_id}}))
                 self._send(200, {"ok": True, "agent": agents_meta_payload()})
-                return
-            if request_path == "/api/agent-models":
-                self._send(200, fetch_agent_models(payload))
                 return
             if request_path in ("/api/integrations/blender/push-frame", "/api/integrations/blender/push-snapshot"):
                 self._send(200, append_blender_frame_to_canvas(payload))
