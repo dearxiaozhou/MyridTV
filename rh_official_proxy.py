@@ -375,7 +375,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.23.previzcomposition35"
+STATIC_VERSION = "2026.09.23.previzcomposition37"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -3036,34 +3036,212 @@ class Handler(BaseHTTPRequestHandler):
             append_log(LOG_FILE, f"{self.command} {self.path} failed: {exc}\n{traceback.format_exc()}")
             self._send(502, {"detail": str(exc)})
 
+    def _get_health(self):
+        self._send(200, {
+            "ok": True,
+            "pid": os.getpid(),
+            "version": STATIC_VERSION,
+            "host": str(PROXY_CONFIG.get("host") or "127.0.0.1"),
+            "port": PORT,
+            "app_base": APP_BASE,
+            "config_file": str(CONFIG_FILE),
+            "user_data_dir": str(USER_DATA_DIR),
+            "blender_import_dir": str(BLENDER_IMPORT_DIR),
+            "log_file": str(LOG_FILE),
+            "mcp": True,
+            "agent": {
+                "provider_id": AGENT_CONFIG.get("provider_id"),
+                "model": AGENT_CONFIG.get("model"),
+                "upstream_base_url": AGENT_CONFIG.get("upstream_base_url"),
+            },
+        })
+        return
+
+    def _get_api_task_console(self):
+        self._send(200, task_console_snapshot())
+        return
+
+    def _get_app_config(self):
+        safe_config = deep_merge(APP_CONFIG, {
+            "agent": agents_meta_payload(),
+        })
+        safe_config["agent_storage"] = {
+            "env_file": str(ENV_FILE),
+            "config_file": str(CONFIG_FILE),
+            "models_file": str(USER_DATA_DIR / "data" / "api_providers.json"),
+        }
+        self._send(200, safe_config)
+        return
+
+    def _get_api_canvas_agent_history(self):
+        parsed = urllib.parse.urlparse(self.path)
+        query = urllib.parse.parse_qs(parsed.query or "", keep_blank_values=True)
+        canvas_id = (query.get("canvas_id") or [""])[0]
+        self._send(200, {"ok": True, "canvas_id": canvas_id, "history": read_canvas_agent_history(canvas_id)})
+        return
+
+    def _get_api_canvas_agent_history_index(self):
+        self._send(200, {"ok": True, "entries": read_canvas_agent_history_index()})
+        return
+
+    def _get_api_canvas_agent_tasks(self):
+        parsed = urllib.parse.urlparse(self.path)
+        query = urllib.parse.parse_qs(parsed.query or "", keep_blank_values=True)
+        canvas_q = str((query.get("canvas_id") or [""])[0] or "").strip()
+        conv_q = str((query.get("conversation_id") or query.get("session_id") or [""])[0] or "").strip()
+        with TASKS_LOCK:
+            items = [
+                task for task in TASKS.values()
+                if isinstance(task, dict)
+                and (not canvas_q or str(task.get("canvas_id") or "") == canvas_q)
+                and (not conv_q or str(task.get("conversation_id") or "") == conv_q)
+            ]
+        self._send(200, {
+            "ok": True,
+            "tasks": [agent_runtime.serialize_task(item) for item in items],
+            "count": len(items),
+        })
+        return
+
+    def _get_api_canvas_agent_config(self):
+        self._send(200, canvas_agent_config_payload())
+        return
+
+    def _get_api_canvas_agent_skill(self):
+        parsed = urllib.parse.urlparse(self.path)
+        query = urllib.parse.parse_qs(parsed.query or "", keep_blank_values=True)
+        name = (query.get("name") or [""])[0]
+        skill = read_canvas_agent_skill(name)
+        self._send(200, {"ok": True, "skill": skill})
+        return
+
+    def _get_api_integrations_blender_status(self):
+        parsed = urllib.parse.urlparse(self.path)
+        query = urllib.parse.parse_qs(parsed.query or "", keep_blank_values=True)
+        canvas_id = (query.get("canvas_id") or [""])[0]
+        self._send(200, blender_connection_status(canvas_id))
+        return
+
+    def _get_api_runninghub_query(self):
+        parsed = urllib.parse.urlparse(self.path)
+        query = urllib.parse.parse_qs(parsed.query or "", keep_blank_values=True)
+        task_id = (query.get("taskId") or [""])[0]
+        if not str(task_id or "").strip():
+            raise ApiError(400, "缺少 taskId")
+        _queried = runninghub_query_task(task_id)
+        _rh_sync_task_console_state(task_id, _queried)
+        self._send(200, {"success": True, "data": _queried})
+        return
+
+    def _get_api_runninghub_app_info(self):
+        parsed = urllib.parse.urlparse(self.path)
+        query = urllib.parse.parse_qs(parsed.query or "", keep_blank_values=True)
+        app_id = (query.get("webappId") or [""])[0]
+        cached = runninghub_cached_app_info(app_id)
+        if cached:
+            self._send(200, {"ok": True, "data": cached})
+            return
+        raise ApiError(404, "未找到已缓存的 RunningHub 应用")
+
+    def _get_api_providers(self):
+        self._send(200, {"ok": True, "providers": read_api_providers()})
+        return
+
+    def _get_api_canvas_thumbnail(self):
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query, keep_blank_values=True)
+        source_url = (query.get("url") or [""])[0]
+        try:
+            size = int((query.get("size") or ["640"])[0])
+        except (TypeError, ValueError):
+            size = 640
+        thumbnail = canvas_thumbnail_path(source_url, size)
+        self._send_bytes(200, thumbnail.read_bytes(), "image/webp")
+        return
+
+    def _get_api_canvas_image_info(self):
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query, keep_blank_values=True)
+        source_url = (query.get("url") or [""])[0]
+        self._send(200, canvas_image_info(source_url))
+        return
+
+    def _get_api_download_output(self):
+        self._serve_remote_output()
+        return
+
+    def _get_api_config(self):
+        self._send(200, build_local_config_payload())
+        return
+
+    def _get_api_asset_library(self):
+        self._send(200, {"ok": True, "library": read_asset_library()})
+        return
+
+    def _get_api_prompt_libraries(self):
+        self._send(200, {"ok": True, "library": read_prompt_libraries()})
+        return
+
+    def _get_api_comfyui_instances(self):
+        self._send(200, {"ok": True, "instances": read_comfy_instances()})
+        return
+
+    def _get_api_comfyui_object_info(self):
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        types = [t.strip() for t in (query.get("types") or [""])[0].split(",") if t.strip()]
+        try:
+            self._send(200, {"ok": True, "object_info": comfy_flow_service.object_info_subset(types or None)})
+        except Exception as exc:
+            self._send(502, {"ok": False, "error": f"读取 ComfyUI 节点元数据失败: {str(exc)[:200]}"})
+        return
+
+    def _get_api_comfyui_queue(self):
+        # 排队视图：正在跑的 + 还在排的（含位次），供前端显示「排队中 · 第 N 位」
+        self._send(200, comfy_flow_service.MANAGER.queue_snapshot())
+        return
+
+    def _get_api_comfyui_jobs(self):
+        self._send(200, {"ok": True, "jobs": comfy_flow_service.MANAGER.list_jobs()})
+        return
+
+    def _get_api_comfyui_recent_outputs(self):
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        limit = (query.get("limit") or ["6"])[0]
+        self._send(200, recent_comfy_outputs({"limit": limit}))
+        return
     def do_GET(self):
         try:
             request_path = self.path.split("?", 1)[0]
             canvas_route, canvas_id = parse_canvas_route(request_path)
             workflow_route, workflow_name = parse_workflow_route(request_path)
-            if request_path == "/health":
-                self._send(200, {
-                    "ok": True,
-                    "pid": os.getpid(),
-                    "version": STATIC_VERSION,
-                    "host": str(PROXY_CONFIG.get("host") or "127.0.0.1"),
-                    "port": PORT,
-                    "app_base": APP_BASE,
-                    "config_file": str(CONFIG_FILE),
-                    "user_data_dir": str(USER_DATA_DIR),
-                    "blender_import_dir": str(BLENDER_IMPORT_DIR),
-                    "log_file": str(LOG_FILE),
-                    "mcp": True,
-                    "agent": {
-                        "provider_id": AGENT_CONFIG.get("provider_id"),
-                        "model": AGENT_CONFIG.get("model"),
-                        "upstream_base_url": AGENT_CONFIG.get("upstream_base_url"),
-                    },
-                })
+            _GET_ROUTES = {
+                '/health': '_get_health',
+                '/api/task-console': '_get_api_task_console',
+                '/app-config': '_get_app_config',
+                '/api/canvas-agent-history': '_get_api_canvas_agent_history',
+                '/api/canvas-agent-history-index': '_get_api_canvas_agent_history_index',
+                '/api/canvas-agent-tasks': '_get_api_canvas_agent_tasks',
+                '/api/canvas-agent-config': '_get_api_canvas_agent_config',
+                '/api/canvas-agent-skill': '_get_api_canvas_agent_skill',
+                '/api/integrations/blender/status': '_get_api_integrations_blender_status',
+                '/api/runninghub/query': '_get_api_runninghub_query',
+                '/api/runninghub/app-info': '_get_api_runninghub_app_info',
+                '/api/providers': '_get_api_providers',
+                '/api/canvas-thumbnail': '_get_api_canvas_thumbnail',
+                '/api/canvas-image-info': '_get_api_canvas_image_info',
+                '/api/download-output': '_get_api_download_output',
+                '/api/config': '_get_api_config',
+                '/api/asset-library': '_get_api_asset_library',
+                '/api/prompt-libraries': '_get_api_prompt_libraries',
+                '/api/comfyui/instances': '_get_api_comfyui_instances',
+                '/api/comfyui/object-info': '_get_api_comfyui_object_info',
+                '/api/comfyui/queue': '_get_api_comfyui_queue',
+                '/api/comfyui/jobs': '_get_api_comfyui_jobs',
+                '/api/comfyui/recent-outputs': '_get_api_comfyui_recent_outputs',
+            }
+            _get_fn = _GET_ROUTES.get(request_path)
+            if _get_fn:
+                getattr(self, _get_fn)()
                 return
-            if request_path == "/api/task-console":
-                self._send(200, task_console_snapshot())
-                return
+
             if request_path == "/mcp" and self.command == "GET":
                 # MCP Streamable HTTP 规范中 GET 是可选的通知通道；本服务只做
                 # 纯 POST 无状态模式，返回 405 让 MCP SDK 跳过 SSE 流管理。
@@ -3075,79 +3253,6 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header("Allow", "POST")
                 self.end_headers()
                 return
-            if request_path == "/app-config":
-                safe_config = deep_merge(APP_CONFIG, {
-                    "agent": agents_meta_payload(),
-                })
-                safe_config["agent_storage"] = {
-                    "env_file": str(ENV_FILE),
-                    "config_file": str(CONFIG_FILE),
-                    "models_file": str(USER_DATA_DIR / "data" / "api_providers.json"),
-                }
-                self._send(200, safe_config)
-                return
-            if request_path == "/api/canvas-agent-history":
-                parsed = urllib.parse.urlparse(self.path)
-                query = urllib.parse.parse_qs(parsed.query or "", keep_blank_values=True)
-                canvas_id = (query.get("canvas_id") or [""])[0]
-                self._send(200, {"ok": True, "canvas_id": canvas_id, "history": read_canvas_agent_history(canvas_id)})
-                return
-            if request_path == "/api/canvas-agent-history-index":
-                self._send(200, {"ok": True, "entries": read_canvas_agent_history_index()})
-                return
-            if request_path == "/api/canvas-agent-tasks":
-                parsed = urllib.parse.urlparse(self.path)
-                query = urllib.parse.parse_qs(parsed.query or "", keep_blank_values=True)
-                canvas_q = str((query.get("canvas_id") or [""])[0] or "").strip()
-                conv_q = str((query.get("conversation_id") or query.get("session_id") or [""])[0] or "").strip()
-                with TASKS_LOCK:
-                    items = [
-                        task for task in TASKS.values()
-                        if isinstance(task, dict)
-                        and (not canvas_q or str(task.get("canvas_id") or "") == canvas_q)
-                        and (not conv_q or str(task.get("conversation_id") or "") == conv_q)
-                    ]
-                self._send(200, {
-                    "ok": True,
-                    "tasks": [agent_runtime.serialize_task(item) for item in items],
-                    "count": len(items),
-                })
-                return
-            if request_path == "/api/canvas-agent-config":
-                self._send(200, canvas_agent_config_payload())
-                return
-            if request_path == "/api/canvas-agent-skill":
-                parsed = urllib.parse.urlparse(self.path)
-                query = urllib.parse.parse_qs(parsed.query or "", keep_blank_values=True)
-                name = (query.get("name") or [""])[0]
-                skill = read_canvas_agent_skill(name)
-                self._send(200, {"ok": True, "skill": skill})
-                return
-            if request_path == "/api/integrations/blender/status":
-                parsed = urllib.parse.urlparse(self.path)
-                query = urllib.parse.parse_qs(parsed.query or "", keep_blank_values=True)
-                canvas_id = (query.get("canvas_id") or [""])[0]
-                self._send(200, blender_connection_status(canvas_id))
-                return
-            if request_path == "/api/runninghub/query":
-                parsed = urllib.parse.urlparse(self.path)
-                query = urllib.parse.parse_qs(parsed.query or "", keep_blank_values=True)
-                task_id = (query.get("taskId") or [""])[0]
-                if not str(task_id or "").strip():
-                    raise ApiError(400, "缺少 taskId")
-                _queried = runninghub_query_task(task_id)
-                _rh_sync_task_console_state(task_id, _queried)
-                self._send(200, {"success": True, "data": _queried})
-                return
-            if request_path == "/api/runninghub/app-info":
-                parsed = urllib.parse.urlparse(self.path)
-                query = urllib.parse.parse_qs(parsed.query or "", keep_blank_values=True)
-                app_id = (query.get("webappId") or [""])[0]
-                cached = runninghub_cached_app_info(app_id)
-                if cached:
-                    self._send(200, {"ok": True, "data": cached})
-                    return
-                raise ApiError(404, "未找到已缓存的 RunningHub 应用")
             if request_path.startswith("/api/runninghub/workflows/"):
                 workflow_id = urllib.parse.unquote(request_path.rsplit("/", 1)[-1])
                 cached = runninghub_cached_workflow(workflow_id)
@@ -3157,50 +3262,9 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(200, {"ok": True, "data": cached, "workflow": cached})
                     return
                 raise ApiError(404, "未找到已缓存的 RunningHub 工作流")
-            if request_path == "/api/providers":
-                self._send(200, {"ok": True, "providers": read_api_providers()})
-                return
-            if request_path == "/api/canvas-thumbnail":
-                query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query, keep_blank_values=True)
-                source_url = (query.get("url") or [""])[0]
-                try:
-                    size = int((query.get("size") or ["640"])[0])
-                except (TypeError, ValueError):
-                    size = 640
-                thumbnail = canvas_thumbnail_path(source_url, size)
-                self._send_bytes(200, thumbnail.read_bytes(), "image/webp")
-                return
-            if request_path == "/api/canvas-image-info":
-                query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query, keep_blank_values=True)
-                source_url = (query.get("url") or [""])[0]
-                self._send(200, canvas_image_info(source_url))
-                return
-            if request_path == "/api/download-output":
-                self._serve_remote_output()
-                return
             if self._serve_static(self.path):
                 return
             if self._serve_user_asset(self.path):
-                return
-            if request_path == "/api/config":
-                self._send(200, build_local_config_payload())
-                return
-            if request_path == "/api/asset-library":
-                self._send(200, {"ok": True, "library": read_asset_library()})
-                return
-            if request_path == "/api/prompt-libraries":
-                self._send(200, {"ok": True, "library": read_prompt_libraries()})
-                return
-            if request_path == "/api/comfyui/instances":
-                self._send(200, {"ok": True, "instances": read_comfy_instances()})
-                return
-            if request_path == "/api/comfyui/object-info":
-                query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-                types = [t.strip() for t in (query.get("types") or [""])[0].split(",") if t.strip()]
-                try:
-                    self._send(200, {"ok": True, "object_info": comfy_flow_service.object_info_subset(types or None)})
-                except Exception as exc:
-                    self._send(502, {"ok": False, "error": f"读取 ComfyUI 节点元数据失败: {str(exc)[:200]}"})
                 return
             if request_path.startswith("/api/comfyui/jobs/"):
                 job = comfy_flow_service.MANAGER.get(request_path.rsplit("/", 1)[-1])
@@ -3209,18 +3273,6 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(404, {"ok": False, "error": "任务不存在或已过期", "status": "gone"})
                     return
                 self._send(200, {"ok": True, **job.to_dict()})
-                return
-            if request_path == "/api/comfyui/queue":
-                # 排队视图：正在跑的 + 还在排的（含位次），供前端显示「排队中 · 第 N 位」
-                self._send(200, comfy_flow_service.MANAGER.queue_snapshot())
-                return
-            if request_path == "/api/comfyui/jobs":
-                self._send(200, {"ok": True, "jobs": comfy_flow_service.MANAGER.list_jobs()})
-                return
-            if request_path == "/api/comfyui/recent-outputs":
-                query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-                limit = (query.get("limit") or ["6"])[0]
-                self._send(200, recent_comfy_outputs({"limit": limit}))
                 return
             if workflow_route == "collection":
                 self._send(200, {"ok": True, "workflows": list_workflow_records()})
