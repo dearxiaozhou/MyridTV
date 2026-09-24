@@ -409,73 +409,19 @@ TASKS = TASK_STORE.load_all()
 
 
 def _agent_task_log(category, message):
-    append_log(LOG_FILE, "[{}] {}".format(category, message))
-
+    return myridtv_agent_tasks._agent_task_log(category, message)
 
 def _agent_mark_task_failed(task, turn, exc):
-    """上游/配置异常时收尾任务：置 failed + 记原因。
-
-    背景：submit_chat 抛异常时任务从不收尾，任务表里会永久留一条假 running
-    （今天已踩两次：401 Invalid API-key、key 串平台）。
-    """
-    reason = str(exc or "").strip()[:300]
-    now_ms = int(time.time() * 1000)
-    try:
-        if isinstance(task, dict):
-            if str(task.get("status") or "") in {"pending", "running", "waiting_user", "paused"}:
-                task["status"] = "failed"
-            task["error"] = reason
-            task["failed_at"] = now_ms
-            task["updated_at"] = now_ms
-        if isinstance(turn, dict):
-            turn["status"] = "failed"
-            turn["error"] = reason
-            turn["updated_at"] = now_ms
-        _agent_save_tasks()
-        _agent_task_log("AgentTask", "task={} status=failed error={}".format(
-            (task or {}).get("task_id") if isinstance(task, dict) else "", reason[:160]))
-    except Exception as _e:
-        append_log(LOG_FILE, "agent mark-task-failed error: {}".format(_e))
-
+    return myridtv_agent_tasks._agent_mark_task_failed(task, turn, exc)
 
 def _agent_task_for_payload(payload):
-    payload = payload if isinstance(payload, dict) else {}
-    conversation_id = str(payload.get("agent_session_id") or payload.get("session_id") or "").strip()
-    canvas_id = str(payload.get("canvas_id") or "").strip()
-    task_id = str(payload.get("task_id") or payload.get("agent_task_id") or "").strip()
-    user_text = _agent_latest_user_text(payload) if "_agent_latest_user_text" in globals() else str(payload.get("message") or "")
-    with TASKS_LOCK:
-        task = agent_runtime.ensure_task(TASKS, conversation_id, canvas_id, user_text, task_id)
-        persist_tasks_locked()
-    _agent_task_log("AgentTask", "task={} workflow={} step={} status={}".format(
-        task.get("task_id"), task.get("workflow_type"), task.get("current_step_id"), task.get("status")))
-    return task
-
+    return myridtv_agent_tasks._agent_task_for_payload(payload)
 
 def _agent_save_tasks():
-    with TASKS_LOCK:
-        return persist_tasks_locked()
-
+    return myridtv_agent_tasks._agent_save_tasks()
 
 def _agent_attach_runtime_result(result, task, turn=None, validation=None):
-    if not isinstance(result, dict):
-        result = {"text": str(result or "")}
-    task_payload = agent_runtime.serialize_task(task)
-    step_payload = agent_runtime.serialize_step(task)
-    progress = (task or {}).get("progress") if isinstance(task, dict) else {}
-    result["task"] = task_payload
-    result["step"] = step_payload
-    result["progress"] = progress
-    if validation is not None:
-        result["workflow_validation"] = validation
-    agent_result = result.get("agent_result")
-    if isinstance(agent_result, dict):
-        agent_result["task"] = task_payload
-        agent_result["step"] = step_payload
-        agent_result["progress"] = progress
-        if validation is not None:
-            agent_result["workflow_validation"] = validation
-    return result
+    return myridtv_agent_tasks._agent_attach_runtime_result(result, task, turn, validation)
 
 
 def positive_env_int(name, default, minimum=1, maximum=None):
@@ -714,6 +660,7 @@ import myridtv_agent_batch
 import myridtv_agent_short_drama
 import myridtv_agent_stop
 import myridtv_agent_guidance
+import myridtv_agent_tasks
 import myridtv_comfy
 import myridtv_runninghub
 import myridtv_rh_catalog
@@ -3284,6 +3231,11 @@ CANVAS_AGENT_RECEIPTS_LOCK = threading.Lock()
 myridtv_agent_stop.configure(
     CANVAS_AGENT_RECEIPTS,
     CANVAS_AGENT_RECEIPTS_LOCK,
+)
+
+myridtv_agent_tasks.configure(
+    TASKS, TASKS_LOCK,
+    lambda: LOG_FILE,
 )
 
 
