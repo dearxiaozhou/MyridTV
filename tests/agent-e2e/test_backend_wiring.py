@@ -54,6 +54,11 @@ def main():
 
     beh._agent_get_canvas = fake_get_canvas
     beh._agent_http = fake_http
+    # 第13刀C-X2 后 _agent_tool_create_text_node 等住在 myridtv_agent_state，
+    # 其内部自调用绕过主文件代理——打桩须同时打到属主模块
+    import myridtv_agent_state as _st
+    _st._agent_get_canvas = fake_get_canvas
+    _st._agent_http = fake_http
 
     # ---- 1) 阶段守卫：发现阶段调工具必须被拦截 ----
     # 文本节点默认走 Sidebar（不进画布），故用 user_text="放到画布" 强制走画布路径，
