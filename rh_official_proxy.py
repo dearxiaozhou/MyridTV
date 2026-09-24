@@ -61,75 +61,9 @@ if os.environ.get("MYRIDTV_USE_EXTERNAL_PROXY", "0").strip().lower() not in {"1"
 # 窗口样式自动修复（修复 frameless 窗口的缩放/拖动/系统菜单问题）
 # ============================================
 
-def _fix_window_style_worker():
-    """后台线程：等待主窗口出现并自动修复样式"""
-    # Windows API 常量
-    GWL_STYLE = -16
-    WS_CAPTION = 0x00C00000
-    WS_THICKFRAME = 0x00040000
-    WS_SYSMENU = 0x00080000
-    WS_MINIMIZEBOX = 0x00020000
-    WS_MAXIMIZEBOX = 0x00010000
-    WS_POPUP = 0x80000000
-    WS_OVERLAPPEDWINDOW = 0x00CF0000
-    
-    SWP_NOMOVE = 0x0002
-    SWP_NOSIZE = 0x0001
-    SWP_FRAMECHANGED = 0x0020
-    SWP_NOZORDER = 0x0004
-    SWP_NOACTIVATE = 0x0010
-    
-    def find_window():
-        found = []
-        def enum_callback(hwnd, lparam):
-            if ctypes.windll.user32.IsWindowVisible(hwnd):
-                buf = ctypes.create_unicode_buffer(256)
-                ctypes.windll.user32.GetWindowTextW(hwnd, buf, 256)
-                title = buf.value.lower()
-                if 'myridtv' in title or 'wcstv' in title:
-                    found.append((hwnd, buf.value))
-            return True
-        WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.wintypes.BOOL, ctypes.wintypes.HWND, ctypes.wintypes.LPARAM)
-        ctypes.windll.user32.EnumWindows(WNDENUMPROC(enum_callback), 0)
-        return found
-    
-    def fix_window(hwnd):
-        old_style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_STYLE)
-        # 检查是否已经是正常样式
-        if (old_style & WS_CAPTION) and (old_style & WS_THICKFRAME) and (old_style & WS_SYSMENU):
-            return False
-        # 修复样式
-        if old_style & WS_POPUP:
-            new_style = (old_style & ~WS_POPUP) | WS_OVERLAPPEDWINDOW
-        else:
-            new_style = old_style | WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX
-        ctypes.windll.user32.SetWindowLongW(hwnd, GWL_STYLE, new_style)
-        ctypes.windll.user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE)
-        return True
-    
-    # 最多等待 30 秒
-    for _ in range(60):
-        time.sleep(0.5)
-        windows = find_window()
-        if windows:
-            # 再等一下，确保窗口完全初始化
-            time.sleep(0.5)
-            for hwnd, title in windows:
-                try:
-                    fix_window(hwnd)
-                except:
-                    pass
-            break
-
-
 def _start_window_fix():
-    """启动窗口自动修复的后台线程"""
-    try:
-        t = threading.Thread(target=_fix_window_style_worker, daemon=True)
-        t.start()
-    except:
-        pass
+    """32刀：窗口补丁域住 myridtv_window_fix；延迟转发保块原位可用。"""
+    return myridtv_window_fix._start_window_fix()
 
 SCRIPT_PATH = Path(__file__).resolve()
 APP_DIR = SCRIPT_PATH.parent if (SCRIPT_PATH.parent / "_internal").exists() else SCRIPT_PATH.parent.parent
@@ -375,7 +309,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.23.previzcomposition46"
+STATIC_VERSION = "2026.09.23.previzcomposition52"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -656,6 +590,7 @@ import myridtv_chat
 import myridtv_asset_resolver
 import myridtv_rh_taskflow
 import myridtv_workflow_assets
+import myridtv_window_fix
 import myridtv_agent_tools
 import myridtv_agent_state
 import myridtv_agent_guard
