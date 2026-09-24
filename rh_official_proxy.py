@@ -740,7 +740,7 @@ myridtv_task_state.configure(
 )
 
 myridtv_media_localize.configure(
-    ASSETS_DIR, lambda: LOG_FILE,
+    USER_DATA_DIR, ROOT, ASSETS_DIR, lambda: LOG_FILE,
     lambda: comfy_instance_base(),
     lambda tid: get_task_state(tid),
     lambda url: local_media_source_bytes(url),
@@ -7595,58 +7595,8 @@ def runninghub_task_auth_headers():
     return {"Authorization": f"Bearer {runninghub_task_key()}"}
 
 
-def guess_upload_filename(source_url, content_type="application/octet-stream", fallback_prefix="upload"):
-    path = urllib.parse.urlparse(str(source_url or "")).path or ""
-    name = os.path.basename(path)
-    if name:
-        return name
-    ext = mimetypes.guess_extension(content_type or "application/octet-stream") or ".bin"
-    return f"{fallback_prefix}-{uuid.uuid4().hex[:8]}{ext}"
-
-
 def local_media_source_bytes(source_url):
-    text = str(source_url or "").strip()
-    if not text:
-        raise RuntimeError("缺少素材地址")
-    if text.startswith("data:"):
-        header, sep, encoded = text.partition(",")
-        if not sep:
-            raise RuntimeError("data URL 格式错误")
-        content_type = header[5:].split(";", 1)[0].strip() or "application/octet-stream"
-        if ";base64" in header.lower():
-            raw = base64.b64decode(encoded)
-        else:
-            raw = urllib.parse.unquote_to_bytes(encoded)
-        return raw, f"data-{uuid.uuid4().hex[:8]}{generated_asset_extension('', content_type, '.bin')}", content_type
-    if text.startswith("/assets/"):
-        target = resolve_user_asset_path(text)
-        return target.read_bytes(), target.name, mimetypes.guess_type(str(target))[0] or "application/octet-stream"
-    if text.startswith("/static/"):
-        relative = urllib.parse.urlparse(text).path[len("/static/"):]
-        target = (ROOT / "static" / urllib.parse.unquote(relative)).resolve()
-        return target.read_bytes(), target.name, mimetypes.guess_type(str(target))[0] or "application/octet-stream"
-    if text.startswith("/output/"):
-        relative = urllib.parse.urlparse(text).path[len("/output/"):]
-        target = (USER_DATA_DIR / "output" / urllib.parse.unquote(relative)).resolve()
-        return target.read_bytes(), target.name, mimetypes.guess_type(str(target))[0] or "application/octet-stream"
-    if text.startswith("file://"):
-        parsed = urllib.parse.urlparse(text)
-        target = Path(urllib.request.url2pathname(parsed.path))
-        return target.read_bytes(), target.name, mimetypes.guess_type(str(target))[0] or "application/octet-stream"
-    if re.match(r"^[A-Za-z]:\\", text) and Path(text).exists():
-        target = Path(text)
-        return target.read_bytes(), target.name, mimetypes.guess_type(str(target))[0] or "application/octet-stream"
-    request = urllib.request.Request(
-        text,
-        headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36"
-        },
-    )
-    with urllib.request.urlopen(request, timeout=300) as response:
-        raw = response.read()
-        content_type = response.headers.get("Content-Type", "application/octet-stream").split(";", 1)[0].strip()
-    return raw, guess_upload_filename(text, content_type), content_type
-
+    return myridtv_media_localize.local_media_source_bytes(source_url)
 
 def asset_output_media_dir(kind="image", canvas_folder=""):
     return myridtv_media_localize.asset_output_media_dir(kind, canvas_folder)
@@ -7768,136 +7718,13 @@ def runninghub_upload_task_asset(source_url):
 
 
 def volcengine_ark_api_key():
-    env = read_env_values()
-    for name in ("ARK_API_KEY", "VOLCENGINE_ARK_API_KEY", "API_PROVIDER_VOLCENGINE_KEY"):
-        value = str(env.get(name) or os.environ.get(name) or "").strip()
-        if value:
-            return value
-    raise ApiError(400, "缺少火山方舟 API Key")
-
+    return myridtv_media_localize.volcengine_ark_api_key()
 
 def volcengine_upload_asset(source_url):
-    raw, file_name, content_type = local_media_source_bytes(source_url)
-    key = volcengine_ark_api_key()
-    data = request_multipart_json(
-        "https://ark.cn-beijing.volces.com/api/v3/files",
-        fields={"purpose": "user_data"},
-        files=[{"name": "file", "filename": file_name, "content_type": content_type, "data": raw}],
-        headers={"Authorization": f"Bearer {key}"},
-        timeout=180,
-    )
-    file_id = str(data.get("id") or data.get("file_id") or "").strip()
-    file_url = str(data.get("url") or data.get("downloadUrl") or data.get("fileUrl") or "").strip()
-    if not file_url and file_id:
-        file_url = file_id
-    if not file_url:
-        raise RuntimeError(f"火山方舟文件上传未返回可用地址：{data}")
-    return {"fileName": file_name, "fileId": file_id, "url": file_url, "downloadUrl": file_url, "raw": data}
-
-
-def upload_cloud_media_bytes_to_litterbox(raw, file_name="upload.bin", content_type="application/octet-stream"):
-    safe_name = str(file_name or "upload.bin").strip() or "upload.bin"
-    mime = str(content_type or "application/octet-stream").strip() or "application/octet-stream"
-    upload_url = os.environ.get("LITTERBOX_UPLOAD_URL", "https://litterbox.catbox.moe/resources/internals/api.php").strip() or "https://litterbox.catbox.moe/resources/internals/api.php"
-    time_value = os.environ.get("LITTERBOX_TIME", "72h").strip() or "72h"
-    text = request_multipart_text(
-        upload_url,
-        fields={"reqtype": "fileupload", "time": time_value},
-        files=[{"name": "fileToUpload", "filename": safe_name, "content_type": mime, "data": raw or b""}],
-        timeout=600,
-    )
-    url = text.strip().splitlines()[0].strip()
-    if not re.match(r"^https?://", url, re.I):
-        raise RuntimeError(f"Litterbox 返回了无法识别的链接：{text[:200]}")
-    return url
-
-
-def upload_cloud_media_bytes_to_temp_sh(raw, file_name="upload.bin", content_type="application/octet-stream"):
-    safe_name = str(file_name or "upload.bin").strip() or "upload.bin"
-    mime = str(content_type or "application/octet-stream").strip() or "application/octet-stream"
-    upload_url = os.environ.get("TEMP_SH_UPLOAD_URL", "https://temp.sh/upload").strip() or "https://temp.sh/upload"
-    text = request_multipart_text(
-        upload_url,
-        files=[{"name": "file", "filename": safe_name, "content_type": mime, "data": raw or b""}],
-        timeout=600,
-    )
-    url = ""
-    try:
-        data = json.loads(text)
-        if isinstance(data, dict):
-            payload = data.get("data") if isinstance(data.get("data"), dict) else data
-            url = str(payload.get("url") or payload.get("downloadUrl") or payload.get("fileUrl") or "").strip()
-    except Exception:
-        url = text.strip()
-    if not re.match(r"^https?://", url, re.I):
-        raise RuntimeError(f"Temp.sh 返回了无法识别的链接：{text[:200]}")
-    return url
-
-
-def cloud_media_url_downloadable(url, timeout=15):
-    text = str(url or "").strip()
-    if not re.match(r"^https?://", text, re.I):
-        return False
-    try:
-        req = urllib.request.Request(
-            text,
-            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            status = int(getattr(resp, "status", 200) or 200)
-            chunk = resp.read(16)
-            return 200 <= status < 400 and bool(chunk)
-    except Exception as exc:
-        append_log(LOG_FILE, f"cloud media url check failed url={text[:120]}: {exc}")
-        return False
-
-
-def upload_cloud_media_bytes(raw, file_name="upload.bin", content_type="application/octet-stream", service="auto"):
-    selected = str(service or os.environ.get("CLOUD_VIDEO_UPLOAD_SERVICE", "auto") or "auto").strip().lower()
-    choices = []
-    if selected in {"litterbox", "catbox"}:
-        choices = [("litterbox", upload_cloud_media_bytes_to_litterbox)]
-    elif selected in {"temp", "temp.sh", "tempsh"}:
-        choices = [("temp.sh", upload_cloud_media_bytes_to_temp_sh)]
-    elif selected in {"volcengine", "volcengine-video", "video-reference"}:
-        choices = [
-            ("litterbox", upload_cloud_media_bytes_to_litterbox),
-            ("temp.sh", upload_cloud_media_bytes_to_temp_sh),
-        ]
-    else:
-        choices = [
-            ("temp.sh", upload_cloud_media_bytes_to_temp_sh),
-            ("litterbox", upload_cloud_media_bytes_to_litterbox),
-        ]
-    errors = []
-    for name, func in choices:
-        try:
-            url = func(raw, file_name, content_type)
-            if not cloud_media_url_downloadable(url):
-                raise RuntimeError(f"上传后链接不可下载：{url[:120]}")
-            append_log(LOG_FILE, f"cloud media uploaded service={name} name={str(file_name or '')[:80]} url={url[:120]}")
-            return url
-        except Exception as exc:
-            errors.append(f"{name}: {exc}")
-            append_log(LOG_FILE, f"cloud media upload failed service={name} name={str(file_name or '')[:80]}: {exc}")
-    raise RuntimeError("云端上传失败：" + "；".join(errors))
-
+    return myridtv_media_localize.volcengine_upload_asset(source_url)
 
 def upload_cloud_media_direct(source_url, service="auto"):
-    raw, file_name, content_type = local_media_source_bytes(source_url)
-    url = upload_cloud_media_bytes(raw, file_name, content_type, service=service)
-    return {
-        "ok": True,
-        "url": url,
-        "downloadUrl": url,
-        "fileUrl": url,
-        "name": file_name,
-        "kind": upload_kind_for_file(file_name, content_type),
-        "content_type": content_type,
-        "expires": "3 days",
-        "service": service,
-    }
-
+    return myridtv_media_localize.upload_cloud_media_direct(source_url, service)
 
 def volcengine_provider_config(provider_id="volcengine"):
     return myridtv_volcengine.volcengine_provider_config(provider_id)
