@@ -1,0 +1,547 @@
+# -*- coding: utf-8 -*-
+"""MyridTV Codex 桥纯函数族（后端拆分第13刀A）：附件/图片缓存读写、消息压缩与协议
+指令、回复 JSON/工具调用/线程id/生成节点抽取、标题拆分与节点数推断、会话重置判定。
+
+逐字迁移自 rh_official_proxy.py 连续块 L(_codex_bridge_file_suffix)..L(_agent_auto_
+choose_card_from_reply)（18 函数 502 行，可逆还原行级 diff=0）。行为零变更。
+_run_codex_bridge_exec/persistent 与 submit_codex_chat（编排层）留主文件，第14步收。
+configure() 注入：ASSETS_DIR/CODEX_LOCAL_IMAGE_CACHE_DIR 值（import 时定、零重绑）、
+LOG_FILE getter、_agent_canvas_node_image_by_id/_agent_sanitize_messages 两个 agent
+层函数闭包（lambda 延迟解析）。主文件对被仍引用的函数留薄代理，调用点不改。
+"""
+import base64
+import hashlib
+import json
+import mimetypes
+import os
+import re
+import subprocess
+import tempfile
+import time
+import urllib.parse
+import uuid
+from pathlib import Path
+
+from myridtv_core import append_log
+
+_ASSETS_DIR = None
+_IMAGE_CACHE_DIR = None
+_log_file = lambda: None
+_r_canvas_node_image_by_id = None
+_r_sanitize_messages = None
+
+
+def configure(assets_dir, image_cache_dir, log_file_getter,
+              canvas_node_image_by_id, sanitize_messages):
+    global _ASSETS_DIR, _IMAGE_CACHE_DIR, _log_file
+    global _r_canvas_node_image_by_id, _r_sanitize_messages
+    _ASSETS_DIR = assets_dir
+    _IMAGE_CACHE_DIR = image_cache_dir
+    _log_file = log_file_getter
+    _r_canvas_node_image_by_id = canvas_node_image_by_id
+    _r_sanitize_messages = sanitize_messages
+
+
+def _codex_bridge_file_suffix(mime_type, fallback=".png"):
+    ext = mimetypes.guess_extension(str(mime_type or "").split(";", 1)[0].strip()) or fallback
+    if ext == ".jpe":
+        ext = ".jpg"
+    return ext
+
+
+def _codex_bridge_image_bytes_from_url(raw_url):
+    text = str(raw_url or "").strip()
+    if not text:
+        return None, None
+    if text.lower().startswith("data:image/"):
+        header, _, b64part = text.partition(",")
+        mime_type = header[5:].split(";", 1)[0] if header.startswith("data:") else "image/png"
+        try:
+            return base64.b64decode(b64part), mime_type
+        except Exception:
+            return None, None
+    if re.match(r"^https?://", text, re.I):
+        try:
+            req = urllib.request.Request(text, headers={"User-Agent": "MyridTV-Codex-Bridge/1.0"})
+            with urllib.request.urlopen(req, timeout=45) as resp:
+                return resp.read(), resp.headers.get_content_type() or "image/png"
+        except Exception as exc:
+            append_log(_log_file(), "codex bridge image download failed url={}: {}".format(text, exc))
+            return None, None
+    clean = text.split("?", 1)[0].split("#", 1)[0]
+    if clean.startswith("/assets/"):
+        rel = urllib.parse.unquote(clean[len("/assets/"):].lstrip("/"))
+        local_path = _ASSETS_DIR / rel
+    elif clean.startswith("assets/"):
+        rel = urllib.parse.unquote(clean[len("assets/"):].lstrip("/"))
+        local_path = _ASSETS_DIR / rel
+    else:
+        local_path = Path(urllib.parse.unquote(clean))
+    try:
+        resolved = local_path.resolve()
+        if resolved.exists():
+            return resolved.read_bytes(), mimetypes.guess_type(str(resolved))[0] or "image/png"
+    except Exception as exc:
+        append_log(_log_file(), "codex bridge local image read failed url={}: {}".format(text, exc))
+    return None, None
+
+
+def _codex_bridge_attachment_files(payload):
+    file_paths = []
+    raw_images = payload.get("images") or payload.get("image_urls") or []
+    if isinstance(raw_images, (str, dict)):
+        raw_images = [raw_images]
+    _IMAGE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    for index, item in enumerate(raw_images[:4]):
+        if isinstance(item, dict):
+            raw_url = item.get("source_url") or item.get("sourceUrl") or item.get("url") or item.get("path") or ""
+            node_id = str(item.get("nodeId") or item.get("node_id") or "").strip()
+            if node_id:
+                node_img = _r_canvas_node_image_by_id(node_id, item.get("imageIndex"))
+                if node_img:
+                    raw_url = node_img
+        else:
+            raw_url = item
+        image_bytes, mime_type = _codex_bridge_image_bytes_from_url(raw_url)
+        if not image_bytes:
+            continue
+        suffix = _codex_bridge_file_suffix(mime_type)
+        digest = hashlib.sha256(image_bytes).hexdigest()
+        target = _IMAGE_CACHE_DIR / ("img_{}{}".format(digest, suffix))
+        if not target.exists():
+            target.write_bytes(image_bytes)
+        file_paths.append(str(target))
+    return file_paths
+
+
+def _codex_bridge_prompt_text(payload, messages):
+    sanitized = _r_sanitize_messages([dict(m) for m in messages])
+    title_text = str((payload or {}).get("message") or "").strip()
+    if not title_text:
+        for msg in reversed(sanitized):
+            if str(msg.get("role") or "") == "user" and str(msg.get("content") or "").strip():
+                title_text = str(msg.get("content") or "").strip()
+                break
+    title_text = " ".join(title_text.split())
+    if len(title_text) > 120:
+        title_text = title_text[:117] + "..."
+    lines = [
+        "用户请求：{}".format(title_text or "MyridTV 无限画布本地 Myrid-Agent Bridge 请求"),
+        "",
+        "桥接说明：你正在通过 MyridTV 无限画布的本地 Myrid-Agent Bridge 回答用户。",
+        "这是直接调用本机 Agent CLI 的模式，不走当前画布里的 DeepSeek API 链路。",
+        "你可以根据对话和附带图片给出分析、创意、提示词和操作建议。",
+        "除非消息里已经明确给出实际结果，否则不要声称你已经创建、修改或删除了画布节点。",
+        "回答默认使用中文，保持具体、可执行。",
+        "",
+        "以下是当前对话上下文：",
+    ]
+    role_map = {"system": "系统", "user": "用户", "assistant": "助手", "tool": "工具结果"}
+    for msg in sanitized:
+        role = role_map.get(msg.get("role"), "用户")
+        content = str(msg.get("content") or "").strip()
+        if not content:
+            continue
+        lines.append("{}：{}".format(role, content))
+    return "\n".join(lines).strip()
+
+
+def _codex_bridge_compact_messages(messages, max_history=4, max_chars=700):
+    compacted = []
+    system_messages = []
+    non_system = []
+    for msg in messages or []:
+        if not isinstance(msg, dict):
+            continue
+        role = str(msg.get("role") or "user")
+        content = str(msg.get("content") or "").strip()
+        if not content:
+            continue
+        trimmed = content if role == "system" or len(content) <= max_chars else (content[:max_chars] + "...(已截断)")
+        item = {"role": role, "content": trimmed}
+        if role == "system":
+            system_messages.append(item)
+        else:
+            non_system.append(item)
+    if system_messages:
+        merged_system = "\n\n".join(item["content"] for item in system_messages if item.get("content"))
+        compacted.append({"role": "system", "content": merged_system})
+    older = non_system[:-max_history]
+    recent = non_system[-max_history:]
+    if older:
+        summary_lines = []
+        for item in older[-6:]:
+            role = "用户" if item.get("role") == "user" else "助手"
+            text = str(item.get("content") or "").replace("\n", " ").strip()
+            if not text:
+                continue
+            summary_lines.append("{}: {}".format(role, text[:180]))
+        if summary_lines:
+            compacted.append({
+                "role": "system",
+                "content": "更早对话摘要：\n{}".format("\n".join(summary_lines))[: max_chars * 2],
+            })
+    compacted.extend(recent)
+    return compacted
+
+
+def _codex_bridge_protocol_instruction(tools, preset=None):
+    tool_defs = []
+    for item in tools or []:
+        fn = (item or {}).get("function") or {}
+        name = str(fn.get("name") or "").strip()
+        if not name:
+            continue
+        tool_defs.append({
+            "name": name,
+            "description": fn.get("description") or "",
+            "parameters": fn.get("parameters") or {},
+        })
+    lines = [
+        "## 本地工具协议",
+        "你可以通过返回 JSON 触发画布工具。",
+        "【最高优先级格式规则】你的整个回复必须是且仅是一个 JSON 对象：第一个字符必须是 {，最后一个字符必须是 }。绝对禁止 Markdown 代码块、解释性文字、前后缀说明。",
+        "JSON 格式必须是：",
+        '{"assistant_reply":"给用户看的自然语言回复","tool_calls":[{"name":"工具名","arguments":{}}],"done":true}',
+        "正确示例（需要建节点时）：",
+        '{"assistant_reply":"我来创建三个方案节点","tool_calls":[{"name":"canvas_create_text_node","arguments":{"title":"方案A","prompt":"..."}},{"name":"canvas_create_generation_node","arguments":{"title":"方案A图","prompt":"... @图片1 参考人物发型"}}],"done":false}',
+        "错误示例（禁止）：```json\\n{...}\\n``` 或 在 JSON 前后加任何文字。",
+        "规则：",
+        "1. 需要先查看画布、搜索素材、创建节点、更新节点时，必须用 tool_calls，不要只在文字里建议。",
+        "2. 当用户要求把提示词/方案真正落到画布时，优先调用 canvas_create_generation_node 或 canvas_create_text_node。",
+        "3. 只有用户明确要求马上出图，才调用 canvas_generate_images；否则只创建待生成节点。",
+        "4. 如果本轮要调用工具，assistant_reply 要简短说明正在做什么；执行结果会在下一轮以“工具结果”提供给你。",
+        "5. 当任务已经完成且不再需要工具时，返回 done=true；如果还要继续调用工具，返回 done=false。",
+        "6. 如果不需要任何工具，tool_calls 返回空数组。",
+        "7. 只要用了参考图，写入画布的生成提示词里就必须逐张写出 @图片1/@图片2/...，并明确说明每张图分别参考什么；编号严格按当前会话输入链图片顺序决定。如果用了多张，必须 @每一张分别说明。",
+    ]
+    if isinstance(preset, dict) and preset:
+        lines.append("当前生图预设：{}".format(json.dumps({
+            "provider_id": preset.get("provider_id") or "runninghub",
+            "model": preset.get("model") or "按 API 设置中已配置的模型自动选择",
+            "aspectRatio": preset.get("aspectRatio") or "4:3",
+            "resolution": preset.get("resolution") or "2k",
+            "quality": preset.get("quality") or "medium",
+        }, ensure_ascii=False)))
+    if tool_defs:
+        lines.append("可用工具：")
+        lines.append(json.dumps(tool_defs, ensure_ascii=False))
+    return "\n".join(lines).strip()
+
+
+def _codex_bridge_extract_json(text):
+    raw = str(text or "").strip()
+    if not raw:
+        return None
+    candidates = [raw]
+    fenced = raw
+    if fenced.startswith("```"):
+        fenced = re.sub(r"^```(?:json)?\s*", "", fenced, flags=re.IGNORECASE)
+        fenced = re.sub(r"\s*```$", "", fenced).strip()
+        candidates.append(fenced)
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start >= 0 and end > start:
+        candidates.append(raw[start:end + 1])
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+        except Exception:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    # 括号配平扫描：从混杂文本（前后缀文字/markdown 残片）里抠出最外层 JSON 对象
+    idx = 0
+    n = len(raw)
+    while idx < n:
+        ch = raw[idx]
+        if ch != "{":
+            idx += 1
+            continue
+        depth = 0
+        in_str = False
+        esc = False
+        for pos in range(idx, n):
+            c = raw[pos]
+            if in_str:
+                if esc:
+                    esc = False
+                elif c == "\\":
+                    esc = True
+                elif c == '"':
+                    in_str = False
+                continue
+            if c == '"':
+                in_str = True
+            elif c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    fragment = raw[idx:pos + 1]
+                    try:
+                        parsed = json.loads(fragment)
+                    except Exception:
+                        break
+                    if isinstance(parsed, dict) and ("tool_calls" in parsed or "assistant_reply" in parsed):
+                        return parsed
+                    break
+        idx += 1
+    return None
+
+
+def _codex_bridge_normalize_tool_calls(payload):
+    if isinstance(payload, dict):
+        raw_calls = payload.get("tool_calls")
+        if raw_calls is None:
+            raw_calls = payload.get("actions")
+        if raw_calls is None and payload.get("name"):
+            raw_calls = [payload]
+    else:
+        raw_calls = payload
+    if not isinstance(raw_calls, list):
+        return []
+    calls = []
+    for item in raw_calls:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or item.get("tool") or "").strip()
+        arguments = item.get("arguments")
+        if arguments is None:
+            arguments = item.get("args")
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except Exception:
+                arguments = {}
+        if not isinstance(arguments, dict):
+            arguments = {}
+        if name:
+            calls.append({"name": name, "arguments": arguments})
+    return calls
+
+
+def _codex_bridge_request_wants_canvas_nodes(payload):
+    text = str((payload or {}).get("message") or "").strip()
+    if not text:
+        return False
+    hints = ["节点", "创建到画布", "建到画布", "创建节点", "建节点", "拆成", "拆为", "海报节点", "分镜节点", "提示词节点"]
+    return any(token in text for token in hints)
+
+
+def _agent_chinese_count_to_int(value, default=3):
+    raw = str(value or "").strip()
+    if not raw:
+        return default
+    if raw.isdigit():
+        return max(1, min(8, int(raw)))
+    table = {
+        "一": 1, "二": 2, "两": 2, "三": 3, "四": 4,
+        "五": 5, "六": 6, "七": 7, "八": 8,
+    }
+    if raw in table:
+        return table[raw]
+    if raw.startswith("十"):
+        return 8
+    if raw.endswith("十"):
+        return 8
+    if "十" in raw:
+        return 8
+    return default
+
+
+def _codex_bridge_requested_node_count(text, default=3):
+    raw = str(text or "")
+    patterns = [
+        r"([0-9一二两三四五六七八九十]+)\s*个[^\n，。；;]{0,24}(?:节点|方案|海报|分镜|镜头|提示词)",
+        r"(?:创建|建立|生成|拆成|拆为)\s*([0-9一二两三四五六七八九十]+)\s*个",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, raw)
+        if match:
+            return _agent_chinese_count_to_int(match.group(1), default)
+    return default
+
+
+def _codex_bridge_split_titles(text):
+    raw = str(text or "").strip()
+    if not raw:
+        return []
+    raw = re.split(r"[。；;]", raw, maxsplit=1)[0].strip()
+    raw = re.sub(r"\s*(?:方案|方向|节点)?\s*$", "", raw).strip()
+    return [
+        part.strip(" -*`'\"“”‘’，,。；;")
+        for part in re.split(r"[、,，/／]+", raw)
+        if part.strip(" -*`'\"“”‘’，,。；;")
+    ]
+
+
+def _codex_bridge_titles_from_text(text):
+    raw = str(text or "").replace("\r\n", "\n")
+    titles = []
+    inline_match = re.search(
+        r"(?m)(?:创建|建立|生成|拆成|拆为)\s*[0-9一二两三四五六七八九十]+\s*个[^\n]{0,32}(?:生图|生成|画布|海报|分镜)?(?:节点|方案|海报|分镜|镜头)?\s*[:：]\s*([^\n]+)",
+        raw,
+    )
+    if inline_match:
+        titles.extend(_codex_bridge_split_titles(inline_match.group(1)))
+    quoted = re.findall(r"[“\"']([^”\"']{2,80})[”\"']", raw)
+    for quote in quoted:
+        if re.search(r"[、,，/／]", quote):
+            titles.extend(_codex_bridge_split_titles(quote))
+        else:
+            titles.append(quote.strip(" -*`'\"“”‘’，,。；;"))
+    seen = set()
+    result = []
+    for title in titles:
+        if title and title not in seen:
+            seen.add(title)
+            result.append(title)
+    return result[:8]
+
+
+def _codex_bridge_default_generation_nodes(text, fallback_prompt=""):
+    source = str(fallback_prompt or text or "").strip()
+    count = _codex_bridge_requested_node_count(source or text, 3)
+    titles = _codex_bridge_titles_from_text(source) or _codex_bridge_titles_from_text(text)
+    labels = ["方案 A", "方案 B", "方案 C", "方案 D", "方案 E", "方案 F", "方案 G", "方案 H"]
+    while len(titles) < count:
+        titles.append(labels[len(titles)])
+    return [
+        {
+            "title": title,
+            "prompt": "主题：{}\n\n请根据以下需求生成完整中文生图提示词，并保持可直接执行：\n{}".format(title, source or title).strip(),
+        }
+        for title in titles[:count]
+    ]
+
+
+def _codex_bridge_extract_generation_nodes(text, fallback_prompt=""):
+    raw = str(text or "").replace("\r\n", "\n")
+    cutoff = re.search(r"(?m)^\s*(?:建议(?:画布)?节点命名|统一参数|如果你把画布工具|如果把画布工具|如果你需要我继续)", raw)
+    if cutoff:
+        raw = raw[:cutoff.start()].rstrip()
+    heading_re = re.compile(
+        r"(?m)^\s*(?:\*\*)?\s*(?:(?:(海报节点|关键场景节点|分镜节点|镜头节点|场景节点|节点|海报|镜头|场景|分镜)\s*([0-9一二三四五六七八九十]+))|([0-9]+)[\.\:：、])\s*(?:[:：｜|]\s*)?([^\n*`]+?)\s*(?:\*\*)?\s*$"
+    )
+    matches = list(heading_re.finditer(raw))
+    items = []
+    for index, match in enumerate(matches):
+        start = match.end()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(raw)
+        title = str(match.group(4) or "").strip().strip("*` ")
+        title = re.sub(r"^[\|\uff5c:：\-·\s]+", "", title).strip()
+        body = raw[start:end].strip()
+        body = re.sub(r"^[:：\-\s]+", "", body)
+        body = re.sub(r"(?m)^\s*```(?:text|json)?\s*$", "", body)
+        body = re.sub(r"(?m)^\s*```\s*$", "", body).strip()
+        body = re.sub(r"(?m)^\s*标题\s*[:：]\s*", "", body, count=1)
+        body = re.sub(r"(?m)^\s*(?:提示词|prompt)\s*[:：]\s*", "", body, count=1)
+        body = body.strip()
+        if not body:
+            continue
+        if not title:
+            title = "Agent 节点 {}".format(len(items) + 1)
+        items.append({"title": title, "prompt": body})
+    if items:
+        return items[:8]
+    titles = _codex_bridge_titles_from_text(raw)
+    prompt_seed = raw
+    if not titles and re.search(r"(?:创建|建立|生成).{0,40}节点", raw):
+        quoted = re.findall(r"[“\"']([^”\"']{2,40})[”\"']", raw)
+        for quote in quoted:
+            titles.extend(_codex_bridge_split_titles(quote))
+        prompt_seed = raw
+    if not titles:
+        return []
+    prompt_match = re.search(r"(?s)(?:可直接使用的提示词|提示词|prompt)\s*[:：]\s*(.+)$", raw, flags=re.IGNORECASE)
+    prompt_body = (prompt_match.group(1) if prompt_match else prompt_seed).strip()
+    prompt_body = re.sub(r"(?m)^\s*[>\-]\s*", "", prompt_body).strip()
+    prompt_body = _codex_bridge_cleanup_fallback_text(prompt_body)
+    if not prompt_body or len(prompt_body) < 20:
+        prompt_body = str(fallback_prompt or "").strip()
+    return [
+        {"title": title, "prompt": "主题：{}\n\n{}".format(title, prompt_body or title).strip()}
+        for title in titles[:8]
+    ]
+
+
+def _agent_result_created_nodes(tool_log):
+    items = []
+    seen = set()
+    for entry in tool_log or []:
+        result = entry.get("result") if isinstance(entry, dict) else {}
+        args = entry.get("args") if isinstance(entry, dict) else {}
+        node_id = str((result or {}).get("node_id") or (result or {}).get("nodeId") or "").strip()
+        if not node_id or node_id in seen:
+            continue
+        seen.add(node_id)
+        items.append({
+            "node_id": node_id,
+            "title": str((args or {}).get("title") or "").strip(),
+            "status": str((result or {}).get("status") or ("running" if (result or {}).get("task_id") else "created")).strip() or "created",
+            "type": "smart-image" if str((entry or {}).get("name") or "").strip() in ("canvas_create_generation_node", "canvas_generate_images") else "smart-prompt",
+            "task_id": str((result or {}).get("task_id") or "").strip(),
+        })
+    return items
+
+
+def _codex_bridge_cleanup_fallback_text(text):
+    lines = str(text or "").replace("\r\n", "\n").split("\n")
+    blocked_markers = (
+        "当前没有暴露",
+        "未挂载",
+        "Bridge 会话没有加载",
+        "没有拿到",
+        "没有暴露",
+        "没有可调用的",
+        "无法实际创建节点",
+        "不能直接替你创建节点",
+        "不能直接创建节点",
+        "不能直接创建画布节点",
+        "不能真实创建画布节点",
+        "不能真实创建节点",
+        "不能声称已经创建完成",
+        "不能声称已经创建",
+        "直接复制到画布生成节点里使用",
+        "直接复制到 MyridTV 画布生成节点里",
+        "不能直接把节点写进 MyridTV 画布",
+        "如果画布 Bridge 把",
+        "请重新连接或启用画布工具后",
+    )
+    cleaned = []
+    skip_blank_tail = False
+    for raw in lines:
+        line = str(raw or "")
+        if any(marker in line for marker in blocked_markers):
+            skip_blank_tail = True
+            continue
+        if skip_blank_tail and not line.strip():
+            continue
+        skip_blank_tail = False
+        cleaned.append(line)
+    text = "\n".join(cleaned).strip()
+    if "可以先把这" in text and "关键场景海报节点内容给你" in text:
+        text = text.replace("可以先把这 3 个关键场景海报节点内容给你，", "", 1).strip()
+    if text.startswith("先给你 3 个"):
+        text = text[text.find("：") + 1:].strip() if "：" in text else text
+    return text
+
+
+def _codex_bridge_should_reset_session(error_text, had_session=False):
+    text = str(error_text or "")
+    if not text:
+        return False
+    lowered = text.lower()
+    if had_session and ("unknown session" in lowered or "not found" in lowered or "no session" in lowered):
+        return True
+    reset_markers = (
+        "thread-store conflict",
+        "already has an active writer",
+        "thread/resume failed",
+        "thread not found",
+        "active writer",
+    )
+    return any(marker in lowered for marker in reset_markers)
+
+
