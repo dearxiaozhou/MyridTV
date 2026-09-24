@@ -375,7 +375,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.23.previzcomposition41"
+STATIC_VERSION = "2026.09.23.previzcomposition43"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -456,7 +456,7 @@ STATIC_PATCHES = {
         "/static/comfyui-settings.html",
         "/static/asset-manager.html",
     ],
-    ROOT / "static" / "smart-canvas.html": ["/static/css/smart-canvas.css", "/static/js/smart-canvas.js", "/static/js/canvas-node-registry.js", "/static/js/canvas-draft-store.js", "/static/js/canvas-overlay-registry.js", "/static/js/canvas-viewport-engine.js", "/static/js/canvas-render-scheduler.js", "/static/js/canvas-comfy-job-engine.js", "/static/js/canvas-agent-history-store.js", "/static/js/canvas-artifact-model.js", "/static/js/canvas-artifact-view.js", "/static/js/canvas-agent-message-render.js", "/static/js/canvas-rh-controls.js", "/static/js/canvas-comfy-controls.js", "/static/js/canvas-param-controls.js", "/static/js/canvas-prompt-library-picker.js", "/static/js/canvas-spec-controls.js", "/static/js/canvas-interaction-observer.js", "/static/js/canvas-interaction-machine.js", "/static/js/i18n.js"],
+    ROOT / "static" / "smart-canvas.html": ["/static/css/smart-canvas.css", "/static/js/smart-canvas.js", "/static/js/canvas-node-registry.js", "/static/js/canvas-draft-store.js", "/static/js/canvas-overlay-registry.js", "/static/js/canvas-viewport-engine.js", "/static/js/canvas-render-scheduler.js", "/static/js/canvas-comfy-job-engine.js", "/static/js/canvas-agent-history-store.js", "/static/js/canvas-artifact-model.js", "/static/js/canvas-artifact-view.js", "/static/js/canvas-agent-message-render.js", "/static/js/canvas-rh-controls.js", "/static/js/canvas-comfy-controls.js", "/static/js/canvas-param-controls.js", "/static/js/canvas-prompt-library-picker.js", "/static/js/canvas-unified-picker.js", "/static/js/canvas-spec-controls.js", "/static/js/canvas-interaction-observer.js", "/static/js/canvas-interaction-machine.js", "/static/js/i18n.js"],
     ROOT / "static" / "canvas.html": [
         "/static/css/canvas.css",
         "/static/css/canvas-prism.css",
@@ -3713,6 +3713,183 @@ class Handler(BaseHTTPRequestHandler):
         "/api/open-folder": "_post2_api_open_folder",
     }
 
+    def _postc_00(self, request_path, payload, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_POST 谓词链 #0：原分支条件逐字（request_path == "/api/canvas-video" and is_volcengine_can...）"""
+        if request_path == "/api/canvas-video" and is_volcengine_canvas_video_payload(payload):
+            self._send(200, submit_volcengine_canvas_video_task(payload))
+            return True
+        return False
+
+    def _postc_01(self, request_path, payload, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_POST 谓词链 #1：原分支条件逐字（request_path in ("/api/asset-library/items", "/api/asset-...）"""
+        if request_path in ("/api/asset-library/items", "/api/asset-library/items/batch"):
+            self._send(200, add_asset_library_items(payload))
+            return True
+        return False
+
+    def _postc_02(self, request_path, payload, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_POST 谓词链 #2：原分支条件逐字（request_path == "/api/providers/test-connection" and is_r...）"""
+        if request_path == "/api/providers/test-connection" and is_runninghub_request(payload):
+            self._send(200, runninghub_probe_payload(payload, "test"))
+            return True
+        return False
+
+    def _postc_03(self, request_path, payload, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_POST 谓词链 #3：原分支条件逐字（request_path == "/api/providers/test-connection" and is_v...）"""
+        if request_path == "/api/providers/test-connection" and is_volcengine_request(payload):
+            self._send(200, volcengine_probe_payload(payload, "test"))
+            return True
+        return False
+
+    def _postc_04(self, request_path, payload, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_POST 谓词链 #4：原分支条件逐字（request_path == "/api/providers/test-connection" and str(...）"""
+        if request_path == "/api/providers/test-connection" and str(payload.get("protocol") or "").strip().lower() == "openai":
+            self._send(200, openai_probe_payload(payload, "test"))
+            return True
+        return False
+
+    def _postc_05(self, request_path, payload, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_POST 谓词链 #5：原分支条件逐字（request_path == "/api/providers/probe-async" and str(payl...）"""
+        if request_path == "/api/providers/probe-async" and str(payload.get("protocol") or "").strip().lower() == "openai":
+            self._send(200, openai_probe_payload(payload, "probe"))
+            return True
+        return False
+
+    def _postc_06(self, request_path, payload, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_POST 谓词链 #6：原分支条件逐字（request_path == "/api/providers/verify-base" and str(payl...）"""
+        if request_path == "/api/providers/verify-base" and str(payload.get("protocol") or "").strip().lower() == "openai":
+            self._send(200, openai_probe_payload(payload, "verify"))
+            return True
+        return False
+
+    def _postc_07(self, request_path, payload, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_POST 谓词链 #7：原分支条件逐字（request_path == "/api/providers/probe-async" and is_runni...）"""
+        if request_path == "/api/providers/probe-async" and is_runninghub_request(payload):
+            self._send(200, runninghub_probe_payload(payload, "probe"))
+            return True
+        return False
+
+    def _postc_08(self, request_path, payload, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_POST 谓词链 #8：原分支条件逐字（request_path == "/api/providers/probe-async" and is_volce...）"""
+        if request_path == "/api/providers/probe-async" and is_volcengine_request(payload):
+            self._send(200, volcengine_probe_payload(payload, "probe"))
+            return True
+        return False
+
+    def _postc_09(self, request_path, payload, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_POST 谓词链 #9：原分支条件逐字（request_path == "/api/providers/verify-base" and is_runni...）"""
+        if request_path == "/api/providers/verify-base" and is_runninghub_request(payload):
+            self._send(200, runninghub_probe_payload(payload, "verify"))
+            return True
+        return False
+
+    def _postc_10(self, request_path, payload, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_POST 谓词链 #10：原分支条件逐字（request_path == "/api/providers/verify-base" and is_volce...）"""
+        if request_path == "/api/providers/verify-base" and is_volcengine_request(payload):
+            self._send(200, volcengine_probe_payload(payload, "verify"))
+            return True
+        return False
+
+    def _postc_11(self, request_path, payload, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_POST 谓词链 #11：原分支条件逐字（request_path in ("/api/integrations/blender/push-frame", ...）"""
+        if request_path in ("/api/integrations/blender/push-frame", "/api/integrations/blender/push-snapshot"):
+            self._send(200, append_blender_frame_to_canvas(payload))
+            return True
+        return False
+
+    def _postc_12(self, request_path, payload, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_POST 谓词链 #12：原分支条件逐字（workflow_route == "collection":...）"""
+        if workflow_route == "collection":
+            created = create_workflow_record(payload.get("name"), payload.get("workflow"))
+            self._send(200, {"ok": True, "name": created["name"], **created})
+            return True
+        return False
+
+    def _postc_13(self, request_path, payload, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_POST 谓词链 #13：原分支条件逐字（workflow_route == "run":...）"""
+        if workflow_route == "run":
+            comfy_payload = dict(payload or {})
+            comfy_payload.setdefault("canvas_id", str(canvas_id or "").strip())
+            comfy_payload.setdefault("canvas_title", str((payload or {}).get("canvas_title") or _volcengine_canvas_title_for_output(canvas_id)).strip())
+            self._send(200, run_comfy_workflow(workflow_name, comfy_payload))
+            return True
+        return False
+
+    def _postc_14(self, request_path, payload, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_POST 谓词链 #14：原分支条件逐字（request_path.startswith("/api/comfyui/jobs/") and (...）"""
+        if request_path.startswith("/api/comfyui/jobs/") and (
+            request_path.endswith("/cancel") or request_path.endswith("/interrupt")
+        ):
+            job = comfy_flow_service.MANAGER.cancel(request_path.split("/")[-2])
+            if not job:
+                self._send(404, {"ok": False, "error": "任务不存在或已过期"})
+                return True
+            self._send(200, {"ok": True, **job.to_dict()})
+            return True
+        return False
+
+    def _postc_15(self, request_path, payload, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_POST 谓词链 #15：原分支条件逐字（canvas_route == "collection":...）"""
+        if canvas_route == "collection":
+            created = create_canvas_record(payload)
+            self._send(200, {"ok": True, "canvas": created})
+            return True
+        return False
+
+    def _postc_16(self, request_path, payload, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_POST 谓词链 #16：原分支条件逐字（canvas_route == "import":...）"""
+        if canvas_route == "import":
+            self._send(200, import_canvas_payload(payload))
+            return True
+        return False
+
+    def _postc_17(self, request_path, payload, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_POST 谓词链 #17：原分支条件逐字（canvas_route == "meta":...）"""
+        if canvas_route == "meta":
+            updated = update_canvas_meta(canvas_id, payload)
+            self._send(200, {"ok": True, "canvas": updated})
+            return True
+        return False
+
+    def _postc_18(self, request_path, payload, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_POST 谓词链 #18：原分支条件逐字（canvas_route == "touch":...）"""
+        if canvas_route == "touch":
+            touched = touch_canvas_record(canvas_id)
+            self._send(200, {"ok": True, "canvas": touched, "updated_at": touched.get("updated_at")})
+            return True
+        return False
+
+    def _postc_19(self, request_path, payload, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_POST 谓词链 #19：原分支条件逐字（canvas_route == "restore":...）"""
+        if canvas_route == "restore":
+            restored = restore_canvas_record(canvas_id)
+            self._send(200, {"ok": True, "canvas": restored})
+            return True
+        return False
+
+    _POST_CONDS = [
+        "_postc_00",
+        "_postc_01",
+        "_postc_02",
+        "_postc_03",
+        "_postc_04",
+        "_postc_05",
+        "_postc_06",
+        "_postc_07",
+        "_postc_08",
+        "_postc_09",
+        "_postc_10",
+        "_postc_11",
+        "_postc_12",
+        "_postc_13",
+        "_postc_14",
+        "_postc_15",
+        "_postc_16",
+        "_postc_17",
+        "_postc_18",
+        "_postc_19",
+    ]
+
     def do_POST(self):
         try:
             length = int(self.headers.get("Content-Length") or 0)
@@ -3772,80 +3949,10 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     self._send(200, {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": f"Unknown: {method}"}})
                 return
-            if request_path == "/api/canvas-video" and is_volcengine_canvas_video_payload(payload):
-                self._send(200, submit_volcengine_canvas_video_task(payload))
-                return
-            if request_path in ("/api/asset-library/items", "/api/asset-library/items/batch"):
-                self._send(200, add_asset_library_items(payload))
-                return
-            if request_path == "/api/providers/test-connection" and is_runninghub_request(payload):
-                self._send(200, runninghub_probe_payload(payload, "test"))
-                return
-            if request_path == "/api/providers/test-connection" and is_volcengine_request(payload):
-                self._send(200, volcengine_probe_payload(payload, "test"))
-                return
-            if request_path == "/api/providers/test-connection" and str(payload.get("protocol") or "").strip().lower() == "openai":
-                self._send(200, openai_probe_payload(payload, "test"))
-                return
-            if request_path == "/api/providers/probe-async" and str(payload.get("protocol") or "").strip().lower() == "openai":
-                self._send(200, openai_probe_payload(payload, "probe"))
-                return
-            if request_path == "/api/providers/verify-base" and str(payload.get("protocol") or "").strip().lower() == "openai":
-                self._send(200, openai_probe_payload(payload, "verify"))
-                return
-            if request_path == "/api/providers/probe-async" and is_runninghub_request(payload):
-                self._send(200, runninghub_probe_payload(payload, "probe"))
-                return
-            if request_path == "/api/providers/probe-async" and is_volcengine_request(payload):
-                self._send(200, volcengine_probe_payload(payload, "probe"))
-                return
-            if request_path == "/api/providers/verify-base" and is_runninghub_request(payload):
-                self._send(200, runninghub_probe_payload(payload, "verify"))
-                return
-            if request_path == "/api/providers/verify-base" and is_volcengine_request(payload):
-                self._send(200, volcengine_probe_payload(payload, "verify"))
-                return
-            if request_path in ("/api/integrations/blender/push-frame", "/api/integrations/blender/push-snapshot"):
-                self._send(200, append_blender_frame_to_canvas(payload))
-                return
-            if workflow_route == "collection":
-                created = create_workflow_record(payload.get("name"), payload.get("workflow"))
-                self._send(200, {"ok": True, "name": created["name"], **created})
-                return
-            if workflow_route == "run":
-                comfy_payload = dict(payload or {})
-                comfy_payload.setdefault("canvas_id", str(canvas_id or "").strip())
-                comfy_payload.setdefault("canvas_title", str((payload or {}).get("canvas_title") or _volcengine_canvas_title_for_output(canvas_id)).strip())
-                self._send(200, run_comfy_workflow(workflow_name, comfy_payload))
-                return
-            if request_path.startswith("/api/comfyui/jobs/") and (
-                request_path.endswith("/cancel") or request_path.endswith("/interrupt")
-            ):
-                job = comfy_flow_service.MANAGER.cancel(request_path.split("/")[-2])
-                if not job:
-                    self._send(404, {"ok": False, "error": "任务不存在或已过期"})
+            for _cm in Handler._POST_CONDS:
+                if getattr(self, _cm)(request_path, payload, canvas_route, canvas_id,
+                                      workflow_route, workflow_name):
                     return
-                self._send(200, {"ok": True, **job.to_dict()})
-                return
-            if canvas_route == "collection":
-                created = create_canvas_record(payload)
-                self._send(200, {"ok": True, "canvas": created})
-                return
-            if canvas_route == "import":
-                self._send(200, import_canvas_payload(payload))
-                return
-            if canvas_route == "meta":
-                updated = update_canvas_meta(canvas_id, payload)
-                self._send(200, {"ok": True, "canvas": updated})
-                return
-            if canvas_route == "touch":
-                touched = touch_canvas_record(canvas_id)
-                self._send(200, {"ok": True, "canvas": touched, "updated_at": touched.get("updated_at")})
-                return
-            if canvas_route == "restore":
-                restored = restore_canvas_record(canvas_id)
-                self._send(200, {"ok": True, "canvas": restored})
-                return
             if request_path.startswith("/api/"):
                 if self._forward_upstream("POST", self.path, raw_body):
                     return
