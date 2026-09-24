@@ -261,6 +261,7 @@ if (Test-Path -LiteralPath $UpgradeHelperScript) {
             (Join-Path $AppDir 'myridtv_canvas_store.py'),
             (Join-Path $AppDir 'myridtv_task_state.py'),
             (Join-Path $AppDir 'myridtv_media_localize.py'),
+            (Join-Path $AppDir 'myridtv_libraries.py'),
             (Join-Path $AppDir 'myridtv_comfy.py'),
             (Join-Path $AppDir 'myridtv_runninghub.py'),
             (Join-Path $AppDir 'myridtv_rh_catalog.py'),
