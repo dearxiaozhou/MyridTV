@@ -535,6 +535,9 @@ audio { display:none !important; width:0 !important; height:0 !important; min-wi
 
 .run-time-pill { position:absolute; right:8px; top:8px; z-index:7; height:24px; padding:0 9px; border-radius:999px; display:inline-flex; align-items:center; justify-content:center; background:rgba(37,99,235,.92); color:#fff; font-size:10.5px; font-weight:800; font-variant-numeric:tabular-nums; box-shadow:0 8px 18px rgba(0,0,0,.18); pointer-events:none; }
 .run-time-pill.done { background:#10b981; color:#fff; }
+/* 2026-09-23：排队中的计时 pill 只做「排队中」占位，不跑秒 —— 蓝色是「正在生成」的语义，
+   排队用中性灰，避免和真正在跑的节点混淆。 */
+.run-time-pill.queued { background:rgba(100,116,139,.92); color:#fff; font-weight:700; letter-spacing:.02em; }
 .theme-dark .run-time-pill { box-shadow:0 8px 18px rgba(0,0,0,.32); }
 .loading-skeleton { display:grid; gap:8px; }
 .loading-cell { position:relative; overflow:hidden; border-radius:12px; background:linear-gradient(90deg, var(--soft) 0%, var(--card) 50%, var(--soft) 100%); background-size:200% 100%; animation:shimmer 1.5s infinite linear; border:1px solid var(--line); }
@@ -857,6 +860,29 @@ audio { display:none !important; width:0 !important; height:0 !important; min-wi
 /* 节点卡片底部进度条：comfyStatus==='running' 时显示 */
 .image-node.comfy-running { border-color:rgba(99,102,241,.55) !important; box-shadow:0 0 0 2px rgba(99,102,241,.18), 0 12px 28px rgba(0,0,0,.18) !important; }
 .theme-dark .image-node.comfy-running { box-shadow:0 0 0 2px rgba(129,140,248,.32), 0 12px 28px rgba(0,0,0,.4) !important; }
+/* 排队中：静态灰描边 + 位次徽标，刻意不带任何动画 —— 排队不是在运行，
+   流光（comfy-node-progress-flow）和进度环一律不出现，免得看着像在生成。 */
+.image-node.comfy-queued { border-color:rgba(148,163,184,.6) !important; box-shadow:0 0 0 1px rgba(148,163,184,.16) !important; }
+.theme-dark .image-node.comfy-queued { border-color:rgba(100,116,139,.75) !important; box-shadow:0 0 0 1px rgba(100,116,139,.26) !important; }
+.image-node.comfy-queued .comfy-node-progress { display:none; }
+/* 排队期间若节点还是 loading-cell（等待出图占位），也别跑 shimmer */
+.image-node.comfy-queued .loading-cell { animation:none !important; }
+/* 2026-09-23：排队位次徽标。后端 FIFO 队列启用后，已入队但还没开工的节点会显示
+   「排队中 · 第 N 位」，data-comfy-queue 由 updateComfyNodeLiveState() 挂载/移除。 */
+.image-node[data-comfy-queue]::after { content:"排队中 · 第 " attr(data-comfy-queue) " 位"; position:absolute; left:50%; bottom:10px; transform:translateX(-50%); padding:3px 9px; border-radius:999px; background:rgba(15,23,42,.82); color:#e2e8f0; font-size:11px; line-height:1.4; white-space:nowrap; pointer-events:none; z-index:10; }
+.theme-dark .image-node[data-comfy-queue]::after { background:rgba(0,0,0,.72); color:#cbd5e1; }
+/* 已入队但位次还是 -1（刚被 worker 取走、还没上报 running）的极短窗口：
+   不显示位次，但仍要有「排队中」字样，不能只剩一个灰框让人猜。 */
+.image-node.comfy-queued:not([data-comfy-queue])::after { content:"排队中"; position:absolute; left:50%; bottom:10px; transform:translateX(-50%); padding:3px 9px; border-radius:999px; background:rgba(15,23,42,.82); color:#e2e8f0; font-size:11px; line-height:1.4; white-space:nowrap; pointer-events:none; z-index:10; }
+.theme-dark .image-node.comfy-queued:not([data-comfy-queue])::after { background:rgba(0,0,0,.72); color:#cbd5e1; }
+/* 运行期提示 / 失败原因：顶部横幅（底部已被排队徽标占住）。
+   以前失败只表现为「转圈停了」，用户不知道是显存炸了还是工作流填错。 */
+.image-node > .comfy-node-note { position:absolute; left:0; right:0; top:0; z-index:12; padding:5px 10px; max-height:44px; overflow:hidden; background:rgba(15,23,42,.86); color:#e2e8f0; font-size:11px; line-height:1.35; text-align:center; border-radius:inherit; pointer-events:none; word-break:break-word; }
+.image-node > .comfy-node-note.error { background:rgba(185,28,28,.94); color:#fff; }
+.theme-dark .image-node > .comfy-node-note { background:rgba(0,0,0,.78); color:#cbd5e1; }
+.theme-dark .image-node > .comfy-node-note.error { background:rgba(153,27,27,.92); color:#fee2e2; }
+.image-node.comfy-failed { box-shadow:0 0 0 2px rgba(239,68,68,.6), 0 10px 24px rgba(0,0,0,.28) !important; }
+.theme-dark .image-node.comfy-failed { box-shadow:0 0 0 2px rgba(239,68,68,.5), 0 12px 28px rgba(0,0,0,.45) !important; }
 .comfy-node-progress { position:absolute; inset:0; pointer-events:none; z-index:9; }
 .comfy-node-progress-track { position:relative; width:100%; height:100%; border:0; border-radius:999px; overflow:hidden; background:transparent; }
 .comfy-node-progress-fill { position:absolute; left:0; top:0; bottom:0; min-width:0; border:0; border-radius:inherit; background:#2db27f; transition:width .35s ease; }
@@ -2977,6 +3003,7 @@ html:not(.theme-dark) .blender-ratio-popover, body:not(.theme-dark) .blender-rat
 .previz-lens-control.previz-lens-pop-above .previz-lens-popover::after { top:100%; bottom:auto; }
 html:not(.theme-dark) .previz-lens-popover, body:not(.theme-dark) .previz-lens-popover { background:#f8fafc; }
 .previz-lens-list { display:grid; grid-template-columns:1fr 1fr; gap:2px; padding:4px 8px 8px; }
+.previz-lens-section { grid-column:1 / -1; padding:7px 8px 3px; color:var(--muted, #9ca3af); font-size:10px; font-weight:750; letter-spacing:.02em; }
 .previz-lens-opt { display:flex; align-items:center; justify-content:flex-start; width:100%; min-height:30px; padding:5px 10px; border:0; border-radius:8px; background:transparent; color:var(--text, #e5e5e5); text-align:left; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .previz-lens-opt:hover { background:rgba(200,200,200,.14); }
 .blender-ratio-opt-name,

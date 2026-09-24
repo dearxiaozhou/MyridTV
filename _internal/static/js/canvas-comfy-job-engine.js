@@ -131,15 +131,22 @@
         delete node.comfyProgress;
         delete node.comfyCurrentNode;
         delete node.comfyCurrentNodeTitle;
+        delete node.comfyStartedAt; // 计时起点，跨任务不能复用
+        delete node.comfyNotice;    // 运行期提示，结束了就该消失
+        // 注意：这里故意保留 comfyError —— 失败原因要继续挂在节点上给用户看
     }
     function clearComfyProgress(node){
         if(!node) return;
         delete node.comfyJobId;
         delete node.comfyPromptId;
+        delete node.comfyQueuePosition;
         delete node.comfyProgress;
         delete node.comfyCurrentNode;
         delete node.comfyCurrentNodeTitle;
         delete node.comfyStatus;
+        delete node.comfyStartedAt;
+        delete node.comfyError;   // 成功了就别留着上一轮的失败提示
+        delete node.comfyNotice;
     }
     function clearComfyProgressExceptStatus(node){
         if(!node) return;
@@ -148,6 +155,7 @@
         delete node.comfyProgress;
         delete node.comfyCurrentNode;
         delete node.comfyCurrentNodeTitle;
+        delete node.comfyStartedAt;
         // 保留 comfyStatus = 'cancelled'
     }
 
@@ -200,8 +208,17 @@
         }
         delete node.comfySupervisorMiss;
         const st = job.status || node.comfyStatus;
+        // 状态必须写回：promise 链断了只剩 supervisor 在轮询时，不写回的话节点会永远停在
+        // 提交那一刻的 queued，「排队中 · 第 N 位」一直挂着，哪怕它其实已经在跑了。
+        if(['running', 'queued'].includes(st)) node.comfyStatus = st;
         node.comfyProgress = Number(job.progress || node.comfyProgress || 0);
-        deps.updateComfyNodeLiveState(node);
+        // 后端 FIFO 队列位次：-1=已出队/完成/历史恢复，>0=前方还有几个（从 1 起）
+        node.comfyQueuePosition = Number(job.queue_position ?? -1);
+        // 失败原因 + 运行期提示（等待显存 / 显存不足重试中），要显示到节点上，
+        // 否则用户只能看到「转圈然后没了」，不知道是显存炸了还是工作流填错。
+        node.comfyError = job.error || '';
+        node.comfyNotice = job.notice || '';
+        deps.updateComfyNodeLiveState(node, job);
         if(st === 'done'){
             const urls = (job.videos && job.videos.length) ? job.videos : (job.images || []);
             const kind = (job.videos && job.videos.length) ? 'video' : 'image';

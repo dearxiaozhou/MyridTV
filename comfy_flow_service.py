@@ -31,6 +31,42 @@ JOB_TTL_SECONDS = 3600
 JOB_KEEP_LIMIT = 60
 COMFY_JOB_TIMEOUT_SECONDS = 3600
 
+
+def _positive_env_int(name, default, low, high):
+    try:
+        value = int(str(os.environ.get(name) or "").strip() or default)
+    except (TypeError, ValueError):
+        return default
+    return max(low, min(high, value))
+
+
+# 同一时刻最多向 ComfyUI 提交多少个任务。默认 1 = 严格串行：
+# ComfyUI 本来就单 worker 执行，串行提交既能杜绝显存竞争，又能让「排队第几位」可观测。
+# 显存充裕想并发时，用环境变量 COMFY_JOB_CONCURRENCY 调大（1~8）。
+COMFY_JOB_CONCURRENCY = _positive_env_int("COMFY_JOB_CONCURRENCY", 1, 1, 8)
+
+# ---- 显存治理（2026-09-23）----
+# 事故：上一个任务 finished 后 0.07 秒就把下一个塞给了 ComfyUI，下一个跑 10 秒后
+# 报「VRAM grow failed: 250148864 bytes」。原因是 ComfyUI 写完 /history 就算完成，
+# 但 PyTorch 的显存池要过一会儿才真正归还，紧接着提交必然撞上显存没释放完。
+# 所以：每个任务收尾都主动让 ComfyUI 卸载模型 + 清缓存，再冷却几秒才交棒。
+COMFY_JOB_COOLDOWN_SECONDS = _positive_env_int("COMFY_JOB_COOLDOWN_SECONDS", 5, 0, 120)
+
+# 提交前要求的最小空闲显存（MB），不到就等，等不到才硬着头皮提交。0 = 不检查。
+COMFY_JOB_MIN_FREE_VRAM_MB = _positive_env_int("COMFY_JOB_MIN_FREE_VRAM_MB", 2048, 0, 65536)
+COMFY_JOB_VRAM_WAIT_SECONDS = _positive_env_int("COMFY_JOB_VRAM_WAIT_SECONDS", 120, 0, 900)
+
+# 显存类失败自动重试：先 /free 再退避，最多重试 N 次。
+COMFY_JOB_VRAM_RETRY = _positive_env_int("COMFY_JOB_VRAM_RETRY", 2, 0, 5)
+COMFY_JOB_VRAM_RETRY_WAIT = _positive_env_int("COMFY_JOB_VRAM_RETRY_WAIT", 15, 1, 300)
+
+# 命中这些关键词 = 显存不足，值得重试；其它错误（工作流填错、节点缺失）重试没意义。
+_VRAM_ERROR_RE = re.compile(
+    r"vram grow failed|out of memory|allocation on device|cudamalloc|failed to allocate"
+    r"|not enough memory|vram state|cuda error|cublas|hip out of memory",
+    re.I,
+)
+
 # 由宿主注入
 _BASE_PROVIDER = None
 _ASSET_SAVER = None
@@ -72,6 +108,44 @@ def _request_json(path, method="GET", payload=None, timeout=120):
     request = urllib.request.Request(comfy_base() + path, data=raw, headers=headers, method=method)
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8") or "{}")
+
+
+def _is_vram_error(message):
+    """是不是「显存不够」这类值得自动重试的错误。"""
+    return bool(_VRAM_ERROR_RE.search(str(message or "")))
+
+
+def _free_comfy_memory(unload_models=True, free_memory=True):
+    """让 ComfyUI 卸载模型并清空显存缓存。失败不影响主流程。"""
+    try:
+        _request_json(
+            "/free",
+            "POST",
+            {"unload_models": bool(unload_models), "free_memory": bool(free_memory)},
+            timeout=60,
+        )
+        return True
+    except Exception:
+        return False
+
+
+def _vram_free_bytes():
+    """读 ComfyUI 报告的空闲显存（字节）。拿不到返回 None——此时按「不阻塞」处理。"""
+    try:
+        stats = _request_json("/system_stats", "GET", timeout=15)
+    except Exception:
+        return None
+    devices = stats.get("devices") if isinstance(stats, dict) else None
+    for device in devices or []:
+        if not isinstance(device, dict):
+            continue
+        if str(device.get("type") or "").lower() != "cuda":
+            continue
+        try:
+            return int(device.get("vram_free") or 0)
+        except (TypeError, ValueError):
+            return None
+    return None
 
 
 # --------------------------------------------------------------------------
@@ -292,6 +366,14 @@ class ComfyJob:
         self.started_at = 0
         self.finished_at = 0
         self._cancel_requested = False
+        # 排队位次：-1=不在队列（已出队/已完成/历史恢复），0=队首（正在跑或即将跑），>=1=前方还有几个
+        self.queue_position = -1
+        # 节点 id -> 标题，供运行期进度展示；随 job 一起入队，worker 才能拿到
+        self.node_titles = {}
+        # 显存不足自动重试的次数（0 = 还没重试过）
+        self.vram_retry = 0
+        # 运行期提示语，给前端显示「等待显存释放…」「显存不足，正在重试(1/2)」
+        self.notice = ""
 
     def to_dict(self):
         elapsed = int((self.finished_at or time.time()) - (self.started_at or self.created_at))
@@ -308,6 +390,12 @@ class ComfyJob:
             "error": self.error,
             "report": self.report,
             "prompt_id": self.prompt_id,
+            "queue_position": self.queue_position,
+            "vram_retry": self.vram_retry,
+            "notice": self.notice,
+            "created_at": self.created_at,
+            "started_at": self.started_at,
+            "finished_at": self.finished_at,
             "elapsed": max(0, elapsed),
             "cancellable": self.status in (STATUS_QUEUED, STATUS_RUNNING),
         }
@@ -318,6 +406,11 @@ class JobManager:
         self._jobs = {}
         self._lock = threading.RLock()
         self._store_path = None
+        # FIFO 队列：存 job_id，保证同一时刻最多 COMFY_JOB_CONCURRENCY 个任务提交给 ComfyUI。
+        # 之前是「提交即起线程、无并发上限」，多任务会一次性全塞进 ComfyUI，
+        # 排队不可见且容易显存竞争失败。
+        self._queue = []
+        self._workers = 0
 
     # ---- 落盘（后端重启后任务不丢）----
 
@@ -393,16 +486,177 @@ class JobManager:
 
     def submit(self, workflow_name, prompt, client_id="", node_titles=None, meta=None):
         job = ComfyJob(uuid.uuid4().hex[:12], workflow_name, prompt, client_id, meta=meta)
+        job.node_titles = dict(node_titles or {})
         with self._lock:
             self._jobs[job.id] = job
+            self._queue.append(job.id)
             self._prune()
+            self._sync_positions_locked()
         self._save()
-        worker = threading.Thread(
-            target=self._run,
-            args=(job, node_titles or {}),
-            daemon=True,
-        )
-        worker.start()
+        self._pump()
+        return job
+
+    # ---- 队列调度：最多 COMFY_JOB_CONCURRENCY 个 worker 同时消费 ----
+
+    def _pump(self):
+        """补足 worker：队列里还有活、且没到并发上限时，再起一个消费线程。"""
+        while True:
+            with self._lock:
+                if not self._queue or self._workers >= COMFY_JOB_CONCURRENCY:
+                    return
+                self._workers += 1
+            threading.Thread(target=self._worker_loop, daemon=True).start()
+
+    def _worker_loop(self):
+        try:
+            while True:
+                with self._lock:
+                    if not self._queue:
+                        return
+                    job_id = self._queue.pop(0)
+                    job = self._jobs.get(job_id)
+                    self._sync_positions_locked()
+                if job is None:
+                    continue
+                self._run_with_vram_retry(job)
+                with self._lock:
+                    self._sync_positions_locked()
+                    has_more = bool(self._queue)
+                self._save()
+                # 交棒清理。注意必须无条件 /free：worker 是「队列空了就退出」的，
+                # 下一个任务可能由新起的 worker 接手，它不会再走一遍交棒，
+                # 于是就成了「上一个刚 done、0.07 秒后就提交」的撞车现场。
+                # 只有确实还排着队才额外冷却等待，队列空了就别白等这几秒。
+                if not job._cancel_requested:
+                    self._release_between_jobs(cooldown=has_more)
+        finally:
+            with self._lock:
+                self._workers = max(0, self._workers - 1)
+                has_more = bool(self._queue)
+            if has_more:
+                self._pump()
+
+    def _run_with_vram_retry(self, job):
+        """执行一次；若因显存不足失败且还有额度，就 /free + 退避后重跑。"""
+        while True:
+            try:
+                self._run(job)
+            except Exception:
+                # _run 内部已兜底；这里只保证 worker 不会因为异常提前退出
+                pass
+            if not self._should_retry_vram(job):
+                break
+            job.vram_retry += 1
+            job.status = STATUS_RUNNING
+            job.progress = 0
+            job.error = ""
+            job.notice = "显存不足，正在重试（%d/%d）" % (job.vram_retry, COMFY_JOB_VRAM_RETRY)
+            self._save()
+            _free_comfy_memory()
+            time.sleep(COMFY_JOB_VRAM_RETRY_WAIT)
+        job.notice = ""
+
+    def _should_retry_vram(self, job):
+        """显存类失败才重试——工作流填错、节点缺失这类重试多少次都一样。"""
+        if COMFY_JOB_VRAM_RETRY <= 0 or job is None:
+            return False
+        if job._cancel_requested or job.status != STATUS_ERROR:
+            return False
+        if job.vram_retry >= COMFY_JOB_VRAM_RETRY:
+            return False
+        return _is_vram_error(job.error)
+
+    def _release_between_jobs(self, cooldown=True):
+        """任务收尾：卸载模型 + 清缓存，必要时再冷却几秒。
+
+        ComfyUI 写完 /history 就算「完成」，但显存池归还要时间。实测上一个
+        finished 后 0.07 秒提交下一个，下一个跑 10 秒就 VRAM grow failed。
+
+        /free 是无条件的（便宜且幂等），cooldown 只在后面还排着队时才等——
+        队列空了还干等，下一个任务是几分钟后的事，白拖慢启动。
+        """
+        _free_comfy_memory()
+        if cooldown and COMFY_JOB_COOLDOWN_SECONDS > 0:
+            time.sleep(COMFY_JOB_COOLDOWN_SECONDS)
+
+    def _wait_for_free_vram(self, job):
+        """提交前等显存回到安全线；等超时或读不到显存就照常提交，不阻塞队列。"""
+        if COMFY_JOB_MIN_FREE_VRAM_MB <= 0:
+            return
+        need = COMFY_JOB_MIN_FREE_VRAM_MB * 1024 * 1024
+        deadline = time.time() + max(1, COMFY_JOB_VRAM_WAIT_SECONDS)
+        freed = False
+        while time.time() < deadline:
+            if job._cancel_requested:
+                break
+            free = _vram_free_bytes()
+            # 读不到显存（老版本 ComfyUI / 接口异常）就不拦，别把整个队列卡死
+            if free is None or free >= need:
+                break
+            if not freed:
+                # 先主动让 ComfyUI 卸模型清缓存，别干等着
+                _free_comfy_memory()
+                freed = True
+            job.notice = "等待显存释放（空闲 %dMB / 需 %dMB）" % (
+                int(free / 1048576), COMFY_JOB_MIN_FREE_VRAM_MB)
+            time.sleep(2)
+        job.notice = ""
+
+    def _sync_positions_locked(self):
+        """按当前队列顺序刷新每个 job 的 queue_position（调用方需持锁）。"""
+        # 位次从 1 开始：1 = 下一个就跑。
+        # 不能用 0 起步 —— 正在执行的任务已被 worker 从 _queue 里 pop 出去，
+        # 若队首记为 0，前端「>0 才显示排队」的判定会让它看起来没在排队，
+        # 可它其实还在等前面那个跑完。
+        for index, job_id in enumerate(self._queue):
+            job = self._jobs.get(job_id)
+            if job is not None:
+                job.queue_position = index + 1
+        queued = set(self._queue)
+        for job in self._jobs.values():
+            if job.id not in queued:
+                job.queue_position = -1
+
+    def queue_snapshot(self):
+        """对外暴露的队列视图：正在跑的 + 还在排的（含位次）。"""
+        with self._lock:
+            self._sync_positions_locked()
+            # 正在跑的任务已被 worker 移出 _queue，所以只能按状态认，不能按队列位置认。
+            running = [
+                job.to_dict() for job in self._jobs.values()
+                if job.status == STATUS_RUNNING
+            ]
+            pending = []
+            for job_id in self._queue:
+                job = self._jobs.get(job_id)
+                if job is not None:
+                    pending.append(job.to_dict())
+            running.sort(key=lambda row: row.get("started_at") or 0)
+            pending.sort(key=lambda row: row.get("queue_position") or 0)
+            return {
+                "ok": True,
+                "concurrency": COMFY_JOB_CONCURRENCY,
+                "running": running,
+                "pending": pending,
+                "running_count": len(running),
+                "pending_count": len(pending),
+            }
+
+    def wait(self, job_id, timeout=COMFY_JOB_TIMEOUT_SECONDS, poll=0.5):
+        """同步阻塞等任务结束，返回 job；超时返回最后一次看到的 job。
+
+        只给「必须拿到产物 URL 才能往下走」的调用方用（Agent 工具、同步 API）。
+        任务本身已经在队列里排队/执行，这里只是等，不会再额外占用 ComfyUI。
+        """
+        deadline = time.time() + max(1, float(timeout))
+        job = self.get(job_id)
+        while time.time() < deadline:
+            if job is None:
+                return None
+            if job.status in (STATUS_DONE, STATUS_ERROR, STATUS_CANCELLED):
+                return job
+            time.sleep(poll)
+            job = self.get(job_id)
         return job
 
     def get(self, job_id):
@@ -417,10 +671,18 @@ class JobManager:
         if not job:
             return None
         job._cancel_requested = True
-        try:
-            _request_json("/interrupt", "POST", {}, timeout=10)
-        except Exception:
-            pass
+        # 只有真正在 ComfyUI 里跑起来的任务才需要 /interrupt；
+        # 还在排队的一律只出队 —— 否则会把队首那个不相干的任务一起打断。
+        should_interrupt = job.status == STATUS_RUNNING
+        with self._lock:
+            if job.id in self._queue:
+                self._queue = [jid for jid in self._queue if jid != job.id]
+                self._sync_positions_locked()
+        if should_interrupt:
+            try:
+                _request_json("/interrupt", "POST", {}, timeout=10)
+            except Exception:
+                pass
         if job.status in (STATUS_QUEUED, STATUS_RUNNING):
             job.status = STATUS_CANCELLED
             job.finished_at = time.time()
@@ -448,7 +710,10 @@ class JobManager:
 
     # ---- 执行体（跑在后台线程）----
 
-    def _run(self, job, node_titles):
+    def _run(self, job):
+        # 只有被 worker 从队列里取出来的任务才会走到这里，
+        # 所以「还在 _queue 里」= 排队中(queued)，「进了 _run」= 运行中(running)。
+        node_titles = job.node_titles or {}
         client_id = job.client_id or uuid.uuid4().hex
         close_stream = None
         try:
@@ -490,6 +755,9 @@ class JobManager:
 
             # 拿不到节点级进度就退回纯轮询，不影响任务本身
             close_stream = open_progress_stream(client_id, on_message)
+
+            # 提交前先确认显存够不够，不够就等一会儿（上一个任务的显存可能还没归还）
+            self._wait_for_free_vram(job)
 
             submitted = _request_json(
                 "/prompt", "POST", {"prompt": job.prompt, "client_id": client_id}, timeout=120
@@ -560,14 +828,18 @@ class JobManager:
             image_nodes = [image_nodes[-1]]
         if len(video_nodes) > 1:
             video_nodes = [video_nodes[-1]]
+        # 画布上下文：同步老路径会把产物归到画布专属目录，走队列后也得保持一致
+        meta = job.meta if isinstance(job.meta, dict) else {}
+        canvas_title = str(meta.get("canvas_title") or "").strip()
+        canvas_id = str(meta.get("canvas_id") or "").strip()
         for _node_id, node_output in image_nodes:
             for item in node_output.get("images") or []:
-                url = _save_asset(item, job.prompt_id, "image")
+                url = _save_asset(item, job.prompt_id, "image", canvas_title, canvas_id)
                 if url:
                     job.images.append(url)
         for _node_id, node_output in video_nodes:
             for item in (node_output.get("videos") or []) + (node_output.get("gifs") or []):
-                url = _save_asset(item, job.prompt_id, "video")
+                url = _save_asset(item, job.prompt_id, "video", canvas_title, canvas_id)
                 if url:
                     job.videos.append(url)
         if not job.images and not job.videos:
@@ -575,11 +847,16 @@ class JobManager:
             job.error = job.error or "工作流跑完了但没有产出图片或视频"
 
 
-def _save_asset(item, prompt_id, kind):
+def _save_asset(item, prompt_id, kind, canvas_title="", canvas_id=""):
+    """落盘一张产物。canvas 上下文用于把图归到对应画布目录（同步老路径也依赖它）。"""
     if not _ASSET_SAVER:
         return ""
     try:
-        return str(_ASSET_SAVER(comfy_base(), item, prompt_id, kind) or "")
+        try:
+            return str(_ASSET_SAVER(comfy_base(), item, prompt_id, kind, canvas_title, canvas_id) or "")
+        except TypeError:
+            # 兼容只接受 4 个参数的简易 saver
+            return str(_ASSET_SAVER(comfy_base(), item, prompt_id, kind) or "")
     except Exception:
         return ""
 

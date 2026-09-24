@@ -110,7 +110,7 @@ function renderRhNodesControl(ref){
     }).join('');
     const headTitle = String(ref?.entry?.title || ref?.id || '').slice(0, 24);
     return `<div class="smart-control comfy-nodes-control rh-nodes-control">
-        <button class="smart-pill" type="button" title="${deps.escapeHtml(pillText)}"><i data-lucide="toggle-left"></i><span class="sub">${deps.escapeHtml(pillText)}</span></button>
+        <button class="smart-pill" type="button" title="${deps.escapeHtml(pillText)}"><span class="sub">${deps.escapeHtml(pillText)}</span></button>
         <div class="smart-popover compact-popover comfy-nodes-popover rh-nodes-popover">
             <div class="smart-popover-title">${deps.escapeHtml(headTitle)}<span class="count">${nodes.length}</span></div>
             <div class="cfm-list">${rows}</div>
@@ -130,7 +130,7 @@ function renderRhParamsControl(fields){
     if(!paramFields.length) return '';
     const title = deps.tr('smart.workflowParams') || '工作流参数';
     return `<div class="smart-control rh-params-control">
-        <button class="smart-pill" type="button" title="${deps.escapeHtml(title)}"><i data-lucide="sliders-horizontal"></i><span class="sub">${deps.escapeHtml(title)} ${paramFields.length}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+        <button class="smart-pill" type="button" title="${deps.escapeHtml(title)}"><span class="sub">${deps.escapeHtml(title)} ${paramFields.length}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
         <div class="smart-popover compact-popover rh-picker-popover rh-param-popover rh-params-popover">
             <div class="smart-popover-title">${deps.escapeHtml(title)}</div>
             <div class="cfn-params-body">${paramFields.map(deps.renderRhSettingField).join('')}</div>

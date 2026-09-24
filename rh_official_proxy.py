@@ -375,7 +375,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.22.comfyconsole17"
+STATIC_VERSION = "2026.09.23.previzcomposition31"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -652,10 +652,8 @@ def provider_wallet_key_env_name(provider_id):
 def read_api_providers():
     return myridtv_provider.read_api_providers()
 
-
 def write_api_providers(providers):
     return myridtv_provider.write_api_providers(providers)
-
 
 def write_canvas_agent_rules(content):
     return myridtv_agent.write_canvas_agent_rules(content)
@@ -687,11 +685,17 @@ def read_canvas_agent_history(canvas_id=""):
 def write_canvas_agent_history(canvas_id="", history_list=None):
     return myridtv_agent.write_canvas_agent_history(canvas_id, history_list)
 
+def prune_canvas_agent_history_files(canvas_id):
+    return myridtv_agent.prune_canvas_agent_history_files(canvas_id)
+
 def read_canvas_agent_history_index():
     return myridtv_agent.read_canvas_agent_history_index()
 
 def sync_canvas_agent_history_index(canvas_id="", history_list=None, canvas_title=""):
     return myridtv_agent.sync_canvas_agent_history_index(canvas_id, history_list, canvas_title)
+
+_RH_TLS_CTX_CACHE = {}
+
 
 import myridtv_http
 import myridtv_env
@@ -803,6 +807,7 @@ def request_multipart_json(url, fields=None, files=None, headers=None, timeout=1
 
 def request_multipart_text(url, fields=None, files=None, headers=None, timeout=180):
     return myridtv_http.request_multipart_text(url, fields=fields, files=files, headers=headers, timeout=timeout)
+
 def is_retryable_chat_error(exc):
     text = str(exc)
     return any(token in text.lower() for token in (
@@ -1126,6 +1131,7 @@ TASK_CONSOLE_COSTLY_MODEL_PAT = myridtv_task_state.TASK_CONSOLE_COSTLY_MODEL_PAT
 def _task_console_kind(task_id, state):
     tid = str(task_id or "")
     backend = str(state.get("backend") or "")
+    submit = state.get("submit") if isinstance(state.get("submit"), dict) else {}
     if state.get("workflow_type") == "video_creation":
         return "智能体任务"
     if backend == "volcengine-ark":
@@ -1136,7 +1142,6 @@ def _task_console_kind(task_id, state):
         return "ComfyUI"
     if backend == "runninghub-workflow":
         return "RunningHub 工作流"
-    submit = state.get("submit") if isinstance(state.get("submit"), dict) else {}
     if state.get("rh_task_id") or backend == "runninghub-official":
         model = str(state.get("model") or "")
         if "/image-to-image" in model or state.get("mode") == "i2i":
@@ -1146,7 +1151,25 @@ def _task_console_kind(task_id, state):
         return "生图"
     if tid.startswith("volc"):
         return "视频"
+    # 有 submit payload 但没有明确后端：webappId=RH 会员 API 生图（Agent 建的节点也走这里）
+    if submit.get("webappId") or submit.get("prompt") is not None:
+        return "生图"
     return "其他"
+
+
+def _task_media_type(item):
+    """任务级媒体归类：所有任务强制二分 image / video，保证明细加和=总数。
+    判定源=kind 优先，工作流/未知类看产出条目；智能体任务(短片流水线)按视频计。"""
+    kind = str(item.get("kind") or "")
+    if kind == "视频":
+        return "video"
+    if kind in ("生图", "图生图"):
+        return "image"
+    if kind == "智能体任务":
+        return "video"
+    if (item.get("output_videos") or 0) > 0:
+        return "video"
+    return "image"
 
 
 def _task_console_platform(state):
@@ -1241,6 +1264,7 @@ def _comfy_console_items():
         if not isinstance(job, dict):
             continue
         meta = job.get("meta") if isinstance(job.get("meta"), dict) else {}
+        c_img_n, c_vid_n = _task_console_split_outputs(job.get("images") or [], job.get("videos") or [])
         out_count = len(job.get("images") or []) + len(job.get("videos") or [])
         created_ts = _task_console_ts(job.get("created_at"))
         finished_ts = _task_console_ts(job.get("finished_at"))
@@ -1270,6 +1294,8 @@ def _comfy_console_items():
             "duration": duration,
             "error": str(job.get("error") or "")[:2000],
             "outputs": out_count,
+            "output_images": c_img_n,
+            "output_videos": c_vid_n,
             "progress": job.get("progress"),
             "current_node": str(job.get("current_node_title") or job.get("current_node") or ""),
             "risks": [],
@@ -1280,6 +1306,25 @@ def _comfy_console_items():
             },
         })
     return items
+
+
+def _task_console_split_outputs(images, videos):
+    """按条目真实 kind 拆分产出计数（blender/RH 会把视频塞进 images 列表，条目 kind 才可信）。"""
+    img_n = vid_n = 0
+    for item in list(images or []) + list(videos or []):
+        kind = ""
+        if isinstance(item, dict):
+            kind = str(item.get("kind") or item.get("media_kind") or "").strip().lower()
+            if not kind:
+                url = str(item.get("url") or "")
+                kind = "video" if re.search(r"\.(mp4|mov|webm|avi|mkv)(\?|$)", url, re.I) else ""
+        elif isinstance(item, str):
+            kind = "video" if re.search(r"\.(mp4|mov|webm|avi|mkv)(\?|$)", item, re.I) else ""
+        if kind == "video":
+            vid_n += 1
+        else:
+            img_n += 1
+    return img_n, vid_n
 
 
 def task_console_snapshot():
@@ -1300,6 +1345,7 @@ def task_console_snapshot():
         result = st.get("result") if isinstance(st.get("result"), dict) else {}
         out_images = result.get("images") if isinstance(result.get("images"), list) else []
         out_videos = result.get("videos") if isinstance(result.get("videos"), list) else []
+        n_img, n_vid = _task_console_split_outputs(out_images, out_videos)
         created_ts = _task_console_ts(st.get("created_at"))
         completed_ts = _task_console_ts(st.get("completed_at"))
         checked_ts = _task_console_ts(st.get("checked_at"))
@@ -1329,6 +1375,8 @@ def task_console_snapshot():
             "duration": duration,
             "error": str(st.get("error") or st.get("last_error") or "")[:2000],
             "outputs": len(out_images) + len(out_videos),
+            "output_images": n_img,
+            "output_videos": n_vid,
             "risks": _task_console_risks(tid, st),
         })
     items.extend(_comfy_console_items())
@@ -1341,18 +1389,43 @@ def task_console_snapshot():
     model_calls = {}
     for it in today:
         key = it["platform"] + " / " + it["model"]
-        entry = model_calls.setdefault(key, {"calls": 0, "failed": 0, "outputs": 0})
+        entry = model_calls.setdefault(key, {"calls": 0, "failed": 0, "outputs": 0, "out_images": 0, "out_videos": 0})
         entry["calls"] += 1
         if it["status"] == "failed":
             entry["failed"] += 1
         entry["outputs"] += it["outputs"]
+        entry["out_images"] += it.get("output_images") or 0
+        entry["out_videos"] += it.get("output_videos") or 0
+    running_items = [it for it in items if it["status"] == "running"]
+
+    def _media_split(group):
+        out = {"image": 0, "video": 0}
+        for it in group:
+            out[_task_media_type(it)] += 1
+        return out
+
+    def _media_failure_rate(group):
+        out = {}
+        for media in ("image", "video"):
+            sub_total = [it for it in group if _task_media_type(it) == media]
+            sub_fail = [it for it in sub_total if it["status"] == "failed"]
+            out[media] = round(len(sub_fail) * 100.0 / len(sub_total), 1) if sub_total else 0.0
+        return out
+
     stats = {
         "today_total": len(today),
+        "today_total_media": _media_split(today),
         "today_success": len(today_ok),
+        "today_success_media": _media_split(today_ok),
         "today_failed": len(today_fail),
+        "today_failed_media": _media_split(today_fail),
         "today_failure_rate": round(len(today_fail) * 100.0 / len(today), 1) if today else 0.0,
+        "today_failure_rate_media": _media_failure_rate(today),
         "today_outputs": sum(it["outputs"] for it in today_ok),
-        "running": sum(1 for it in items if it["status"] == "running"),
+        "today_output_images": sum(it.get("output_images") or 0 for it in today_ok),
+        "today_output_videos": sum(it.get("output_videos") or 0 for it in today_ok),
+        "running": len(running_items),
+        "running_media": _media_split(running_items),
         "models": [
             {"key": k, **v, "failure_rate": round(v["failed"] * 100.0 / v["calls"], 1) if v["calls"] else 0.0}
             for k, v in sorted(model_calls.items(), key=lambda kv: -kv[1]["calls"])
@@ -8165,10 +8238,17 @@ def enhance_previz_prompt_with_llm(prompt, payload):
         "相机格式：相机[x,y,z]→[目标x,目标y,目标z] 焦距mm。"
         "相机目标必须是主角头部、动作关键点或关键道具；禁止指向场景原点、空墙或无关背景。"
         "主体有走位且镜头有跟拍时，相机目标必须锁定该主体，而不是静止配角。"
+        "【构图与镜头节奏】同一连续动作优先设计为一镜到底，用镜头节拍表达动作的起承转合；只有明确的视点或场景变化才切镜。"
+        "构图服务动作与情绪：人物朝向或移动方向预留引导空间，给头顶与画面边缘留安全余量；主体可落在三分线附近，不要所有镜头都机械居中。"
+        "用户给出“构图起落幅”时，必须原样保留该字段及起幅/落幅方括号内容；不得把两端合并成单一构图描述。"
+        "起幅负责交代空间、主体初始落点和初始景别；落幅负责说明结尾停留景别、主体画面位置、视线留白或头顶空间。"
+        "多人镜头明确主次与视线关系；连续镜头保持动作方向一致，除非剧情明确要求越轴。运镜平滑且有动机，避免同一镜头堆叠互相冲突的运动。"
         "【运镜与时间规则】保留用户指定的中文运镜名称，不得改写或删减。"
         "内容列末尾必须写镜头节拍：镜头节拍：动作[开始秒-结束秒]；动作[开始秒-结束秒]。"
-        "动作只能使用：跟拍、横移、横移加速、横移减速、下压、上升、慢推、变焦、冲击变焦、固定。"
+        "动作只能使用：跟拍、横移、横移加速、横移减速、下压、上升、慢推、环绕、变焦、冲击变焦、固定。"
         "第一段从 0 秒开始，最后一段必须在镜头结束秒结束。"
+        "用户输入了百分比节拍模板时，按该镜头时长换算为秒数并保留动作顺序和重叠区间，不可省略。"
+        "输出包含构图起落幅时，写成：构图起落幅：起幅[环境建立全景，主体左三分，右侧留白]；落幅[近景，主体右三分，视线左侧留白，头顶留白]。"
         "人物有终点且存在跟拍时，人物从跟拍开始移动，在跟拍结束时到达终点。"
         "【速度与避碰硬规则】坐标单位按米规划。人物写“奔跑/冲出/全力跑”时，走位距离应约为每秒 3 至 5 米；"
         "若镜头先跟拍跑者、后段发生车辆事件，跑者须在车辆动作开始前抵达终点。"
@@ -8688,7 +8768,47 @@ class Handler(BaseHTTPRequestHandler):
         try:
             target = resolve_user_asset_path(url_path)
             content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
-            self._send_bytes(200, Path(target).read_bytes(), content_type)
+            raw = Path(target).read_bytes()
+            range_header = self.headers.get("Range", "")
+            if range_header.startswith("bytes=") and "," not in range_header:
+                start_text, sep, end_text = range_header[6:].strip().partition("-")
+                if sep:
+                    try:
+                        if start_text:
+                            start = int(start_text)
+                            end = int(end_text) if end_text else len(raw) - 1
+                        else:
+                            suffix = int(end_text)
+                            start, end = max(0, len(raw) - suffix), len(raw) - 1
+                        if start < 0 or start >= len(raw) or end < start:
+                            self.send_response(416)
+                            self.send_header("Content-Range", f"bytes */{len(raw)}")
+                            self.send_header("Accept-Ranges", "bytes")
+                            self.send_header("Content-Length", "0")
+                            self.end_headers()
+                            return True
+                        end = min(end, len(raw) - 1)
+                        chunk = raw[start:end + 1]
+                        self.send_response(206)
+                        self.send_header("Content-Type", content_type)
+                        self.send_header("Content-Range", f"bytes {start}-{end}/{len(raw)}")
+                        self.send_header("Accept-Ranges", "bytes")
+                        self.send_header("Access-Control-Allow-Origin", "*")
+                        self.send_header("Content-Length", str(len(chunk)))
+                        self.end_headers()
+                        if self.command != "HEAD":
+                            self.wfile.write(chunk)
+                        return True
+                    except ValueError:
+                        pass
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(raw)
         except ApiError as exc:
             self._send(exc.status, {"detail": exc.detail, **exc.payload})
         except Exception as exc:

@@ -676,6 +676,11 @@ def purge_canvas_record(canvas_id):
     if not path.exists():
         raise ApiError(404, f"目标画布不存在: {canvas_id}")
     path.unlink()
+    # 联动清理：画布彻底删除后，它的 Agent 对话历史文件与索引条目一并删除
+    try:
+        _r_prune_canvas_history(canvas_id)
+    except Exception as exc:
+        append_log(_log_file(), f"purge canvas history hook failed: {exc}")
     return {"ok": True, "id": canvas_id}
 
 
@@ -698,6 +703,11 @@ def purge_all_trash_records():
                 purged_ids.append(path.stem)
             except Exception as exc:
                 append_log(_log_file(), f"purge_all_trash failed for {path.name}: {exc}")
+    for purged_id in purged_ids:
+        try:
+            _r_prune_canvas_history(purged_id)
+        except Exception as exc:
+            append_log(_log_file(), f"purge_all canvas history hook failed id={purged_id}: {exc}")
     return {"ok": True, "purged": len(purged_ids), "ids": purged_ids}
 
 

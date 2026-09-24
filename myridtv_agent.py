@@ -489,6 +489,56 @@ def rebuild_canvas_agent_history_index():
     return write_canvas_agent_history_index(entries)
 
 
+_CANVAS_LIFECYCLE_CACHE = {}  # canvas_id -> (mtime, exists, deleted)
+
+
+def canvas_lifecycle_state(canvas_id):
+    """画布文件存活状态（exists / 是否回收站 deleted）。带 mtime 缓存，供历史索引过滤孤儿会话。"""
+    safe_id = str(canvas_id or "").strip()
+    if not safe_id or safe_id == "default":
+        # 空 canvas_id / default = 默认画布与全局桥接会话，永远保留
+        return (True, False)
+    path = _USER_DATA_DIR / "data" / "canvases" / f"{safe_id}.json"
+    try:
+        stat_mtime = path.stat().st_mtime if path.exists() else -1
+    except Exception:
+        stat_mtime = -1
+    cached = _CANVAS_LIFECYCLE_CACHE.get(safe_id)
+    if cached and cached[0] == stat_mtime:
+        return (cached[1], cached[2])
+    exists = stat_mtime >= 0
+    deleted = False
+    if exists:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            deleted = bool(data.get("deleted_at"))
+        except Exception:
+            deleted = False
+    _CANVAS_LIFECYCLE_CACHE[safe_id] = (stat_mtime, exists, deleted)
+    return (exists, deleted)
+
+
+def prune_canvas_agent_history_files(canvas_id):
+    """画布被彻底删除(purge)时联动清掉它的 Agent 对话历史文件与索引条目。"""
+    safe_id = str(canvas_id or "").strip()
+    if not safe_id:
+        return False
+    removed = False
+    path = canvas_agent_history_path(safe_id)
+    try:
+        if path.exists():
+            path.unlink()
+            removed = True
+    except Exception as exc:
+        append_log(_log_file(), f"prune canvas agent history failed canvas={safe_id}: {exc}")
+    try:
+        sync_canvas_agent_history_index(safe_id, [])
+    except Exception as exc:
+        append_log(_log_file(), f"sync history index after prune failed canvas={safe_id}: {exc}")
+    _CANVAS_LIFECYCLE_CACHE.pop(safe_id, None)
+    return removed
+
+
 def read_canvas_agent_history_index():
     try:
         raw = json.loads(_CFG_HISTORY_INDEX_FILE.read_text(encoding="utf-8"))
@@ -499,8 +549,14 @@ def read_canvas_agent_history_index():
     result = []
     for entry in raw:
         safe_entry = normalize_canvas_agent_history_index_entry(entry)
-        if safe_entry:
-            result.append(safe_entry)
+        if not safe_entry:
+            continue
+        # 孤儿过滤：画布已进回收站或被 purge 时，它的历史不再出现在「其他画布最近对话」；
+        # 回收站恢复后自动重新可见（历史文件只在 purge 时才被删）。
+        exists, deleted = canvas_lifecycle_state(safe_entry.get("canvas_id") or "")
+        if not exists or deleted:
+            continue
+        result.append(safe_entry)
     result.sort(key=lambda item: int(item.get("updatedAt") or 0), reverse=True)
     return result[:400]
 

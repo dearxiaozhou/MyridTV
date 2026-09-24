@@ -13,7 +13,7 @@
     })();
   </script>
   <script src="/static/js/theme.js?v=2026.06.21"></script>
-  <script src="/static/js/i18n.js?v=2026.09.20.uifix12"></script>
+  <script src="/static/js/i18n.js?v=2026.09.23.previzcomposition31"></script>
   <style>
     :root {
       --line: rgba(255, 255, 255, 0.1);
@@ -312,38 +312,39 @@ transition: transform 0.22s ease, opacity 0.22s ease;
     }
 
     /* ===== 任务控制台（task-console） ===== */
-    .tc-overlay { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,0.45); display: none; }
+    .tc-overlay { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,0.55); display: none; }
     .tc-overlay.open { display: block; }
     .tc-panel {
-      position: fixed; right: 0; top: 0; bottom: 48px; z-index: 41;
-      width: min(560px, 92vw);
+      position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 41;
+      width: min(1180px, 94vw); height: 86vh;
       display: none; flex-direction: column;
       background: var(--dock-bg);
-      border-left: 1px solid var(--line);
-      box-shadow: -18px 0 40px rgba(0,0,0,0.35);
+      border: 1px solid var(--line); border-radius: 14px;
+      box-shadow: 0 28px 80px rgba(0,0,0,0.6);
       color: var(--text);
       backdrop-filter: blur(14px);
+      overflow: hidden;
     }
     .tc-panel.open { display: flex; }
     .tc-head {
       display: flex; align-items: center; justify-content: space-between; gap: 8px;
-      padding: 12px 14px; border-bottom: 1px solid var(--line);
+      padding: 16px 22px; border-bottom: 1px solid var(--line);
     }
-    .tc-head-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 900; }
+    .tc-head-title { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 900; }
     .tc-badge {
-      width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
-      border-radius: 6px; background: var(--dock-icon-bg); color: var(--dock-icon-fg);
-      font-size: 10px; font-weight: 950;
+      width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 8px; background: var(--dock-icon-bg); color: var(--dock-icon-fg);
+      font-size: 12px; font-weight: 950;
     }
-    .tc-live-dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; margin-left: 4px; }
+    .tc-live-dot { width: 9px; height: 9px; border-radius: 50%; background: #4ade80; margin-left: 4px; }
     .tc-time-col { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
-    .tc-time-col .tc-time { font-size: 10px; color: var(--muted); }
-    .tc-time-col .tc-locate { height: 18px; padding: 0 8px; font-size: 10px; border-radius: 5px; }
+    .tc-time-col .tc-time { font-size: 12px; color: var(--muted); }
+    .tc-time-col .tc-locate { height: 22px; padding: 0 10px; font-size: 11px; border-radius: 6px; }
     .tc-time-col .tc-locate:hover { color: #4ade80; border-color: #4ade80; }
     .tc-live-dot.err { background: #f87171; }
     .tc-head-actions { display: flex; gap: 6px; }
     .tc-btn {
-      height: 26px; padding: 0 10px; border-radius: 7px; font-size: 11px; font-weight: 800;
+      height: 30px; padding: 0 12px; border-radius: 8px; font-size: 12px; font-weight: 800;
       background: var(--dock-pill-bg); color: var(--text); border: 1px solid var(--line);
       cursor: pointer; transition: background .15s ease;
     }
@@ -353,36 +354,45 @@ transition: transform 0.22s ease, opacity 0.22s ease;
     html.theme-light .tc-btn-danger { color: #b91c1c; }
     .tc-btn-ghost { background: transparent; }
     .tc-stats {
-      display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
-      padding: 10px 14px; border-bottom: 1px solid var(--line);
+      display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px;
+      padding: 14px 22px; border-bottom: 1px solid var(--line);
     }
     .tc-stat {
-      border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px;
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; min-width: 0;
       background: rgba(255,255,255,0.02);
     }
     html.theme-light .tc-stat { background: rgba(255,255,255,0.5); }
-    .tc-stat-num { font-size: 15px; font-weight: 950; line-height: 1.2; }
-    .tc-stat-label { font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .tc-stat-main { min-width: 0; }
+    .tc-stat-num { font-size: 22px; font-weight: 950; line-height: 1.2; }
+    .tc-stat-label { font-size: 12px; color: var(--muted); margin-top: 2px; white-space: nowrap; }
+    /* 右侧明细：图片一行、视频一行，上下堆叠 */
+    .tc-stat-parts { display: flex; flex-direction: column; gap: 2px; align-items: flex-end; flex-shrink: 0; }
+    .tc-part { display: inline-flex; align-items: baseline; gap: 5px; white-space: nowrap; }
+    .tc-part-num { font-size: 13px; font-weight: 800; line-height: 1.25; }
+    .tc-part-label { font-size: 11px; color: var(--muted); }
+    .tc-sub-img { color: #60a5fa; }
+    .tc-sub-vid { color: #c084fc; }
     .tc-stat.warn .tc-stat-num { color: #fbbf24; }
     .tc-stat.bad .tc-stat-num { color: #f87171; }
     .tc-stat.ok .tc-stat-num { color: #4ade80; }
-    .tc-filter { display: flex; gap: 5px; padding: 8px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+    .tc-filter { display: flex; gap: 7px; padding: 11px 22px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
     .tc-chip {
-      height: 22px; padding: 0 9px; border-radius: 999px; font-size: 10px; font-weight: 800;
+      height: 26px; padding: 0 12px; border-radius: 999px; font-size: 12px; font-weight: 800;
       background: transparent; color: var(--muted); border: 1px solid var(--line); cursor: pointer;
     }
     .tc-chip.active { background: var(--dock-active-bg); color: var(--text); }
-    .tc-list { flex: 1; overflow-y: auto; padding: 8px 14px; }
+    .tc-list { flex: 1; overflow-y: auto; padding: 12px 22px; }
     .tc-item {
-      border: 1px solid var(--line); border-radius: 9px; padding: 9px 10px; margin-bottom: 7px;
+      border: 1px solid var(--line); border-radius: 11px; padding: 12px 14px; margin-bottom: 10px;
       background: rgba(255,255,255,0.02); cursor: pointer;
     }
     html.theme-light .tc-item { background: rgba(255,255,255,0.55); }
     .tc-item.selected { border-color: var(--dock-accent); box-shadow: inset 2px 0 0 var(--dock-accent); }
-    .tc-item-top { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
-    .tc-kind { font-size: 11px; font-weight: 900; }
+    .tc-item-top { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+    .tc-kind { font-size: 14px; font-weight: 900; }
     .tc-status {
-      font-size: 9px; font-weight: 900; padding: 2px 7px; border-radius: 999px; letter-spacing: 0.4px;
+      font-size: 11px; font-weight: 900; padding: 3px 9px; border-radius: 999px; letter-spacing: 0.4px;
     }
     .tc-status.st-running { background: rgba(59,130,246,0.18); color: #93c5fd; }
     .tc-status.st-queued { background: rgba(234,179,8,0.16); color: #fcd34d; }
@@ -395,29 +405,29 @@ transition: transform 0.22s ease, opacity 0.22s ease;
     html.theme-light .tc-status.st-succeeded { color: #15803d; }
     html.theme-light .tc-status.st-cancelled { color: #8a8a8a; }
     .tc-risk {
-      font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 5px;
+      font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 6px;
       background: rgba(251,191,36,0.14); color: #fbbf24; border: 1px solid rgba(251,191,36,0.35);
     }
     html.theme-light .tc-risk { color: #92400e; }
-    .tc-meta { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 5px; font-size: 10px; color: var(--muted); }
+    .tc-meta { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; font-size: 13px; color: var(--muted); }
     .tc-meta b { color: var(--text); font-weight: 800; }
-    .tc-detail { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 3px; font-size: 10px; color: var(--muted); opacity: 0.85; }
+    .tc-detail { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 5px; font-size: 13px; color: var(--muted); opacity: 0.85; }
     .tc-detail b { color: var(--text); font-weight: 600; }
-    .tc-params { margin-top: 5px; font-size: 10px; color: var(--muted); }
+    .tc-params { margin-top: 8px; font-size: 13px; color: var(--muted); }
     .tc-params summary { cursor: pointer; color: var(--dock-accent, #50708c); font-weight: 700; user-select: none; }
-    .tc-params[open] { background: rgba(255,255,255,0.03); border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; max-height: 180px; overflow-y: auto; }
+    .tc-params[open] { background: rgba(255,255,255,0.03); border: 1px solid var(--line); border-radius: 9px; padding: 8px 12px; max-height: 40vh; overflow-y: auto; }
     html.theme-light .tc-params[open] { background: rgba(0,0,0,0.03); }
-    .tc-param-line { padding: 1px 0; word-break: break-all; border-bottom: 1px dashed var(--line); }
+    .tc-param-line { padding: 3px 0; word-break: break-all; border-bottom: 1px dashed var(--line); }
     .tc-param-line:last-child { border-bottom: none; }
     .tc-stat.run .tc-stat-num { color: #4ade80; }
     html.theme-light .tc-stat.run .tc-stat-num { color: #16a34a; }
-    .tc-err { margin-top: 5px; font-size: 10px; color: #fca5a5; white-space: pre-wrap; word-break: break-all; }
+    .tc-err { margin-top: 8px; font-size: 13px; color: #fca5a5; white-space: pre-wrap; word-break: break-all; }
     html.theme-light .tc-err { color: #b91c1c; }
     .tc-stop-one { margin-top: 6px; }
-    .tc-empty { text-align: center; color: var(--muted); font-size: 11px; padding: 26px 0; }
+    .tc-empty { text-align: center; color: var(--muted); font-size: 13px; padding: 36px 0; }
     .tc-foot {
-      display: flex; justify-content: space-between; padding: 7px 14px;
-      border-top: 1px solid var(--line); font-size: 10px; color: var(--muted);
+      display: flex; justify-content: space-between; padding: 10px 22px;
+      border-top: 1px solid var(--line); font-size: 12px; color: var(--muted);
     }
 
   </style>
@@ -425,16 +435,16 @@ transition: transform 0.22s ease, opacity 0.22s ease;
 <body>
   <main class="app-shell">
     <section class="stage" aria-label="内容区域">
-  <iframe id="frame-canvas" data-page="canvas" data-src="/static/canvas.html?v=2026.09.20.uifix12" scrolling="yes"></iframe>
+  <iframe id="frame-canvas" data-page="canvas" data-src="/static/canvas.html?v=2026.09.23.previzcomposition31" scrolling="yes"></iframe>
       <iframe id="frame-zimage" data-page="zimage" data-src="/static/zimage.html?v=2026.06.21" scrolling="yes"></iframe>
       <iframe id="frame-enhance" data-page="enhance" data-src="/static/enhance.html?v=2026.06.21" scrolling="yes"></iframe>
       <iframe id="frame-klein" data-page="klein" data-src="/static/klein.html?v=2026.06.21" scrolling="yes"></iframe>
       <iframe id="frame-angle" data-page="angle" data-src="/static/angle.html?v=2026.06.21" scrolling="yes"></iframe>
-      <iframe id="frame-online" data-page="online" data-src="/static/online.html?v=2026.09.20.uifix12" scrolling="yes"></iframe>
-      <iframe id="frame-asset-manager" data-page="asset-manager" data-src="/static/asset-manager.html?v=2026.09.20.uifix12" scrolling="yes"></iframe>
-      <iframe id="frame-api-settings" data-page="api-settings" data-src="/static/api-settings.html?v=2026.09.20.uifix12" scrolling="yes"></iframe>
-    <iframe id="frame-comfyui-settings" data-page="comfyui-settings" data-src="/static/comfyui-settings.html?v=2026.09.20.uifix12" scrolling="yes"></iframe>
-<iframe id="frame-smart-canvas" data-page="smart-canvas" data-src="/static/smart-canvas.html?v=2026.09.20.uifix12" scrolling="no"></iframe>
+      <iframe id="frame-online" data-page="online" data-src="/static/online.html?v=2026.09.23.previzcomposition31" scrolling="yes"></iframe>
+      <iframe id="frame-asset-manager" data-page="asset-manager" data-src="/static/asset-manager.html?v=2026.09.23.previzcomposition31" scrolling="yes"></iframe>
+      <iframe id="frame-api-settings" data-page="api-settings" data-src="/static/api-settings.html?v=2026.09.23.previzcomposition31" scrolling="yes"></iframe>
+    <iframe id="frame-comfyui-settings" data-page="comfyui-settings" data-src="/static/comfyui-settings.html?v=2026.09.23.previzcomposition31" scrolling="yes"></iframe>
+<iframe id="frame-smart-canvas" data-page="smart-canvas" data-src="/static/smart-canvas.html?v=2026.09.23.previzcomposition31" scrolling="no"></iframe>
     </section>
 
     <button class="dock-toggle left" type="button" onclick="toggleBottomDock()" title="向下收起/显示底部菜单">
@@ -448,7 +458,7 @@ transition: transform 0.22s ease, opacity 0.22s ease;
       <button class="dock-logo" type="button" onclick="goHomeCanvas()" title="返回主页面"><img src="/static/images/myrid-icon-dock.png?v=20260629" alt="MyridTV"></button>
       <button class="dock-pill" type="button" onclick="toggleTheme()" id="dock-theme-btn" title="深色模式"><span class="dock-icon">TH</span><span class="dock-pill-label">深色模式</span></button>
       <button class="dock-pill" type="button" onclick="toggleTaskConsole()" id="dock-console-btn" title="任务控制台"><span class="dock-icon">TC</span><span class="dock-pill-label">控制台</span></button>
-        <button class="dock-pill dock-version" type="button" disabled title="版本"><span class="dock-icon">V</span><span class="dock-pill-label app-version">版本：V0.3.27</span></button>
+        <button class="dock-pill dock-version" type="button" disabled title="版本"><span class="dock-icon">V</span><span class="dock-pill-label app-version">版本：V0.4.1</span></button>
     </nav>
 
     <button class="dock-toggle right" type="button" onclick="toggleBottomDock()" title="向下收起/显示底部菜单">
@@ -809,6 +819,7 @@ var tcOpen = false;
 var tcData = null;
 var tcFilter = 'all';
 var tcSelected = {};
+var tcLastFp = null;
 var tcTimer = null;
 
 function toggleTaskConsole() {
@@ -931,13 +942,27 @@ function tcRender() {
     var tasks = tcData.tasks || [];
     var stats = tcData.stats || {};
     if (statsEl) {
+        // 排版：左边总数，右侧上下两行=图片/视频明细；数据缺失时只显总数不显明细行
+        var mediaPair = function (m) {
+            if (!m) return '';
+            return '<div class="tc-stat-parts"><span class="tc-part"><span class="tc-part-num tc-sub-img">' + (m.image || 0) + '</span><span class="tc-part-label">图片</span></span>' +
+                   '<span class="tc-part"><span class="tc-part-num tc-sub-vid">' + (m.video || 0) + '</span><span class="tc-part-label">视频</span></span></div>';
+        };
+        var ratePair = function (m) {
+            if (!m) return '';
+            return '<div class="tc-stat-parts"><span class="tc-part"><span class="tc-part-num tc-sub-img">' + (m.image || 0) + '%</span><span class="tc-part-label">图片</span></span>' +
+                   '<span class="tc-part"><span class="tc-part-num tc-sub-vid">' + (m.video || 0) + '%</span><span class="tc-part-label">视频</span></span></div>';
+        };
+        var statCard = function (cls, num, label, partsHtml) {
+            return '<div class="tc-stat ' + (cls || '') + '"><div class="tc-stat-main"><div class="tc-stat-num">' + num + '</div><div class="tc-stat-label">' + label + '</div></div>' + (partsHtml || '') + '</div>';
+        };
         statsEl.innerHTML =
-            '<div class="tc-stat run"><div class="tc-stat-num">' + (stats.running || 0) + '</div><div class="tc-stat-label">运行中</div></div>' +
-            '<div class="tc-stat"><div class="tc-stat-num">' + (stats.today_total || 0) + '</div><div class="tc-stat-label">今日任务</div></div>' +
-            '<div class="tc-stat ok"><div class="tc-stat-num">' + (stats.today_success || 0) + '</div><div class="tc-stat-label">成功</div></div>' +
-            '<div class="tc-stat bad"><div class="tc-stat-num">' + (stats.today_failed || 0) + '</div><div class="tc-stat-label">失败</div></div>' +
-            '<div class="tc-stat ' + ((stats.today_failure_rate || 0) > 30 ? 'bad' : 'warn') + '"><div class="tc-stat-num">' + (stats.today_failure_rate || 0) + '%</div><div class="tc-stat-label">失败率</div></div>' +
-            '<div class="tc-stat"><div class="tc-stat-num">' + (stats.today_outputs || 0) + '</div><div class="tc-stat-label">今日产出</div></div>';
+            statCard('run', stats.running || 0, '运行中', mediaPair(stats.running_media)) +
+            statCard('', stats.today_total || 0, '今日任务', mediaPair(stats.today_total_media)) +
+            statCard('ok', stats.today_success || 0, '成功', mediaPair(stats.today_success_media)) +
+            statCard('bad', stats.today_failed || 0, '失败', mediaPair(stats.today_failed_media)) +
+            statCard((stats.today_failure_rate || 0) > 30 ? 'bad' : 'warn', (stats.today_failure_rate || 0) + '%', '失败率', ratePair(stats.today_failure_rate_media)) +
+            statCard('', stats.today_outputs || 0, '今日产出', mediaPair({ image: stats.today_output_images || 0, video: stats.today_output_videos || 0 }));
     }
     if (updated) updated.textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN');
     var filtered = tasks.filter(function (t) {
@@ -945,6 +970,16 @@ function tcRender() {
         if (tcFilter === 'queued') return t.status === 'queued' || t.status === 'pending';
         return t.status === tcFilter;
     });
+    // 数据指纹未变 → 只更新时间戳，不重建列表（保住展开的参数区、滚动位置与选中文本）
+    var fp = JSON.stringify(filtered) + '|' + JSON.stringify(tcSelected);
+    if (fp === tcLastFp) return;
+    tcLastFp = fp;
+    // 重建前记住哪些「提交参数」区处于展开态
+    var openSet = {};
+    list.querySelectorAll('details.tc-params[data-tid]').forEach(function (el) {
+        if (el.open) openSet[el.getAttribute('data-tid')] = 1;
+    });
+    var keepScroll = list.scrollTop;
     if (!filtered.length) {
         list.innerHTML = '<div class="tc-empty">暂无任务</div>';
     } else {
@@ -978,7 +1013,8 @@ function tcRender() {
                 var esc = function (x) { return String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
                 var items = t.params.flat.map(function (line) { return '<div class="tc-param-line">' + esc(line) + '</div>'; }).join('');
                 var bypass = t.params.modes ? Object.keys(t.params.modes).length : 0;
-                paramsHtml = '<details class="tc-params" onclick="event.stopPropagation()"><summary>提交参数（' + t.params.flat.length + ' 项' + (bypass ? ' · 旁路 ' + bypass + ' 节点' : '') + '）</summary>' + items + '</details>';
+                var tid = String(t.task_id).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+                paramsHtml = '<details class="tc-params" data-tid="' + tid + '"' + (openSet[t.task_id] ? ' open' : '') + ' onclick="event.stopPropagation()"><summary>提交参数（' + t.params.flat.length + ' 项' + (bypass ? ' · 旁路 ' + bypass + ' 节点' : '') + '）</summary>' + items + '</details>';
             }
             var canStop = t.status === 'running' || t.status === 'queued';
             return '<div class="tc-item' + (sel ? ' selected' : '') + '" onclick="tcToggleSel(\'' + t.task_id + '\')">' +
@@ -995,6 +1031,7 @@ function tcRender() {
                 '</div>';
         }).join('');
     }
+    list.scrollTop = keepScroll;
     var stopBtn = document.getElementById('tc-stop-selected');
     if (stopBtn) stopBtn.disabled = !Object.keys(tcSelected).length;
 }

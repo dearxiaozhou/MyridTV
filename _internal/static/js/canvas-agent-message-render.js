@@ -179,7 +179,8 @@ function canvasAgentQuickActionsForMessage(message){
         actions.push({id:'locate', label:'定位节点', icon:'locate-fixed'});
         const pending = message.nodeIds.some(id => {
             const node = (deps.getNodes() || []).find(n => n.id === id);
-            return node && node.type === 'smart-image' && !(node.images || []).some(img => img?.url);
+            // 判据=没有「生成结果图」；Agent 建的节点带输入参考图也算待生成
+            return node && node.type === 'smart-image' && !(node.images || []).some(img => img?.generatedResult);
         });
         if(pending) actions.push({id:'run', label:'执行节点', icon:'play'});
     }
@@ -284,8 +285,8 @@ const bsRunHtml = (bsIsLocked && bsChosenId) ? `<div class="canvas-agent-bs-done
 const hasExecutablePlan = message.actionPlan && Array.isArray(message.actionPlan.steps) && message.actionPlan.steps.length;
 const hasExecutableNodes = Array.isArray(message.nodeIds) && message.nodeIds.some(id => {
     const node = (deps.getNodes() || []).find(n => n.id === id);
-    return node && node.type === 'smart-image' && !(node.images || []).some(img => img?.url);
-}) || (deps.getNodes() || []).some(n => String(n.id || '').startsWith('agent_') && n.type === 'smart-image' && !(n.images || []).some(img => img?.url));
+    return node && node.type === 'smart-image' && !(node.images || []).some(img => img?.generatedResult);
+}) || (deps.getNodes() || []).some(n => String(n.id || '').startsWith('agent_') && n.type === 'smart-image' && !(n.images || []).some(img => img?.generatedResult));
 const showRunBtn = !message.brainstormCard && (hasExecutablePlan || hasExecutableNodes);
 const showLocateBtn = !message.brainstormCard && (Array.isArray(message.nodeIds) && message.nodeIds.length || (deps.getNodes() || []).some(n => String(n.id || '').startsWith('agent_')));
 const traceItems = Array.isArray(message.toolTrace?.items) ? message.toolTrace.items : [];

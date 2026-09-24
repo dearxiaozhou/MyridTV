@@ -19,6 +19,8 @@
         "comfy.hideNodeList": { zh: "收起节点列表", en: "Collapse node list" },
         "comfy.runTest": { zh: "运行测试", en: "Run Test" },
         "comfy.runningTest": { zh: "运行中...", en: "Running..." },
+        "comfy.queuedAt": { zh: "排队中 · 第 N 位", en: "Queued · #N" },
+        "comfy.runningPercent": { zh: "运行中... N%", en: "Running... N%" },
         "comfy.addPrompt": { zh: "提示词", en: "Prompt" },
         "comfy.addImage": { zh: "图片", en: "Image" },
         "comfy.addVideo": { zh: "视频", en: "Video" },

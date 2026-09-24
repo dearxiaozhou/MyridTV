@@ -1535,11 +1535,15 @@ async function onRun(){
         const res = await fetch(`/api/workflows/${encodeURIComponent(selectedName)}/run`, {
             method:'POST',
             headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({ fields:runFields, config:currentConfig, client_id:'workflow-test' })
+            // async: 后端只入队就返回 job_id，HTTP 不再挂到工作流跑完（以前会卡到 3600 秒）
+            body:JSON.stringify({ fields:runFields, config:currentConfig, client_id:'workflow-test', async:true })
         });
         if(!res.ok) throw new Error((await res.json()).detail || tr('comfy.runFailed'));
-        const data = await res.json();
-        runResult = data.images?.[0] || null;
+        const accepted = await res.json();
+        const job = accepted?.async === false ? accepted : await waitForComfyTestJob(accepted?.job_id);
+        if(job?.status === 'cancelled') throw new Error(tr('comfy.runFailed'));
+        if(job?.status === 'error') throw new Error(job.error || tr('comfy.runFailed'));
+        runResult = job?.images?.[0] || null;
         renderPreview();
         renderWorkspaceView();
         setStatus(tr('comfy.runSuccess'));
@@ -1549,6 +1553,28 @@ async function onRun(){
     } finally {
         if(btn){ btn.disabled = false; btn.querySelector('span').textContent = tr('comfy.runTest'); }
     }
+}
+
+// 轮询等待入队后的任务。任务在后端统一队列里排着，这里只问状态，
+// 不再像以前那样让「运行测试」这一个 HTTP 请求挂到工作流跑完。
+async function waitForComfyTestJob(jobId){
+    if(!jobId) throw new Error(tr('comfy.runFailed'));
+    const deadline = Date.now() + 3600 * 1000;
+    let lastLabel = '';
+    while(Date.now() < deadline){
+        const res = await fetch(`/api/comfyui/jobs/${encodeURIComponent(jobId)}`, { cache:'no-store' }).catch(() => null);
+        if(res && res.status === 404) throw new Error(tr('comfy.runFailed'));  // 任务记录已丢（后端重启过）
+        if(!res || !res.ok) throw new Error(tr('comfy.runFailed'));
+        const job = await res.json();
+        if(job.status === 'done' || job.status === 'error' || job.status === 'cancelled') return job;
+        const pos = Number(job.queue_position || 0);
+        const label = pos > 0
+            ? tr('comfy.queuedAt').replace('N', String(pos))
+            : (Number(job.progress || 0) > 0 ? tr('comfy.runningPercent').replace('N', String(job.progress)) : tr('comfy.runningTest'));
+        if(label !== lastLabel){ setStatus(label); lastLabel = label; }
+        await new Promise(r => setTimeout(r, 1000));
+    }
+    throw new Error(tr('comfy.runFailed'));
 }
 
 function fieldsFromMiniCanvas(){
