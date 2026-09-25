@@ -239,3 +239,57 @@ def handle_localize_generated_media(payload):
             "localize_error": str(exc),
             "fallback": True,
         }
+
+def refresh_canvas_task_state(task_id):
+    state = myridtv_task_state.get_task_state(task_id)
+    if not state:
+        return {"status": "failed", "error": "任务不存在"}
+    if state.get("backend") == "volcengine-ark" and state.get("status") == "running" and (state.get("provider_task_id") or state.get("volcengine_task_id")):
+        provider_task_id = state.get("provider_task_id") or state.get("volcengine_task_id")
+        try:
+            queried = myridtv_volcengine.query_volcengine_video_task(state.get("provider_id") or "volcengine", provider_task_id, localize=True, canvas_title=str(state.get("canvas_title") or ""), canvas_id=str(state.get("canvas_id") or ""))
+            if queried.get("status") == "succeeded":
+                state = myridtv_task_state.update_task_state(task_id, status="succeeded", result=queried.get("result") or {}, completed_at=time.time(), raw_status=queried.get("raw_status") or "")
+            elif queried.get("status") == "failed":
+                state = myridtv_task_state.update_task_state(task_id, status="failed", error=queried.get("error") or "火山视频任务失败", completed_at=time.time(), raw=queried.get("raw"), raw_status=queried.get("raw_status") or "")
+            else:
+                state = myridtv_task_state.update_task_state(task_id, status="running", checked_at=time.time(), raw_status=queried.get("raw_status") or "running")
+        except Exception as exc:
+            state = myridtv_task_state.update_task_state(task_id, status="running", checked_at=time.time(), last_error=str(exc))
+    if state.get("backend") == "runninghub-official" and state.get("status") == "running" and state.get("rh_task_id"):
+        try:
+            queried = myridtv_runninghub.runninghub_query_task(state["rh_task_id"])
+            status = str(queried.get("status") or "").upper()
+            if status == "SUCCESS":
+                urls = queried.get("urls") or []
+                if urls:
+                    with myridtv_media_localize._canvas_task_localize_lock(task_id):
+                        if myridtv_media_localize._canvas_task_already_localized(task_id):
+                            state = myridtv_task_state.get_task_state(task_id) or state
+                        else:
+                            raw_result = {
+                                "images": urls,
+                                "task_id": state["rh_task_id"],
+                                "backend": "runninghub-official-proxy",
+                                "raw": queried.get("raw") or queried,
+                            }
+                            # Localize before publishing success so the frontend never sees remote URLs.
+                            localized_result = localize_canvas_task_result(raw_result, {
+                                "canvas_title": str(state.get("canvas_title") or "").strip(),
+                                "canvas_id": str(state.get("canvas_id") or "").strip(),
+                                "node_title": str(state.get("node_title") or "").strip(),
+                            })
+                            state = myridtv_task_state.update_task_state(task_id, status="succeeded", result=localized_result, completed_at=time.time(), raw_status=status, localized_at=time.time())
+                else:
+                    state = myridtv_task_state.update_task_state(task_id, status="running", checked_at=time.time(), last_error="RunningHub 已完成但结果尚未返回", raw_status=status)
+            elif status == "FAILED":
+                state = myridtv_task_state.update_task_state(task_id, status="failed", error=queried.get("failReason") or "RunningHub 任务失败", completed_at=time.time(), raw=queried.get("raw"), raw_status=status)
+            else:
+                progress = queried.get("progress")
+                if progress is not None:
+                    state = myridtv_task_state.update_task_state(task_id, status="running", checked_at=time.time(), raw_status=status or "RUNNING", progress=progress)
+                else:
+                    state = myridtv_task_state.update_task_state(task_id, status="running", checked_at=time.time(), raw_status=status or "RUNNING")
+        except Exception as exc:
+            state = myridtv_task_state.update_task_state(task_id, status="running", checked_at=time.time(), last_error=str(exc))
+    return state
