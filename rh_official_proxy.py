@@ -1836,6 +1836,78 @@ class Handler(BaseHTTPRequestHandler):
         limit = (query.get("limit") or ["6"])[0]
         self._send(200, recent_comfy_outputs({"limit": limit}))
         return
+    def _getc_00(self, request_path, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_GET 谓词链 #0：原分支条件逐字（workflow_route == "collection"）"""
+        if workflow_route == "collection":
+            self._send(200, {"ok": True, "workflows": list_workflow_records()})
+            return True
+        return False
+
+    def _getc_01(self, request_path, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_GET 谓词链 #1：原分支条件逐字（workflow_route == "item"）"""
+        if workflow_route == "item":
+            self._send(200, {"ok": True, **read_workflow_record(workflow_name)})
+            return True
+        return False
+
+    def _getc_02(self, request_path, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_GET 谓词链 #2：原分支条件逐字（canvas_route == "collection"）"""
+        if canvas_route == "collection":
+            self._send(200, {"ok": True, "canvases": list_canvas_records(include_deleted=False)})
+            return True
+        return False
+
+    def _getc_03(self, request_path, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_GET 谓词链 #3：原分支条件逐字（canvas_route == "trash"）"""
+        if canvas_route == "trash":
+            self._send(200, {"ok": True, "canvases": list_canvas_records(include_deleted=True)})
+            return True
+        return False
+
+    def _getc_04(self, request_path, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_GET 谓词链 #4：原分支条件逐字（canvas_route == "item"）"""
+        if canvas_route == "item":
+            self._send(200, {"ok": True, "canvas": read_canvas_record(canvas_id, include_deleted=True)})
+            return True
+        return False
+
+    def _getc_05(self, request_path, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_GET 谓词链 #5：原分支条件逐字（canvas_route == "meta"）"""
+        if canvas_route == "meta":
+            canvas = read_canvas_record(canvas_id, include_deleted=True)
+            self._send(200, {"ok": True, **canvas_summary(canvas)})
+            return True
+        return False
+
+    def _getc_06(self, request_path, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_GET 谓词链 #6：原分支条件逐字（canvas_route == "export"）"""
+        if canvas_route == "export":
+            self._send(200, export_canvas_payload(canvas_id))
+            return True
+        return False
+
+    def _getc_07(self, request_path, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_GET 谓词链 #7：原分支条件逐字（request_path.startswith(prefix)）"""
+        prefix = "/api/canvas-image-tasks/"
+        if request_path.startswith(prefix):
+            task_id = request_path[len(prefix):]
+            self._send(200, refresh_canvas_task_state(task_id))
+            return True
+        return False
+
+
+    _GET_CONDS = [
+        "_getc_00",
+        "_getc_01",
+        "_getc_02",
+        "_getc_03",
+        "_getc_04",
+        "_getc_05",
+        "_getc_06",
+        "_getc_07",
+    ]
+
+
     def do_GET(self):
         try:
             request_path = self.path.split("?", 1)[0]
@@ -1902,34 +1974,10 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(404, {"ok": False, "error": "任务不存在或已过期", "status": "gone"})
                     return
                 self._send(200, {"ok": True, **job.to_dict()})
-                return
-            if workflow_route == "collection":
-                self._send(200, {"ok": True, "workflows": list_workflow_records()})
-                return
-            if workflow_route == "item":
-                self._send(200, {"ok": True, **read_workflow_record(workflow_name)})
-                return
-            if canvas_route == "collection":
-                self._send(200, {"ok": True, "canvases": list_canvas_records(include_deleted=False)})
-                return
-            if canvas_route == "trash":
-                self._send(200, {"ok": True, "canvases": list_canvas_records(include_deleted=True)})
-                return
-            if canvas_route == "item":
-                self._send(200, {"ok": True, "canvas": read_canvas_record(canvas_id, include_deleted=True)})
-                return
-            if canvas_route == "meta":
-                canvas = read_canvas_record(canvas_id, include_deleted=True)
-                self._send(200, {"ok": True, **canvas_summary(canvas)})
-                return
-            if canvas_route == "export":
-                self._send(200, export_canvas_payload(canvas_id))
-                return
-            prefix = "/api/canvas-image-tasks/"
-            if request_path.startswith(prefix):
-                task_id = request_path[len(prefix):]
-                self._send(200, refresh_canvas_task_state(task_id))
-                return
+            for _cm in Handler._GET_CONDS:
+                if getattr(self, _cm)(request_path, canvas_route, canvas_id,
+                                      workflow_route, workflow_name):
+                    return
             if request_path.startswith("/api/"):
                 if self._forward_upstream("GET", self.path):
                     return
