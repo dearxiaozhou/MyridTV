@@ -26,6 +26,8 @@ from pathlib import Path
 
 from websockets.sync.client import connect as ws_connect
 
+import myridtv_env
+
 import comfy_flow_service
 import agent_task_runtime as agent_runtime
 import task_store
@@ -159,82 +161,24 @@ DEFAULT_CONFIG = {
 
 
 def normalize_agent_section(section):
-    """归一化 agent 配置：旧单对象 -> 多 Agent map；补齐缺失 Agent 与字段。
-
-    旧结构 {"model": "...", "upstream_base_url": "...", "has_key": true, ...}
-    自动折叠进 agents.codex（保留 has_key/key_preview/key_env 等扩展字段）；
-    active_id 缺失时默认 "codex"。返回 {"active_id", "agents"}。
-    """
-    section = dict(section or {})
-    legacy = {
-        key: value
-        for key, value in section.items()
-        if key not in ("agents", "active_id") and value is not None and value != ""
-    }
-    agents_raw = section.get("agents")
-    agents = {}
-    if isinstance(agents_raw, dict):
-        for aid, entry in agents_raw.items():
-            if not isinstance(entry, dict):
-                continue
-            base = dict(DEFAULT_AGENTS.get(aid, {}))
-            for key, value in entry.items():
-                if value is not None and value != "":
-                    base[key] = value
-            if not base.get("name"):
-                base["name"] = DEFAULT_AGENTS.get(aid, {}).get("name") or aid
-            agents[aid] = base
-    if legacy:
-        base = dict(DEFAULT_AGENTS["codex"])
-        base.update(legacy)
-        base["name"] = "Myrid-Agent"
-        agents["codex"] = base
-    for aid, defaults in DEFAULT_AGENTS.items():
-        if aid not in agents:
-            agents[aid] = dict(defaults)
-    active_id = str(section.get("active_id") or "codex")
-    if active_id not in agents:
-        active_id = "codex" if "codex" in agents else next(iter(agents))
-    # 顶层镜像活动 Agent 的关键字段，兼容仍读取扁平 agent.provider_id 的旧前端（如画布）。
-    active_entry = agents.get(active_id) or {}
-    return {
-        "active_id": active_id,
-        "agents": agents,
-        "provider_id": str(active_entry.get("provider_id") or ""),
-        "model": str(active_entry.get("model") or ""),
-        "preferred_model_pattern": str(active_entry.get("preferred_model_pattern") or ""),
-        "upstream_base_url": str(active_entry.get("upstream_base_url") or ""),
-    }
+    return myridtv_env.normalize_agent_section(section)
 
 
 def active_agent_entry(config=None):
-    """返回当前激活 Agent 的配置条目（无则取第一个）。"""
-    config = config if isinstance(config, dict) else APP_CONFIG
-    section = config.get("agent") or {}
-    agents = section.get("agents") if isinstance(section.get("agents"), dict) else {}
-    if not agents:
-        agents = dict(DEFAULT_AGENTS)
-    active_id = str(section.get("active_id") or "codex")
-    entry = agents.get(active_id)
-    if entry is None:
-        entry = next(iter(agents.values()), dict(DEFAULT_AGENTS["codex"]))
-    return entry
+    return myridtv_env.active_agent_entry(config)
 
 
 def resolve_agent_entry(agent_id=None, config=None):
-    """按 agent_id 解析 Agent 配置条目；未指定或不存在时回退到激活 Agent。
+    return myridtv_env.resolve_agent_entry(agent_id, config)
 
-    返回 (agent_id, entry)。
-    """
-    config = config if isinstance(config, dict) else APP_CONFIG
-    section = config.get("agent") or {}
-    agents = section.get("agents") if isinstance(section.get("agents"), dict) else {}
-    if not agents:
-        agents = dict(DEFAULT_AGENTS)
-    requested = str(agent_id or "").strip() or str(section.get("active_id") or "codex")
-    if requested not in agents:
-        requested = "codex" if "codex" in agents else next(iter(agents))
-    return requested, agents[requested]
+myridtv_env.configure(lambda: ENV_FILE, lambda: RUNNINGHUB_CONFIG, lambda: AGENT_CONFIG,
+                       lambda: APP_CONFIG,
+                       lambda: volcengine_ark_api_key(),
+                       lambda agent_id=None, config=None: resolve_agent_entry(agent_id, config),
+                       lambda: DEFAULT_AGENTS)
+
+
+
 
 
 def load_app_config():
@@ -309,7 +253,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.23.previzcomposition62"
+STATIC_VERSION = "2026.09.23.previzcomposition73"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -381,7 +325,6 @@ RUNNINGHUB_DEFAULT_IMAGE_MODELS = [
 ]
 STATIC_PATCHES = {
     ROOT / "static" / "index.html": [
-        "/static/online.html",
         "/static/canvas.html",
         "/static/smart-canvas.html",
         "/static/js/i18n.js",
@@ -507,7 +450,6 @@ _RH_TLS_CTX_CACHE = {}
 
 
 import myridtv_http
-import myridtv_env
 import myridtv_provider
 import myridtv_agent
 import myridtv_canvas_store
@@ -543,10 +485,6 @@ import myridtv_volcengine
 
 myridtv_http.configure(lambda: runninghub_api_base())
 
-myridtv_env.configure(lambda: ENV_FILE, lambda: RUNNINGHUB_CONFIG, lambda: AGENT_CONFIG,
-                       lambda: APP_CONFIG,
-                       lambda: volcengine_ark_api_key(),
-                       lambda agent_id: resolve_agent_entry(agent_id))
 
 myridtv_provider.configure(
     ROOT, USER_DATA_DIR,

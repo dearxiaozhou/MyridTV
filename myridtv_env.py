@@ -15,12 +15,15 @@ _agent_config_getter = lambda: {}
 _app_config_getter = lambda: {}
 _ark_key_getter = lambda: ""
 _resolve_agent_entry = lambda agent_id: (None, {})
+_default_agents_getter = lambda: {}
 
 
 def configure(env_file_getter, rh_config_getter, agent_config_getter,
-              app_config_getter=None, ark_key_getter=None, resolve_agent_entry=None):
+              app_config_getter=None, ark_key_getter=None, resolve_agent_entry=None,
+              default_agents_getter=None):
     global _env_file, _rh_config_getter, _agent_config_getter
     global _app_config_getter, _ark_key_getter, _resolve_agent_entry
+    global _default_agents_getter
     _env_file = env_file_getter
     _rh_config_getter = rh_config_getter
     _agent_config_getter = agent_config_getter
@@ -30,6 +33,8 @@ def configure(env_file_getter, rh_config_getter, agent_config_getter,
         _ark_key_getter = ark_key_getter
     if resolve_agent_entry is not None:
         _resolve_agent_entry = resolve_agent_entry
+    if default_agents_getter is not None:
+        _default_agents_getter = default_agents_getter
 
 
 def read_env_values():
@@ -295,6 +300,87 @@ def agents_meta_payload():
     }
 
 
+
+
+def normalize_agent_section(section):
+    """归一化 agent 配置：旧单对象 -> 多 Agent map；补齐缺失 Agent 与字段。
+
+    旧结构 {"model": "...", "upstream_base_url": "...", "has_key": true, ...}
+    自动折叠进 agents.codex（保留 has_key/key_preview/key_env 等扩展字段）；
+    active_id 缺失时默认 "codex"。返回 {"active_id", "agents"}。
+    """
+    section = dict(section or {})
+    legacy = {
+        key: value
+        for key, value in section.items()
+        if key not in ("agents", "active_id") and value is not None and value != ""
+    }
+    agents_raw = section.get("agents")
+    agents = {}
+    if isinstance(agents_raw, dict):
+        for aid, entry in agents_raw.items():
+            if not isinstance(entry, dict):
+                continue
+            base = dict(_default_agents_getter().get(aid, {}))
+            for key, value in entry.items():
+                if value is not None and value != "":
+                    base[key] = value
+            if not base.get("name"):
+                base["name"] = _default_agents_getter().get(aid, {}).get("name") or aid
+            agents[aid] = base
+    if legacy:
+        base = dict(_default_agents_getter()["codex"])
+        base.update(legacy)
+        base["name"] = "Myrid-Agent"
+        agents["codex"] = base
+    for aid, defaults in _default_agents_getter().items():
+        if aid not in agents:
+            agents[aid] = dict(defaults)
+    active_id = str(section.get("active_id") or "codex")
+    if active_id not in agents:
+        active_id = "codex" if "codex" in agents else next(iter(agents))
+    # 顶层镜像活动 Agent 的关键字段，兼容仍读取扁平 agent.provider_id 的旧前端（如画布）。
+    active_entry = agents.get(active_id) or {}
+    return {
+        "active_id": active_id,
+        "agents": agents,
+        "provider_id": str(active_entry.get("provider_id") or ""),
+        "model": str(active_entry.get("model") or ""),
+        "preferred_model_pattern": str(active_entry.get("preferred_model_pattern") or ""),
+        "upstream_base_url": str(active_entry.get("upstream_base_url") or ""),
+    }
+
+
+def active_agent_entry(config=None):
+    """返回当前激活 Agent 的配置条目（无则取第一个）。"""
+    config = config if isinstance(config, dict) else _app_config_getter()
+    section = config.get("agent") or {}
+    agents = section.get("agents") if isinstance(section.get("agents"), dict) else {}
+    if not agents:
+        agents = dict(_default_agents_getter())
+    active_id = str(section.get("active_id") or "codex")
+    entry = agents.get(active_id)
+    if entry is None:
+        entry = next(iter(agents.values()), dict(_default_agents_getter()["codex"]))
+    return entry
+
+
+def resolve_agent_entry(agent_id=None, config=None):
+    """按 agent_id 解析 Agent 配置条目；未指定或不存在时回退到激活 Agent。
+
+    返回 (agent_id, entry)。
+    """
+    config = config if isinstance(config, dict) else _app_config_getter()
+    section = config.get("agent") or {}
+    agents = section.get("agents") if isinstance(section.get("agents"), dict) else {}
+    if not agents:
+        agents = dict(_default_agents_getter())
+    requested = str(agent_id or "").strip() or str(section.get("active_id") or "codex")
+    if requested not in agents:
+        requested = "codex" if "codex" in agents else next(iter(agents))
+    return requested, agents[requested]
+
+
 __all__ = [
     "read_env_values",
     "write_env_values",
@@ -306,4 +392,7 @@ __all__ = [
     "read_chat_key",
     "agent_key_meta",
     "agents_meta_payload",
+    "normalize_agent_section",
+    "active_agent_entry",
+    "resolve_agent_entry",
 ]
