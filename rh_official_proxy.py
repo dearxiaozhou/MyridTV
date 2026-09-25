@@ -592,6 +592,7 @@ import myridtv_rh_taskflow
 import myridtv_workflow_assets
 import myridtv_window_fix
 import myridtv_agent_receipt
+import myridtv_rh_api
 import myridtv_agent_tools
 import myridtv_agent_state
 import myridtv_agent_guard
@@ -1644,83 +1645,19 @@ def localize_generated_media_items(items, kind="image", canvas_title="", canvas_
     return myridtv_media_localize.localize_generated_media_items(items, kind, canvas_title, canvas_id, node_title)
 
 def runninghub_api_base():
-    """RH 平台地址跟随用户在 API 设置里的配置（2026-09-10 解锁）；缺省回退官方域名。"""
-    base = "https://www.runninghub.ai"
-    try:
-        for item in read_api_providers():
-            if not isinstance(item, dict):
-                continue
-            if str(item.get("id") or "").strip() != "runninghub":
-                continue
-            raw = str(item.get("base_url") or "").strip()
-            if not raw:
-                break
-            if "://" not in raw:
-                raw = "https://" + raw
-            base = raw.rstrip("/")
-            # 用户常把完整接口地址（…/openapi/v2）填进设置里；提交链会再拼一次
-            # /openapi/v2/<model>，出现双路径 → RH 返回 1001 Invalid URL。归一化到站点根。
-            if base.endswith("/openapi/v2"):
-                base = base[: -len("/openapi/v2")]
-            break
-    except Exception:
-        pass
-    return base
+    return myridtv_rh_api.runninghub_api_base()
 
 
 def runninghub_api_url(path):
-    return runninghub_api_base() + path
+    return myridtv_rh_api.runninghub_api_url(path)
 
 
 def runninghub_upload_binary_media(source_url):
-    raw, file_name, content_type = local_media_source_bytes(source_url)
-    data = request_multipart_json(
-        runninghub_api_url("/openapi/v2/media/upload/binary"),
-        files=[{"name": "file", "filename": file_name, "content_type": content_type, "data": raw}],
-        headers=runninghub_task_auth_headers(),
-        timeout=180,
-    )
-    info = data.get("data") if isinstance(data.get("data"), dict) else data
-    public_url = (
-        info.get("downloadUrl")
-        or info.get("download_url")
-        or info.get("url")
-        or info.get("viewUrl")
-        or ""
-    )
-    resolved_name = info.get("fileName") or info.get("filename") or file_name
-    if not public_url and resolved_name:
-        public_url = f"{runninghub_api_base()}/view?filename={urllib.parse.quote(resolved_name)}&type=input&subfolder="
-    if not public_url:
-        raise RuntimeError(f"RunningHub 二进制上传失败：{data}")
-    return {"fileName": resolved_name, "downloadUrl": public_url, "raw": data}
+    return myridtv_rh_api.runninghub_upload_binary_media(source_url)
 
 
 def runninghub_upload_task_asset(source_url):
-    raw, file_name, content_type = local_media_source_bytes(source_url)
-    data = request_multipart_json(
-        runninghub_api_url("/task/openapi/upload"),
-        # RH 旧版 /task/openapi/upload 的鉴权要求 apiKey 作为 multipart 表单字段一起提交
-        # （官方 curl 示例里 apiKey 是 --form）。只带 Authorization: Bearer 会被拒：
-        # {"code":-1,"msg":"apiKey is required"}。2026-09-16 修。
-        fields={"fileType": "input", "apiKey": runninghub_task_key()},
-        files=[{"name": "file", "filename": file_name, "content_type": content_type, "data": raw}],
-        headers=runninghub_task_auth_headers(),
-        timeout=180,
-    )
-    info = data.get("data") if isinstance(data.get("data"), dict) else data
-    resolved_name = info.get("fileName") or info.get("filename") or info.get("name") or ""
-    if not resolved_name:
-        raise RuntimeError(f"RunningHub 素材上传失败：{data}")
-    public_url = (
-        info.get("downloadUrl")
-        or info.get("fileUrl")
-        or info.get("url")
-        or ""
-    )
-    if not public_url:
-        public_url = f"{runninghub_api_base()}/view?filename={urllib.parse.quote(resolved_name)}&type=input&subfolder="
-    return {"fileName": resolved_name, "downloadUrl": public_url, "url": public_url, "raw": data}
+    return myridtv_rh_api.runninghub_upload_task_asset(source_url)
 
 
 def volcengine_ark_api_key():
