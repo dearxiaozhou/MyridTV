@@ -51,6 +51,13 @@ _G_CODEX_APP_SERVER_PORT_FILE = None
 _r_resolve_codex_executable = None
 CODEX_APP_SERVER_BRIDGE = None
 
+# 35刀：codex 会话缓存单例（LOCK/CACHE 归模块，主文件同对象别名；
+# CACHE_FILE 依赖注入值 USER_DATA_DIR → configure 内构造，cut9 处方）。
+CODEX_LOCAL_SESSION_LOCK = threading.Lock()
+CODEX_LOCAL_SESSION_CACHE = {}
+_CODEX_SESSION_CACHE_FILE = None
+
+
 def configure(assets_dir, image_cache_dir, log_file_getter,
               canvas_node_image_by_id, sanitize_messages,
               codex_globals, resolve_codex_executable):
@@ -82,6 +89,11 @@ def configure(assets_dir, image_cache_dir, log_file_getter,
     _G_CODEX_LOCAL_REPLY_DIR = codex_globals['CODEX_LOCAL_REPLY_DIR']
     _G_CODEX_LOCAL_WORKSPACE = codex_globals['CODEX_LOCAL_WORKSPACE']
     _G_CODEX_LOCAL_PERSIST_SESSIONS = codex_globals['CODEX_LOCAL_PERSIST_SESSIONS']
+
+
+    global _CODEX_SESSION_CACHE_FILE
+    _CODEX_SESSION_CACHE_FILE = codex_globals['USER_DATA_DIR'] / "data" / "codex_bridge_sessions.json"
+    CODEX_LOCAL_SESSION_CACHE.update(_codex_bridge_read_session_cache())
 
 
 def _codex_bridge_file_suffix(mime_type, fallback=".png"):
@@ -936,3 +948,53 @@ class CodexAppServerBridge:
 
 CODEX_APP_SERVER_BRIDGE = CodexAppServerBridge()
 _G_CODEX_APP_SERVER_BRIDGE = CODEX_APP_SERVER_BRIDGE
+
+def _codex_bridge_read_session_cache():
+    data = _core_read_json_file(_CODEX_SESSION_CACHE_FILE, {})
+    return data if isinstance(data, dict) else {}
+
+
+def _codex_bridge_write_session_cache():
+    with CODEX_LOCAL_SESSION_LOCK:
+        _core_write_json_file(_CODEX_SESSION_CACHE_FILE, CODEX_LOCAL_SESSION_CACHE)
+
+
+def _codex_bridge_session_key(payload, model):
+    canvas_id = str((payload or {}).get("canvas_id") or "").strip() or "default"
+    agent_id = str((payload or {}).get("agent_id") or "").strip() or "codex"
+    runtime_model = str(model or _G_CODEX_LOCAL_DEFAULT_MODEL).strip() or _G_CODEX_LOCAL_DEFAULT_MODEL
+    # Reuse one Codex thread per canvas/agent/model. Including each UI chat
+    # session here created many identical visible Codex sidebar entries.
+    return "{}::{}::{}".format(canvas_id, agent_id, runtime_model)
+
+
+def _codex_bridge_session_record(payload, model):
+    key = _codex_bridge_session_key(payload, model)
+    with CODEX_LOCAL_SESSION_LOCK:
+        record = CODEX_LOCAL_SESSION_CACHE.get(key)
+    return key, record if isinstance(record, dict) else None
+
+
+def _codex_bridge_store_session_record(key, thread_id, model):
+    if not key or not thread_id:
+        return
+    now = int(time.time())
+    with CODEX_LOCAL_SESSION_LOCK:
+        CODEX_LOCAL_SESSION_CACHE[key] = {
+            "thread_id": str(thread_id).strip(),
+            "model": str(model or "").strip(),
+            "updated_at": now,
+        }
+    _codex_bridge_write_session_cache()
+
+
+def _codex_bridge_clear_session_record(key):
+    if not key:
+        return
+    changed = False
+    with CODEX_LOCAL_SESSION_LOCK:
+        if key in CODEX_LOCAL_SESSION_CACHE:
+            del CODEX_LOCAL_SESSION_CACHE[key]
+            changed = True
+    if changed:
+        _codex_bridge_write_session_cache()

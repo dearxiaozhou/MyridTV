@@ -309,7 +309,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.23.previzcomposition57"
+STATIC_VERSION = "2026.09.23.previzcomposition60"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -319,7 +319,6 @@ CODEX_LOCAL_DEFAULT_MODEL = "codex-default"
 CODEX_LOCAL_DEFAULT_RUNTIME_MODEL = "gpt-5.5"
 CODEX_LOCAL_WORKSPACE = Path(os.environ.get("MYRIDTV_CODEX_WORKSPACE") or APP_DIR)
 CODEX_LOCAL_ATTACHMENTS_DIR = USER_DATA_DIR / "data" / "codex_bridge"
-CODEX_LOCAL_SESSION_CACHE_FILE = USER_DATA_DIR / "data" / "codex_bridge_sessions.json"
 CODEX_LOCAL_IMAGE_CACHE_DIR = CODEX_LOCAL_ATTACHMENTS_DIR / "images"
 CODEX_LOCAL_REPLY_DIR = CODEX_LOCAL_ATTACHMENTS_DIR / "replies"
 CODEX_LOCAL_SESSION_LOCK = threading.Lock()
@@ -751,57 +750,32 @@ def request_chat_json_with_retry(url, body, headers, attempts=3, timeout=120):
 
 
 def _codex_bridge_read_session_cache():
-    data = read_json_file(CODEX_LOCAL_SESSION_CACHE_FILE, {})
-    return data if isinstance(data, dict) else {}
+    return myridtv_codex._codex_bridge_read_session_cache()
 
 
 def _codex_bridge_write_session_cache():
-    with CODEX_LOCAL_SESSION_LOCK:
-        write_json_file(CODEX_LOCAL_SESSION_CACHE_FILE, CODEX_LOCAL_SESSION_CACHE)
+    return myridtv_codex._codex_bridge_write_session_cache()
 
 
 def _codex_bridge_session_key(payload, model):
-    canvas_id = str((payload or {}).get("canvas_id") or "").strip() or "default"
-    agent_id = str((payload or {}).get("agent_id") or "").strip() or "codex"
-    runtime_model = str(model or CODEX_LOCAL_DEFAULT_MODEL).strip() or CODEX_LOCAL_DEFAULT_MODEL
-    # Reuse one Codex thread per canvas/agent/model. Including each UI chat
-    # session here created many identical visible Codex sidebar entries.
-    return "{}::{}::{}".format(canvas_id, agent_id, runtime_model)
+    return myridtv_codex._codex_bridge_session_key(payload, model)
 
 
 def _codex_bridge_session_record(payload, model):
-    key = _codex_bridge_session_key(payload, model)
-    with CODEX_LOCAL_SESSION_LOCK:
-        record = CODEX_LOCAL_SESSION_CACHE.get(key)
-    return key, record if isinstance(record, dict) else None
+    return myridtv_codex._codex_bridge_session_record(payload, model)
 
 
 def _codex_bridge_store_session_record(key, thread_id, model):
-    if not key or not thread_id:
-        return
-    now = int(time.time())
-    with CODEX_LOCAL_SESSION_LOCK:
-        CODEX_LOCAL_SESSION_CACHE[key] = {
-            "thread_id": str(thread_id).strip(),
-            "model": str(model or "").strip(),
-            "updated_at": now,
-        }
-    _codex_bridge_write_session_cache()
+    return myridtv_codex._codex_bridge_store_session_record(key, thread_id, model)
 
 
 def _codex_bridge_clear_session_record(key):
-    if not key:
-        return
-    changed = False
-    with CODEX_LOCAL_SESSION_LOCK:
-        if key in CODEX_LOCAL_SESSION_CACHE:
-            del CODEX_LOCAL_SESSION_CACHE[key]
-            changed = True
-    if changed:
-        _codex_bridge_write_session_cache()
+    return myridtv_codex._codex_bridge_clear_session_record(key)
 
 
-CODEX_LOCAL_SESSION_CACHE.update(_codex_bridge_read_session_cache())
+# 35刀：会话缓存单例归 myridtv_codex，主留同对象别名（零重绑实证）。
+CODEX_LOCAL_SESSION_LOCK = myridtv_codex.CODEX_LOCAL_SESSION_LOCK
+CODEX_LOCAL_SESSION_CACHE = myridtv_codex.CODEX_LOCAL_SESSION_CACHE
 
 
 
