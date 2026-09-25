@@ -168,14 +168,9 @@ def write_static_app_config(raw):
     return myridtv_env.write_static_app_config(raw)
 
 
-def write_app_config(config):
+def apply_app_config(merged):
+    """boot 与 write_app_config 共用：把 merged 应用回主模块 globals（派生绑定单点）。"""
     global APP_CONFIG, SERVER_CONFIG, PROXY_CONFIG, AGENT_CONFIG, RUNNINGHUB_CONFIG, PATHS_CONFIG, ENV_FILE, APP_BASE, PORT, LOG_FILE
-    merged = deep_merge(DEFAULT_CONFIG, config if isinstance(config, dict) else {})
-    merged["agent"] = normalize_agent_section(merged.get("agent"))
-    CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    raw = json.dumps(merged, ensure_ascii=False, indent=2)
-    CONFIG_FILE.write_text(raw + "\n", encoding="utf-8")
-    write_static_app_config(raw)
     APP_CONFIG = merged
     SERVER_CONFIG = APP_CONFIG.get("server") or {}
     PROXY_CONFIG = APP_CONFIG.get("proxy") or {}
@@ -186,20 +181,21 @@ def write_app_config(config):
     LOG_FILE = root_path(PATHS_CONFIG.get("proxy_log"), "data/logs/rh_official_proxy.log")
     APP_BASE = str(SERVER_CONFIG.get("base_url") or f"http://{SERVER_CONFIG.get('host', '127.0.0.1')}:{SERVER_CONFIG.get('port', 3000)}").rstrip("/")
     PORT = int(PROXY_CONFIG.get("port") or 3107)
+
+
+def write_app_config(config):
+    merged = deep_merge(DEFAULT_CONFIG, config if isinstance(config, dict) else {})
+    merged["agent"] = normalize_agent_section(merged.get("agent"))
+    CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    raw = json.dumps(merged, ensure_ascii=False, indent=2)
+    CONFIG_FILE.write_text(raw + "\n", encoding="utf-8")
+    write_static_app_config(raw)
+    apply_app_config(merged)
     append_log(LOG_FILE, f"app-config saved agent_active={APP_CONFIG['agent'].get('active_id')} agents={','.join(APP_CONFIG['agent'].get('agents', {}).keys())}")
     return merged
 
 
-APP_CONFIG = load_app_config()
-SERVER_CONFIG = APP_CONFIG.get("server") or {}
-PROXY_CONFIG = APP_CONFIG.get("proxy") or {}
-AGENT_CONFIG = active_agent_entry(APP_CONFIG)
-RUNNINGHUB_CONFIG = APP_CONFIG.get("runninghub") or {}
-PATHS_CONFIG = APP_CONFIG.get("paths") or {}
-ENV_FILE = root_path(PATHS_CONFIG.get("env_file"), "API/.env")
-LOG_FILE = root_path(PATHS_CONFIG.get("proxy_log"), "data/logs/rh_official_proxy.log")
-APP_BASE = str(SERVER_CONFIG.get("base_url") or f"http://{SERVER_CONFIG.get('host', '127.0.0.1')}:{SERVER_CONFIG.get('port', 3000)}").rstrip("/")
-PORT = int(PROXY_CONFIG.get("port") or 3107)
+apply_app_config(load_app_config())
 # 启动时把生效配置镜像到 _internal/static/app_config.json（前端读这份定 API 基址，
 # 端口冲突换端口后必须同步，否则前端会打到 3107 上的另一个实例）——见 write_static_app_config
 write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
