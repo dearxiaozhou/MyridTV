@@ -12,13 +12,24 @@ import re
 _env_file = None
 _rh_config_getter = lambda: {}
 _agent_config_getter = lambda: {}
+_app_config_getter = lambda: {}
+_ark_key_getter = lambda: ""
+_resolve_agent_entry = lambda agent_id: (None, {})
 
 
-def configure(env_file_getter, rh_config_getter, agent_config_getter):
+def configure(env_file_getter, rh_config_getter, agent_config_getter,
+              app_config_getter=None, ark_key_getter=None, resolve_agent_entry=None):
     global _env_file, _rh_config_getter, _agent_config_getter
+    global _app_config_getter, _ark_key_getter, _resolve_agent_entry
     _env_file = env_file_getter
     _rh_config_getter = rh_config_getter
     _agent_config_getter = agent_config_getter
+    if app_config_getter is not None:
+        _app_config_getter = app_config_getter
+    if ark_key_getter is not None:
+        _ark_key_getter = ark_key_getter
+    if resolve_agent_entry is not None:
+        _resolve_agent_entry = resolve_agent_entry
 
 
 def read_env_values():
@@ -202,6 +213,88 @@ def provider_wallet_key_env_name(provider_id):
 
 
 
+
+
+def read_chat_key(provider_id="", agent_entry=None):
+    entry = agent_entry if isinstance(agent_entry, dict) else _agent_config_getter()
+    env_names = {
+        "custom-api": "API_PROVIDER_CUSTOM_API_KEY",
+        "custom-api-3": "API_PROVIDER_CUSTOM_API_3_KEY",
+        "volcengine": "VOLCENGINE_ARK_API_KEY",
+    }
+    configured_provider = str(entry.get("provider_id") or "").strip()
+    configured_key_env = str(entry.get("api_key_env") or "MYRIDTV_AGENT_API_KEY").strip()
+    if configured_provider and configured_key_env:
+        env_names[configured_provider] = configured_key_env
+    values = read_env_values()
+    key_name = env_names.get(str(provider_id or "").strip())
+    if key_name and values.get(key_name):
+        return values[key_name]
+    # Agent 复用自定义平台配置：平台 Key 按 API_PROVIDER_<ID>_KEY 保存。
+    if str(provider_id or "").strip():
+        provider_env = provider_key_env_name(provider_id)
+        if provider_env and values.get(provider_env):
+            return values[provider_env]
+    if str(provider_id or "").strip() == "volcengine":
+        try:
+            ark_key = _ark_key_getter()
+            if ark_key:
+                return ark_key
+        except Exception:
+            pass
+    fallback_names = [
+        entry.get("api_key_env"),
+        entry.get("fallback_api_key_env"),
+        "MYRIDTV_AGENT_API_KEY",
+        "WCSTV_AGENT_API_KEY",
+        "API_PROVIDER_CUSTOM_API_KEY",
+    ]
+    for name in fallback_names:
+        if name and values.get(str(name)):
+            return values[str(name)]
+    return ""
+
+
+def agent_key_meta(agent_id=None):
+    values = read_env_values()
+    if agent_id is not None:
+        _, entry = _resolve_agent_entry(agent_id)
+    else:
+        entry = _agent_config_getter()
+    primary_name = str(entry.get("api_key_env") or "MYRIDTV_AGENT_API_KEY").strip() or "MYRIDTV_AGENT_API_KEY"
+    fallback_name = str(entry.get("fallback_api_key_env") or "API_PROVIDER_CUSTOM_API_KEY").strip() or "API_PROVIDER_CUSTOM_API_KEY"
+    primary_value = values.get(primary_name, "")
+    fallback_value = values.get(fallback_name, "")
+    active_name = primary_name if primary_value else (fallback_name if fallback_value else primary_name)
+    active_value = primary_value or fallback_value or ""
+    preview = ""
+    if active_value:
+        tail = active_value[-4:] if len(active_value) >= 4 else active_value
+        preview = f"••••••••{tail}"
+    return {
+        "key_env": active_name,
+        "has_key": bool(active_value),
+        "key_preview": preview,
+        "primary_key_env": primary_name,
+        "fallback_key_env": fallback_name,
+    }
+
+
+def agents_meta_payload():
+    """完整多 Agent 配置 + 每 Agent Key 元信息，供设置页/画布读取。"""
+    section = _app_config_getter().get("agent") or {}
+    agents = section.get("agents") if isinstance(section.get("agents"), dict) else {}
+    result = {}
+    for aid, entry in agents.items():
+        merged = dict(entry) if isinstance(entry, dict) else {}
+        merged.update(agent_key_meta(aid))
+        result[aid] = merged
+    return {
+        "active_id": str(section.get("active_id") or "codex"),
+        "agents": result,
+    }
+
+
 __all__ = [
     "read_env_values",
     "write_env_values",
@@ -210,4 +303,7 @@ __all__ = [
     "provider_key_env_name",
     "provider_wallet_key_env_name",
     "configure",
+    "read_chat_key",
+    "agent_key_meta",
+    "agents_meta_payload",
 ]

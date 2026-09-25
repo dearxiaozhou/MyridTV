@@ -309,7 +309,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.23.previzcomposition60"
+STATIC_VERSION = "2026.09.23.previzcomposition62"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -441,83 +441,13 @@ def read_env_key():
 
 
 def read_chat_key(provider_id="", agent_entry=None):
-    entry = agent_entry if isinstance(agent_entry, dict) else AGENT_CONFIG
-    env_names = {
-        "custom-api": "API_PROVIDER_CUSTOM_API_KEY",
-        "custom-api-3": "API_PROVIDER_CUSTOM_API_3_KEY",
-        "volcengine": "VOLCENGINE_ARK_API_KEY",
-    }
-    configured_provider = str(entry.get("provider_id") or "").strip()
-    configured_key_env = str(entry.get("api_key_env") or "MYRIDTV_AGENT_API_KEY").strip()
-    if configured_provider and configured_key_env:
-        env_names[configured_provider] = configured_key_env
-    values = read_env_values()
-    key_name = env_names.get(str(provider_id or "").strip())
-    if key_name and values.get(key_name):
-        return values[key_name]
-    # Agent 复用自定义平台配置：平台 Key 按 API_PROVIDER_<ID>_KEY 保存。
-    if str(provider_id or "").strip():
-        provider_env = provider_key_env_name(provider_id)
-        if provider_env and values.get(provider_env):
-            return values[provider_env]
-    if str(provider_id or "").strip() == "volcengine":
-        try:
-            ark_key = volcengine_ark_api_key()
-            if ark_key:
-                return ark_key
-        except Exception:
-            pass
-    fallback_names = [
-        entry.get("api_key_env"),
-        entry.get("fallback_api_key_env"),
-        "MYRIDTV_AGENT_API_KEY",
-        "WCSTV_AGENT_API_KEY",
-        "API_PROVIDER_CUSTOM_API_KEY",
-    ]
-    for name in fallback_names:
-        if name and values.get(str(name)):
-            return values[str(name)]
-    return ""
-
-
-def agent_key_meta(agent_id=None):
-    values = read_env_values()
-    if agent_id is not None:
-        _, entry = resolve_agent_entry(agent_id)
-    else:
-        entry = AGENT_CONFIG
-    primary_name = str(entry.get("api_key_env") or "MYRIDTV_AGENT_API_KEY").strip() or "MYRIDTV_AGENT_API_KEY"
-    fallback_name = str(entry.get("fallback_api_key_env") or "API_PROVIDER_CUSTOM_API_KEY").strip() or "API_PROVIDER_CUSTOM_API_KEY"
-    primary_value = values.get(primary_name, "")
-    fallback_value = values.get(fallback_name, "")
-    active_name = primary_name if primary_value else (fallback_name if fallback_value else primary_name)
-    active_value = primary_value or fallback_value or ""
-    preview = ""
-    if active_value:
-        tail = active_value[-4:] if len(active_value) >= 4 else active_value
-        preview = f"••••••••{tail}"
-    return {
-        "key_env": active_name,
-        "has_key": bool(active_value),
-        "key_preview": preview,
-        "primary_key_env": primary_name,
-        "fallback_key_env": fallback_name,
-    }
+    return myridtv_env.read_chat_key(provider_id, agent_entry)
 
 
 def agents_meta_payload():
-    """完整多 Agent 配置 + 每 Agent Key 元信息，供设置页/画布读取。"""
-    section = APP_CONFIG.get("agent") or {}
-    agents = section.get("agents") if isinstance(section.get("agents"), dict) else {}
-    result = {}
-    for aid, entry in agents.items():
-        merged = dict(entry) if isinstance(entry, dict) else {}
-        merged.update(agent_key_meta(aid))
-        result[aid] = merged
-    return {
-        "active_id": str(section.get("active_id") or "codex"),
-        "agents": result,
-    }
+    return myridtv_env.agents_meta_payload()
+
+
 
 
 def provider_key_env_name(provider_id):
@@ -613,7 +543,10 @@ import myridtv_volcengine
 
 myridtv_http.configure(lambda: runninghub_api_base())
 
-myridtv_env.configure(lambda: ENV_FILE, lambda: RUNNINGHUB_CONFIG, lambda: AGENT_CONFIG)
+myridtv_env.configure(lambda: ENV_FILE, lambda: RUNNINGHUB_CONFIG, lambda: AGENT_CONFIG,
+                       lambda: APP_CONFIG,
+                       lambda: volcengine_ark_api_key(),
+                       lambda agent_id: resolve_agent_entry(agent_id))
 
 myridtv_provider.configure(
     ROOT, USER_DATA_DIR,
