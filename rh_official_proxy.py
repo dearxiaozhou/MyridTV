@@ -510,38 +510,10 @@ def request_multipart_json(url, fields=None, files=None, headers=None, timeout=1
 def request_multipart_text(url, fields=None, files=None, headers=None, timeout=180):
     return myridtv_http.request_multipart_text(url, fields=fields, files=files, headers=headers, timeout=timeout)
 
-def is_retryable_chat_error(exc):
-    text = str(exc)
-    return any(token in text.lower() for token in (
-        "unexpected_eof",
-        "eof occurred",
-        "ssl",
-        "timed out",
-        "timeout",
-        "temporarily unavailable",
-        "connection reset",
-        "remote end closed",
-        "http 502",
-        "http 503",
-        "http 504",
-    ))
-
-
 def request_chat_json_with_retry(url, body, headers, attempts=3, timeout=120):
-    last_exc = None
-    for attempt in range(1, attempts + 1):
-        try:
-            if attempt > 1:
-                append_log(LOG_FILE, f"agent chat retry attempt={attempt} url={url}")
-            return request_json(url, "POST", body, headers, timeout=timeout)
-        except Exception as exc:
-            last_exc = exc
-            retryable = is_retryable_chat_error(exc)
-            append_log(LOG_FILE, f"agent chat attempt={attempt} failed retryable={retryable}: {exc}")
-            if not retryable or attempt >= attempts:
-                break
-            time.sleep(min(1.5 * attempt, 4))
-    raise RuntimeError(f"Agent 上游请求被中断，已重试 {attempts} 次仍失败：{last_exc}") from last_exc
+    return myridtv_chat.request_chat_json_with_retry(url, body, headers, attempts, timeout)
+
+
 
 
 def _codex_bridge_read_session_cache():

@@ -8,6 +8,7 @@ import re
 import json
 from pathlib import Path
 import base64
+import time
 import shutil
 import mimetypes
 import urllib.parse
@@ -437,3 +438,35 @@ def fetch_agent_models(payload=None):
         raise RuntimeError("上游未返回可用模型")
     return {"ok": True, "all": models, "chat_models": models, "model_count": len(models), "total": len(models), "source": source}
 
+def is_retryable_chat_error(exc):
+    text = str(exc)
+    return any(token in text.lower() for token in (
+        "unexpected_eof",
+        "eof occurred",
+        "ssl",
+        "timed out",
+        "timeout",
+        "temporarily unavailable",
+        "connection reset",
+        "remote end closed",
+        "http 502",
+        "http 503",
+        "http 504",
+    ))
+
+
+def request_chat_json_with_retry(url, body, headers, attempts=3, timeout=120):
+    last_exc = None
+    for attempt in range(1, attempts + 1):
+        try:
+            if attempt > 1:
+                myridtv_core.append_log(_G_LOG_FILE(), f"agent chat retry attempt={attempt} url={url}")
+            return myridtv_http.request_json(url, "POST", body, headers, timeout=timeout)
+        except Exception as exc:
+            last_exc = exc
+            retryable = is_retryable_chat_error(exc)
+            myridtv_core.append_log(_G_LOG_FILE(), f"agent chat attempt={attempt} failed retryable={retryable}: {exc}")
+            if not retryable or attempt >= attempts:
+                break
+            time.sleep(min(1.5 * attempt, 4))
+    raise RuntimeError(f"Agent 上游请求被中断，已重试 {attempts} 次仍失败：{last_exc}") from last_exc
