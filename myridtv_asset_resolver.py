@@ -5,6 +5,7 @@
 from pathlib import Path
 import urllib.parse
 import mimetypes
+import shutil
 import hashlib
 import io
 import uuid
@@ -168,3 +169,23 @@ def canvas_image_info(source_url):
         "size": int(stat.st_size),
     }
 
+def migrate_legacy_assets(user_data_dir, assets_dir):
+    """把旧版 %APPDATA%\\MyridTV\\assets 整体迁移到安装目录（直接覆盖；用户已备份 C 盘目录）。"""
+    try:
+        legacy = user_data_dir / "assets"
+        marker = assets_dir / ".legacy_migrated"
+        if not legacy.exists() or marker.exists():
+            return
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        for item in legacy.iterdir():
+            dest = assets_dir / item.name
+            if item.is_dir():
+                shutil.copytree(item, dest, dirs_exist_ok=True)
+            elif item.is_file():
+                shutil.copy2(item, dest)
+        marker.write_text("1", encoding="utf-8")
+    except Exception as exc:
+        try:
+            print("assets migration failed:", exc)
+        except Exception:
+            pass

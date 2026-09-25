@@ -95,26 +95,11 @@ else:
 # 资产与输出统一放在软件安装目录下（用户要求 2026-08-16）。
 # 覆盖安装/在线升级只覆盖程序文件（installer [Files] 不删除未知目录），assets 子目录会保留。
 ASSETS_DIR = Path(os.environ.get("MYRIDTV_ASSETS_DIR") or (APP_DIR / "assets"))
+import myridtv_asset_resolver
+
+
 def _migrate_legacy_assets():
-    """把旧版 %APPDATA%\\MyridTV\\assets 整体迁移到安装目录（直接覆盖；用户已备份 C 盘目录）。"""
-    try:
-        legacy = USER_DATA_DIR / "assets"
-        marker = ASSETS_DIR / ".legacy_migrated"
-        if not legacy.exists() or marker.exists():
-            return
-        ASSETS_DIR.mkdir(parents=True, exist_ok=True)
-        for item in legacy.iterdir():
-            dest = ASSETS_DIR / item.name
-            if item.is_dir():
-                shutil.copytree(item, dest, dirs_exist_ok=True)
-            elif item.is_file():
-                shutil.copy2(item, dest)
-        marker.write_text("1", encoding="utf-8")
-    except Exception as exc:
-        try:
-            print("assets migration failed:", exc)
-        except Exception:
-            pass
+    myridtv_asset_resolver.migrate_legacy_assets(USER_DATA_DIR, ASSETS_DIR)
 _migrate_legacy_assets()
 BLENDER_IMPORT_DIR = ASSETS_DIR / "blender_imports"
 # —— Blender 预演（画布 → Blender → 画布）——
@@ -253,7 +238,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.23.previzcomposition74"
+STATIC_VERSION = "2026.09.23.previzcomposition75"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -458,7 +443,6 @@ import myridtv_media_localize
 import myridtv_libraries
 import myridtv_codex
 import myridtv_chat
-import myridtv_asset_resolver
 import myridtv_rh_taskflow
 import myridtv_workflow_assets
 import myridtv_window_fix
