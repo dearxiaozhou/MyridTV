@@ -6,8 +6,12 @@ read_env_key/provider_key_env_name/provider_wallet_key_env_name），行为零�
 ENV_FILE 与 RUNNINGHUB_CONFIG 由主文件 configure() 注入（主文件 import 时求值一次，
 注入闭包同样每次读取主文件当前值，语义一致）。主文件保留同名薄代理，调用点不改。
 """
+import json
 import os
 import re
+from pathlib import Path
+
+import myridtv_core
 
 _env_file = None
 _rh_config_getter = lambda: {}
@@ -16,14 +20,19 @@ _app_config_getter = lambda: {}
 _ark_key_getter = lambda: ""
 _resolve_agent_entry = lambda agent_id: (None, {})
 _default_agents_getter = lambda: {}
+_G_CONFIG_FILE = None
+_G_DEFAULT_CONFIG = {}
+_G_ROOT = None
+_log_file = lambda: None
 
 
 def configure(env_file_getter, rh_config_getter, agent_config_getter,
               app_config_getter=None, ark_key_getter=None, resolve_agent_entry=None,
-              default_agents_getter=None):
+              default_agents_getter=None, config_globals=None):
     global _env_file, _rh_config_getter, _agent_config_getter
     global _app_config_getter, _ark_key_getter, _resolve_agent_entry
     global _default_agents_getter
+    global _G_CONFIG_FILE, _G_DEFAULT_CONFIG, _G_ROOT, _log_file
     _env_file = env_file_getter
     _rh_config_getter = rh_config_getter
     _agent_config_getter = agent_config_getter
@@ -35,6 +44,45 @@ def configure(env_file_getter, rh_config_getter, agent_config_getter,
         _resolve_agent_entry = resolve_agent_entry
     if default_agents_getter is not None:
         _default_agents_getter = default_agents_getter
+    if config_globals is not None:
+        _G_CONFIG_FILE = config_globals['CONFIG_FILE']
+        _G_DEFAULT_CONFIG = config_globals['DEFAULT_CONFIG']
+        _G_ROOT = config_globals['ROOT']
+        _log_file = config_globals['log_file_getter']
+
+
+def load_app_config():
+    try:
+        data = json.loads(_G_CONFIG_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        data = {}
+    merged = myridtv_core.deep_merge(_G_DEFAULT_CONFIG, data if isinstance(data, dict) else {})
+    merged["agent"] = normalize_agent_section(merged.get("agent"))
+    return merged
+
+
+def root_path(value, fallback):
+    text = str(value or fallback or "").strip()
+    path = Path(text)
+    return path if path.is_absolute() else _G_ROOT / path
+
+
+def write_static_app_config(raw):
+    """把生效配置镜像到 _internal/static/app_config.json —— 前端启动时读的就是这一份。
+
+    安装脚本首次只把 app_config.template.json 复制过去，里面的 proxy 端口写死 3107；
+    若本安装因端口冲突换到了别的端口（多份安装共存），不镜像就会让前端把请求发去
+    3107 上的另一个实例（表现为看到别的安装的 Agent 设置 / 对话历史 / 控制台记录）。
+    """
+    try:
+        static_config = _G_ROOT / "static" / "app_config.json"
+        static_config.parent.mkdir(parents=True, exist_ok=True)
+        static_config.write_text(raw + "\n", encoding="utf-8")
+    except Exception as exc:
+        try:
+            myridtv_core.append_log(_log_file(), f"static app_config sync failed: {exc}")
+        except Exception:
+            pass
 
 
 def read_env_values():
@@ -395,4 +443,7 @@ __all__ = [
     "normalize_agent_section",
     "active_agent_entry",
     "resolve_agent_entry",
+    "load_app_config",
+    "root_path",
+    "write_static_app_config",
 ]

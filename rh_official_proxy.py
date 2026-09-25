@@ -160,44 +160,24 @@ myridtv_env.configure(lambda: ENV_FILE, lambda: RUNNINGHUB_CONFIG, lambda: AGENT
                        lambda: APP_CONFIG,
                        lambda: volcengine_ark_api_key(),
                        lambda agent_id=None, config=None: resolve_agent_entry(agent_id, config),
-                       lambda: DEFAULT_AGENTS)
+                       lambda: DEFAULT_AGENTS,
+                       {'CONFIG_FILE': CONFIG_FILE, 'DEFAULT_CONFIG': DEFAULT_CONFIG,
+                        'ROOT': ROOT, 'log_file_getter': lambda: LOG_FILE})
 
 
 
 
 
 def load_app_config():
-    try:
-        data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        data = {}
-    merged = deep_merge(DEFAULT_CONFIG, data if isinstance(data, dict) else {})
-    merged["agent"] = normalize_agent_section(merged.get("agent"))
-    return merged
+    return myridtv_env.load_app_config()
 
 
 def root_path(value, fallback):
-    text = str(value or fallback or "").strip()
-    path = Path(text)
-    return path if path.is_absolute() else ROOT / path
+    return myridtv_env.root_path(value, fallback)
 
 
 def write_static_app_config(raw):
-    """把生效配置镜像到 _internal/static/app_config.json —— 前端启动时读的就是这一份。
-
-    安装脚本首次只把 app_config.template.json 复制过去，里面的 proxy 端口写死 3107；
-    若本安装因端口冲突换到了别的端口（多份安装共存），不镜像就会让前端把请求发去
-    3107 上的另一个实例（表现为看到别的安装的 Agent 设置 / 对话历史 / 控制台记录）。
-    """
-    try:
-        static_config = ROOT / "static" / "app_config.json"
-        static_config.parent.mkdir(parents=True, exist_ok=True)
-        static_config.write_text(raw + "\n", encoding="utf-8")
-    except Exception as exc:
-        try:
-            append_log(LOG_FILE, f"static app_config sync failed: {exc}")
-        except Exception:
-            pass
+    return myridtv_env.write_static_app_config(raw)
 
 
 def write_app_config(config):
@@ -238,7 +218,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.23.previzcomposition76"
+STATIC_VERSION = "2026.09.23.previzcomposition80"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
