@@ -25,6 +25,9 @@ import uuid
 from myridtv_core import ApiError
 
 import myridtv_agent
+import myridtv_agent_state
+import myridtv_agent_batch
+import myridtv_agent_generation
 
 MODLENS_CACHE = None
 MODLENS_CACHE_DIR = None
@@ -431,4 +434,38 @@ CANVAS_AGENT_TOOLS = [
         }, "required": ["intent", "title"]}}},
 ]
 
-
+def canvas_agent_execute_tool(name, args, preset=None, session_id=""):
+    try:
+        if name == "canvas_get_state":
+            return myridtv_agent_state._agent_tool_get_state(args)
+        if name == "canvas_search_nodes":
+            return myridtv_agent_state._agent_tool_search_nodes(args)
+        if name == "canvas_create_text_node":
+            return myridtv_agent_state._agent_tool_create_text_node(args, session_id=session_id)
+        if name == "canvas_create_generation_node":
+            return myridtv_agent_generation._agent_tool_create_generation_node(args, preset)
+        if name == "canvas_generate_images":
+            return myridtv_agent_generation._agent_tool_generate_images(args, preset)
+        if name == "canvas_check_generation":
+            return myridtv_agent_generation._agent_tool_check_generation(args)
+        if name == "canvas_update_node":
+            return myridtv_agent_generation._agent_tool_update_node(args)
+        if name == "canvas_batch_operations":
+            return myridtv_agent_batch._agent_tool_batch_operations(args, preset, session_id=session_id)
+        if name == "canvas_undo_batch":
+            return myridtv_agent_batch._agent_tool_undo_batch(args)
+        if name == "canvas_add_link":
+            return myridtv_agent_batch._agent_tool_add_link(args)
+        if name == "canvas_delete_node":
+            return myridtv_agent_batch._agent_tool_delete_node(args)
+        if name == "canvas_analyze_image":
+            return _agent_tool_analyze_image(args)
+        if name == "canvas_list_skills":
+            return _agent_tool_list_skills(args)
+        if name == "canvas_save_skill":
+            return _agent_tool_save_skill(args)
+        if name == "present_im_interaction":
+            return _agent_tool_present_interaction(args, session_id=session_id)
+        return {"ok": False, "error": "未知工具: {}".format(name)}
+    except Exception as exc:
+        return {"ok": False, "error": "工具执行异常: {}".format(exc)}
