@@ -189,3 +189,16 @@ def migrate_legacy_assets(user_data_dir, assets_dir):
             print("assets migration failed:", exc)
         except Exception:
             pass
+
+def _portable_user_data_dir(app_dir):
+    """便携模式（仿 ComfyUI 的 user 目录）：安装目录下存在 user_data\\ 或 .portable 标记时，
+    这份安装就用自己的数据目录，多份安装互不干扰；默认仍走 %APPDATA%\\MyridTV（现有安装行为不变）。"""
+    try:
+        if (app_dir / ".portable").exists():
+            return app_dir / "user_data"
+        candidate = app_dir / "user_data"
+        if candidate.is_dir():
+            return candidate
+    except Exception:
+        pass
+    return None
