@@ -218,7 +218,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.23.previzcomposition80"
+STATIC_VERSION = "2026.09.23.previzcomposition83"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -1436,25 +1436,9 @@ def save_runninghub_workflow_config(workflow_id, payload):
     return myridtv_runninghub.save_runninghub_workflow_config(workflow_id, payload)
 
 def handle_legacy_generate(payload):
-    kind = str((payload or {}).get("type") or "").strip().lower()
-    workflow_name = str((payload or {}).get("workflow_json") or "").strip().lower()
-    if kind == "workflow-custom" and workflow_name == "krea2参考生成三视图.json":
-        # WcsTV's canvas still routes custom nodes through /api/generate.
-        # Only this Krea2 workflow is bridged to the local Comfy executor;
-        # other legacy generation modes remain unchanged.
-        return run_comfy_workflow(str((payload or {}).get("workflow_json") or ""), payload)
-    if kind in {"zimage", "klein"} or workflow_name in {"z-image.json", "flux2-klein.json"}:
-        compat_payload = resolve_legacy_generate_payload(payload)
-        task_id, _submit = submit_official(compat_payload)
-        result = poll_result(task_id)
-        images = localize_generated_media_items(result.get("images") or [], "image")
-        return {
-            "images": images,
-            "task_id": task_id,
-            "backend": "runninghub-official-proxy",
-            "raw": result.get("raw") or {},
-        }
-    raise ApiError(501, "当前版本仅兼容 Z-Image 与 Flux2-Klein 老节点，其他旧 Comfy 工作流尚未迁移。")
+    return myridtv_rh_taskflow.handle_legacy_generate(payload)
+
+
 
 
 def is_runninghub_request(payload):
@@ -1470,15 +1454,7 @@ RUNNINGHUB_DEFAULT_IMAGE_MODELS = myridtv_rh_catalog._DEFAULT_IMAGE_MODELS  # �
 
 
 def request_text(url, timeout=60):
-    req = urllib.request.Request(url, method="GET")
-    req.add_header("Accept", "text/plain, text/markdown, text/html;q=0.9, */*;q=0.8")
-    req.add_header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.read().decode("utf-8", "replace")
-    except urllib.error.HTTPError as exc:
-        raw = exc.read().decode("utf-8", "replace")
-        raise RuntimeError(f"HTTP {exc.code}: {raw or 'RunningHub 文档请求失败'}")
+    return myridtv_http.request_text(url, timeout)
 
 
 # 火山「推理计划」plan 端点（.../api/plan/v3）是 OpenAI 兼容对话入口，不提供 /models 列表。

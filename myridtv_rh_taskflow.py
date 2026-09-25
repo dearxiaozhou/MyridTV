@@ -12,6 +12,7 @@ import myridtv_blender_previz
 import myridtv_core
 import myridtv_env
 import myridtv_http
+import myridtv_comfy
 import myridtv_media_localize
 import myridtv_provider
 import myridtv_runninghub
@@ -293,3 +294,25 @@ def refresh_canvas_task_state(task_id):
         except Exception as exc:
             state = myridtv_task_state.update_task_state(task_id, status="running", checked_at=time.time(), last_error=str(exc))
     return state
+
+
+def handle_legacy_generate(payload):
+    kind = str((payload or {}).get("type") or "").strip().lower()
+    workflow_name = str((payload or {}).get("workflow_json") or "").strip().lower()
+    if kind == "workflow-custom" and workflow_name == "krea2参考生成三视图.json":
+        # WcsTV's canvas still routes custom nodes through /api/generate.
+        # Only this Krea2 workflow is bridged to the local Comfy executor;
+        # other legacy generation modes remain unchanged.
+        return myridtv_comfy.run_comfy_workflow(str((payload or {}).get("workflow_json") or ""), payload)
+    if kind in {"zimage", "klein"} or workflow_name in {"z-image.json", "flux2-klein.json"}:
+        compat_payload = myridtv_runninghub_build.resolve_legacy_generate_payload(payload)
+        task_id, _submit = submit_official(compat_payload)
+        result = poll_result(task_id)
+        images = myridtv_media_localize.localize_generated_media_items(result.get("images") or [], "image")
+        return {
+            "images": images,
+            "task_id": task_id,
+            "backend": "runninghub-official-proxy",
+            "raw": result.get("raw") or {},
+        }
+    raise myridtv_core.ApiError(501, "当前版本仅兼容 Z-Image 与 Flux2-Klein 老节点，其他旧 Comfy 工作流尚未迁移。")

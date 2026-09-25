@@ -224,3 +224,15 @@ __all__ = [
     "request_multipart_text",
     "configure",
 ]
+
+
+def request_text(url, timeout=60):
+    req = urllib.request.Request(url, method="GET")
+    req.add_header("Accept", "text/plain, text/markdown, text/html;q=0.9, */*;q=0.8")
+    req.add_header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8", "replace")
+        raise RuntimeError(f"HTTP {exc.code}: {raw or 'RunningHub 文档请求失败'}")
