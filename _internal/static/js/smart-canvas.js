@@ -4754,74 +4754,65 @@ function rhNodeOffIds(sourceSettings=settings) {
 function rhNodeIsOff(nodeId, sourceSettings=settings) {
     return CanvasRhControls.rhNodeIsOff.apply(null, arguments);
 }
-function rhToggleNodeOff(nodeId){
-    const id = String(nodeId ?? '');
-    if(!id) return;
-    const ref = selectedRunningHubRef(settings);
-    if(!ref) return;
-    const key = runningHubEntryKey(ref.kind, ref.id);
-    settings.rhNodeOff = (settings.rhNodeOff && typeof settings.rhNodeOff === 'object') ? settings.rhNodeOff : {};
-    const bucket = (settings.rhNodeOff[key] && typeof settings.rhNodeOff[key] === 'object') ? settings.rhNodeOff[key] : {};
-    if(bucket[id] === true) delete bucket[id];
-    else bucket[id] = true;
-    settings.rhNodeOff[key] = bucket;
-    persistActiveSmartSettings();
-    renderDynamicParams();
-    scheduleSave();
-}
-function rhActiveFields(sourceSettings=settings){
-    const ref = selectedRunningHubRef(sourceSettings);
-    let fields = rhEntryFields(ref?.entry);
-    if(ref?.kind === 'workflow'){
-        const cached = runningHubWorkflowCache[ref.id];
-        if(Array.isArray(cached?.fields) && cached.fields.length) fields = cached.fields;
-    }
-    fields = fields.filter(f => f.enabled === true);
-    if(ref?.kind === 'workflow'){
-        // 被关掉的节点：参数不再出现在节点上，也不参与提交（提交侧见 rhBuildWorkflowRequestExtras）
-        fields = fields.filter(f => !rhNodeIsOff(f.nodeId, sourceSettings));
-    }
-    return sortRunningHubFields(fields);
-}
-function sortRunningHubFields(fields){
-    return [...(fields || [])].sort((a, b) => {
-        const ak = rhFieldKind(a), bk = rhFieldKind(b);
-        if(ak === 'image' && bk === 'image'){
-            const ao = Number(a.imageOrder) || 9999;
-            const bo = Number(b.imageOrder) || 9999;
-            if(ao !== bo) return ao - bo;
-        }
-        if(ak === 'image' && bk !== 'image') return -1;
-        if(ak !== 'image' && bk === 'image') return 1;
-        return String(a.nodeId || '').localeCompare(String(b.nodeId || ''), undefined, {numeric:true}) || String(a.fieldName || '').localeCompare(String(b.fieldName || ''));
-    });
-}
-function chatApiProviders(){
-    return (apiProviders || []).filter(p => p.enabled !== false && (p.has_key !== false) && (p.chat_models || []).length);
-}
-function resolveChatProviderId(providerId=''){
-    const providers = chatApiProviders();
-    if(providers.some(p => p.id === providerId)) return providerId;
-    return providers[0]?.id || 'comfly';
-}
-function providerChatModels(providerId){
-    const provider = chatApiProviders().find(p => p.id === providerId);
-    return [...new Set(provider?.chat_models || [])];
-}
-function resolveChatModel(model='', providerId=''){
-    const models = providerChatModels(resolveChatProviderId(providerId));
-    return models.includes(model) ? model : (models[0] || model || 'gpt-4o-mini');
-}
-function chatProviderOptions(selectedId=''){
-    const selected = resolveChatProviderId(selectedId);
-    return chatApiProviders().map(provider => `<option value="${escapeHtml(provider.id)}" ${provider.id === selected ? 'selected' : ''}>${escapeHtml(provider.name || provider.id)}</option>`).join('');
-}
-function chatModelOptions(selectedModel='', providerId=''){
-    const selectedProvider = resolveChatProviderId(providerId);
-    const models = providerChatModels(selectedProvider);
-    const selected = resolveChatModel(selectedModel, selectedProvider);
-    return [...new Set([selected, ...models].filter(Boolean))].map(model => `<option value="${escapeHtml(model)}" ${model === selected ? 'selected' : ''}>${escapeHtml(model)}</option>`).join('');
-}
+// Provider 目录域外移 canvas-provider-catalog.js（第四刀，双段：rhNodeOff 开关 + chat/video provider 解析/引擎下拉）。
+if(globalThis.CanvasProviderCatalog){CanvasProviderCatalog.configure({
+        activeComposerNode: (...a) => activeComposerNode(...a),
+        clearVolcengineSelectionOutsideVolcengine: (...a) => clearVolcengineSelectionOutsideVolcengine(...a),
+        enhanceAgentSelects: (...a) => enhanceAgentSelects(...a),
+        escapeHtml: (...a) => escapeHtml(...a),
+        imageProviders: (...a) => imageProviders(...a),
+        imageRefsOnly: (...a) => imageRefsOnly(...a),
+        manualSmartVideoLink: (...a) => manualSmartVideoLink(...a),
+        normalizeComfyWorkflowSelection: (...a) => normalizeComfyWorkflowSelection(...a),
+        persistActiveSmartSettings: (...a) => persistActiveSmartSettings(...a),
+        renderDynamicParams: (...a) => renderDynamicParams(...a),
+        rhEntryFields: (...a) => rhEntryFields(...a),
+        rhFieldKind: (...a) => rhFieldKind(...a),
+        rhNodeIsOff: (...a) => rhNodeIsOff(...a),
+        runningHubEntries: (...a) => runningHubEntries(...a),
+        runningHubEntryKey: (...a) => runningHubEntryKey(...a),
+        runningHubProvider: (...a) => runningHubProvider(...a),
+        scheduleSave: (...a) => scheduleSave(...a),
+        selectedNode: (...a) => selectedNode(...a),
+        selectedRunningHubRef: (...a) => selectedRunningHubRef(...a),
+        videoRefsOnly: (...a) => videoRefsOnly(...a),
+        visibleReferenceImagesFor: (...a) => visibleReferenceImagesFor(...a),
+        volcengineProvider: (...a) => volcengineProvider(...a),
+        PROVIDER_MODEL_DISPLAY: () => PROVIDER_MODEL_DISPLAY,
+        apiProviders: () => apiProviders,
+        comfyInstanceCount: () => comfyInstanceCount,
+        comfyWorkflows: () => comfyWorkflows,
+        engineSelect: () => engineSelect,
+        runningHubWorkflowCache: () => runningHubWorkflowCache,
+        settings: () => settings
+});}
+function rhToggleNodeOff(){return CanvasProviderCatalog.rhToggleNodeOff.apply(null, arguments);}
+function rhActiveFields(){return CanvasProviderCatalog.rhActiveFields.apply(null, arguments);}
+function sortRunningHubFields(){return CanvasProviderCatalog.sortRunningHubFields.apply(null, arguments);}
+function chatApiProviders(){return CanvasProviderCatalog.chatApiProviders.apply(null, arguments);}
+function resolveChatProviderId(){return CanvasProviderCatalog.resolveChatProviderId.apply(null, arguments);}
+function providerChatModels(){return CanvasProviderCatalog.providerChatModels.apply(null, arguments);}
+function resolveChatModel(){return CanvasProviderCatalog.resolveChatModel.apply(null, arguments);}
+function chatProviderOptions(){return CanvasProviderCatalog.chatProviderOptions.apply(null, arguments);}
+function chatModelOptions(){return CanvasProviderCatalog.chatModelOptions.apply(null, arguments);}
+function apiProviderById(){return CanvasProviderCatalog.apiProviderById.apply(null, arguments);}
+function videoProviderPlatform(){return CanvasProviderCatalog.videoProviderPlatform.apply(null, arguments);}
+function providerImageModels(){return CanvasProviderCatalog.providerImageModels.apply(null, arguments);}
+function providerModelDisplayName(){return CanvasProviderCatalog.providerModelDisplayName.apply(null, arguments);}
+function jimengImageEditMode(){return CanvasProviderCatalog.jimengImageEditMode.apply(null, arguments);}
+function filterJimengImageModels(){return CanvasProviderCatalog.filterJimengImageModels.apply(null, arguments);}
+function syncJimengModelPillForRefs(){return CanvasProviderCatalog.syncJimengModelPillForRefs.apply(null, arguments);}
+function jimengVideoCommand(){return CanvasProviderCatalog.jimengVideoCommand.apply(null, arguments);}
+function filterJimengVideoModels(){return CanvasProviderCatalog.filterJimengVideoModels.apply(null, arguments);}
+function syncJimengVideoModelPillForRefs(){return CanvasProviderCatalog.syncJimengVideoModelPillForRefs.apply(null, arguments);}
+function sanitizeSmartApiSelection(){return CanvasProviderCatalog.sanitizeSmartApiSelection.apply(null, arguments);}
+function videoApiProviders(){return CanvasProviderCatalog.videoApiProviders.apply(null, arguments);}
+function videoProviderById(){return CanvasProviderCatalog.videoProviderById.apply(null, arguments);}
+function providerVideoModels(){return CanvasProviderCatalog.providerVideoModels.apply(null, arguments);}
+function volcengineVideoModels(){return CanvasProviderCatalog.volcengineVideoModels.apply(null, arguments);}
+function smartAvailableEngines(){return CanvasProviderCatalog.smartAvailableEngines.apply(null, arguments);}
+function smartEngineLabel(){return CanvasProviderCatalog.smartEngineLabel.apply(null, arguments);}
+function syncEngineSelectOptions(){return CanvasProviderCatalog.syncEngineSelectOptions.apply(null, arguments);}
 let previzLlmPanelOpen = false;
 function closePrevizLlmPanel(){
     if(!previzLlmPanelOpen) return;
@@ -4961,219 +4952,6 @@ document.addEventListener('click', event => {
 document.addEventListener('keydown', event => {
     if(event.key === 'Escape') closePrevizLlmPanel();
 });
-function apiProviderById(providerId){
-    if(providerId === 'volcengine') return volcengineProvider();
-    return (apiProviders || []).find(p => p.id === providerId) || imageProviders()[0] || null;
-}
-// 认证素材 asset:// 是平台绑定的：返回某 provider 所属的认证平台键（与后端一致）
-function videoProviderPlatform(providerId){
-    const p = (apiProviders || []).find(x => x.id === providerId);
-    const proto = String(p?.protocol || '').toLowerCase();
-    const base = String(p?.base_url || '').toLowerCase();
-    if(proto === 'apimart' || base.includes('apimart.ai')) return 'apimart';
-    if(proto === 'volcengine' || providerId === 'volcengine') return 'volcengine';
-    return '';
-}
-function providerImageModels(providerId){
-  if(providerId === 'volcengine') return volcengineProvider().image_models || [];
-  return (apiProviders || []).find(p => p.id === providerId)?.image_models || [];
-}
-function providerModelDisplayName(providerId, model){
-  const resolved = PROVIDER_MODEL_DISPLAY?.resolveProviderModelDisplayName?.(apiProviders, providerId, model);
-  if(resolved) return resolved;
-  const provider = providerId === 'volcengine'
-    ? volcengineProvider()
-    : (apiProviders || []).find(p => p.id === providerId);
-  const map = (provider?.model_display_names && typeof provider.model_display_names === 'object') ? provider.model_display_names : {};
-  const modelKey = String(model || '').trim();
-  return String(map[modelKey] || modelKey).trim();
-}
-// 即梦图生图（挂了参考图）不支持 3.0/3.1，此时从模型下拉里隐藏它们。
-const JIMENG_IMAGE2IMAGE_UNSUPPORTED = ['3.0', '3.1'];
-function jimengImageEditMode(){
-    if(settings.provider_id !== 'jimeng') return false;
-    const node = activeComposerNode() || selectedNode();
-    const refs = node ? visibleReferenceImagesFor(node) : [];
-    return refs.length > 0;
-}
-function filterJimengImageModels(models){
-    if(settings.provider_id !== 'jimeng' || !jimengImageEditMode()) return models;
-    return (models || []).filter(m => !JIMENG_IMAGE2IMAGE_UNSUPPORTED.includes(String(m)));
-}
-let _jimengLastEditMode = null;
-let _jimengModelRefreshing = false;
-// 参考图增删导致即梦文生图/图生图切换时，重新渲染参数面板以更新模型下拉。
-function syncJimengModelPillForRefs(){
-    if(_jimengModelRefreshing) return;
-    if(settings.provider_id !== 'jimeng' || settings.engine !== 'api' || settings.apiKind === 'video'){
-        _jimengLastEditMode = null;
-        return;
-    }
-    const mode = jimengImageEditMode();
-    if(mode === _jimengLastEditMode) return;
-    _jimengLastEditMode = mode;
-    _jimengModelRefreshing = true;
-    try { renderDynamicParams(); } finally { _jimengModelRefreshing = false; }
-}
-// 即梦各视频指令支持的模型集合不同，按当前参考素材推断指令并过滤模型下拉。
-const JIMENG_SEEDANCE_VIDEO_MODELS = ['seedance2.0_vip', 'seedance2.0fast_vip', 'seedance2.0', 'seedance2.0fast'];
-const JIMENG_VIDEO_MODELS_BY_COMMAND = {
-    text2video: JIMENG_SEEDANCE_VIDEO_MODELS,
-    multimodal2video: JIMENG_SEEDANCE_VIDEO_MODELS,
-    image2video: ['3.0', '3.0fast', '3.0pro', '3.5pro', ...JIMENG_SEEDANCE_VIDEO_MODELS],
-    frames2video: ['3.0', '3.5pro', ...JIMENG_SEEDANCE_VIDEO_MODELS],
-};
-function jimengVideoCommand(){
-    const node = activeComposerNode() || selectedNode();
-    const refs = node ? visibleReferenceImagesFor(node) : [];
-    const imageRefs = imageRefsOnly(refs);
-    const hasVideoRef = videoRefsOnly(refs).length > 0 || Boolean(manualSmartVideoLink(settings));
-    if(settings.videoMultimodal || hasVideoRef) return 'multimodal2video';
-    if(imageRefs.length >= 2) return settings.videoUseFrameRoles ? 'frames2video' : 'multiframe2video';
-    if(imageRefs.length >= 1) return 'image2video';
-    return 'text2video';
-}
-function filterJimengVideoModels(models){
-    if(settings.videoProvider !== 'jimeng') return models;
-    const allowed = JIMENG_VIDEO_MODELS_BY_COMMAND[jimengVideoCommand()];
-    if(!allowed) return models; // multiframe2video 等：官方规格未知，不过滤
-    return (models || []).filter(m => allowed.includes(String(m)));
-}
-let _jimengLastVideoCommand = null;
-function syncJimengVideoModelPillForRefs(){
-    if(_jimengModelRefreshing) return;
-    if(settings.videoProvider !== 'jimeng' || settings.engine !== 'api' || settings.apiKind !== 'video'){
-        _jimengLastVideoCommand = null;
-        return;
-    }
-    const command = jimengVideoCommand();
-    if(command === _jimengLastVideoCommand) return;
-    _jimengLastVideoCommand = command;
-    _jimengModelRefreshing = true;
-    try { renderDynamicParams(); } finally { _jimengModelRefreshing = false; }
-}
-function sanitizeSmartApiSelection(target=settings){
-    if(!target || typeof target !== 'object') return target;
-    const availableEngines = smartAvailableEngines();
-    if(!availableEngines.includes(target.engine)) target.engine = availableEngines[0] || 'api';
- if(target.engine === 'volcengine'){
- if(target.apiKind === 'video'){
- target.videoProvider = 'volcengine';
- const models = volcengineVideoModels();
-            if(!models.includes(target.videoModel)) target.videoModel = models[0] || '';
-        } else {
-            target.provider_id = 'volcengine';
-            const models = providerImageModels('volcengine');
-            if(!models.includes(target.model)) target.model = models[0] || '';
- }
- return target;
- }
- if(target.engine === 'comfy') return normalizeComfyWorkflowSelection(target);
- clearVolcengineSelectionOutsideVolcengine(target);
-    if(target.provider_id){
-        const validProvider = imageProviders().some(p => p.id === target.provider_id);
-        const models = providerImageModels(target.provider_id);
-        if(!validProvider){
-            target.provider_id = '';
-            target.model = '';
-        } else if(!models.includes(target.model)) {
-            target.model = models[0] || '';
-        }
-    }
-    if(target.videoProvider){
-        const validVideoProvider = videoApiProviders().some(p => p.id === target.videoProvider);
-        const models = providerVideoModels(target.videoProvider);
-        if(!validVideoProvider){
-            target.videoProvider = '';
-            target.videoModel = '';
-        } else if(!models.includes(target.videoModel)) {
-            target.videoModel = models[0] || '';
-        }
-    }
-    return target;
-}
-function videoApiProviders(){
-    const fromConfig = (apiProviders || []).filter(p => p.enabled !== false && p.id !== 'runninghub' && p.id !== 'volcengine' && (p.video_models || []).length);
-    return fromConfig;
-}
-function videoProviderById(providerId){
-    if(providerId === 'volcengine') return volcengineProvider();
-    return videoApiProviders().find(p => p.id === providerId) || videoApiProviders()[0] || null;
-}
-function providerVideoModels(providerId){
-    if(providerId === 'volcengine') return volcengineVideoModels();
-    const provider = videoApiProviders().find(p => p.id === providerId);
-    const models = provider?.video_models || [];
-    return [...new Set(models)];
-}
-function volcengineVideoModels(){
-    const provider = (apiProviders || []).find(p => p.id === 'volcengine');
-    return [...new Set(provider?.video_models || [])];
-}
-function smartAvailableEngines(){
-    const engines = [];
-    if(imageProviders().length || videoApiProviders().length) engines.push('api');
-    const volc = volcengineProvider();
-    if(volc){
-        const hasImg = (volc.image_models || []).length;
-        const hasVid = (volc.video_models || []).length;
-        // 生图模式只认 image_models：纯视频平台（如豆包-SD-2.0）不得出现在生图引擎里
-        const show = (typeof settings !== 'undefined' && settings && settings.apiKind === 'video') ? (hasVid || hasImg) : hasImg;
-        if(show) engines.push('volcengine');
-    }
-    if((comfyWorkflows || []).length || comfyInstanceCount > 0) engines.push('comfy');
-    if(runningHubProvider() && (runningHubEntries('app').length || runningHubEntries('workflow').length)) engines.push('runninghub');
-    // 3D预演 引擎（用于节点引擎判断，下拉中会被过滤不显示）
-    engines.push('blender');
-    if(!engines.length) engines.push('api');
-    return engines;
-}
-function smartEngineLabel(engine){
-    const labels = {
-        api:tr('smart.engineApi'),
-        volcengine:tr('smart.engineVolcengine'),
-        comfy:tr('smart.engineComfy'),
-        runninghub:tr('smart.engineRh'),
-        blender:'3D预演'
-    };
-    // “API 生成”是泛称，实际落到某个图像平台；直接显示该平台名称，与火山引擎/ComfyUI 保持一致。
-    if(engine === 'api'){
-        const providers = (typeof imageProviders === 'function') ? imageProviders() : [];
-        const currentId = String(settings?.apiProvider || '').trim();
-        const picked = providers.find(p => String(p.id) === currentId) || providers[0];
-        if(picked?.name) return picked.name;
-    }
-    if(engine === 'volcengine'){
-        const volc = (typeof volcengineProvider === 'function') ? volcengineProvider() : null;
-        if(volc?.id === 'volcengine' && volc?.name) return volc.name;
-    }
-    if(engine === 'runninghub'){
-        const rhp = (typeof runningHubProvider === 'function') ? runningHubProvider() : null;
-        if(rhp?.name) return rhp.name + ' · 工作流';
-    }
-    return labels[engine] || engine;
-}
-function syncEngineSelectOptions(){
-    if(!engineSelect) return;
-    // 3D预演 节点：引擎固定"3D预演"，隐藏下拉框（纯文本标签由 renderDynamicParams 插入）
-    if(settings.engine === 'blender'){
-        engineSelect.style.display = 'none';
-        engineSelect.disabled = true;
-        engineSelect.value = 'blender';
-        if(typeof enhanceAgentSelects === 'function') enhanceAgentSelects();
-        return;
-    }
-    engineSelect.style.display = '';
-    engineSelect.disabled = false;
-    const engines = smartAvailableEngines().filter(e => e !== 'blender');
-    const current = settings.engine || engineSelect.value || '';
-    engineSelect.innerHTML = engines.map(engine => `<option value="${escapeHtml(engine)}">${escapeHtml(smartEngineLabel(engine))}</option>`).join('');
-    if(!engines.includes(current)){
-        settings.engine = engines[0] || 'api';
-    }
-    engineSelect.value = settings.engine;
-    if(typeof enhanceAgentSelects === 'function') enhanceAgentSelects();
-}
 function renderVideoProviderControl(providers) {
     return CanvasParamControls.renderVideoProviderControl.apply(null, arguments);
 }
