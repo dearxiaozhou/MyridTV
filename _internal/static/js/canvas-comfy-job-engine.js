@@ -161,20 +161,32 @@
 
     // ===== 取消 =====
     async function cancelComfyJob(node){
-        if(!node || !node.comfyJobId) return false;
-        const jobId = node.comfyJobId;
+        if(!node) return false;
+        const jobId = String(node.comfyJobId || '');
+        // Invalidate the in-flight submit/poll promise before clearing visible job state.
+        // A fast retry must not let the cancelled run clear the new run's state.
+        delete node.comfyRunToken;
         node.comfyStatus = 'cancelled';  // 保留 cancelled 状态供前端显示
-        try {
-            await fetch(deps.proxyUrl(`/api/comfyui/jobs/${encodeURIComponent(jobId)}/cancel`), {
-                method:'POST',
-                headers:{'Content-Type':'application/json'}
-            }).catch(()=>null);
-            await fetch(deps.proxyUrl(`/api/comfyui/jobs/${encodeURIComponent(jobId)}/interrupt`), {
-                method:'POST',
-                headers:{'Content-Type':'application/json'}
-            }).catch(()=>null);
-        } catch(e){ /* 后端暂无 cancel 接口也能清前端态 */ }
+        if(jobId){
+            try {
+                await fetch(deps.proxyUrl(`/api/comfyui/jobs/${encodeURIComponent(jobId)}/cancel`), {
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'}
+                }).catch(()=>null);
+                await fetch(deps.proxyUrl(`/api/comfyui/jobs/${encodeURIComponent(jobId)}/interrupt`), {
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'}
+                }).catch(()=>null);
+            } catch(e){ /* 后端暂无 cancel 接口也能清前端态 */ }
+        }
         clearComfyProgressExceptStatus(node);
+        delete node.comfyStatus;
+        node.pending = 0;
+        delete node.runStartedAt;
+        delete node.runFinishedAt;
+        delete node.runElapsedMs;
+        delete node.runTimerHidden;
+        deps.clearNodeRunningState(node);
         deps.syncRunButtonAvailability(node);
         deps.render();
         // 停止要落盘：不保存的话刷新/切画布又会从磁盘读回「运行中」

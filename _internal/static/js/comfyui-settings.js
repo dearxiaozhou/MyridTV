@@ -1119,6 +1119,12 @@ function setPreviewValue(fieldId, value){
     const valSpan = document.querySelector(`[data-slider-val="${fieldId}"]`);
     if(valSpan) valSpan.textContent = value;
 }
+function togglePreviewBoolean(fieldId, track){
+    const next = !track.classList.contains('on');
+    setPreviewValue(fieldId, next);
+    track.classList.toggle('on', next);
+    track.setAttribute('aria-checked', String(next));
+}
 function randomValueForField(f){
     const isFloat = Number(f.step) > 0 && Number(f.step) < 1;
     let min = Number.isFinite(Number(f.min)) ? Number(f.min) : null;
@@ -1209,41 +1215,43 @@ function renderPreview(){
 }
 
 function renderPreviewField(f){
-    const label = `<div class="pfield-label">${escapeHtml(f.name || f.input)}</div>`;
+    const fieldLabel = String(f.name || f.input || '参数');
+    const label = `<div class="pfield-label">${escapeHtml(fieldLabel)}</div>`;
+    const accessibleLabel = `aria-label="${escapeAttr(fieldLabel)}"`;
     const v = previewValues[f.id] ?? f.default ?? (f.type==='boolean'?false:(f.type==='number'||f.type==='slider'?0:''));
     if(f.type === 'textarea'){
-        return `<div class="pfield">${label}<textarea class="pfield-textarea" oninput="setPreviewValue('${f.id}',this.value)">${escapeHtml(v)}</textarea></div>`;
+        return `<div class="pfield">${label}<textarea class="pfield-textarea" ${accessibleLabel} oninput="setPreviewValue('${f.id}',this.value)">${escapeHtml(v)}</textarea></div>`;
     }
     if(f.type === 'number'){
         const randomBtn = randomButtonHtml(f);
-        return `<div class="pfield">${label}<div class="pfield-random-row" style="${randomBtn ? '' : 'grid-template-columns:1fr'}"><input class="pfield-input" type="number" value="${escapeAttr(v)}" oninput="setPreviewValue('${f.id}',parseFloat(this.value)||0)">${randomBtn}</div></div>`;
+        return `<div class="pfield">${label}<div class="pfield-random-row" style="${randomBtn ? '' : 'grid-template-columns:1fr'}"><input class="pfield-input" type="number" ${accessibleLabel} value="${escapeAttr(v)}" oninput="setPreviewValue('${f.id}',parseFloat(this.value)||0)">${randomBtn}</div></div>`;
     }
     if(f.type === 'slider'){
         const min = f.min ?? 0, max = f.max ?? 10, step = f.step ?? 1;
         return `<div class="pfield">${label}<div class="pfield-random-row" style="grid-template-columns:1fr"><div class="pfield-slider">
-            <input type="range" min="${min}" max="${max}" step="${step}" value="${escapeAttr(v)}" oninput="setPreviewValue('${f.id}',parseFloat(this.value))">
+            <input type="range" ${accessibleLabel} min="${min}" max="${max}" step="${step}" value="${escapeAttr(v)}" oninput="setPreviewValue('${f.id}',parseFloat(this.value))">
             <span class="pfield-slider-val" data-slider-val="${f.id}">${v}</span>
         </div></div></div>`;
     }
     if(f.type === 'dropdown'){
         const opts = (f.options || []).map(o => `<option value="${escapeAttr(o)}" ${String(v)===String(o)?'selected':''}>${escapeHtml(o)}</option>`).join('');
-        return `<div class="pfield">${label}<select class="pfield-select" onchange="setPreviewValue('${f.id}',this.value)">${opts || `<option value="">${tr('comfy.noOptions')}</option>`}</select></div>`;
+        return `<div class="pfield">${label}<select class="pfield-select" ${accessibleLabel} onchange="setPreviewValue('${f.id}',this.value)">${opts || `<option value="">${tr('comfy.noOptions')}</option>`}</select></div>`;
     }
     if(isMediaField(f)){
         // 浏览器显示用本地 blob URL；如果没有就尝试用 /output/ 之类的可访问 URL；都没有显示占位文字
         const displayUrl = previewImageUrls[f.id] || (typeof v === 'string' && /^(\/|https?:|blob:|data:)/.test(v) ? v : '');
-        return `<div class="pfield">${label}<div class="pfield-image-drop ${displayUrl?'has-image':''}" onclick="pickImage('${f.id}')">
+        return `<div class="pfield">${label}<div class="pfield-image-drop ${displayUrl?'has-image':''}" role="button" tabindex="0" ${accessibleLabel} onclick="pickImage('${f.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">
             ${mediaPreviewHtml(fieldKind(f), displayUrl, v)}
         </div></div>`;
     }
     if(f.type === 'boolean'){
         return `<div class="pfield">${label}<div class="pfield-bool">
-            <div class="pfield-bool-track ${v?'on':''}" onclick="setPreviewValue('${f.id}',!${!!v});this.classList.toggle('on')">
+            <div class="pfield-bool-track ${v?'on':''}" role="switch" tabindex="0" aria-checked="${Boolean(v)}" ${accessibleLabel} onclick="togglePreviewBoolean('${f.id}',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">
                 <div class="pfield-bool-thumb"></div>
             </div>
         </div></div>`;
     }
-    return `<div class="pfield">${label}<input class="pfield-input" type="text" value="${escapeAttr(v)}" oninput="setPreviewValue('${f.id}',this.value)"></div>`;
+    return `<div class="pfield">${label}<input class="pfield-input" type="text" ${accessibleLabel} value="${escapeAttr(v)}" oninput="setPreviewValue('${f.id}',this.value)"></div>`;
 }
 
 function miniCardStyle(key){
@@ -1679,4 +1687,3 @@ document.addEventListener('DOMContentLoaded', () => {
     loadList();
     loadComfyInstances();
 });
-

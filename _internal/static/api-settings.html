@@ -18,24 +18,24 @@
     </script>
     <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.06.29.9"></script>
     <script src="/static/vendor/js/lucide.js?v=2026.06.29.9"></script>
-    <script src="/static/js/theme.js?v=2026.06.29.9"></script>
-    <script src="/static/js/i18n.js?v=2026.09.23.previzcomposition31"></script>
+    <script src="/static/js/theme.js?v=2026.09.25.lighttrial1"></script>
+    <script src="/static/js/i18n.js?v=2026.09.26.rhfinaloutput88"></script>
     <link rel="icon" href="/static/images/myrid-icon.png" type="image/png">
     <link rel="stylesheet" href="/static/css/theme.css?v=2026.09.16.skill3col1">
-<link rel="stylesheet" href="/static/css/api-settings.css?v=2026.09.23.previzcomposition31">
-<link rel="stylesheet" href="/static/css/api-settings-prism.css?v=2026.09.16.skill3col1">
+<link rel="stylesheet" href="/static/css/api-settings.css?v=2026.09.26.rhfinaloutput88">
+<link rel="stylesheet" href="/static/css/api-settings-prism.css?v=2026.09.27.a11yfocus2">
+<link rel="stylesheet" href="/static/css/light-theme-trial.css?v=2026.09.27.5">
 </head>
 <body>
 <style>
 /* 窗口模式修复：设置页以窗口中心为基准自适应。 */
 .page { width:100% !important; max-width:100% !important; padding-inline:clamp(18px, 4vw, 56px) !important; overflow-x:hidden !important; }
 .wrap { width:100% !important; max-width:none !important; margin-inline:auto !important; }
-body.prism-api-page .layout { grid-template-columns: 300px minmax(0, 1fr) !important; }
 @media (max-width:960px) { .page { padding-inline:16px !important; } .wrap { max-width:none !important; } }
 </style>
 <script>
 // 强制在 DOM 加载后立刻修正布局
-(function(){function fix(){document.querySelectorAll('.page').forEach(function(e){e.style.width='100%';e.style.maxWidth='100%';e.style.marginLeft='';e.style.marginRight=''});document.querySelectorAll('.wrap').forEach(function(e){e.style.width='100%';e.style.maxWidth='none';e.style.marginLeft='auto';e.style.marginRight='auto'});var l=document.querySelector('.layout');if(l)l.style.gridTemplateColumns='300px minmax(0, 1fr)'}if(document.readyState==='complete')fix();else window.addEventListener('load',fix)})();
+(function(){function fix(){document.querySelectorAll('.page').forEach(function(e){e.style.width='100%';e.style.maxWidth='100%';e.style.marginLeft='';e.style.marginRight=''});document.querySelectorAll('.wrap').forEach(function(e){e.style.width='100%';e.style.maxWidth='none';e.style.marginLeft='auto';e.style.marginRight='auto'})}if(document.readyState==='complete')fix();else window.addEventListener('load',fix)})();
 </script>
     <div class="page">
         <div class="wrap">
@@ -79,7 +79,7 @@ body.prism-api-page .layout { grid-template-columns: 300px minmax(0, 1fr) !impor
                                     <i data-lucide="radar" class="w-3.5 h-3.5"></i><span>验证协议</span>
                                 </button>
                                 <div class="field-frame protocol-selector-wrap">
-                                    <select id="protocolInput">
+                                    <select id="protocolInput" aria-label="协议">
                                         <option value="openai" data-i18n="api.protocolOpenAI">OpenAI 直连</option>
                                         <option value="apimart" data-i18n="api.protocolApimart">异步协议</option>
                                         <option value="gemini" data-i18n="api.protocolGemini">Gemini 协议</option>
@@ -296,15 +296,6 @@ body.prism-api-page .layout { grid-template-columns: 300px minmax(0, 1fr) !impor
                         </div>
                     </section>
 
-                        <section id="msLoraBlock" class="block ms-lora-block">
-                            <div class="block-head">
-                                <div class="block-head-left">
-                                    <div class="block-title" data-i18n="api.loraManager">LoRA 管理</div>
-                                </div>
-                                <button class="ghost-btn" type="button" onclick="addMsLora()"><i data-lucide="plus" class="w-3.5 h-3.5"></i><span>LoRA</span></button>
-                            </div>
-                            <div id="msLoraList" class="lora-list"></div>
-                        </section>
             </main>
                 </main>
         </div>
@@ -418,9 +409,9 @@ body.prism-api-page .layout { grid-template-columns: 300px minmax(0, 1fr) !impor
     </div>
 
 <script src="/static/js/rh-model-aliases.js?v=2026.06.21.rh-alias-fix1"></script>
-<script src="/static/js/api-settings-provider-repair.js?v=2026.09.23.previzcomposition31"></script>
+<script src="/static/js/api-settings-provider-repair.js?v=2026.09.26.rhfinaloutput88"></script>
 <script src="/static/js/api-settings-picker.js?v=2026.06.22.picker-fresh1"></script>
-<script src="/static/js/api-settings.js?v=2026.09.23.previzcomposition31"></script>
+<script src="/static/js/api-settings.js?v=2026.09.26.rhfinaloutput88"></script>
 <script src="/static/js/api-settings-prism.js?v=2026.06.29.7"></script>
 </body>
 </html>

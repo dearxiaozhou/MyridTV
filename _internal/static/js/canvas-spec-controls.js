@@ -1,9 +1,9 @@
-/* MyridTV 画布规格控件渲染层（拆模块 ⑧：比例·分辨率·画质·张数·Modelscope）
+/* MyridTV 画布规格控件渲染层（拆模块 ⑧：比例·分辨率·画质·张数）
  *
  * 27 个「settings → HTML 字符串 / 数据解析」纯函数：规格弹层、合并规格 pill、
- * 比例/分辨率/画质/数量控件、自定义比例与尺寸内联字段、比例化简(gcd)、Modelscope 函数选择。
+ * 比例/分辨率/画质/数量控件、自定义比例与尺寸内联字段、比例化简(gcd)、原 Modelscope 函数选择。
  * 无 DOM 写入与事件绑定；settings 所有权在主文件经 getter 注入（本层零写点）；
- * MS_GEN_MODELS 注册表 / sourceImageRatioLabel（节点图深链）经注入。
+ * sourceImageRatioLabel（节点图深链）经注入。
  */
 (function (global) {
     'use strict';
@@ -12,9 +12,7 @@
         escapeHtml: null,
         tr: null,
         sourceImageRatioLabel: null,
-        modelscopeImageModels: null,
-        getSettings: null,
-        getMsModels: null
+        getSettings: null
     };
     function configure(opts) {
         Object.assign(deps, opts || {});
@@ -262,37 +260,7 @@ function renderInlineCustomSizeFields(prefix='', extraClass=''){
         <input type="number" data-param="${hKey}" value="${deps.escapeHtml(deps.getSettings()[hKey] || '')}" placeholder="${deps.escapeHtml(deps.tr('smart.height'))}">
     </div>`;
 }
-function msModelLabel(key){
-    if(key === 'custom') return deps.tr('smart.custom');
-    return deps.getMsModels()[key]?.label || key;
-}
-function renderMsFunctionControl(){
-    return `<div class="smart-control provider-control">
-        <button class="smart-pill" type="button"><i data-lucide="sparkles"></i><span class="sub">${deps.escapeHtml(msModelLabel(deps.getSettings().msgenModel) || 'Modelscope')}</span></button>
-        <div class="smart-popover compact-popover">
-            <div class="smart-popover-title">${deps.escapeHtml(deps.tr('smart.msFunction'))}</div>
-            <div class="model-list">
-                ${Object.entries(deps.getMsModels()).map(([key]) => `<button type="button" class="direct-option ${key === deps.getSettings().msgenModel ? 'active' : ''}" data-smart-param="msgenModel" data-smart-value="${deps.escapeHtml(key)}"><span>${deps.escapeHtml(msModelLabel(key))}</span></button>`).join('')}
-            </div>
-        </div>
-    </div>`;
-}
-function renderMsCustomModelPill(){
-    if(deps.getSettings().msgenModel !== 'custom') return '';
-    const models = deps.modelscopeImageModels();
-    const label = deps.getSettings().msCustomModel || deps.tr('smart.customModel');
-    return `<div class="smart-control model-control">
-        <button class="smart-pill" type="button"><i data-lucide="boxes"></i><span class="sub">${deps.escapeHtml(label)}</span></button>
-        <div class="smart-popover compact-popover">
-            <div class="smart-popover-title">${deps.escapeHtml(deps.tr('smart.msCustomModel'))}</div>
-            <div class="model-list">
-                ${models.map(m => `<button type="button" class="direct-option ${m === deps.getSettings().msCustomModel ? 'active' : ''}" data-smart-param="msCustomModel" data-smart-value="${deps.escapeHtml(m)}"><span>${deps.escapeHtml(m)}</span></button>`).join('') || `<div class="muted-note">${deps.escapeHtml(deps.tr('smart.noMsModel'))}</div>`}
-            </div>
-        </div>
-    </div>`;
-}
-
-    global.CanvasSpecControls = {
+global.CanvasSpecControls = {
         configure: configure,
         optionHtml: optionHtml,
         gcdInt: gcdInt,
@@ -317,9 +285,6 @@ function renderMsCustomModelPill(){
         renderComboSpecCount: renderComboSpecCount,
         renderImageSpecPopover: renderImageSpecPopover,
         renderInlineCustomRatioFields: renderInlineCustomRatioFields,
-        renderInlineCustomSizeFields: renderInlineCustomSizeFields,
-        msModelLabel: msModelLabel,
-        renderMsFunctionControl: renderMsFunctionControl,
-        renderMsCustomModelPill: renderMsCustomModelPill
+        renderInlineCustomSizeFields: renderInlineCustomSizeFields
     };
 })(typeof window !== 'undefined' ? window : globalThis);

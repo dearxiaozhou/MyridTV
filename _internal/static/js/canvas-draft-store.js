@@ -70,6 +70,46 @@
         try { global.localStorage.removeItem(localKey(canvasId)); } catch (_) {}
     }
 
+    function toDraft(payload) {
+        payload = payload || {};
+        return {
+            title: payload.title || '',
+            nodes: payload.nodes || [],
+            connections: payload.connections || [],
+            logs: payload.logs || [],
+            settings: payload.settings || {},
+            viewport: payload.viewport || { x: 0, y: 0, scale: 1 },
+            artifacts: payload.artifacts || [],
+            inputMode: payload.inputMode,
+            baseUpdatedAt: Number(payload.base_updated_at || 0),
+            savedAt: Date.now(),
+            clientId: payload.client_id || ''
+        };
+    }
+
+    function createWriter(deps) {
+        deps = deps || {};
+        var timer = null;
+        return {
+            schedule: function () {
+                var id = typeof deps.getCanvasId === 'function' ? deps.getCanvasId() : '';
+                if (!id || (typeof deps.isSuppressed === 'function' && deps.isSuppressed())) return;
+                global.clearTimeout(timer);
+                timer = global.setTimeout(function () {
+                    timer = null;
+                    try {
+                        var payload = typeof deps.getPayload === 'function' ? deps.getPayload() : null;
+                        if (payload) save(id, toDraft(payload));
+                    } catch (_) {}
+                }, Number(deps.delay) || 200);
+            },
+            cancel: function () {
+                global.clearTimeout(timer);
+                timer = null;
+            }
+        };
+    }
+
     function save(canvasId, draft) {
         var id = String(canvasId || '').trim();
         if (!id || !draft) return Promise.resolve(false);
@@ -84,6 +124,7 @@
             settings: draft.settings || {},
             viewport: draft.viewport || { x: 0, y: 0, scale: 1 },
             artifacts: draft.artifacts || [],
+            inputMode: draft.inputMode === 'objects' ? 'objects' : 'connections',
             clientId: draft.clientId || ''
         };
         // 双写：IndexedDB 为主，localStorage 兜底（小画布场景下即使 IDB 不可用也不丢）
@@ -116,6 +157,8 @@
     }
 
     global.CanvasDraftStore = {
+        toDraft: toDraft,
+        createWriter: createWriter,
         save: save,
         read: read,
         clear: clear,

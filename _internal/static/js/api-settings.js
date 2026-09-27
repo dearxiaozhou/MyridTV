@@ -80,8 +80,6 @@ let rhWorkflowEditorZoom = document.getElementById('rhWorkflowEditorZoom');
 const imageModelList = document.getElementById('imageModelList');
 const chatModelList = document.getElementById('chatModelList');
 const videoModelList = document.getElementById('videoModelList');
-const msLoraBlock = document.getElementById('msLoraBlock');
-const msLoraList = document.getElementById('msLoraList');
 const apiConfigSteps = document.getElementById('apiConfigSteps');
 let activeModelTab = 'image';
 const VOLCENGINE_DEFAULT_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3';
@@ -102,7 +100,6 @@ const MS_BUILTIN_IMAGE_MODELS = [
     'Qwen/Qwen-Image-Edit-2511',
     'black-forest-labs/FLUX.2-klein-9B'
 ];
-const MS_DEFAULT_BASE_URL = 'https://api-inference.modelscope.cn/v1';
 const RH_DEFAULT_BASE_URL = 'https://www.runninghub.ai';
 const EXAMPLE_BASE_URL = 'https://api.example.com/v1';
 const CODEX_LOCAL_UPSTREAM = 'codex://local';
@@ -126,7 +123,6 @@ const JIMENG_DEFAULT_VIDEO_MODELS = ['seedance2.0fast_vip', 'seedance2.0_vip'];
 const JIMENG_LEGACY_IMAGE_MODELS = new Set(['jimeng-image-2k', 'jimeng-image-4k']);
 const JIMENG_LEGACY_VIDEO_MODELS = new Set(['jimeng-video-720p', 'jimeng-video-1080p']);
 const APP_CONFIG_DEFAULTS = {
-    server:{host:'127.0.0.1', port:3000, base_url:'http://127.0.0.1:3000'},
     proxy:{host:'127.0.0.1', port:3107, base_url:'http://127.0.0.1:3107'},
     agent:{
         active_id:'codex',
@@ -733,7 +729,7 @@ function deriveIdFromName(name, existingId){
 function updateIdPreview(){
     const item = provider();
     if(!item) return;
-    const isBuiltin = item.id === 'comfly' || item.id === 'modelscope' || item.id === 'runninghub' || item.id === 'volcengine' || item.id === 'jimeng';
+    const isBuiltin = item.id === 'comfly' || item.id === 'runninghub' || item.id === 'volcengine' || item.id === 'jimeng';
     const idPreview = document.getElementById('idPreview');
     if(!idPreview) return;
     if(isBuiltin){
@@ -782,7 +778,7 @@ function isFixedProvider(itemOrId){
     const id = typeof itemOrId === 'string' ? itemOrId : itemOrId?.id;
     // 即梦 CLI 不再是固定平台：可删除、可排序，未添加则不存在。
     // RunningHub 已解锁为全可修改平台（2026-09-10 用户要求），仅火山/魔搭保持固定。
-    return id === 'modelscope' || id === 'volcengine';
+    return id === 'volcengine';
 }
 function isRunningHubProvider(item){
   if(!item) return false;
@@ -812,6 +808,8 @@ function providerModelValueOptions(item, kind, currentValue){
   return unique([String(currentValue || '').trim(), ...((item?.[key]) || [])]).filter(Boolean);
 }
 function renderModelValueControl(item, kind, index, model){
+  const modelKindLabel = tr(kind === 'image' ? 'api.imageModels' : kind === 'video' ? 'api.videoModels' : 'api.chatModels');
+  const accessibleLabel = `${modelKindLabel} ${index + 1}`;
   const currentValue = String(model || '').trim();
   let options;
   if(isRunningHubProvider(item) && RH_MODEL_ALIASES?.getRhModelValueOptions){
@@ -823,9 +821,9 @@ function renderModelValueControl(item, kind, index, model){
   // 有可选池（≥2 个候选）时用下拉选择；没有池时回退手输，避免自定义平台无法填任意模型名
   if(options.length >= 2){
     const emptyOption = currentValue ? '' : '<option value="">请选择模型</option>';
-    return `<select class="model-value-input mod-sel" onchange="updateModel('${kind}', ${index}, this.value)">${emptyOption}${options.map(option => `<option value="${escapeAttr(option)}" ${option === currentValue ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}</select>`;
+    return `<select class="model-value-input mod-sel" aria-label="${escapeAttr(accessibleLabel)}" onchange="updateModel('${kind}', ${index}, this.value)">${emptyOption}${options.map(option => `<option value="${escapeAttr(option)}" ${option === currentValue ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}</select>`;
   }
-  return `<input class="model-value-input" value="${escapeAttr(model)}" oninput="updateModel('${kind}', ${index}, this.value)">`;
+  return `<input class="model-value-input" aria-label="${escapeAttr(accessibleLabel)}" value="${escapeAttr(model)}" oninput="updateModel('${kind}', ${index}, this.value)">`;
 }
 function providerKeyOfKind(kind){
   return kind === 'image' ? 'image_models' : kind === 'video' ? 'video_models' : 'chat_models';
@@ -1059,20 +1057,17 @@ function syncEditor(){
     const item = provider();
     if(!item) return;
     const oldId = item.id;
-    const isBuiltin = item.id === 'comfly' || item.id === 'modelscope' || item.id === 'runninghub' || item.id === 'volcengine' || item.id === 'jimeng';
+    const isBuiltin = item.id === 'comfly' || item.id === 'runninghub' || item.id === 'volcengine' || item.id === 'jimeng';
     // 内置和自定义平台的 ID 都保持稳定；新建时若没有 ID 才生成一次。
     const nextId = isBuiltin ? item.id : deriveIdFromName(nameInput.value, item.id);
     item.id = nextId;
 if(oldId !== item.id) selectedId = item.id;
-const selectedProtocol = item.id === 'modelscope' ? 'openai' : isRunningHubProvider(item) ? 'runninghub' : item.id === 'volcengine' ? 'volcengine' : item.id === 'jimeng' ? 'jimeng' : (protocolInput?.value || 'openai');
+const selectedProtocol = isRunningHubProvider(item) ? 'runninghub' : item.id === 'volcengine' ? 'volcengine' : item.id === 'jimeng' ? 'jimeng' : (protocolInput?.value || 'openai');
 const previousBaseUrl = String(item.base_url || '');
 const previousProtocol = String(item.protocol || '');
 if(isFixedProvider(item)){
 const fixedCustomName = nameInput.value.trim();
-if(item.id === 'modelscope'){
-item.name = fixedCustomName || 'ModelScope';
-item.base_url = MS_DEFAULT_BASE_URL;
-} else if(item.id === 'volcengine'){
+ if(item.id === 'volcengine'){
 item.name = fixedCustomName || '火山引擎';
 item.base_url = VOLCENGINE_DEFAULT_BASE_URL;
 }
@@ -1169,7 +1164,7 @@ async function fetchAgentModels(){
 }
 function updateProtocolFromInput(){
     const item = provider();
-    if(!item || !protocolInput || item.id === 'modelscope' || item.id === 'volcengine' || item.id === 'jimeng') return;
+    if(!item || !protocolInput || item.id === 'volcengine' || item.id === 'jimeng') return;
     const value = String(protocolInput.value || 'openai').toLowerCase();
     item.protocol = ['openai', 'apimart', 'gemini', 'runninghub', 'volcengine', 'jimeng'].includes(value) ? value : 'openai';
     if(item.protocol === 'runninghub'){
@@ -2492,7 +2487,7 @@ function renderRhEntryList(target, list, kind){
     `).join('');
 }
 function sortedProviders(){
-    const order = ['modelscope', 'runninghub', 'volcengine'];
+    const order = ['runninghub', 'volcengine'];
     return visibleProviders().sort((a, b) => {
         const ai = order.indexOf(a.id);
         const bi = order.indexOf(b.id);
@@ -2597,7 +2592,7 @@ return `
 `;
 }
 function renderProviderList(){
-providerList.innerHTML = sortedProviders().map(renderProviderNavCard).join('') + '<button class="provider-add-inline" type="button" onclick="addProvider()"><i data-lucide="plus" class="w-4 h-4"></i></button>';
+providerList.innerHTML = sortedProviders().map(renderProviderNavCard).join('') + `<button class="provider-add-inline" type="button" aria-label="${escapeAttr(tr('api.addProvider'))}" onclick="addProvider()"><i data-lucide="plus" class="w-4 h-4"></i></button>`;
 renderAgentList();
 renderApiSummary();
 lucide.createIcons();
@@ -2606,20 +2601,7 @@ providerList.innerHTML = sortedProviders().map(item => {
 const active = item.id === selectedId ? 'active' : '';
 const stateClass = item.enabled === false ? 'is-disabled' : (item.has_key || item.has_wallet_key ? 'has-key' : 'missing-key');
 const protocolLabel = isRunningHubProvider(item) ? 'RH' : String(item.protocol || 'openai').toUpperCase();
-        if(item.id === 'modelscope'){
-            return `
-                <button class="provider-card provider-card-banner ${active} ${stateClass}" type="button" onclick="selectProvider('${escapeHtml(item.id)}')">
-                    <span class="provider-banner-inner">
-                        <span class="provider-logo-wrap">
-                            <img src="/static/images/modelscope.gif" alt="ModelScope" class="ms-icon-light">
-                            <img src="/static/images/modelscope-1.gif" alt="ModelScope" class="ms-icon-dark">
-                            <span class="provider-logo-fallback">ModelScope</span>
-                        </span>
-                        <span class="provider-protocol-pill">OpenAI</span>
-                    </span>
-                </button>
-            `;
-        }
+
         if(item.id === 'runninghub'){
             return `
                 <button class="provider-card provider-card-banner ${active} ${stateClass}" type="button" onclick="selectProvider('${escapeHtml(item.id)}')">
@@ -2739,7 +2721,7 @@ renderApiSummary();
 renderApiConfigSteps();
 loadVisionConfig();
 if(isAgentPanelSelection()){
-document.body.classList.remove('show-ms', 'show-runninghub', 'show-volcengine', 'show-volcengine-standalone', 'show-jimeng');
+document.body.classList.remove('show-runninghub', 'show-volcengine', 'show-volcengine-standalone', 'show-jimeng');
     document.body.classList.add('show-agent-mode');
     ensureAgentRegistry();
     const visionDisplayName = visionModelName();
@@ -2755,7 +2737,6 @@ document.body.classList.remove('show-ms', 'show-runninghub', 'show-volcengine', 
     if(rhWorkflowsList) rhWorkflowsList.innerHTML = '';
     if(rhAppsCount) rhAppsCount.textContent = '0';
     if(rhWorkflowsCount) rhWorkflowsCount.textContent = '0';
-    if(msLoraBlock) msLoraBlock.style.display = 'none';
     if(jimengCliPanel){
         jimengCliPanel.hidden = true;
         jimengCliPanel.style.display = 'none';
@@ -2782,7 +2763,7 @@ document.body.classList.remove('show-ms', 'show-runninghub', 'show-volcengine', 
     if(protocolInput){
         protocolInput.value = isRunningHubProvider(item) ? 'runninghub' : item.id === 'volcengine' ? 'volcengine' : item.id === 'jimeng' ? 'jimeng' : (item.protocol || 'openai');
         // 原生平台协议锁定：RunningHub 已解锁可切换（2026-09-10 用户要求全可修改）
-        const fixedNative = item.id === 'modelscope' || item.id === 'volcengine' || item.id === 'jimeng';
+        const fixedNative = item.id === 'volcengine' || item.id === 'jimeng';
         protocolInput.disabled = fixedNative;
         protocolInput.title = fixedNative ? '原生平台协议固定，不可切换' : '';
         const protoWrap = protocolInput.closest('.protocol-selector-wrap');
@@ -2791,8 +2772,7 @@ document.body.classList.remove('show-ms', 'show-runninghub', 'show-volcengine', 
     keyInput.value = '';
     keyInput.placeholder = item.has_key ? `${tr('api.keepCurrentKey')} ${item.key_preview || ''}` : tr('api.enterKey');
     keyHint.textContent = '';
-    const isModelScope = item.id === 'modelscope';
-    const isRunningHub = isRunningHubProvider(item);
+        const isRunningHub = isRunningHubProvider(item);
     const isBuiltinRunningHub = isBuiltinRunningHubProvider(item);
     const isVolcengine = item.id === 'volcengine' || String(protocolInput?.value || item.protocol || '').toLowerCase() === 'volcengine';
     const isStandaloneVolcengine = item.id === 'volcengine';
@@ -2839,8 +2819,7 @@ document.body.classList.remove('show-ms', 'show-runninghub', 'show-volcengine', 
         keyInput.placeholder = '即梦 CLI 使用本机 dreamina login，无需 API Key';
         keyHint.textContent = '';
     }
-    document.body.classList.toggle('show-ms', isModelScope);
-    document.body.classList.toggle('show-runninghub', isBuiltinRunningHub);
+        document.body.classList.toggle('show-runninghub', isBuiltinRunningHub);
     document.body.classList.toggle('show-volcengine', isVolcengine);
     document.body.classList.toggle('show-volcengine-standalone', isStandaloneVolcengine);
     document.body.classList.toggle('show-jimeng', isJimeng);
@@ -2855,7 +2834,6 @@ document.body.classList.remove('show-ms', 'show-runninghub', 'show-volcengine', 
         if(rhAppsCount) rhAppsCount.textContent = '0';
         if(rhWorkflowsCount) rhWorkflowsCount.textContent = '0';
     }
-    if(msLoraBlock) msLoraBlock.style.display = isModelScope ? 'flex' : 'none';
     if(jimengCliPanel){
         jimengCliPanel.hidden = !isJimeng;
         jimengCliPanel.style.display = isJimeng ? 'flex' : 'none';
@@ -2868,8 +2846,6 @@ document.body.classList.remove('show-ms', 'show-runninghub', 'show-volcengine', 
     renderModels('video');
     renderApiConfigSteps();
     renderApiModelTabs();
-    if(isModelScope) renderMsLoras();
-    else if(msLoraList) msLoraList.innerHTML = '';
     renderProviderList();
     renderAgentConfig();
     renderAgentList();
@@ -3389,7 +3365,6 @@ function applyModelPicker(){
     item.chat_models = chat;
     item.video_models = video;
     renderModels('image'); renderModels('chat'); renderModels('video');
-    renderMsLoras();
     setStatus(`已应用 · 生图 ${image.length} / LLM ${chat.length} / 视频 ${video.length}，点保存生效`);
     closeModelPicker();
 }
@@ -3411,7 +3386,7 @@ async function clearKeyOnly(){
     const ok = await saveProviders();
     if(ok) keyInput.value = '';
 }
-const FIXED_PROTOCOL_PROVIDER_IDS = new Set(['modelscope', 'volcengine', 'jimeng', 'runninghub']);
+const FIXED_PROTOCOL_PROVIDER_IDS = new Set(['volcengine', 'jimeng', 'runninghub']);
 function providerSupportsModelProtocol(item){
     return Boolean(item) && !FIXED_PROTOCOL_PROVIDER_IDS.has(item.id) && !isRunningHubProvider(item);
 }
@@ -3487,76 +3462,10 @@ function renderModels(kind){
  renderApiModelTabs();
 }
 
-function msLoraTargetOptions(selected){
- const item = provider();
- const models = unique([selected, ...MS_BUILTIN_IMAGE_MODELS, ...((item?.image_models) || [])]);
- return models.filter(Boolean).map(model => `<option value="${escapeAttr(model)}" ${model === selected ? 'selected' : ''}>${escapeHtml(model)}</option>`).join('');
-}
 function normalizeLoraStrength(value){
     const n = Number(value);
     if(!Number.isFinite(n)) return 0.8;
     return Math.max(0, Math.min(2, n));
-}
-function renderMsLoras(){
-    const item = provider();
-    if(!msLoraList || !item || item.id !== 'modelscope') return;
-    item.ms_loras = Array.isArray(item.ms_loras) ? item.ms_loras : [];
-    if(!item.ms_loras.length){
-        msLoraList.innerHTML = `<div class="lora-empty">${tr('api.loraEmpty')}</div>`;
-        return;
-    }
-    msLoraList.innerHTML = item.ms_loras.map((lora, index) => {
-        const target = lora.target_model || lora.model || MS_BUILTIN_IMAGE_MODELS[0];
-        const strength = normalizeLoraStrength(lora.strength ?? lora.default_strength ?? 0.8);
-        return `
-            <div class="lora-row">
-                <label class="lora-field">
-                    <span>${tr('api.loraId')}</span>
-                    <input value="${escapeAttr(lora.id || '')}" placeholder="${escapeAttr(tr('api.loraIdPlaceholder'))}" oninput="updateMsLora(${index}, 'id', this.value)">
-                </label>
-                <label class="lora-field">
-                    <span>${tr('api.loraTargetModel')}</span>
-                    <select onchange="updateMsLora(${index}, 'target_model', this.value)">${msLoraTargetOptions(target)}</select>
-                </label>
-                <label class="lora-field">
-                    <span>${tr('api.loraDefaultStrength')}</span>
-                    <input type="number" min="0" max="2" step="0.05" value="${strength}" oninput="updateMsLora(${index}, 'strength', this.value)">
-                </label>
-                <button class="icon-btn" type="button" onclick="removeMsLora(${index})" title="${escapeAttr(tr('common.delete'))}"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-            </div>
-        `;
-    }).join('');
-    refreshIcons();
-}
-function addMsLora(){
-    const item = provider();
-    if(!item || item.id !== 'modelscope') return;
-    item.ms_loras = Array.isArray(item.ms_loras) ? item.ms_loras : [];
-    item.ms_loras.push({
-        id:'',
-        name:'',
-        target_model: (item.image_models || [])[0] || MS_BUILTIN_IMAGE_MODELS[0],
-        strength:0.8,
-        enabled:true,
-        note:''
-    });
-    renderMsLoras();
-}
-function updateMsLora(index, field, value){
-    const item = provider();
-    if(!item || item.id !== 'modelscope') return;
-    item.ms_loras = Array.isArray(item.ms_loras) ? item.ms_loras : [];
-    const lora = item.ms_loras[index];
-    if(!lora) return;
-    if(field === 'strength') lora.strength = normalizeLoraStrength(value);
-    else lora[field] = value;
-}
-function removeMsLora(index){
-    const item = provider();
-    if(!item || item.id !== 'modelscope') return;
-    item.ms_loras = Array.isArray(item.ms_loras) ? item.ms_loras : [];
-    item.ms_loras.splice(index, 1);
-    renderMsLoras();
 }
 async function selectProvider(id){
 if(isProviderTemporarilyHidden(providers.find(item => item.id === id))) return;
@@ -3710,8 +3619,7 @@ function addModel(kind){
   if(!item.model_display_names || typeof item.model_display_names !== 'object') item.model_display_names = {};
   renderModels(kind);
   if(kind === 'chat') renderAgentConfig();
-  if(kind === 'image') renderMsLoras();
-}
+  }
 function modelProtocolStillUsed(item, name){
     if(!item || !name) return false;
     const lists = ['image_models', 'chat_models', 'video_models'];
@@ -3743,8 +3651,7 @@ function updateModel(kind, index, value){
         }
     }
   if(kind === 'chat') renderAgentModelOptions();
-  if(kind === 'image') renderMsLoras();
-}
+  }
 function updateModelDisplayName(kind, index, value){
   const item = provider();
   const key = kind === 'image' ? 'image_models' : kind === 'video' ? 'video_models' : 'chat_models';
@@ -3818,8 +3725,7 @@ function removeModel(kind, index){
   }
     renderModels(kind);
     if(kind === 'chat') renderAgentConfig();
-    if(kind === 'image') renderMsLoras();
-}
+    }
 async function loadProviders(){
   setStatus(tr('api.loading'));
   try {
@@ -3887,14 +3793,6 @@ async function saveProviders(){
         item.rh_apps = [];
         item.rh_workflows = [];
     }
-    item.ms_loras = (Array.isArray(item.ms_loras) ? item.ms_loras : []).map(lora => ({
-            id:String(lora.id || '').trim(),
-            name:String(lora.name || lora.id || '').trim(),
-            target_model:String(lora.target_model || '').trim(),
-            strength:normalizeLoraStrength(lora.strength ?? 0.8),
-            enabled:lora.enabled !== false,
-            note:String(lora.note || '').trim()
-        })).filter(lora => lora.id && lora.target_model);
     });
     if(new Set(providers.map(item => item.id)).size !== providers.length){
         alert(tr('api.duplicateId'));
@@ -3909,7 +3807,7 @@ async function saveProviders(){
                 id:item.id,
                 name:item.name,
                 base_url:item.base_url,
-                protocol:(item.id === 'modelscope') ? 'openai' : isRunningHubProvider(item) ? 'runninghub' : item.id === 'volcengine' ? 'volcengine' : item.id === 'jimeng' ? 'jimeng' : (item.protocol || 'openai'),
+                protocol:isRunningHubProvider(item) ? 'runninghub' : item.id === 'volcengine' ? 'volcengine' : item.id === 'jimeng' ? 'jimeng' : (item.protocol || 'openai'),
                 image_generation_endpoint:item.image_generation_endpoint || '',
                 image_edit_endpoint:item.image_edit_endpoint || '',
         enabled:item.enabled !== false,
@@ -3920,8 +3818,6 @@ async function saveProviders(){
         video_models:item.video_models || [],
         model_display_names:(item.model_display_names && typeof item.model_display_names === 'object') ? item.model_display_names : {},
         model_protocols:(item.model_protocols && typeof item.model_protocols === 'object') ? item.model_protocols : {},
-        ms_loras:item.id === 'modelscope' ? (item.ms_loras || []) : [],
-                ms_defaults_version:item.id === 'modelscope' ? (item.ms_defaults_version || 1) : 0,
                 rh_apps:isBuiltinRunningHubProvider(item) ? (item.rh_apps || []) : [],
                 rh_workflows:isBuiltinRunningHubProvider(item) ? (item.rh_workflows || []) : [],
                 volcengine_project_name:item.id === 'volcengine' ? (item.volcengine_project_name || VOLCENGINE_DEFAULT_PROJECT_NAME) : '',

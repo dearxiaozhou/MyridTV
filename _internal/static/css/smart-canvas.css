@@ -361,6 +361,7 @@ html:not(.theme-dark) .previz-llm-select-popover, body:not(.theme-dark) .previz-
 .empty-node .node-body { flex:1 1 auto; min-height:0; padding:10px 10px 6px; overflow:hidden; }
 .node-drop { width:100%; height:100%; min-height:0; border-radius:15px; border:1px dashed var(--line); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px; color:var(--faint); background:var(--soft); font-size:12px; font-weight:800; padding:12px; box-sizing:border-box; text-align:center; overflow:hidden; }
 .node-drop i { width:24px; height:24px; }
+.node-drop-hint { width:100%; text-align:center; font-size:11px; font-weight:600; color:var(--muted); line-height:1.4; letter-spacing:.2px; margin-top:1px; }
 .upload-node-main { display:flex; align-items:center; justify-content:center; width:42px; height:42px; flex:0 0 auto; border-radius:15px; background:var(--card); color:var(--text); border:1px solid var(--line); box-shadow:0 10px 24px rgba(0,0,0,.08); }
 .upload-node-main i,.upload-node-main svg { width:22px; height:22px; }
 .upload-node-title { color:var(--text); font-size:13px; font-weight:900; line-height:1; }
@@ -474,6 +475,14 @@ audio { display:none !important; width:0 !important; height:0 !important; min-wi
 .thumb-item { position:relative; width:var(--thumb-size, 96px); height:var(--thumb-size, 96px); display:flex; align-items:center; justify-content:center; overflow:visible; border:1px solid rgba(200,200,200,.38); border-radius:12px; background:var(--soft); transition:border-color .12s ease, box-shadow .14s ease; cursor:pointer; }
 .thumb-item img { width:auto; height:auto; max-width:100%; max-height:100%; object-fit:contain; object-position:center; border-radius:12px; background:var(--soft); display:block; }
 .image-wrap { border-radius:13px; transition:box-shadow .14s ease; }
+.media-load-failed img { visibility:hidden !important; }
+.media-load-error { position:absolute; inset:0; z-index:5; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px; padding:12px; box-sizing:border-box; border:1px dashed var(--line); border-radius:inherit; background:var(--card); color:var(--muted); text-align:center; pointer-events:none; }
+.media-load-failed .mini-x { z-index:7; }
+.media-load-error-icon { width:26px; height:26px; flex:0 0 26px; display:flex; align-items:center; justify-content:center; border-radius:50%; background:#fee2e2; color:#991b1b; font-size:16px; font-weight:900; line-height:1; }
+.media-load-error-title { max-width:100%; color:var(--text); font-size:12px; line-height:1.25; font-weight:850; }
+.media-load-error-detail { max-width:100%; color:var(--muted); font-size:10px; line-height:1.35; font-weight:650; overflow-wrap:anywhere; }
+.theme-dark .media-load-error { background:var(--card); }
+.theme-dark .media-load-error-icon { background:rgba(248,113,113,.18); color:#fecaca; }
 .image-wrap img, .image-wrap .media-video-card { border:1px solid rgba(200,200,200,.38); transition:border-color .12s ease; }
 .theme-dark .thumb-item, .theme-dark .image-wrap img, .theme-dark .image-wrap .media-video-card { border-color:rgba(200,200,200,.3); }
 .thumb-item:hover, .image-wrap:hover img, .image-wrap:hover .media-video-card, .theme-dark .thumb-item:hover, .theme-dark .image-wrap:hover img, .theme-dark .image-wrap:hover .media-video-card { border-color:var(--strong); }
@@ -635,10 +644,11 @@ audio { display:none !important; width:0 !important; height:0 !important; min-wi
 .engine-select:focus { border-color:var(--strong); }
 .composer-head-hint { color:var(--faint); font-size:9.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; margin-left:2px; }
 
-.kind-toggle button { height:20px; padding:0 8px; border-radius:999px; border:0; background:transparent; color:var(--muted); font-size:10.5px; font-weight:500; display:inline-flex; align-items:center; gap:4px; cursor:pointer; transition:background .14s ease, color .14s ease; }
+.kind-toggle button { height:20px; padding:0 8px; border-radius:999px; border:0; background:transparent; color:var(--muted); font-size:10.5px; font-weight:500; display:inline-flex; align-items:center; gap:4px; cursor:pointer; position:relative; overflow:hidden; transition:background .14s ease, color .14s ease; }
 .kind-toggle button i, .kind-toggle button svg { width:11px !important; height:11px !important; stroke-width:2; }
 .kind-toggle button:hover { color:var(--text); }
 .kind-toggle button.active { background:var(--strong); color:var(--strong-text); }
+.kind-toggle button.active::after { content:""; position:absolute; left:0; right:0; bottom:0; height:2px; border-radius:0 0 6px 6px; background:#4cc9f0; }
 .image-mode-slot { flex:0 0 auto; min-height:24px; display:flex; justify-content:flex-end; align-items:center; }
 .kind-toggle,
 .image-mode-toggle{ display:inline-flex; align-items:center; gap:2px; padding:2px; border-radius:999px; border:1px solid var(--line); background:var(--card); }
@@ -651,7 +661,7 @@ audio { display:none !important; width:0 !important; height:0 !important; min-wi
 .prompt-row { position:relative; display:block; min-width:0; }
 .composer-card .prompt-row { grid-area:prompt; }
 .prompt-row { position:relative; }
-.prompt-input { width:100%; height:var(--prompt-h, 124px); min-height:60px; max-height:380px; resize:none; border:1px solid var(--line); border-radius:13px; outline:none; padding:10px 42px 10px 12px; background:var(--card); color:var(--text); font-size:11.5px; font-weight:400; line-height:1.5; overflow:auto; transition:border-color .15s ease, box-shadow .15s ease; white-space:pre-wrap; overflow-wrap:anywhere; }
+.prompt-input { position:relative; width:100%; height:var(--prompt-h, 124px); min-height:60px; max-height:380px; resize:none; border:1px solid var(--line); border-radius:13px; outline:none; padding:10px 42px 10px 12px; background:var(--card); color:var(--text); font-size:11.5px; font-weight:400; line-height:1.5; overflow:auto; transition:border-color .15s ease, box-shadow .15s ease; white-space:pre-wrap; overflow-wrap:anywhere; }
 .prompt-input::-webkit-scrollbar { width:6px; height:6px; }
 .prompt-input::-webkit-scrollbar-track { background:transparent; }
 .prompt-input::-webkit-scrollbar-thumb { background:var(--x-sb-thumb); border-radius:999px; border:2px solid transparent; background-clip:content-box; }
@@ -660,7 +670,20 @@ audio { display:none !important; width:0 !important; height:0 !important; min-wi
 .theme-dark .prompt-input::-webkit-scrollbar-thumb { background:var(--x-sb-thumb); background-clip:content-box; }
 .theme-dark .prompt-input::-webkit-scrollbar-thumb:hover { background:var(--x-sb-thumb-hover); background-clip:content-box; }
 .prompt-input, .prompt-input * { cursor:text; }
-.prompt-input:empty::before { content:attr(data-placeholder); color:var(--faint); font-size:11px; font-weight:400; pointer-events:none; }
+/* 占位提示按「文本内容是否为空」显示（:empty 会被删空后残留的 <br>/空文本节点破坏） */
+.prompt-input:empty::before,
+.prompt-input.show-placeholder::before {
+    /* 占位用绝对定位浮层：行内 ::before 会被算进点击命中区，光标被顶到说明文字末尾。
+       定位后光标留在真正的内容起点（左上），与各布局 padding 对齐。 */
+    content:attr(data-placeholder);
+    position:absolute;
+    top:10px; left:4px; right:4px;
+    color:var(--faint); font-size:11px; font-weight:400; pointer-events:none; line-height:1.5;
+}
+.comfy-layout .prompt-input:empty::before,
+.comfy-layout .prompt-input.show-placeholder::before { left:4px; right:4px; }
+.rh-single-row .prompt-input:empty::before,
+.rh-single-row .prompt-input.show-placeholder::before { left:4px; right:4px; }
 .prompt-input:focus { border-color:var(--strong); box-shadow:0 0 0 3px rgba(0,0,0,.06); }
 .theme-dark .prompt-input:focus { box-shadow:0 0 0 3px rgba(248,250,252,.08); }
 .prompt-input.prompt-input-locked { cursor:default; background:var(--soft); color:var(--muted); border-style:dashed; }
@@ -845,7 +868,7 @@ audio { display:none !important; width:0 !important; height:0 !important; min-wi
     .prompt-template-list { max-height:220px; }
     .prompt-template-group-list { grid-template-columns:1fr; }
 }
-.run-btn { width:56px; height:var(--ctrl-height); border-radius:999px; background:var(--strong); color:var(--strong-text); display:flex; align-items:center; justify-content:center; gap:4px; font-size:var(--ctrl-font); line-height:1; font-weight:500; justify-self:end; white-space:nowrap; transition:transform .12s ease, box-shadow .12s ease, background .15s ease, color .15s ease; min-width:72px; padding:0 12px; }
+.run-btn { width:56px; height:var(--ctrl-height); border-radius:8px; background:var(--strong); color:var(--strong-text); display:flex; align-items:center; justify-content:center; gap:4px; font-size:var(--ctrl-font); line-height:1; font-weight:500; justify-self:end; white-space:nowrap; transition:transform .12s ease, box-shadow .12s ease, background .15s ease, color .15s ease; min-width:72px; padding:0 12px; }
 .run-btn:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 6px 14px rgba(0,0,0,.18); }
 .run-btn span { white-space:nowrap; }
 .run-btn i,.run-btn svg { width:var(--ctrl-icon) !important; height:var(--ctrl-icon) !important; stroke-width:2; flex:0 0 auto; }
@@ -989,7 +1012,6 @@ body.composer-select-open .smart-popover { opacity:0 !important; visibility:hidd
 body.composer-select-open .comfy-nodes-control.pinned .smart-popover { opacity:1 !important; visibility:visible !important; pointer-events:auto !important; transform:translate(-50%, 0) !important; }
 
 /* ComfyUI 节点开关弹层（生成器面板） */
-.workflow-control .smart-pill,
 .comfy-nodes-control .smart-pill { max-width:180px; }
 .dynamic-params > .cfn-inputs-row,
 .dynamic-params > .cfn-workflow-params-title,
@@ -1217,10 +1239,22 @@ input[type=range].smart-range::-webkit-slider-thumb { -webkit-appearance:none; w
 .canvas-dock-item:hover,.canvas-dock-item.active { color:var(--text); background:var(--soft); transform:translateY(-1px); }
 .canvas-dock-icon { width:28px; height:28px; border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--text); background:var(--card); border:1px solid var(--line); box-shadow:0 6px 14px var(--shadow); }
 .canvas-add-toggle .canvas-dock-icon { color:var(--strong-text); background:var(--strong); border-color:var(--strong); }
+/* The dark canvas dock uses the same charcoal surface for both tools. */
+html.theme-dark .canvas-add-toggle .canvas-dock-icon,
+html.studio-theme-dark .canvas-add-toggle .canvas-dock-icon {
+  color:#f5f5f5;
+  background:#353535;
+  border-color:#585858;
+}
+html.theme-dark .canvas-add-toggle:hover .canvas-dock-icon,
+html.studio-theme-dark .canvas-add-toggle:hover .canvas-dock-icon {
+  background:#444;
+  border-color:#747474;
+}
 .canvas-dock-icon i,.canvas-dock-icon svg { width:18px; height:18px; stroke-width:2.2; }
-.canvas-bottom-cluster { position:fixed; left:8px; bottom:56px; z-index:120; display:flex; flex-direction:column; align-items:flex-start; gap:6px; pointer-events:none; }
-.canvas-bottom-tools { height:auto; width:44px; flex-direction:column; display:flex; align-items:center; gap:6px; padding:5px 4px; border-radius:12px; background:var(--panel); border:1px solid var(--line); box-shadow:0 12px 34px var(--shadow); backdrop-filter:blur(20px); pointer-events:auto; }
-.canvas-bottom-button { height:34px; min-width:34px; padding:0 10px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; gap:5px; color:var(--muted); background:transparent; font-size:10px; font-weight:760; transition:background .14s ease, color .14s ease, transform .14s ease; }
+.canvas-bottom-cluster { position:fixed; left:8px; bottom:5px; z-index:120; display:flex; flex-direction:column; align-items:flex-start; gap:6px; pointer-events:none; }
+.canvas-bottom-tools { height:32px; width:auto; flex-direction:row-reverse; display:flex; align-items:center; gap:6px; padding:0 4px; border-radius:8px; background:var(--panel); border:1px solid var(--line); box-shadow:0 12px 34px var(--shadow); backdrop-filter:blur(20px); pointer-events:auto; }
+.canvas-bottom-button { height:30px; min-width:34px; padding:0 10px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; gap:5px; color:var(--muted); background:transparent; font-size:10px; font-weight:760; transition:background .14s ease, color .14s ease, transform .14s ease; }
 .canvas-bottom-button:hover { color:var(--text); background:var(--soft); transform:translateY(-1px); }
 
 .canvas-bottom-button i,.canvas-bottom-button svg { width:15px; height:15px; stroke-width:2.2; }
@@ -1242,7 +1276,8 @@ input[type=range].smart-range::-webkit-slider-thumb { -webkit-appearance:none; w
 .canvas-agent-toggle-motion::after { inset:-4px; z-index:0; background:radial-gradient(circle at 28% 26%, rgba(0,229,255,.30), transparent 34%), radial-gradient(circle at 74% 32%, rgba(255,45,165,.20), transparent 30%), radial-gradient(circle at 50% 72%, rgba(255,215,69,.16), transparent 30%); filter:blur(8px); opacity:.28; animation:myridAgentPulseAura 1800ms ease-in-out infinite; }
 .canvas-agent-toggle-motion img { position:relative; z-index:2; width:100%; height:100%; object-fit:cover; border-radius:10px; display:block; animation:myridAgentPulseIcon 1800ms ease-in-out infinite; }
 .canvas-agent-toggle i,.canvas-agent-toggle svg { width:22px; height:22px; stroke-width:2.4; }
-.canvas-agent-panel { position:fixed; right:0; top:0; bottom:0; z-index:58; width:min(430px, 100vw); display:flex; flex-direction:column; overflow:visible; background:var(--panel); color:var(--text); border-left:1px solid var(--line); transform:translateX(100%); opacity:0; visibility:hidden; pointer-events:none; transition:transform .2s ease, opacity .2s ease, visibility .2s ease; }
+.canvas-agent-panel { position:fixed; right:0; top:0; bottom:var(--agent-dock-clearance, 0px); z-index:58; width:min(430px, 100vw); display:flex; flex-direction:column; overflow:visible; background:var(--panel); color:var(--text); border-left:1px solid var(--line); transform:translateX(100%); opacity:0; visibility:hidden; pointer-events:none; transition:transform .2s ease, bottom .18s ease, opacity .2s ease, visibility .2s ease; }
+.canvas-agent-panel.dock-clearance { border-bottom:1px solid var(--line); border-radius:0 0 12px 12px; box-shadow:0 12px 28px var(--shadow); }
 .prompt-template-panel.open,
 .canvas-agent-panel.open{ transform:translateX(0); opacity:1; visibility:visible; pointer-events:auto; }
 .canvas-agent-panel.drag-over { box-shadow:0 24px 72px var(--shadow), inset 0 0 0 2px var(--strong); }
@@ -1538,7 +1573,7 @@ input[type=range].smart-range::-webkit-slider-thumb { -webkit-appearance:none; w
 .theme-dark .asset-panel.drag-over { box-shadow:0 24px 64px var(--shadow), 0 0 0 3px rgba(248,250,252,.08); }
 @media (max-width: 900px){
     .canvas-tool-dock { left:6px; }
-    .canvas-bottom-cluster { left:8px; bottom:56px; max-width:calc(100vw - 12px); }
+    .canvas-bottom-cluster { left:8px; bottom:5px; max-width:calc(100vw - 12px); }
     .canvas-bottom-tools { max-width:calc(100vw - 12px); overflow:hidden; }
     .smart-minimap { width:140px; height:96px; }
     .smart-log-toggle span,.smart-shortcut-toggle span,.asset-toggle span { display:none; }
@@ -1555,6 +1590,12 @@ input[type=range].smart-range::-webkit-slider-thumb { -webkit-appearance:none; w
 .asset-library-select { margin-bottom:8px; }
 .asset-tab { flex:1; height:26px; border-radius:9px; background:transparent; color:var(--muted); font-size:10.5px; font-weight:600; }
 .asset-tab.active { background:var(--strong); color:var(--strong-text); box-shadow:0 6px 16px rgba(0,0,0,.14); }
+html.theme-dark .asset-tab.active,
+html.studio-theme-dark .asset-tab.active {
+  background:#4b4b4b;
+  color:#f5f5f5;
+  box-shadow:inset 0 0 0 1px #626262, 0 2px 7px rgba(0,0,0,.22);
+}
 .node-actions,
 .prompt-template-group-tools,
 .canvas-agent-skill-head-actions,
@@ -1608,13 +1649,33 @@ input[type=range].smart-range::-webkit-slider-thumb { -webkit-appearance:none; w
 .composer-actions { grid-area:run; display:flex; justify-content:flex-end; align-items:center; gap:6px; padding:0 2px 0 8px; align-self:center; }
 
 .composer-reference-mode-slot:empty { display:none; }
-.composer-reference-mode-slot .video-reference-mode-control .smart-pill { height:var(--ctrl-height); max-width:none; padding:0 9px; border-radius:999px; border-color:var(--line); background:var(--card); color:var(--muted); box-shadow:none; }
+/* ===== ~ 提示词库快捷面板（复刻参考图：标题列表+底部分割行）===== */
+.prompt-lib-picker { position:absolute; left:8px; top:calc(100% + 2px); z-index:72; width:min(300px, calc(100vw - 40px)); max-height:300px; overflow:hidden auto; overscroll-behavior:contain; padding:6px; border-radius:12px; background:var(--panel); border:1px solid var(--line); box-shadow:0 14px 36px var(--shadow); backdrop-filter:blur(18px); display:none; }
+.prompt-lib-head { padding:6px 8px 4px; font-size:11px; font-weight:700; color:var(--muted); }
+.prompt-lib-list { display:flex; flex-direction:column; gap:2px; }
+.prompt-lib-item { display:flex; align-items:center; gap:8px; width:100%; padding:7px 9px; border:0; border-radius:8px; background:transparent; color:var(--text); font-size:13px; text-align:left; cursor:pointer; }
+.prompt-lib-item svg, .prompt-lib-item i { width:15px; height:15px; flex:0 0 auto; color:var(--muted); }
+.prompt-lib-item span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.prompt-lib-item:hover { background:var(--soft); }
+.prompt-lib-item.active { background:var(--soft); box-shadow:inset 0 0 0 1px var(--line); }
+.prompt-lib-empty { padding:18px 10px; text-align:center; font-size:12px; color:var(--muted); line-height:1.8; }
+.prompt-lib-manage { display:flex; align-items:center; gap:8px; width:100%; margin-top:6px; padding:8px 9px; border:0; border-top:1px solid var(--line); border-radius:0 0 8px 8px; background:transparent; color:var(--muted); font-size:12.5px; text-align:left; cursor:pointer; }
+.prompt-lib-manage:hover { color:var(--text); background:var(--soft); }
+.prompt-lib-manage svg { width:14px; height:14px; }
+.composer-reference-mode-slot .video-reference-mode-control .smart-pill,
+.composer-reference-mode-slot .video-extend-dir-control .smart-pill { height:var(--ctrl-height); max-width:none; padding:0 9px; border-radius:999px; border-color:var(--line); background:var(--card); color:var(--muted); box-shadow:none; }
 .composer-reference-mode-slot .video-reference-mode-control:hover .smart-pill,
-.composer-reference-mode-slot .video-reference-mode-control.pinned .smart-pill { border-color:var(--text); color:var(--text); }
-.composer-reference-mode-slot .video-reference-mode-control .smart-popover { left:auto; right:0; min-width:150px; transform:translateY(4px); }
+.composer-reference-mode-slot .video-reference-mode-control.pinned .smart-pill,
+.composer-reference-mode-slot .video-extend-dir-control:hover .smart-pill,
+.composer-reference-mode-slot .video-extend-dir-control.pinned .smart-pill { border-color:var(--text); color:var(--text); }
+.composer-reference-mode-slot .video-reference-mode-control .smart-popover,
+.composer-reference-mode-slot .video-extend-dir-control .smart-popover { left:auto; right:0; min-width:150px; transform:translateY(4px); }
 .composer-reference-mode-slot .video-reference-mode-control:focus-within .smart-popover,
-.composer-reference-mode-slot .video-reference-mode-control.pinned .smart-popover { transform:translateY(0); }
-.composer-reference-mode-slot .video-reference-mode-control .smart-popover::after { left:auto; right:0; width:100%; }
+.composer-reference-mode-slot .video-reference-mode-control.pinned .smart-popover,
+.composer-reference-mode-slot .video-extend-dir-control:focus-within .smart-popover,
+.composer-reference-mode-slot .video-extend-dir-control.pinned .smart-popover { transform:translateY(0); }
+.composer-reference-mode-slot .video-reference-mode-control .smart-popover::after,
+.composer-reference-mode-slot .video-extend-dir-control .smart-popover::after { left:auto; right:0; width:100%; }
 .preview-icon-btn { width:34px; height:34px; border-radius:12px; display:inline-flex; align-items:center; justify-content:center; color:var(--muted); background:var(--card); border:1px solid var(--line); }
 .preview-icon-btn:hover { background:var(--strong); color:var(--strong-text); }
 .preview-nav-btn { position:absolute; top:50%; z-index:9; width:42px; height:58px; transform:translateY(-50%); border-radius:999px; display:none; align-items:center; justify-content:center; background:rgba(255,255,255,.86); color:var(--text); border:1px solid var(--line); box-shadow:0 14px 34px rgba(0,0,0,.16); backdrop-filter:blur(14px); transition:background .14s ease, color .14s ease, transform .14s ease; }
@@ -2475,8 +2536,6 @@ body.studio-theme-dark .dynamic-params .pfield-bool-thumb { background:#000000; 
 .comfy-layout .cfn-details { grid-area:details; min-width:0; display:flex; flex-direction:row; flex-wrap:wrap; gap:7px 8px; align-items:stretch; }
 .comfy-layout .composer-head { padding:0; }
 .comfy-layout .engine-select, .comfy-layout .smart-pill { height:28px; font-size:11px; font-weight:700; padding:0 10px; background:var(--soft); border:1px solid var(--line); }
-.comfy-layout .workflow-control { flex:1; min-width:0; }
-.comfy-layout .workflow-control .smart-pill { max-width:100%; }
 .comfy-layout .comfy-nodes-control { flex-shrink:0; }
 .comfy-layout .comfy-nodes-control .smart-pill { padding:0 8px; }
 .comfy-layout .comfy-nodes-control .smart-pill > svg { display:none; }
@@ -2493,25 +2552,14 @@ body.studio-theme-dark .dynamic-params .pfield-bool-thumb { background:#000000; 
    窄屏另有 540px 的媒体查询；上一版写死 600px 反而收窄了，还吃掉了窄屏响应式。
    合并 pill 只显示工作流名后，三颗按钮在默认宽度下放得下。 */
 .comfy-layout .cfn-controls { justify-content:flex-start; flex-wrap:nowrap; gap:6px; }
-/* 限宽必须落在 .workflow-control（可被 flex 收缩的 item）上，pill 自己 width:100% 跟随父宽。
-   若把 max-width 挂在 button 上：父容器被压缩时 shrink-to-fit 的 button 不会跟着缩，
-   会溢出并压住右边两颗按钮 —— 就是「按钮重叠」的成因。 */
-.comfy-layout .workflow-control { flex:0 1 auto; min-width:0; max-width:180px; }
-.comfy-layout .workflow-control .smart-pill { width:100%; max-width:100%; overflow:hidden; }
-/* 合并弹层现在同时装「工作流列表 + 生成引擎」，比原来高，限高内部滚动，别顶出屏幕 */
-.comfy-layout .comfy-unified-popover { max-height:min(50vh, 400px); overflow-y:auto; overflow-x:hidden; }
-.comfy-layout .workflow-control .smart-pill .sub { display:block; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .comfy-layout .comfy-nodes-control,
 .comfy-layout .comfy-params-control { flex:0 0 auto; }
 .comfy-layout .comfy-params-control .smart-pill { padding:0 8px; }
 .comfy-layout .comfy-params-control .smart-pill > i:not(.pill-caret),
 .comfy-layout .comfy-params-control .smart-pill > svg:not(.pill-caret) { display:none; }
-/* 弹层与左侧 pill 左对齐（默认居中会顶出容器左边界） */
-.comfy-layout .workflow-control .smart-popover,
+/* 参数弹层与工作流选择器的左边缘对齐。 */
 .comfy-layout .comfy-params-control .smart-popover { left:0; transform:translate(0, 4px); }
-.comfy-layout .workflow-control.pinned .smart-popover,
 .comfy-layout .comfy-params-control.pinned .smart-popover,
-.comfy-layout .workflow-control:focus-within .smart-popover,
 .comfy-layout .comfy-params-control:focus-within .smart-popover { transform:translate(0, 0); }
 /* 参数弹层：内容多时内部滚动，不把弹层撑出屏幕 */
 .comfy-layout .comfy-params-popover { min-width:min(440px, calc(100vw - 60px)); max-height:min(52vh, 420px); overflow-y:auto; overflow-x:hidden; }
@@ -2536,7 +2584,7 @@ body.studio-theme-dark .dynamic-params .pfield-bool-thumb { background:#000000; 
 .comfy-layout .smart-pill .sub { color:var(--text); font-weight:700; }
 .comfy-layout .run-btn { width:73px; height:30px; border-radius:8px; background:#2f2f2f; color:var(--text); font-size:12px; font-weight:800; box-shadow:none; }
 .comfy-layout .prompt-row { border:1px solid var(--line); border-radius:10px; background:var(--soft); }
-.comfy-layout .prompt-input { min-height:78px; padding:10px 12px; font-size:13px; line-height:1.5; }
+.comfy-layout .prompt-input { min-height:78px; padding:10px 4px; font-size:13px; line-height:1.5; }
 /* 模板库按钮：comfy 下常显，与相邻「风格」pill 同规格（2026-09-15）。
    旧版 opacity:0 + ".prompt-row:hover .composer-template-btn" 选择器写错（按钮是 .prompt-row 的兄弟不是后代），
    导致它永远不显形却仍占位可点 → 表现为"隐形按钮"。
@@ -2813,12 +2861,12 @@ body.studio-theme-dark .dynamic-params .pfield-bool-thumb { background:#000000; 
 .comfy-layout .input-thumbs-row.has-items:not(:has(+ .input-prompt-preview.has-text)) {
     margin-bottom:-18px;
 }
+/* comfy 与基线一致：挂参考图后 prompt 收回到 +20（全局 .has-items ~ 规则同款） */
 .comfy-layout .input-thumbs-row.has-items ~ .prompt-row .prompt-input {
     height:calc(var(--prompt-h, 124px) + 20px);
 }
-.comfy-layout .input-thumb-list {
-    padding:0;
-}
+/* 2026-09-25 v82 老王：comfy 缩略图靠左 5px 的根因=这条把基线 padding-left:5px 抹成 0。
+   撤掉覆写，回归基线（.input-thumb-list padding:0 0 0 5px），与其它引擎同位。 */
 .comfy-layout .input-thumb {
     width:40px;
     height:40px;
@@ -3294,6 +3342,7 @@ body.canvas-mode-objects .node-port { display:none !important; }
 .image-node.empty-node .node-drop { width:100%; height:100%; border:0; background:transparent; border-radius:8px; color:var(--faint); }
 /* passive center icon: indicates media types (image/video/audio), no interaction, no highlight */
 .image-node.empty-node .node-media-hint { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); display:flex; align-items:center; gap:14px; opacity:.35; pointer-events:none; }
+.image-node.empty-node .node-drop-hint { position:absolute; left:50%; top:calc(50% + 20px); transform:translateX(-50%); width:auto; max-width:92%; text-align:center; margin:0; opacity:.55; pointer-events:none; }
 .image-node.empty-node .node-media-hint i, .image-node.empty-node .node-media-hint svg { width:26px; height:26px; }
 /* pill upload button: hover-reveal, top-center inside node, like delete button but bigger; cursor:pointer */
 .image-node.empty-node .upload-node-btn { position:absolute; left:50%; top:10px; transform:translateX(-50%); display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 14px; border:0; border-radius:16px; background:transparent; color:#e0e0e0; font-size:12.5px; font-weight:600; cursor:pointer; opacity:0; pointer-events:none; transition:opacity .14s ease, background-color .14s ease; z-index:9; }
@@ -3303,12 +3352,11 @@ body.canvas-mode-objects .node-port { display:none !important; }
 .image-node.empty-node .upload-node-btn, .image-node.empty-node .upload-node-btn * { cursor:pointer !important; }
 .image-node.empty-node, .image-node.empty-node .node-drop { cursor:pointer; }
 
-/* bottom-left tools: vertical icon-only column, order top->bottom: connections, shortcuts, log, minimap (2026.09.15) */
-.canvas-bottom-tools { flex-direction:column-reverse; }
+/* Bottom-left tools run horizontally: connections, shortcuts, log, minimap. */
 .canvas-bottom-tools .canvas-bottom-button span { display:none; }
 .canvas-bottom-tools .canvas-bottom-button { width:34px; justify-content:center; padding:0; }
 
-/* minimap: pop out to the RIGHT of the vertical bottom-left toolbar (2026.09.15) */
+/* Keep the minimap immediately above the horizontal tool row. */
 .canvas-bottom-cluster { align-items:flex-start; }
 .smart-node-input-badge,
 .smart-layout-tools.is-inactive,
@@ -3331,7 +3379,7 @@ body.canvas-mode-objects .node-port { display:none !important; }
 .canvas-agent-av-itemtabs[hidden],
 .object-ref-kind,
 .smart-minimap.is-hidden{ display:none; }
-.smart-minimap:not(.is-hidden) { position:fixed; left:60px; bottom:56px; z-index:130; }
+.smart-minimap:not(.is-hidden) { position:fixed; left:8px; bottom:45px; z-index:130; }
 
 /* ===== API 生图单排布局（api-single-row）：参数选择按钮合并成一排 ===== */
 .api-single-row .composer-card {
@@ -3393,7 +3441,7 @@ body.canvas-mode-objects .node-port { display:none !important; }
 }
 .api-single-row .composer-style-mode-slot .smart-pill span,
 .api-single-row .composer-style-mode-slot .pill-caret { display:none; }
-.api-single-row .run-btn { width:26px; min-width:26px; height:26px; padding:0; border-radius:999px; justify-content:center; }
+.api-single-row .run-btn { width:26px; min-width:26px; height:26px; padding:0; border-radius:8px; justify-content:center; }
 .api-single-row .run-btn span { display:none; }
 .api-single-row .run-btn i,
 .api-single-row .run-btn svg { width:14px !important; height:14px !important; }
@@ -3507,7 +3555,7 @@ body.canvas-mode-objects .node-port { display:none !important; }
 }
 .api-video-row .composer-style-mode-slot .smart-pill span,
 .api-video-row .composer-style-mode-slot .pill-caret { display:none; }
-.api-video-row .run-btn { width:26px; min-width:26px; height:26px; padding:0; border-radius:999px; justify-content:center; position:relative; }
+.api-video-row .run-btn { width:26px; min-width:26px; height:26px; padding:0; border-radius:8px; justify-content:center; position:relative; }
 .api-video-row .run-btn span { display:none; }
 .api-video-row .run-btn i,
 .api-video-row .run-btn svg { width:14px !important; height:14px !important; }
@@ -3567,8 +3615,9 @@ body.canvas-mode-objects .node-port { display:none !important; }
     /* 参考图风格：卡片即唯一框体，提示词区只做区域划分，无边框无底色 */
     border-color:transparent !important;
     background:transparent !important;
+    /* 2026-09-25 v85 老王：12 嫌宽，统一收 4/4（左=原 4，右=与左对称） */
     padding-left:4px;
-    padding-right:36px;
+    padding-right:4px;
 }
 
 /* ===== 单框承载（成熟画布式）：只有 composer-card 一个外框，内部一律无框线 ===== */
@@ -3805,7 +3854,7 @@ body.canvas-mode-objects .node-port { display:none !important; }
     border-color:var(--line) !important;
 }
 /* 运行按钮：圆形 arrow-up，贴右 */
-.rh-single-row .run-btn { width:26px; min-width:26px; height:26px; padding:0; border-radius:999px; justify-content:center; position:relative; }
+.rh-single-row .run-btn { width:26px; min-width:26px; height:26px; padding:0; border-radius:8px; justify-content:center; position:relative; }
 .rh-single-row .run-btn span { display:none; }
 .rh-single-row .run-btn i,
 .rh-single-row .run-btn svg { width:14px !important; height:14px !important; }
@@ -3891,8 +3940,12 @@ body.canvas-mode-objects .node-port { display:none !important; }
 .rh-single-row .cfn-controls {
     grid-area:params;
     display:flex; align-items:center; gap:6px; min-width:0;
+    /* 2026-09-25 v60（用户截图定稿）：RH 恢复 wrap——一行放得下就一行，
+       放不下自然换第二排（=截图两行分组观感）。子项仍可收缩。 */
     flex-wrap:wrap; row-gap:4px; padding-left:5px;
 }
+.rh-single-row .cfn-controls > .param-item { min-width:0; flex:0 1 auto; }
+.rh-single-row .cfn-controls .unified-picker-pill .sub { max-width:150px; }
 .rh-single-row .cfn-controls > .smart-control { flex:0 1 auto; min-width:0; }
 .rh-single-row .cfn-controls .smart-pill { min-width:0; }
 .rh-single-row .cfn-details { grid-area:details; min-width:0; }
@@ -4191,3 +4244,379 @@ body.canvas-mode-objects .node-port { display:none !important; }
 }
 @keyframes run-orbit { to { transform:rotate(360deg); } }
 @keyframes run-ripple { 0% { transform:scale(1); opacity:.9; } 100% { transform:scale(1.8); opacity:0; } }
+
+
+/* ===== 统一「平台·工作流/模型」面板（2026-09-25 拍板） ===== */
+/* 引擎下拉彻底隐藏（3D预演的纯文本标签另说）：平台选择由统一面板接管 */
+.composer-head-left .engine-select { display:none !important; }
+/* RH/Comfy 下图片/视频切换按钮 = 图标态（与 api-single-row 一致，不放文字） */
+.comfy-layout .kind-toggle button span,
+.rh-single-row .kind-toggle button span { display:none; }
+.comfy-layout .kind-toggle button,
+.rh-single-row .kind-toggle button { padding:0 4px; gap:0; }
+.comfy-layout .kind-toggle button i, .comfy-layout .kind-toggle button svg,
+.rh-single-row .kind-toggle button i, .rh-single-row .kind-toggle button svg { width:13px !important; height:13px !important; }
+.unified-picker-control { position:relative; }
+.unified-picker-pill .sub { max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:inline-block; vertical-align:middle; }
+.unified-picker-popover { left:50%; bottom:calc(100% + 8px); width:min(340px, 78vw); max-height:min(420px, 60vh); overflow:auto; }
+.unified-picker-control.pinned .unified-picker-popover { opacity:1; visibility:visible; pointer-events:auto; transform:translate(-50%, 0); }
+.unified-group { padding:4px 0; }
+.unified-group + .unified-group { border-top:1px solid var(--line); }
+.unified-group-title { padding:6px 10px 3px; color:var(--faint); font-size:9.5px; font-weight:850; letter-spacing:.04em; }
+.unified-option { display:flex; align-items:center; gap:8px; width:100%; padding:6px 10px; border:0; background:transparent; color:var(--muted); font-size:11px; text-align:left; border-radius:6px; cursor:pointer; }
+.unified-option:hover { background:var(--soft); color:var(--text); }
+.unified-option.active { background:var(--card); color:var(--text); box-shadow:inset 0 0 0 1px var(--line); }
+.unified-option-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.unified-option-check { color:var(--accent, #76acc5); font-size:11px; }
+
+
+/* ===================================================================
+   2026-09-25 老王定稿：参数排全引擎统一（字号一致 + 图标排列一致）
+   ---------------------------------------------------------------
+   原先 api-single-row/api-video-row/rh-single-row/comfy-layout 各写各的
+   字号、高度、边框色，同一排里切换钮 6px 圆角配 8px 的 pill、API 10.5px
+   配 Comfy 11px。这里作为文件尾统一块按最终值拉齐（同权重后声明覆盖）：
+   ① 字号 11px（含子 span）② 高 30px ③ 圆角 8px（kind-toggle 外框+钮）
+   ④ 图标 13px、gap 5px、垂直居中 ⑤ 边框统一 rgba(200,200,200,.34)
+   运行键 .run-btn 与图标按钮特例不参与。
+   =================================================================== */
+.composer .cfn-controls > .param-item > .smart-control > .smart-pill,
+.composer .cfn-controls > .smart-control > .smart-pill,
+.composer .api-controls > .param-item > .smart-control > .smart-pill,
+.composer .api-controls > .smart-control > .smart-pill,
+.composer .param-row .dynamic-params > .param-item > .smart-control > .smart-pill,
+.composer .param-row .dynamic-params > .smart-control > .smart-pill,
+.composer .kind-toggle {
+    height:30px; font-size:11px; border-radius:8px;
+}
+.composer .kind-toggle { padding:2px; gap:2px; border:1px solid var(--line); background:var(--card); }
+.composer .kind-toggle button {
+    height:24px; border-radius:6px; font-size:11px; display:inline-flex; align-items:center; justify-content:center;
+}
+.composer .cfn-controls .smart-pill > span,
+.composer .api-controls .smart-pill > span,
+.composer .param-row .dynamic-params .smart-pill > span,
+.composer .kind-toggle button > span { font-size:11px; }
+/* 图标统一：13px、与文字 gap 5px、垂直居中、不缩不离版 */
+.composer .cfn-controls .smart-pill > i,
+.composer .cfn-controls .smart-pill > svg,
+.composer .api-controls .smart-pill > i,
+.composer .api-controls .smart-pill > svg,
+.composer .param-row .dynamic-params .smart-pill > i,
+.composer .param-row .dynamic-params .smart-pill > svg,
+.composer .kind-toggle button > i,
+.composer .kind-toggle button > svg {
+    width:13px !important; height:13px !important; flex:0 0 auto; align-self:center;
+}
+.composer .cfn-controls .smart-pill,
+.composer .api-controls .smart-pill,
+.composer .param-row .dynamic-params .smart-pill { gap:5px; align-items:center; }
+/* 字重统一：comfy-layout 旧规则给 pill 写了 font-weight:700（其它引擎 500），
+   字号相同但中文粗细一眼可辨 → 参数排全部拉回 500 */
+.composer .cfn-controls .smart-pill,
+.composer .api-controls .smart-pill,
+.composer .param-row .dynamic-params .smart-pill,
+.composer .cfn-controls .smart-pill .sub,
+.composer .api-controls .smart-pill .sub,
+.composer .param-row .dynamic-params .smart-pill .sub { font-weight:500 !important; }
+/* 边框统一（RH 原 #404040、API 原透明、Comfy 原 var(--line) → 一套） */
+.composer .cfn-controls > .param-item > .smart-control > .smart-pill,
+.composer .cfn-controls > .smart-control > .smart-pill,
+.composer .api-controls > .param-item > .smart-control > .smart-pill,
+.composer .api-controls > .smart-control > .smart-pill,
+.composer .param-row .dynamic-params > .param-item > .smart-control > .smart-pill,
+.composer .param-row .dynamic-params > .smart-control > .smart-pill {
+    border:1px solid rgba(200,200,200,.34);
+}
+
+/* 强化层：压过各布局 !important 特例与内容撑高 */
+.composer .cfn-controls .smart-pill,
+.composer .api-controls .smart-pill,
+.composer .param-row .dynamic-params .smart-pill {
+    height:30px !important; min-height:30px !important; max-height:30px !important;
+    font-size:11px !important; border-radius:8px !important;
+    box-sizing:border-box; line-height:1;
+}
+.composer .cfn-controls .smart-pill > span,
+.composer .api-controls .smart-pill > span,
+.composer .param-row .dynamic-params .smart-pill > span { font-size:11px !important; line-height:1; }
+.composer .kind-toggle { height:30px !important; }
+.composer .kind-toggle button { height:24px !important; font-size:11px !important; }
+/* 运行键特例：保持各布局原尺寸（强化层只打 .smart-pill，这里防串） */
+.composer .cfn-controls .run-btn.smart-pill { height:var(--runbtn-h, 26px) !important; }
+
+
+/* 详情行「素材：」标签/分隔符原 10px，与同行 11px 混排 → 拉齐 */
+.composer .cfn-mit-label,
+.composer .cfn-sep { font-size:11px !important; }
+
+/* 2026-09-25 参数排颜色亮度统一（三引擎 computed 实测差异收口）：
+   ① comfy .sub 是 --text 亮白、RH/API 是 --muted 灰 → 统一 --muted
+   ② 切换钮选中态 comfy=白底黑字、RH/API=#3d3d3d 灰底白字（0916 定稿的深灰方案）
+      → 统一 #3d3d3d
+   ③ pill 图标 opacity 0.7/0.5 混 → 统一 0.7（hover/pinned 提亮保留） */
+.composer .cfn-controls .smart-pill .sub,
+.composer .api-controls .smart-pill .sub,
+.composer .param-row .dynamic-params .smart-pill .sub,
+.composer .cfn-controls .smart-pill > span,
+.composer .api-controls .smart-pill > span,
+.composer .param-row .dynamic-params .smart-pill > span { color:var(--muted) !important; }
+.composer .kind-toggle button.active {
+    background:#3d3d3d !important; color:var(--text) !important;
+}
+.composer .cfn-controls .smart-pill > i,
+.composer .cfn-controls .smart-pill > svg,
+.composer .api-controls .smart-pill > i,
+.composer .api-controls .smart-pill > svg,
+.composer .param-row .dynamic-params .smart-pill > i,
+.composer .param-row .dynamic-params .smart-pill > svg { opacity:.7 !important; }
+.composer .smart-control:hover .smart-pill > i,
+.composer .smart-control:hover .smart-pill > svg,
+.composer .smart-control.pinned .smart-pill > i,
+.composer .smart-control.pinned .smart-pill > svg { opacity:1 !important; }
+
+/* ===================================================================
+   2026-09-25 老王拍板：composer 观感以「API 生图」为基准全引擎统一
+   - 卡片 18px 圆角（comfy 的 8px 覆写取消）
+   - prompt-row 去框（comfy 独有 border/底色 取消；输入框自带 13px 框即可）
+   - prompt 字号 11.5px（comfy 13px 取消）
+   - 弹层圆角统一 13px（RH 14px 覆写取消）
+   - 参数排最后一个按钮之后不再挂竖线
+   =================================================================== */
+.comfy-layout .composer-card { border-radius:18px; border-color:var(--line); background:var(--panel); }
+.comfy-layout .prompt-row { border:0; background:transparent; border-radius:0; }
+.comfy-layout .composer-card .prompt-input { font-size:11.5px; }
+.rh-single-row .rh-picker-popover { border-radius:13px; }
+/* v58：无线策略并入文件尾「相邻画线」统一规则 */
+
+
+/* ===================================================================
+   2026-09-25 老王两处修正：
+   ① 风格图标后面的竖线 = 真实元素 .composer-actions-divider → 隐藏
+      （= 用户要的「最后一个图标之后无线」）。
+   ② 模型选择 pill：无边框无底色（与规格 pill 同款），hover/展开淡底。
+   =================================================================== */
+.composer .composer-actions-divider { display:none !important; }
+.composer .unified-picker-pill { background:transparent !important; border-color:transparent !important; }
+.composer .unified-picker-control:hover .unified-picker-pill,
+.composer .unified-picker-control.pinned .unified-picker-pill {
+    background:var(--ctl-hover-bg, rgba(200,200,200,.12)) !important;
+    border-color:transparent !important;
+    box-shadow:none !important;
+}
+
+/* ===================================================================
+   2026-09-25 v58 参数排线终态（四种模式一致）：
+   ① dynamicParams 参数区（API图片/API视频）：相邻两个控件之间画一条
+      ::after 线；但 combo-spec-count 是最后一个 → 它之后无线 → 风格
+      后面本来就没线；divider 保持隐藏。
+   ② cfn-controls 参数区（Comfy/RH）：v51 已有「相邻控件 + 间 ::after
+      线」规则（rh/comfy 专属块 4213），但统一面板是 param-item 类
+      不匹配 .smart-control+.smart-control → 此处补 param-item 版。
+   规则全用「后一个元素画左线」，最后一个天然无线（它前面那颗若也是
+   最后一颗就不画）。
+   =================================================================== */
+/* ① API 两排：统一面板|规格 之间画线（规格是 last-child，它左线照画，右无） */
+.api-single-row .dynamic-params > .image-spec-control::after,
+.api-video-row .dynamic-params > .video-spec-control::after {
+    content:"";
+    position:absolute;
+    left:calc(-1 * var(--act-gap) / 2 - 0.5px);
+    top:50%;
+    transform:translateY(-50%);
+    width:1px;
+    height:14px;
+    background:var(--line);
+    opacity:.9;
+    pointer-events:none;
+}
+/* 视频排还有 参考模式|规格 等相邻：统一规则 */
+.api-video-row .dynamic-params > .param-item + .smart-control::after {
+    content:"";
+    position:absolute;
+    left:calc(-1 * var(--act-gap) / 2 - 0.5px);
+    top:50%;
+    transform:translateY(-50%);
+    width:1px;
+    height:14px;
+    background:var(--line);
+    opacity:.9;
+    pointer-events:none;
+}
+/* 规格 pill 左线由上条覆盖不到 param-item+smart-control 的情况兜底；
+   风格是 last-child → v51 :last-child 规则已禁其 ::after? 该规则已删——
+   风格|运行 之间无线靠「风格没有相邻后线规则」天然成立（divider 隐藏）。 */
+/* ② Comfy/RH：param-item(统一面板) 与 kind-toggle 参与相邻画线 */
+.composer .cfn-controls > .param-item + .smart-control::after,
+.composer .cfn-controls > .smart-control + .param-item::after,
+.composer .cfn-controls > .param-item + .param-item::after {
+    content:"";
+    position:absolute;
+    left:calc(-1 * 6px / 2 - 0.5px);
+    top:50%;
+    transform:translateY(-50%);
+    width:1px;
+    height:14px;
+    background:var(--line);
+    opacity:.9;
+    pointer-events:none;
+}
+.composer .cfn-controls > .param-item { position:relative; }
+
+/* ===================================================================
+   2026-09-25 v61 最终层（老王定稿）：参数排 = API 生图基准
+   无边框、透明底、8px 圆角、30px 高、11px 字、图标 13px；
+   悬停/展开才出淡底；相邻竖线 v58；最后一个之后无线。
+   后续改动请改这里，不要再叠新层。
+   =================================================================== */
+.composer .cfn-controls .smart-pill,
+.composer .api-controls .smart-pill,
+.composer .dynamic-params .smart-pill,
+.composer .composer-actions .smart-pill {
+    background:transparent !important;
+    border:none !important;
+    border-radius:8px !important;
+    box-shadow:none !important;
+    color:var(--text) !important;
+    height:30px !important;
+    font-size:11px !important;
+    font-weight:500 !important;
+    padding:0 9px !important;
+}
+/* actions 区（风格/参考模式）图标同基准：13px、op .7 */
+.composer .composer-actions .smart-pill svg { width:13px !important; height:13px !important; opacity:.7; }
+.composer .cfn-controls .smart-pill .sub,
+.composer .api-controls .smart-pill .sub,
+.composer .dynamic-params .smart-pill .sub,
+.composer .cfn-controls .smart-pill > span,
+.composer .api-controls .smart-pill > span,
+.composer .dynamic-params .smart-pill > span { color:var(--muted) !important; }
+/* hover/展开：淡底，无边框 */
+.composer .smart-control:hover .smart-pill,
+.composer .smart-control.pinned .smart-pill {
+    background:#2f2f2f !important;
+    border:none !important;
+    box-shadow:none !important;
+}
+.composer .unified-picker-pill { background:transparent !important; border:none !important; }
+.composer .unified-picker-pill:hover,
+.composer .unified-picker-pill[aria-expanded="true"] { background:#2f2f2f !important; }
+/* 左缘统一：切换钮距容器左边距=API基准(0)。（rh-single-row/comfy-layout 挂在 composer 本体上，不能用后代选择器） */
+.rh-single-row .cfn-controls,
+.comfy-layout .cfn-controls { padding-left:0 !important; }
+/* 相邻间距统一：参数排 gap 与 风格按钮前的 gap 全部= API 基准 6px */
+.composer .cfn-controls { gap:6px !important; }
+.composer .dynamic-params { gap:6px !important; }
+.composer .composer-actions { gap:6px !important; padding:0 !important; }
+.composer .composer-actions > .smart-control { margin:0 !important; }
+/* 风格按钮紧跟参数（不右靠），只有运行键钉右缘 */
+.composer .composer-actions { justify-content:flex-start !important; }
+.composer .composer-actions .run-btn { margin-left:auto; }
+/* 切换钮外框：带边框的分段容器（方案 A · 老王 2026-09-25 确认）。
+   外框 1px var(--line) + 底色 var(--card) 把「图片/视频」两选项包成一个分组，
+   选中态（方案 B · 0925）：无背景填充，仅底部整条青色高亮条表达。 */
+.composer .kind-toggle { background:var(--card) !important; border:1px solid var(--line) !important; box-shadow:none !important; padding:3px !important; }
+
+/* ===== v66：风格/参考槽搬进参数排后补相邻竖线（规则同 v58：非首颗才画左线） ===== */
+.composer .cfn-controls > .smart-control + .composer-style-mode-slot::after,
+.composer .cfn-controls > .smart-control + .composer-reference-mode-slot::after,
+.composer .cfn-controls > .param-item + .composer-style-mode-slot::after,
+.composer .cfn-controls > .param-item + .composer-reference-mode-slot::after,
+.composer .cfn-controls > .composer-reference-mode-slot + .composer-style-mode-slot::after {
+    content:"";
+    position:absolute;
+    left:calc(-1 * 6px / 2 - 0.5px);
+    top:50%;
+    transform:translateY(-50%);
+    width:1px;
+    height:14px;
+    background:var(--line);
+    opacity:.9;
+    pointer-events:none;
+}
+.composer .cfn-controls > .composer-style-mode-slot,
+.composer .cfn-controls > .composer-reference-mode-slot { position:relative; }
+/* API 布局：槽搬进 #dynamicParams 直属（无 cfn-controls 容器），同规则补线 */
+.composer .dynamic-params > .smart-control + .composer-style-mode-slot::after,
+.composer .dynamic-params > .smart-control + .composer-reference-mode-slot::after,
+.composer .dynamic-params > .param-item + .composer-style-mode-slot::after,
+.composer .dynamic-params > .param-item + .composer-reference-mode-slot::after,
+.composer .dynamic-params > .composer-reference-mode-slot + .composer-style-mode-slot::after {
+    content:"";
+    position:absolute;
+    left:calc(-1 * 6px / 2 - 0.5px);
+    top:50%;
+    transform:translateY(-50%);
+    width:1px;
+    height:14px;
+    background:var(--line);
+    opacity:.9;
+    pointer-events:none;
+}
+.composer .dynamic-params > .composer-style-mode-slot,
+.composer .dynamic-params > .composer-reference-mode-slot { position:relative; }
+
+/* ===== v74：运行键统一=以 ComfyUI 为准（老王 0925 指令：圆形+品牌色边框，别丢）=====
+   全引擎 = ComfyUI 原生观感：30×30 圆形(999px)，边框沿用各引擎既有品牌色描边（不新增不删除）。
+   形状跟 ComfyUI，图标尺寸不动（各引擎 14/15px 差异用户未要求统一，避免再次擅改）。 */
+.run-btn {
+    width:30px !important; min-width:30px !important; height:30px !important;
+    padding:0 !important; border-radius:999px !important; justify-content:center !important;
+}
+.run-btn span { display:none; }
+
+/* ===== v66：参数排到卡片左缘统一=API 基准(11px) =====
+   comfy pad12→10 + 列间隙8→0（head 列隐藏，间隙纯占位）；RH 同去列间隙。 */
+.comfy-layout .composer-card { padding:10px 10px 6px !important; column-gap:0 !important; row-gap:6px !important; }
+.rh-single-row .composer-card { column-gap:0 !important; }
+
+/* ===== v75：底部空带修复（换 comfy 节点下边框空一截的根因）=====
+   comfy/RH 网格给已删的「素材：」details 行留了空轨道（0px 行 + 10px 行距≈凭空 12px）。
+   details 真空时把该行从 grid 模板里整个撤掉。 */
+.comfy-layout .composer-card:not(:has(.cfn-details > *)) {
+    grid-template-areas:"thumbs thumbs thumbs" "prompt-preview prompt-preview prompt-preview" "prompt prompt prompt" "head controls run";
+}
+.rh-single-row .composer-card:not(:has(.cfn-details > *)) {
+    grid-template-areas:"thumbs thumbs thumbs" "prompt-preview prompt-preview prompt-preview" "prompt prompt prompt" "head params run";
+}
+.comfy-layout .cfn-details:not(:has(*)),
+.rh-single-row .cfn-details:not(:has(*)) { display:none; }
+
+/* ===== v76：comfy 缩略图区 + 提示词编辑区 对齐 API 基准（老王 0925：换节点显示不一样）=====
+   实测差异：prompt 高 124+20 vs API 124+30；内边距 10/12 对称 vs API 10/36/10/4；
+   缩略图 40×40 无边框 vs API 42×42 r9 细边；缩略图行负边距 comfy 专属值。全部收齐。 */
+.comfy-layout .composer-card .prompt-input {
+    height:calc(var(--prompt-h, 124px) + 30px);
+    padding:10px 4px !important;
+}
+/* 挂参考图后与 api 基线一致收到 +20（api 全局规则 comfy 因 display:contents 断兄弟链吃不到，这里代偿） */
+.comfy-layout .composer-card .input-thumbs-row.has-items ~ .prompt-row .prompt-input {
+    height:calc(var(--prompt-h, 124px) + 20px);
+}
+.comfy-layout .input-thumb {
+    width:42px !important; height:42px !important; border-radius:9px !important;
+    border:1px solid var(--line) !important; background:var(--soft) !important; box-shadow:none !important;
+}
+.comfy-layout .input-thumbs-row.has-items {
+    padding:0 !important; margin:-8px 0 -6px !important;
+    border:0 !important; border-radius:0 !important; background:transparent !important; box-shadow:none !important;
+    gap:6px !important;
+}
+.comfy-layout .input-thumbs-row.has-items:not(:has(+ .input-prompt-preview.has-text)) { margin-bottom:-14px !important; }
+
+/* ===== v81：无线模式缩略图三修（老王 0925 实测四症状）=====
+ ① 单图时 thumb-list 出横向滚动条（rowH 42→50、卡片+8）：无线引用图的 ×解除按钮
+    绝对定位 right:-5px 溢出滚动区 4px → 1 张图就触发 overflow 滑块；补右内边距吞掉。
+ ② comfy 丢了无线引用的亮绿边框（#a7f3d0）：v76 统一缩略图边框时被 !important 压掉，
+    补回对象引用态（api/rh 有、comfy 也要有）。
+ ③ 尺寸本身两模式都是 42×42（实测），①修完行高一致后观感即齐。 */
+.input-thumb-list:has(.input-thumb-unset) { padding-right:8px; }
+.comfy-layout .input-thumb.input-thumb-object-ref { border-color:#a7f3d0 !important; }
+
+/* Restore a keyboard-only focus ring on the prompt editor, whose neutral styling removes its mouse focus border. */
+.comfy-layout .composer-card .prompt-input:focus-visible {
+    outline:2px solid var(--text) !important;
+    outline-offset:3px;
+    border-color:var(--text) !important;
+    box-shadow:0 0 0 3px color-mix(in srgb, var(--text) 20%, transparent) !important;
+}

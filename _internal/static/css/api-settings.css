@@ -2366,10 +2366,7 @@ body.prism-api-page.show-runninghub #runninghubConfigBlock.runninghub-config-blo
 }body.prism-api-page.show-agent-mode .agent-config-block {
     display:flex !important;
 }body.prism-api-page.show-agent-mode .models-settings-block,
-body.prism-api-page.show-agent-mode #runninghubConfigBlock,
-body.prism-api-page.show-agent-mode #msLoraBlock {
-    display:none !important;
-}@media (min-width:1500px){.page,
+body.prism-api-page.show-agent-mode #runninghubConfigBlock,@media (min-width:1500px){.page,
     body.prism-api-page .page {
         padding-inline:32px !important;
     }.layout,
@@ -2711,4 +2708,15 @@ html.theme-light body {
 body.prism-api-page .page-head {
     border-bottom:1px solid var(--api-hard-line) !important;
     background:var(--api-hard-panel) !important;
+}
+
+/* Keep provider cards visually quiet until keyboard focus, then show a clear ring. */
+.provider-card:focus-visible {
+    outline:2px solid var(--text) !important;
+    outline-offset:2px !important;
+    z-index:2;
+}
+html:not(.studio-theme-dark) body.prism-api-page .provider-card:focus-visible,
+html.studio-theme-dark body.prism-api-page .provider-card:focus-visible {
+    outline-color:var(--api-hard-text) !important;
 }

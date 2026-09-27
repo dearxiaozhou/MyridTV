@@ -1,0 +1,248 @@
+/* Shared light-theme corrections. Keep the dark theme's existing styling intact. */
+html.theme-light,
+html.theme-light body,
+body.theme-light {
+  --x-muted: #526174;
+  --x-faint: #526174;
+  --faint: #526174;
+}
+
+/* Secondary labels must remain readable on selected rows and dark cards. */
+html.theme-dark,
+html.theme-dark body,
+body.theme-dark {
+  --x-faint: #b3b3b3;
+  --faint: #b3b3b3;
+}
+
+html.theme-light body.prism-api-page,
+body.theme-light.prism-api-page {
+  --api-hard-faint: #526174;
+  --api-hard-ok: #166534;
+}
+html.theme-dark body.prism-api-page,
+body.theme-dark.prism-api-page {
+  --api-hard-faint: #b3b3b3;
+}
+
+html.theme-light body.prism-api-page .mod-tag.img {
+  color: #166534 !important;
+}
+html.theme-light body.prism-api-page .rh-empty {
+  color: #526174 !important;
+}
+html.theme-light body .workflow-card.active .workflow-meta {
+  color: #1e3a5f !important;
+}
+html.theme-dark body #runBtn.run-btn,
+body.theme-dark #runBtn.run-btn {
+  color: #fff !important;
+}
+
+/* Canvas status pills and selected checkmarks need readable foregrounds. */
+html.theme-light .run-time-pill.done,
+body.theme-light .run-time-pill.done,
+html.theme-dark .run-time-pill.done,
+body.theme-dark .run-time-pill.done {
+  background: #047857 !important;
+  color: #fff !important;
+}
+html.theme-light .unified-option.active .unified-option-check,
+body.theme-light .unified-option.active .unified-option-check {
+  color: #1e3a5f !important;
+}
+
+/* The API sidebar title was still using a dark-theme gray on white. */
+html.theme-light body.prism-api-page .side-section-title {
+  color: var(--x-muted) !important;
+}
+
+/* Active tabs use a pale gray fill in these pages, so their text must be dark. */
+html.theme-light body .asset-page .asset-tabs button.active,
+html.theme-light body .asset-page .tree-row.active .tree-row-count,
+html.theme-light body .asset-page .nav-row.active .nav-row-count,
+html.theme-light body .workspace-mode-tabs button.active {
+  color: var(--x-text) !important;
+}
+
+html.theme-light body #saveBtn:disabled {
+  color: var(--x-muted) !important;
+}
+
+/* The empty canvas upload control previously kept its dark-theme hover colors. */
+html.theme-light .image-node.empty-node .upload-node-btn {
+  color: var(--x-muted);
+}
+html.theme-light .image-node.empty-node .upload-node-btn:hover {
+  background: var(--x-soft);
+}
+
+/* LLM options popover on the smart canvas had a fixed charcoal surface. */
+html.theme-light .previz-llm-panel {
+  color: var(--x-text);
+  background: var(--x-card);
+  border-color: var(--x-line);
+}
+html.theme-light .previz-llm-panel::after {
+  border-bottom-color: var(--x-card);
+}
+
+/* Light controls use distinct levels: primary action, selection, and neutral. */
+html.theme-light,
+html.theme-light body,
+body.theme-light {
+  --x-strong: #dbeafe;
+  --x-strong-text: #1e3a5f;
+  --light-primary: #35699f;
+  --light-primary-hover: #285886;
+  --light-selected: #dceafb;
+  --light-selected-strong: #c5ddf6;
+  --light-selected-line: #83add6;
+  --light-selected-text: #214b77;
+}
+
+html.theme-light body.prism-api-page .action-btn.primary-btn:not(.is-saved):not(:disabled),
+html.theme-light body.prism-api-page .action-btn.save-btn:not(.is-saved):not(:disabled),
+html.theme-light body.prism-api-page .api-page-save-btn:not(.is-saved):not(:disabled),
+html.theme-light body.prism-api-page .api-link-btn:not(:disabled),
+html.theme-light body .asset-page .asset-btn.primary:not(:disabled),
+html.theme-light body #saveBtn.action-btn.save-btn:not(:disabled) {
+  background: var(--light-primary) !important;
+  border-color: var(--light-primary) !important;
+  color: #fff !important;
+}
+html.theme-light body.prism-api-page .action-btn.primary-btn:not(.is-saved):hover:not(:disabled),
+html.theme-light body.prism-api-page .action-btn.save-btn:not(.is-saved):hover:not(:disabled),
+html.theme-light body.prism-api-page .api-page-save-btn:not(.is-saved):hover:not(:disabled),
+html.theme-light body.prism-api-page .api-link-btn:hover:not(:disabled),
+html.theme-light body .asset-page .asset-btn.primary:hover:not(:disabled),
+html.theme-light body #saveBtn.action-btn.save-btn:hover:not(:disabled) {
+  background: var(--light-primary-hover) !important;
+  border-color: var(--light-primary-hover) !important;
+  color: #fff !important;
+}
+html.theme-light body #runBtn.run-btn:not(.is-running):not(.is-stop):not(.is-ap-running) {
+  background: var(--light-primary) !important;
+  border-color: var(--light-primary) !important;
+  color: #fff !important;
+}
+html.theme-light body #runBtn.run-btn:not(.is-running):not(.is-stop):not(.is-ap-running):hover {
+  background: var(--light-primary-hover) !important;
+  border-color: var(--light-primary-hover) !important;
+}
+
+html.theme-light body.prism-api-page .provider-card.active,
+html.theme-light body.prism-api-page .api-model-tab.active,
+html.theme-light body .asset-page :is(.tree-row, .nav-row, .asset-card, .prompt-row).active,
+html.theme-light body .workflow-card.active {
+  background: var(--light-selected) !important;
+  color: var(--light-selected-text) !important;
+  box-shadow: inset 3px 0 0 var(--light-primary) !important;
+}
+html.theme-light body.prism-api-page .api-model-tab.active {
+  border-color: var(--light-selected-line) !important;
+}
+html.theme-light body .asset-page .asset-tabs button.active,
+html.theme-light body .workspace-mode-tabs button.active {
+  background: var(--light-selected-strong) !important;
+  color: var(--light-selected-text) !important;
+  border-color: var(--light-selected-line) !important;
+}
+html.theme-light body .asset-page :is(.tree-row, .nav-row).active :is(.tree-row-count, .nav-row-count) {
+  background: var(--light-selected-strong) !important;
+  color: var(--light-selected-text) !important;
+}
+html.theme-light .bottom-dock .dock-pill.active {
+  background: var(--light-selected-strong);
+  color: var(--light-selected-text);
+}
+html.theme-light .bottom-dock .dock-pill.active .dock-icon {
+  background: var(--light-primary);
+  color: #fff;
+}
+
+/* Canvas tools and selection states must sit naturally over a pale canvas. */
+html.theme-light .smart-image-tools,
+html.theme-light .smart-node-toolbar {
+  background: rgba(255, 255, 255, .94);
+  border-color: #cbd5e1;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, .13);
+}
+html.theme-light .smart-crop-action,
+html.theme-light .smart-node-action {
+  color: #475569;
+}
+html.theme-light .smart-crop-action:hover,
+html.theme-light .smart-node-action:hover {
+  background: #e8f0fb;
+  color: #1e3a5f;
+}
+html.theme-light .smart-node-action:disabled:hover,
+html.theme-light .smart-node-action.disabled:hover {
+  background: transparent;
+  color: #475569;
+}
+html.theme-light .asset-tab.active,
+html.theme-light .composer .kind-toggle button.active {
+  background: var(--light-selected-strong) !important;
+  color: var(--light-selected-text) !important;
+  border-color: var(--light-selected-line) !important;
+  box-shadow: none;
+}
+html.theme-light .canvas-add-toggle .canvas-dock-icon {
+  background: var(--light-primary);
+  border-color: var(--light-primary);
+  color: #fff;
+}
+html.theme-light .canvas-add-toggle:hover .canvas-dock-icon {
+  background: var(--light-primary-hover);
+  border-color: var(--light-primary-hover);
+}
+html.theme-light .image-wrap .mini-x,
+html.theme-light .thumb-item .mini-x {
+  background: rgba(255, 255, 255, .94);
+  border-color: #cbd5e1;
+  color: #475569;
+}
+html.theme-light .comfy-layout .run-btn:not(.is-running):not(.is-stop):not(.is-ap-running),
+html.theme-light .api-single-row .composer-actions .run-btn:not(.is-running):not(.is-stop):not(.is-ap-running),
+html.theme-light .api-video-row .composer-actions .run-btn:not(.is-running):not(.is-stop):not(.is-ap-running) {
+  background: #f8fbff;
+}
+
+/* Canvas list metadata and status badges must meet the same text contrast gate. */
+html.theme-light body.prism-canvas-page .gate-list .canvas-item:not(.active) .canvas-card-time,
+html.theme-light body.prism-canvas-page .gate-list .canvas-item:not(.active) .canvas-card-asset-count {
+  color: #526174 !important;
+}
+html.theme-light body.prism-canvas-page .gate-trash-badge.visible {
+  background: #526174 !important;
+  color: #fff !important;
+}
+html.theme-dark body.prism-canvas-page .gate-list .canvas-item:not(.active) .canvas-kind-chip {
+  color: #c4b5fd !important;
+  background: rgba(124, 58, 237, .18) !important;
+  border-color: rgba(196, 181, 253, .28) !important;
+}
+html.theme-light body.prism-canvas-page .gate-list .canvas-item:hover:not(.active) {
+  background: #f8fbff !important;
+  background-image: none !important;
+  border-color: #83add6 !important;
+  box-shadow: 0 12px 26px rgba(15, 23, 42, .14) !important;
+}
+html.theme-light body.prism-canvas-page .gate-list :is(.canvas-open, .canvas-pin-btn, .canvas-card-edit, .canvas-card-export, .canvas-delete):focus-visible {
+  outline: none !important;
+}
+html.theme-dark body.prism-canvas-page .gate-list :is(.canvas-open, .canvas-pin-btn, .canvas-card-edit, .canvas-card-export, .canvas-delete):focus-visible {
+  outline: none !important;
+}
+html.theme-light body.prism-canvas-page .gate-list .canvas-item:has(:focus-visible) {
+  outline: 3px solid #35699f !important;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 5px #35699f !important;
+}
+html.theme-dark body.prism-canvas-page .gate-list .canvas-item:has(:focus-visible) {
+  outline: 3px solid #b3b3b3 !important;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px #1f1f1f, 0 0 0 5px #b3b3b3 !important;
+}

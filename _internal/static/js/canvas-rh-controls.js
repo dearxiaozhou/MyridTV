@@ -1,7 +1,7 @@
 /* MyridTV 画布 RunningHub 控件渲染层（拆模块 ⑤）
  *
- * 18 个「数据 → HTML 字符串 / key 解析」纯函数：工作流选择 pill、节点开关列表、
- * 参数入口、资源(密钥/机器)选择、配置弹层、RH entry key 解析与节点关闭判定。
+ * 「工作流 JSON 识别 + 数据 → HTML 字符串 / key 解析」纯函数：图片槽位与节点识别、
+ * 工作流选择 pill、节点开关列表、参数入口、资源(密钥/机器)选择、配置弹层等。
  * 无 DOM 写入（composer innerHTML 与 sync 系列/事件绑定仍在主文件）；
  * settings/engineSelect 所有权在主文件（getter 注入），
  * 深依赖（renderRhInputsRow/renderRhSettingField/rhWorkflowNodeList/rhFieldRole）经函数注入。
@@ -18,7 +18,8 @@
         renderRhInputsRow: null,
         rhFieldRole: null,
         renderRhSettingField: null,
-        rhWorkflowNodeList: null,
+        getRunningHubWorkflowCache: null,
+        rhIsWorkflowLinkValue: null,
         getSettings: null,
         getEngineSelect: null
     };
@@ -61,6 +62,131 @@ function rhNodeIsOff(nodeId, sourceSettings=deps.getSettings()){
     if(!id) return false;
     return deps.rhNodeOffBucket(sourceSettings)[id] === true;
 }
+/* 节点开关：只列「API 设置里勾选过」的节点（= 该工作流已暴露字段所属的节点），
+   与本地 ComfyUI 的「已暴露节点」语义一致（canvas-comfy-controls.js: renderedComfyNodeModesControl）。
+   图片槽位自动从图结构推导，优先尊重 ref_images.ref_image_N 等命名连线，其次按节点 ID 排序。 */
+function rhWorkflowJsonForRef(ref){
+    if(!ref) return {};
+    const cache = deps.getRunningHubWorkflowCache ? deps.getRunningHubWorkflowCache() : {};
+    return rhWorkflowJsonFromSources(
+        cache[ref.id]?.workflowJson,
+        ref.entry?.workflowJson,
+        ref.entry?.raw?.workflowJson,
+        ref.entry?.raw?.prompt
+    );
+}
+function rhWorkflowNodeList(ref){
+    if(!ref || ref.kind !== 'workflow') return [];
+    const workflow = rhWorkflowJsonForRef(ref);
+    // 2026-09-26 修复：原实现列出 workflow JSON 里的全部节点（Krea2 = 46 个），
+    // 而「节点开关」关节点走的是「裁剪该节点的字段」——内部节点没有暴露字段可裁，
+    // 开关是空操作，列表也跟用户在 API 设置里勾的节点对不上。
+    // 改为只列勾选/暴露过字段的节点（rhEntryFields 同源：缓存配置优先于 entry 快照）。
+    const cached = deps.getRunningHubWorkflowCache ? deps.getRunningHubWorkflowCache() : {};
+    const cachedFields = cached[ref.id]?.fields;
+    const fields = (Array.isArray(cachedFields) && cachedFields.length)
+        ? cachedFields
+        : (Array.isArray(ref.entry?.fields) ? ref.entry.fields : []);
+    const ids = [...new Set(fields
+        .filter(field => field && field.enabled === true)
+        .map(field => String(field.nodeId || '').trim())
+        .filter(id => id && workflow[id] && typeof workflow[id] === 'object'))];
+    if(!ids.length) return [];
+    ids.sort((a, b) => {
+        const an = Number(a), bn = Number(b);
+        if(Number.isFinite(an) && Number.isFinite(bn) && an !== bn) return an - bn;
+        return String(a).localeCompare(String(b), undefined, {numeric:true});
+    });
+    const names = ids.map(id => String(workflow[id]?._meta?.title || workflow[id]?.class_type || id).trim() || id);
+    const total = {};
+    names.forEach(name => { total[name] = (total[name] || 0) + 1; });
+    const seen = {};
+    return ids.map((id, index) => {
+        const name = names[index];
+        let label = name;
+        if(total[name] > 1){
+            seen[name] = (seen[name] || 0) + 1;
+            label = `${name} #${seen[name]}`;
+        }
+        return {id, label, cls:String(workflow[id]?.class_type || '')};
+    });
+}
+function rhIsImageLoaderClass(cls){
+    return /loadimage|imageload|load[\s_-]*image|image[\s_-]*load/i.test(String(cls || ''));
+}
+function rhWorkflowImageFieldName(node){
+    const inputs = node?.inputs;
+    if(!inputs || typeof inputs !== 'object') return '';
+    const known = ['image','image_path','filename','file','img'];
+    for(const key of known){
+        if(Object.prototype.hasOwnProperty.call(inputs, key) && !deps.rhIsWorkflowLinkValue(inputs[key])) return key;
+    }
+    for(const key of known){
+        if(Object.prototype.hasOwnProperty.call(inputs, key)) return key;
+    }
+    return '';
+}
+function rhWorkflowImageSlots(ref){
+    if(!ref || ref.kind !== 'workflow') return [];
+    const workflow = rhWorkflowJsonForRef(ref);
+    const ids = Object.keys(workflow || {}).filter(id => workflow[id] && typeof workflow[id] === 'object');
+    if(!ids.length) return [];
+    const imageIds = ids.filter(id => rhIsImageLoaderClass(workflow[id]?.class_type));
+    if(!imageIds.length) return [];
+    const imageIdSet = new Set(imageIds.map(String));
+    const groups = new Map();
+    ids.forEach(id => {
+        const inputs = workflow[id]?.inputs;
+        if(!inputs || typeof inputs !== 'object') return;
+        Object.entries(inputs).forEach(([key, value]) => {
+            if(!deps.rhIsWorkflowLinkValue(value) || !imageIdSet.has(String(value[0]))) return;
+            const match = /^(.*?)(\d+)$/.exec(String(key));
+            if(!match) return;
+            const order = Number(match[2]);
+            if(!Number.isFinite(order)) return;
+            if(!groups.has(match[1])) groups.set(match[1], []);
+            groups.get(match[1]).push({order, nodeId:String(value[0])});
+        });
+    });
+    let ordered = [];
+    const candidates = [...groups.values()].map(items => {
+        const uniq = new Map();
+        items.forEach(item => {
+            const prev = uniq.get(item.nodeId);
+            if(!prev || prev.order > item.order) uniq.set(item.nodeId, item);
+        });
+        return [...uniq.values()].sort((a, b) => a.order - b.order).map(item => item.nodeId);
+    }).filter(list => list.length >= 2);
+    if(candidates.length){
+        candidates.sort((a, b) => b.length - a.length);
+        ordered = candidates[0];
+    }
+    if(!ordered.length){
+        ordered = [...imageIds].sort((a, b) => {
+            const an = Number(a), bn = Number(b);
+            if(Number.isFinite(an) && Number.isFinite(bn) && an !== bn) return an - bn;
+            return String(a).localeCompare(String(b), undefined, {numeric:true});
+        });
+    }
+    const seen = new Set();
+    return ordered.filter(id => {
+        const key = String(id);
+        if(seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    }).map(nodeId => {
+        const node = workflow[nodeId];
+        const title = String(node?._meta?.title || node?.class_type || `#${nodeId}`).trim() || `#${nodeId}`;
+        return {nodeId:String(nodeId), fieldName:rhWorkflowImageFieldName(node) || 'image', label:title};
+    });
+}
+function rhImageSlotOrderMap(sourceSettings=deps.getSettings()){
+    const map = new Map();
+    rhWorkflowImageSlots(deps.selectedRunningHubRef(sourceSettings)).forEach((slot, index) => {
+        if(!map.has(String(slot.nodeId))) map.set(String(slot.nodeId), index);
+    });
+    return map;
+}
 function renderRhWorkflowControl(ref){
     const apps = deps.runningHubEntries('app');
     const workflows = deps.runningHubEntries('workflow');
@@ -90,14 +216,10 @@ function renderRhWorkflowControl(ref){
     </div>`;
 }
 function rhNodesPillText(nodes){
-    const total = (nodes || []).length;
-    const offCount = (nodes || []).filter(node => rhNodeIsOff(node.id)).length;
-    return offCount
-        ? `${deps.tr('smart.comfyExposedNodes')} ${total} · ${deps.tr('smart.comfyOff')} ${offCount}`
-        : `${deps.tr('smart.comfyExposedNodes')} ${total}`;
+    return deps.tr('smart.nodesPill') || '节点开关';
 }
 function renderRhNodesControl(ref){
-    const nodes = deps.rhWorkflowNodeList(ref);
+    const nodes = rhWorkflowNodeList(ref);
     if(!nodes.length) return '';
     const pillText = rhNodesPillText(nodes);
     const rows = nodes.map(node => {
@@ -118,9 +240,8 @@ function renderRhNodesControl(ref){
     </div>`;
 }
 function renderRhDetailsHtml(){
-    return `<div class="cfn-details rh-details">
-        ${deps.renderRhInputsRow()}
-    </div>`;
+    // 2026-09-25 老王：自动裁剪已接管输入接线，「素材：接收…」计数行删除
+    return '';
 }
 function rhParamFields(fields){
     return (fields || []).filter(f => !['image','video','audio','prompt'].includes(deps.rhFieldRole(f)));
@@ -129,8 +250,9 @@ function renderRhParamsControl(fields){
     const paramFields = rhParamFields(fields);
     if(!paramFields.length) return '';
     const title = deps.tr('smart.workflowParams') || '工作流参数';
+    const pillLabel = deps.tr('smart.paramsPill') || '参数调整';
     return `<div class="smart-control rh-params-control">
-        <button class="smart-pill" type="button" title="${deps.escapeHtml(title)}"><span class="sub">${deps.escapeHtml(title)} ${paramFields.length}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+        <button class="smart-pill" type="button" title="${deps.escapeHtml(title)}"><span class="sub">${deps.escapeHtml(pillLabel)} ${paramFields.length}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
         <div class="smart-popover compact-popover rh-picker-popover rh-param-popover rh-params-popover">
             <div class="smart-popover-title">${deps.escapeHtml(title)}</div>
             <div class="cfn-params-body">${paramFields.map(deps.renderRhSettingField).join('')}</div>
@@ -214,6 +336,12 @@ function renderRhMachineControl(){
         rhWorkflowJsonFromSources: rhWorkflowJsonFromSources,
         rhNodeOffIds: rhNodeOffIds,
         rhNodeIsOff: rhNodeIsOff,
+        rhWorkflowJsonForRef: rhWorkflowJsonForRef,
+        rhWorkflowNodeList: rhWorkflowNodeList,
+        rhIsImageLoaderClass: rhIsImageLoaderClass,
+        rhWorkflowImageFieldName: rhWorkflowImageFieldName,
+        rhWorkflowImageSlots: rhWorkflowImageSlots,
+        rhImageSlotOrderMap: rhImageSlotOrderMap,
         renderRhWorkflowControl: renderRhWorkflowControl,
         rhNodesPillText: rhNodesPillText,
         renderRhNodesControl: renderRhNodesControl,

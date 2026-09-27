@@ -12,8 +12,8 @@
       document.documentElement.classList.toggle('studio-theme-dark', theme === 'dark');
     })();
   </script>
-  <script src="/static/js/theme.js?v=2026.06.21"></script>
-  <script src="/static/js/i18n.js?v=2026.09.23.previzcomposition31"></script>
+  <script src="/static/js/theme.js?v=2026.09.25.lighttrial1"></script>
+  <script src="/static/js/i18n.js?v=2026.09.26.rhfinaloutput88"></script>
   <style>
     :root {
       --line: rgba(255, 255, 255, 0.1);
@@ -75,14 +75,10 @@
 
 .stage {
 position: absolute;
-inset: 0 0 48px 0;
+inset: 0;
 overflow: hidden;
 background: var(--bg);
-transition: bottom 0.22s ease, background 0.3s ease;
-}
-
-body.dock-collapsed .stage {
-bottom: 0;
+transition: background 0.3s ease;
 }
 
     iframe {
@@ -104,29 +100,44 @@ bottom: 0;
       cursor: pointer;
     }
 
-.bottom-dock {
+.bottom-dock-shell {
 position: absolute;
 left: 50%;
-bottom: 0;
+bottom: 5px;
 z-index: 30;
-height: 50px;
 display: flex;
-align-items: center;
-gap: 7px;
-padding: 6px 0;
-border-radius: 0;
+align-items: flex-end;
+gap: 6px;
+transform: translateX(-50%);
+transition: left 0.22s ease, bottom 0.22s ease;
+}
+
+body.smart-agent-open:has(#frame-smart-canvas.active) .bottom-dock-shell {
+left: var(--smart-agent-dock-center, 50%);
+}
+
+.bottom-dock {
+height: 44px;
+display: flex;
+align-items: flex-end;
+gap: 6px;
+padding: 0;
 background: transparent;
 border: 0;
 box-shadow: none;
-backdrop-filter: none;
-transform: translate(-50%, 0);
-transition: transform 0.22s ease, opacity 0.22s ease;
+opacity: 1;
+visibility: visible;
+transition: opacity 0.22s ease, visibility 0.22s ease;
 }
 
     body.dock-collapsed .bottom-dock {
-      transform: translate(-50%, calc(100% + 14px));
       opacity: 0;
+      visibility: hidden;
       pointer-events: none;
+    }
+
+    body.dock-collapsed .bottom-dock-shell {
+      bottom: 0;
     }
 
     .dock-pill {
@@ -160,6 +171,11 @@ transition: transform 0.22s ease, opacity 0.22s ease;
       border-color: var(--dock-pill-line);
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
       cursor: default;
+    }
+
+    html.theme-light .dock-pill.dock-version:disabled {
+      color: var(--text);
+      -webkit-text-fill-color: var(--text);
     }
 
     html.theme-light .dock-pill {
@@ -203,18 +219,19 @@ transition: transform 0.22s ease, opacity 0.22s ease;
     }
 
     .dock-logo {
-      --myrid-motion-size: 48px;
-      width: 48px;
-      height: 48px;
-      padding: 3px;
+      --myrid-motion-size: 42px;
+      width: 42px;
+      height: 42px;
+      padding: 0;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       border-radius: 9px;
-      background: rgba(14, 22, 34, 0.9);
+      background: transparent;
       overflow: visible;
       position: relative;
       isolation: isolate;
+      transform: translateY(5px);
     }
 
         .dock-logo img {
@@ -277,33 +294,33 @@ transition: transform 0.22s ease, opacity 0.22s ease;
     }
 
     html.theme-light .dock-logo {
-      background: rgba(248,250,252,.92);
-      border-color: var(--dock-active-line);
+      background: transparent;
     }
 
     html.theme-light .dock-toggle {
-      background: rgba(255,255,255,0.85);
-      border-color: rgba(0,0,0,0.08);
+      background: var(--dock-pill-bg);
+      border-color: var(--dock-pill-line);
       color: var(--text);
     }
 
     .dock-toggle {
-      position: absolute;
-      bottom: 8px;
-      z-index: 31;
+      flex: 0 0 32px;
       width: 32px;
       height: 32px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      border-radius: 12px;
-      background: rgba(2, 8, 18, 0.9);
-      border: 1px solid var(--line);
-      transition: transform 0.22s ease;
+      border-radius: 8px;
+      background: var(--dock-pill-bg);
+      border: 1px solid var(--dock-pill-line);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+      opacity: 0.8;
+      transition: opacity 0.18s ease, background 0.18s ease;
     }
 
-    .dock-toggle.left { left: 8px; }
-    .dock-toggle.right { right: 8px; }
+    .dock-toggle:hover { background: var(--dock-pill-hover-bg); opacity: 0.8; }
+    body.dock-collapsed .dock-toggle { opacity: 0.4; }
+    body.dock-collapsed .dock-toggle:hover { opacity: 0.8; }
     body.dock-collapsed .dock-toggle svg { transform: rotate(180deg); }
 
     @media (max-width: 1180px) {
@@ -431,22 +448,19 @@ transition: transform 0.22s ease, opacity 0.22s ease;
     }
 
   </style>
+<link rel="stylesheet" href="/static/css/light-theme-trial.css?v=2026.09.27.5">
 </head>
 <body>
   <main class="app-shell">
     <section class="stage" aria-label="内容区域">
-  <iframe id="frame-canvas" data-page="canvas" data-src="/static/canvas.html?v=2026.09.23.previzcomposition31" scrolling="yes"></iframe>
-      <iframe id="frame-zimage" data-page="zimage" data-src="/static/zimage.html?v=2026.06.21" scrolling="yes"></iframe>
-      <iframe id="frame-enhance" data-page="enhance" data-src="/static/enhance.html?v=2026.06.21" scrolling="yes"></iframe>
-      <iframe id="frame-klein" data-page="klein" data-src="/static/klein.html?v=2026.06.21" scrolling="yes"></iframe>
-      <iframe id="frame-angle" data-page="angle" data-src="/static/angle.html?v=2026.06.21" scrolling="yes"></iframe>
-      <iframe id="frame-online" data-page="online" data-src="/static/online.html?v=2026.09.23.previzcomposition31" scrolling="yes"></iframe>
-      <iframe id="frame-asset-manager" data-page="asset-manager" data-src="/static/asset-manager.html?v=2026.09.23.previzcomposition31" scrolling="yes"></iframe>
-      <iframe id="frame-api-settings" data-page="api-settings" data-src="/static/api-settings.html?v=2026.09.23.previzcomposition31" scrolling="yes"></iframe>
-    <iframe id="frame-comfyui-settings" data-page="comfyui-settings" data-src="/static/comfyui-settings.html?v=2026.09.23.previzcomposition31" scrolling="yes"></iframe>
-<iframe id="frame-smart-canvas" data-page="smart-canvas" data-src="/static/smart-canvas.html?v=2026.09.23.previzcomposition31" scrolling="no"></iframe>
+  <iframe id="frame-canvas" data-page="canvas" data-src="/static/canvas.html?v=2026.09.26.rhfinaloutput88" scrolling="yes"></iframe>
+      <iframe id="frame-asset-manager" data-page="asset-manager" data-src="/static/asset-manager.html?v=2026.09.26.rhfinaloutput88" scrolling="yes"></iframe>
+      <iframe id="frame-api-settings" data-page="api-settings" data-src="/static/api-settings.html?v=2026.09.26.rhfinaloutput88" scrolling="yes"></iframe>
+    <iframe id="frame-comfyui-settings" data-page="comfyui-settings" data-src="/static/comfyui-settings.html?v=2026.09.26.rhfinaloutput88" scrolling="yes"></iframe>
+<iframe id="frame-smart-canvas" data-page="smart-canvas" data-src="/static/smart-canvas.html?v=2026.09.26.rhfinaloutput88" scrolling="no"></iframe>
     </section>
 
+    <div class="bottom-dock-shell">
     <button class="dock-toggle left" type="button" onclick="toggleBottomDock()" title="向下收起/显示底部菜单">
       <svg width="17" height="17" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
     </button>
@@ -455,15 +469,16 @@ transition: transform 0.22s ease, opacity 0.22s ease;
       <button class="dock-pill" type="button" onclick="switchUI(this, 'api-settings')" title="API配置"><span class="dock-icon">API</span><span class="dock-pill-label">API配置</span></button>
       <button class="dock-pill" type="button" onclick="switchUI(this, 'comfyui-settings')" title="本地工作流"><span class="dock-icon">WF</span><span class="dock-pill-label">本地工作流</span></button>
       <button class="dock-pill" type="button" onclick="switchUI(this, 'asset-manager')" title="素材库"><span class="dock-icon">LIB</span><span class="dock-pill-label">素材库</span></button>
-      <button class="dock-logo" type="button" onclick="goHomeCanvas()" title="返回主页面"><img src="/static/images/myrid-icon-dock.png?v=20260629" alt="MyridTV"></button>
+      <button class="dock-logo" type="button" onclick="goHomeCanvas()" title="返回主页"><img src="/static/images/myrid-icon-dock.png?v=20260629" alt="MyridTV"></button>
       <button class="dock-pill" type="button" onclick="toggleTheme()" id="dock-theme-btn" title="深色模式"><span class="dock-icon">TH</span><span class="dock-pill-label">深色模式</span></button>
       <button class="dock-pill" type="button" onclick="toggleTaskConsole()" id="dock-console-btn" title="任务控制台"><span class="dock-icon">TC</span><span class="dock-pill-label">控制台</span></button>
-        <button class="dock-pill dock-version" type="button" disabled title="版本"><span class="dock-icon">V</span><span class="dock-pill-label app-version">版本：V0.4.1</span></button>
+        <button class="dock-pill dock-version" type="button" disabled title="版本"><span class="dock-icon">V</span><span class="dock-pill-label app-version">版本：V0.7.1</span></button>
     </nav>
 
     <button class="dock-toggle right" type="button" onclick="toggleBottomDock()" title="向下收起/显示底部菜单">
       <svg width="17" height="17" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
     </button>
+    </div>
   </main>
 
   <!-- 任务运行控制台（task-console） -->
@@ -496,7 +511,13 @@ const ACTIVE_PAGE_KEY = 'studio_active_page';
    canvas.html 仍保留，作为画布管理页（列表 / 新建 / 回收站 / 导入导出），
    并在"一张画布都没有"或接口不可用时作为兜底首页。 */
 const DEFAULT_PAGE_ID = 'smart-canvas';
-const PAGE_IDS = ['canvas', 'zimage', 'enhance', 'klein', 'angle', 'online', 'asset-manager', 'api-settings', 'comfyui-settings', 'smart-canvas'];
+const PAGE_IDS = ['canvas', 'asset-manager', 'api-settings', 'comfyui-settings', 'smart-canvas'];
+const pageHistory = [];
+
+function getActivePageId() {
+    const activeFrame = document.querySelector('.stage iframe.active');
+    return activeFrame ? activeFrame.dataset.page : (localStorage.getItem(ACTIVE_PAGE_KEY) || DEFAULT_PAGE_ID);
+}
 
 // Remember the last canvas-type page we were on (smart-canvas or canvas)
 // plus the specific canvas ID, so the home logo can return to the exact canvas.
@@ -583,7 +604,11 @@ function switchUI(trigger, pageId, options) {
     if (!PAGE_IDS.includes(pageId)) pageId = DEFAULT_PAGE_ID;
     const frame = document.getElementById('frame-' + pageId);
     if (!frame) return;
-    if (pageId === DEFAULT_PAGE_ID && !options.src) {
+    const previousFrame = document.querySelector('.stage iframe.active');
+    if (previousFrame && previousFrame !== frame && !options.skipHistory) {
+        pageHistory.push(previousFrame.dataset.page);
+    }
+    if (pageId === DEFAULT_PAGE_ID && !options.src && !options.preserveFrame) {
         // 默认页统一以 data-src 为准（启动时会写入带画布 id 的地址），
         // 不再硬编码页面文件名，避免换默认页时漏改。
         const currentSrc = frame.getAttribute('src') || '';
@@ -594,6 +619,8 @@ function switchUI(trigger, pageId, options) {
     ensureFrameLoaded(frame, options);
     frame.classList.add('active');
     setActiveDock(pageId, trigger);
+    const logo = document.querySelector('.dock-logo');
+    if (logo) logo.title = isCanvasPage(pageId) ? '返回主页' : '返回画布';
     if (!options.skipRemember) {
         localStorage.setItem(ACTIVE_PAGE_KEY, pageId);
         const rememberOpts = {};
@@ -669,60 +696,47 @@ async function resolveBootTarget() {
 }
 
 function goHomeCanvas() {
-    const currentPage = localStorage.getItem(ACTIVE_PAGE_KEY) || DEFAULT_PAGE_ID;
-    if (currentPage === 'canvas') {
-        // 在画布列表页点 logo：回到首页（智能画布）
-        switchUI(document.querySelector('.dock-logo'), 'smart-canvas', { resetFrame: true });
-        return;
-    }
+    const currentPage = getActivePageId();
     if (isCanvasPage(currentPage)) {
-        // 已经在智能画布：以"当前正在看的画布"为准同步默认地址，
-        // 不把用户弹回启动时自动打开的那一张。
-        const frame = document.getElementById('frame-smart-canvas');
-        if (frame) {
-            const curSrc = frame.getAttribute('src') || '';
-            const idMatch = curSrc.match(/[?&]id=([^&]+)/);
-            if (idMatch) {
-                const curId = decodeURIComponent(idMatch[1]);
-                frame.dataset.src = buildSmartCanvasUrl(frame.dataset.src, curId);
-                try { localStorage.setItem(LAST_CANVAS_ID_KEY, curId); } catch (e) { }
-            }
+        // 画布列表就是主页；从任何具体画布回到列表时结束当前返回链。
+        pageHistory.length = 0;
+        if (currentPage !== 'canvas') {
+            switchUI(document.querySelector('.dock-logo'), 'canvas', { resetFrame: true, skipHistory: true });
         }
-        switchUI(document.querySelector('.dock-logo'), DEFAULT_PAGE_ID, { resetFrame: true });
         return;
     }
-    // Otherwise, return to the last canvas page we were on
-    const target = getLastCanvasPage();
-    const options = { resetFrame: true };
-    if (target === 'smart-canvas') {
-        const lastId = getLastCanvasId();
-        if (lastId) {
-            options.src = '/static/smart-canvas.html?id=' + encodeURIComponent(lastId);
+    // 跳过工具页面，一次返回进入这些页面前的画布。
+    let target = 'canvas';
+    while (pageHistory.length) {
+        const previousPage = pageHistory.pop();
+        if (isCanvasPage(previousPage)) {
+            target = previousPage;
+            break;
         }
     }
-    switchUI(document.querySelector('.dock-logo'), target, options);
+    pageHistory.length = 0;
+    switchUI(document.querySelector('.dock-logo'), target, { preserveFrame: true, skipHistory: true });
 }
 
 function toggleBottomDock() {
     document.body.classList.toggle('dock-collapsed');
 }
 
-/* 2026-09-15：界面统一为单一深色主题，主题切换已停用。
-   保留函数是因为 dock 上的旧入口仍可能被调用，这里直接短路，
-   避免任何一处绕过 theme.js 的锁定去改 class。 */
 function toggleTheme() {
-    if (window.StudioTheme) window.StudioTheme.set('dark');
-    document.documentElement.classList.add('studio-theme-dark', 'theme-dark');
-    document.documentElement.classList.remove('theme-light');
-    if (document.body) {
-        document.body.classList.add('studio-theme-dark', 'theme-dark');
-        document.body.classList.remove('theme-light');
-    }
-    try {
-        localStorage.setItem('studio_theme', 'dark');
-        localStorage.setItem('canvas_theme', 'dark');
-    } catch (e) {}
+    if (!window.StudioTheme) return;
+    window.StudioTheme.set(window.StudioTheme.get() === 'dark' ? 'light' : 'dark');
+    document.querySelectorAll('iframe').forEach(syncThemeToFrame);
 }
+
+function syncDockThemeButton() {
+    const button = document.getElementById('dock-theme-btn');
+    if (!button) return;
+    const label = window.StudioTheme && window.StudioTheme.get() === 'light' ? '浅色模式' : '深色模式';
+    button.title = label;
+    const text = button.querySelector('.dock-pill-label');
+    if (text) text.textContent = label;
+}
+window.addEventListener('studio-theme-change', syncDockThemeButton);
 
 function toggleLanguage() {
     if (window.StudioI18n && window.StudioI18n.toggle) window.StudioI18n.toggle();
@@ -796,6 +810,17 @@ window.addEventListener('message', function (event) {
         const options = {};
         if (typeof data.src === 'string') options.src = data.src;
         if (typeof data.url === 'string') options.src = data.url;
+        // 带 tab 参数跳子页（如 ~ 面板「管理提示词库」→ 素材库提示词库标签）：拼进 src，iframe 重载时以 URL 为准
+        if (typeof data.tab === 'string' && data.tab) {
+            const frameEl = document.getElementById('frame-' + data.page);
+            const baseSrc = options.src || (frameEl && (frameEl.getAttribute('src') || frameEl.dataset.src)) || '';
+            if (baseSrc) {
+                const [pathPart, queryPart] = baseSrc.split('#')[0].split('?');
+                const params = new URLSearchParams(queryPart || '');
+                params.set('tab', data.tab);
+                options.src = pathPart + '?' + params.toString();
+            }
+        }
         if (data.resetFrame || data.page === DEFAULT_PAGE_ID) options.resetFrame = true;
         switchUI(null, data.page, options);
     }
@@ -1044,6 +1069,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
 document.addEventListener('DOMContentLoaded', function () {
     localStorage.removeItem(ACTIVE_PAGE_KEY);
+    syncDockThemeButton();
     syncLanguageButton();
     // 首页交给智能画布：先解析出要打开的画布，再切页，避免闪一下列表页
     resolveBootTarget().then(function (target) {
@@ -1058,6 +1084,7 @@ document.addEventListener('DOMContentLoaded', function () {
 </script>
 </body>
 </html>
+
 
 
 

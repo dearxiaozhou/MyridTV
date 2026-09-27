@@ -644,3 +644,10 @@ html.theme-dark body.prism-api-page .page-head {
 }body.show-runninghub #testUrlBtn {
   display:inline-flex !important;
 }
+
+/* Keep keyboard focus visible above the legacy active-card outline resets. */
+#providerList .provider-card:focus-visible {
+  outline: 2px solid var(--api-hard-text, #fff) !important;
+  outline-offset: 2px !important;
+  z-index: 2;
+}

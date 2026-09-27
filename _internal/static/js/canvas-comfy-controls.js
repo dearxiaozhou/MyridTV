@@ -30,10 +30,9 @@
     }
 
 function renderComfyDetailsHtml(wf, fields){
-    return `<div class="cfn-details">
-        ${deps.renderComfyInputsRow()}
-        ${deps.getSettings().comfyWorkflow ? '' : `<div class="muted-note">${deps.escapeHtml(deps.tr('smart.noWorkflow'))}</div>`}
-    </div>`;
+    // 2026-09-25 老王：自动裁剪已接管输入接线，「素材：接收…」计数行删除（仅留无工作流提示）
+    if (deps.getSettings().comfyWorkflow) return '';
+    return `<div class="cfn-details"><div class="muted-note">${deps.escapeHtml(deps.tr('smart.noWorkflow'))}</div></div>`;
 }
 function renderComfyParamsControl(wf, fields){
     const visibleFields = deps.visibleComfyFields(fields || [], deps.getSettings().comfyWorkflow);
@@ -43,8 +42,9 @@ function renderComfyParamsControl(wf, fields){
     });
     if(!editableFields.length) return '';
     const title = deps.tr('smart.workflowParams') || '工作流参数';
+    const pillLabel = deps.tr('smart.paramsPill') || '参数调整';
     return `<div class="smart-control comfy-params-control">
-        <button class="smart-pill" type="button" title="${deps.escapeHtml(title)}"><i data-lucide="sliders-horizontal"></i><span class="sub">${deps.escapeHtml(title)} ${editableFields.length}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+        <button class="smart-pill" type="button" title="${deps.escapeHtml(title)}"><i data-lucide="sliders-horizontal"></i><span class="sub">${deps.escapeHtml(pillLabel)} ${editableFields.length}</span></button>
         <div class="smart-popover compact-popover comfy-params-popover">
             <div class="smart-popover-title">${deps.escapeHtml(title)}</div>
             <div class="cfn-params-body">${renderComfyFields(visibleFields)}</div>
@@ -101,40 +101,6 @@ function renderUpscalePill(paramKey, current){
         </div>
     </div>`;
 }
-function comfyEnginePillLabel(){
-    const opt = deps.getEngineSelect() ? [...engineSelect.options].find(o => o.value === deps.getSettings().engine) : null;
-    const full = String(opt?.textContent || '').trim();
-    const short = full.replace(/[\s]*生成$/, '');
-    return short || full || 'ComfyUI';
-}
-function renderComfyWorkflowControl(){
-    if(!deps.getWorkflows().length) return `<div class="muted-note">${deps.escapeHtml(deps.tr('smart.noWorkflow'))}</div>`;
-    deps.getSettings().comfyWorkflow = deps.resolveComfyWorkflowName(deps.getSettings().comfyWorkflow);
-    const current = deps.getWorkflows().find(w => w.name === deps.getSettings().comfyWorkflow) || deps.getWorkflows()[0];
-    const label = current?.title || (current?.name || '').replace('.json','') || deps.tr('smart.workflow');
-    // 平铺：不分组显示（2026-09-05 用户要求去掉 📁 文件夹，恢复全量平铺列表）
-    // 2026-09-16 老王：pill 只显示工作流名称（原「平台 · 工作流」太长，会跟右边的按钮挤在一起），
-    // 引擎名降级为 title 悬浮提示；引擎切换入口仍在弹层里，不受影响。
-    const platform = comfyEnginePillLabel();
-    const pillTitle = `${platform} · ${label}`;
-    const optionBtn = (w, extraClass='') => `<button type="button" class="direct-option ${extraClass} ${w.name === deps.getSettings().comfyWorkflow ? 'active' : ''}" data-smart-param="comfyWorkflow" data-smart-value="${deps.escapeHtml(w.name)}"><span>${deps.escapeHtml(w.title || w.name.replace('.json',''))}</span></button>`;
-    const ungroupedSection = deps.getWorkflows().length ? `
-        <div class="smart-popover-title">${deps.escapeHtml(deps.tr('smart.workflow'))}</div>
-        <div class="model-list">
-            ${deps.getWorkflows().map(w => optionBtn(w)).join('')}
-        </div>` : '';
-    const engineLabels = {};
-    if(deps.getEngineSelect()) [...engineSelect.options].forEach(o => { engineLabels[o.value] = o.textContent.trim(); });
-    const engineRow = Object.entries(engineLabels).map(([key, lab]) =>
-        `<button type="button" class="direct-option ${key === deps.getSettings().engine ? 'active' : ''}" data-combo-engine="${deps.escapeHtml(key)}"><span>${deps.escapeHtml(lab)}</span></button>`).join('');
-    return `<div class="smart-control comfy-merge-control workflow-control">
-        <button class="smart-pill" type="button" title="${deps.escapeHtml(pillTitle)}"><span class="sub">${deps.escapeHtml(label)}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
-        <div class="smart-popover compact-popover rh-unified-popover comfy-unified-popover">
-            ${ungroupedSection}
-            ${engineRow ? `<div class="model-list-label rh-list-label rh-inline-group-label">生成引擎</div><div class="model-list rh-inline-group">${engineRow}</div>` : ''}
-        </div>
-    </div>`;
-}
 function renderComfyNodeModesControl(wf){
     const workflowName = deps.getSettings().comfyWorkflow;
     const workflow = wf?.workflow;
@@ -158,7 +124,7 @@ function renderComfyNodeModesControl(wf){
         </div>`;
     }).join('');
     return `<div class="smart-control comfy-nodes-control">
-        <button class="smart-pill" type="button"><i data-lucide="toggle-left"></i><span class="sub">${deps.escapeHtml(deps.tr('smart.comfyExposedNodes') || '已暴露节点')} ${exposedNodes.length}</span></button>
+        <button class="smart-pill" type="button"><i data-lucide="toggle-left"></i><span class="sub">${deps.escapeHtml(deps.tr('smart.nodesPill') || '节点开关')}</span></button>
         <div class="smart-popover compact-popover comfy-nodes-popover">
             <div class="smart-popover-title">${deps.escapeHtml(deps.tr('smart.comfyExposedNodes') || '已暴露节点')} · ${deps.escapeHtml((deps.getWorkflows().find(w => w.name === workflowName)?.title || workflowName.replace(/\.json$/,'')).slice(0, 24))}</div>
             <div class="cfm-list">${rows}</div>
@@ -180,8 +146,6 @@ function comfyFieldNodeIsOff(field, workflowName=deps.getSettings().comfyWorkflo
         renderComfyFields: renderComfyFields,
         renderComfyNumberCell: renderComfyNumberCell,
         renderUpscalePill: renderUpscalePill,
-        comfyEnginePillLabel: comfyEnginePillLabel,
-        renderComfyWorkflowControl: renderComfyWorkflowControl,
         renderComfyNodeModesControl: renderComfyNodeModesControl,
         comfyFieldNodeIsOff: comfyFieldNodeIsOff
     };

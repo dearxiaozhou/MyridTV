@@ -40,6 +40,7 @@ body { margin:0; height:100vh; overflow:hidden; background:var(--page); color:va
 .canvas-delete-confirm { position:absolute; inset:0; z-index:4; display:flex; align-items:center; justify-content:center; padding:12px; background:rgba(0,0,0,.18); backdrop-filter:blur(4px); }
 .canvas-delete-box { width:100%; padding:12px; border-radius:16px; background:#1f1f1f; box-shadow:0 16px 36px rgba(31,31,31,.22); text-align:center; }
 .canvas-delete-title { color:#fff; font-size:12px; font-weight:800; line-height:1.35; }
+.canvas-delete-sub { color:rgba(255,255,255,.7); font-size:11px; font-weight:600; line-height:1.45; margin-top:6px; }
 .canvas-delete-actions { display:flex; gap:6px; margin-top:10px; }
 .canvas-confirm-btn,.canvas-cancel-btn { height:28px; flex:1; border-radius:999px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; }
 .canvas-confirm-btn { background:#fff; color:#1f1f1f; }
@@ -55,6 +56,11 @@ body { margin:0; height:100vh; overflow:hidden; background:var(--page); color:va
 .canvas-card-edit:hover { color:#1f1f1f; border-color:#cbd5e1; background:#fff; }
 .canvas-item.active .canvas-card-edit { background:rgba(255,255,255,.14); color:#fff; border-color:rgba(255,255,255,.18); opacity:1; }
 .canvas-item.active .canvas-card-edit:hover { background:rgba(255,255,255,.22); }
+.canvas-card-export { position:absolute; right:72px; top:8px; width:26px; height:26px; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#c8c8c8; background:rgba(255,255,255,.92); border:1px solid #e8edf3; z-index:2; opacity:0; transition:all .14s var(--ease); }
+.canvas-item:hover .canvas-card-export { opacity:1; }
+.canvas-card-export:hover { color:#1f1f1f; border-color:#cbd5e1; background:#fff; }
+.canvas-item.active .canvas-card-export { background:rgba(255,255,255,.14); color:#fff; border-color:rgba(255,255,255,.18); opacity:1; }
+.canvas-item.active .canvas-card-export:hover { background:rgba(255,255,255,.22); }
 .canvas-delete { position:absolute; right:8px; top:8px; width:26px; height:26px; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#c8c8c8; background:rgba(255,255,255,.92); border:1px solid #e8edf3; z-index:2; opacity:0; transition:all .14s var(--ease); }
 .canvas-item:hover .canvas-delete { opacity:1; }
 .canvas-delete:hover { background:#fee2e2; color:#dc2626; border-color:#fecaca; }
@@ -527,10 +533,6 @@ body.studio-theme-dark .rh-prompt-field textarea,
 .ms-model-tabs { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:4px; padding:4px; border-radius:16px; background:var(--soft); border:1px solid var(--line-2); }
 .ms-model-tabs button { height:32px; border-radius:12px; color:var(--muted); font-size:10px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .ms-model-tabs button.active { background:var(--strong); color:var(--strong-text); }
-.msgen-node { width:380px; }
-.node.sized.msgen-node .generator-body { height:100%; display:flex; flex-direction:column; }
-.node.sized.msgen-node .ms-content { flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; }
-.node.sized.msgen-node .ms-controls { flex:0 0 auto; }
 input[type=range].canvas-range { -webkit-appearance:none; width:100%; height:18px; border-radius:999px; background:transparent; outline:none; margin-top:0; cursor:pointer; }
 input[type=range].canvas-range::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:var(--strong); cursor:pointer; margin-top:-5.5px; box-shadow:0 1px 3px rgba(0,0,0,.2); }
 input[type=range].canvas-range::-webkit-slider-runnable-track { height:3px; border-radius:2px; background:#e2e8f0; }
@@ -1116,6 +1118,7 @@ body.studio-theme-dark .comfy-random-btn.active,
 .theme-dark .canvas-card-meta,
 .theme-dark .canvas-preview-mark,
 .theme-dark .canvas-card-edit,
+.theme-dark .canvas-card-export,
 .theme-dark .canvas-delete { background:var(--soft); border-color:var(--line); color:var(--muted); }
 .theme-dark .canvas-item { background:var(--card-solid); border-color:var(--line); }
 .theme-dark .canvas-item:hover { border-color:var(--line-2); box-shadow:0 14px 30px rgba(0,0,0,.18); }
@@ -1151,6 +1154,7 @@ body.studio-theme-dark .comfy-random-btn.active,
 .theme-dark .canvas-item.active .canvas-card-meta,
 .theme-dark .canvas-item.active .canvas-preview-mark,
 .theme-dark .canvas-item.active .canvas-card-edit,
+.theme-dark .canvas-item.active .canvas-card-export,
 .theme-dark .canvas-item.active .canvas-delete { background:rgba(0,0,0,.08); color:#1f1f1f; border-color:rgba(0,0,0,.14); }
 .theme-dark .asset-manager-modal { background:rgba(0,0,0,.66); }
 .theme-dark .asset-manager-panel { box-shadow:0 28px 80px rgba(0,0,0,.42); }

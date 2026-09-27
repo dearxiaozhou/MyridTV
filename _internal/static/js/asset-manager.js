@@ -539,7 +539,7 @@ function renderAvatarSection(item){
     const supported = providerAvatarSupported(selected);
     const noKey = selected && selected.has_key === false;
     const alreadyRegistered = supported && regs[selPlatform] && regs[selPlatform].task_id;
-    const select = `<select class="avatar-provider-select" data-avatar-provider>${providers.map(p => `<option value="${escapeAttr(p.id)}" ${p.id === selected?.id ? 'selected' : ''}>${escapeHtml(avatarProviderOptionLabel(p))}</option>`).join('')}</select>`;
+    const select = `<select class="avatar-provider-select" data-avatar-provider aria-label="认证平台">${providers.map(p => `<option value="${escapeAttr(p.id)}" ${p.id === selected?.id ? 'selected' : ''}>${escapeHtml(avatarProviderOptionLabel(p))}</option>`).join('')}</select>`;
     let registerUI;
     if(!supported){
         registerUI = `<div class="avatar-hint">认证是跨平台功能，但「${escapeHtml(selPlatform ? avatarPlatformLabel(selPlatform) : (selected?.name || selected?.id || '该平台'))}」的资产认证 API 尚未接入（待接入）。请选择已支持的平台，或继续使用官方控制台认证。</div>${select}`;
@@ -806,7 +806,8 @@ async function uploadFiles(files){
     if(!cat) throw new Error('请先创建图片分组');
     const form = new FormData();
     [...files].forEach(file => form.append('files', file));
-    const uploaded = await apiJson('/api/ai/upload', {method:'POST', body:form});
+    // 素材管理器同属素材库域：落 assets/library/
+    const uploaded = await apiJson('/api/ai/upload?scope=library', {method:'POST', body:form});
     const items = (uploaded.files || []).filter(file => file?.url).map(file => ({
         library_id:activeAssetLibraryId,
         category_id:activeAssetCategoryId,
@@ -1890,6 +1891,11 @@ window.addEventListener('message', event => {
     }
 });
 window.addEventListener('studio-lang-change', () => { applyAssetLanguage(); render(); });
+(() => {
+    try {
+        const tab = new URLSearchParams(location.search).get('tab');
+        if(['assets','prompts','skills'].includes(tab)) activeTab = tab;
+    } catch(_) {}
+})();
 document.addEventListener('DOMContentLoaded', () => { applyAssetLanguage(); loadAll().catch(err => setStatus(err.message || assetText('loadFailed'))); });
-
 

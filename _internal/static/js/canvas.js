@@ -119,7 +119,6 @@ let models = {gpt:'gpt-image-2', nano:'nano-banana-pro'};
 let imageModels = ['gpt-image-2', 'nano-banana-pro'];
 let chatModels = ['gpt-4o-mini'];
 let videoModels = [];
-let msChatModels = [];
 let apiProviders = [];
 const PROVIDER_MODEL_DISPLAY = window.WcsProviderModelDisplay || null;
 let comfyBackendCount = 1;
@@ -140,12 +139,6 @@ const smartTextContentCache = new Map();
 let managedProviderId = 'comfly';
 let localImageModels = [];
 let localChatModels = [];
-const MS_GEN_MODELS = {
-    zimage:    { label: 'ZImage',     modelId: 'Tongyi-MAI/Z-Image-Turbo',            supportsImage: false, endpoint: '/generate'            },
-    qwen_edit: { label: 'Qwen Edit',  modelId: 'Qwen/Qwen-Image-Edit-2511',            supportsImage: true,  endpoint: '/api/angle/generate'  },
-    klein_edit:{ label: 'Klein',      modelId: 'black-forest-labs/FLUX.2-klein-9B',   supportsImage: true,  endpoint: '/api/ms/generate'     },
-    custom:    { label: '自定义', labelKey: 'canvas.custom', modelId: '',                acceptsImage: true,   endpoint: '/api/ms/generate'     }
-};
 let hasManagedImageModels = false;
 let hasManagedChatModels = false;
 let outputCompareDrag = false;
@@ -350,8 +343,7 @@ function localViewportForCanvas(canvasId, fallback={x:0, y:0, scale:1}){
     };
 }
 function applyTheme(theme){
-    /* 2026-09-15：画布只保留深色，忽略传入的 theme（与 smart-canvas.js 一致） */
-    const dark = true;
+    const dark = theme === 'dark';
     document.documentElement.classList.toggle('studio-theme-dark', dark);
     document.documentElement.classList.toggle('theme-dark', dark);
     document.body.classList.toggle('studio-theme-dark', dark);
@@ -397,7 +389,7 @@ function isRunningHubProvider(provider){
 }
 function imageApiProviders(){
     const providers = (apiProviders.length ? apiProviders : defaultApiProviders())
-        .filter(p => p.id !== 'modelscope' && p.enabled !== false && (p.image_models || []).length);
+        .filter(p => p.enabled !== false && (p.image_models || []).length);
     return providers;
 }
 function resolveImageProviderId(id){
@@ -418,7 +410,7 @@ function sanitizeImageNodeProviderModel(node){
 }
 function videoApiProviders(){
     const providers = (apiProviders.length ? apiProviders : defaultApiProviders())
-        .filter(p => p.id !== 'modelscope' && !isRunningHubProvider(p) && p.enabled !== false && (p.video_models || []).length);
+        .filter(p => !isRunningHubProvider(p) && p.enabled !== false && (p.video_models || []).length);
     return providers.length ? providers : defaultApiProviders();
 }
 function resolveVideoProviderId(id){
@@ -710,7 +702,6 @@ async function loadConfig(){
         imageModels = cfg.image_models?.length ? cfg.image_models : imageModels;
         chatModels = cfg.chat_models?.length ? cfg.chat_models : chatModels;
         videoModels = cfg.video_models?.length ? cfg.video_models : DEFAULT_VIDEO_MODELS;
-        msChatModels = cfg.ms_chat_models?.length ? cfg.ms_chat_models : msChatModels;
         comfyBackendCount = Math.max(1, (cfg.comfy_instances || []).length || 1);
         apiProviders = Array.isArray(cfg.api_providers) && cfg.api_providers.length ? cfg.api_providers : defaultApiProviders();
         models.nano = imageModels.find(m => m.toLowerCase().includes('nano')) || 'nano-banana-pro';
@@ -831,7 +822,8 @@ function pickCanvasCoverUpload(id){
         const form = new FormData();
         form.append('files', file);
         try {
-            const res = await fetch('/api/ai/upload', { method:'POST', body:form });
+            // 画布封面属于该画布：落进画布输出目录，随改名搬移、随彻底删除清理
+            const res = await fetch(`/api/ai/upload?scope=canvas&canvas_id=${encodeURIComponent(id)}`, { method:'POST', body:form });
             if(!res.ok) throw new Error('upload failed');
             const data = await res.json();
             const url = data.files && data.files[0] && data.files[0].url;
@@ -945,9 +937,6 @@ function renderCanvasListInto(list){
                     <button class="canvas-card-copy-id" type="button" title="复制完整 ID" aria-label="复制完整 ID">
                         <i data-lucide="copy" class="w-3 h-3"></i>
                     </button>
-                    <button class="canvas-card-export" type="button" title="导出画布（.json）" aria-label="导出画布">
-                        <i data-lucide="download" class="w-3 h-3"></i>
-                    </button>
                 </div>` : ''}
                 <div class="canvas-card-meta">
                     <span class="canvas-card-meta-dot"></span>
@@ -959,6 +948,7 @@ function renderCanvasListInto(list){
                 <div class="canvas-delete-confirm">
                     <div class="canvas-delete-box">
                         <div class="canvas-delete-title">${tr('canvas.purgeConfirm')}</div>
+                        <div class="canvas-delete-sub">${tr('canvas.purgeLocalFilesNote')}</div>
                         <div class="canvas-delete-actions">
                             <button class="canvas-confirm-btn" type="button">${tr('common.confirm')}</button>
                             <button class="canvas-cancel-btn" type="button">${tr('common.cancel')}</button>
@@ -988,6 +978,9 @@ function renderCanvasListInto(list){
                 </button>
                 <button class="canvas-card-edit" type="button" title="${tr('canvas.rename')}" aria-label="${tr('canvas.rename')} ${escapeHtml(item.title)}">
                     <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+                </button>
+                <button class="canvas-card-export" type="button" title="导出画布（.json）" aria-label="导出画布">
+                    <i data-lucide="download" class="w-3.5 h-3.5"></i>
                 </button>
                 <button class="canvas-delete" type="button" title="${tr('canvas.moveToTrash')}" aria-label="${tr('canvas.moveToTrash')} ${escapeHtml(item.title)}">
                     <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
@@ -1254,6 +1247,11 @@ async function setCanvasTitle(id, title){
             })
         });
         if(!res.ok) throw new Error('重命名失败');
+        const saved = await res.json().catch(() => ({}));
+        // 重命名联动：通知可能开着同一画布的编辑页同步内存 url，避免其自动保存冲掉后端已移动目录
+        if(saved.renamed){
+            try { apiChannel.postMessage({type:'canvas-renamed', id, renamed: saved.renamed}); } catch(_) {}
+        }
         if(currentCanvasTitle && canvas?.id === id) currentCanvasTitle.textContent = title;
         await loadCanvasList(false);
     } catch(e){
@@ -1594,7 +1592,8 @@ async function loadCanvasAssetLibrary({renderPanel=true}={}){
 async function uploadFilesToLibrary(files, libraryId, categoryId){
     const form = new FormData();
     [...files].forEach(file => form.append('files', file));
-    const uploaded = await fetch('/api/ai/upload', {method:'POST', body:form}).then(r => r.json());
+    // 素材库是跨画布资源：落 assets/library/，不随任何画布删除
+    const uploaded = await fetch('/api/ai/upload?scope=library', {method:'POST', body:form}).then(r => r.json());
     const items = (uploaded.files || []).filter(file => file?.url).map(file => ({library_id:libraryId, category_id:categoryId, url:file.url, name:file.name || 'asset'}));
     if(!items.length) return null;
     return fetch('/api/asset-library/items/batch', {
@@ -1857,9 +1856,9 @@ const RH_KNOWN_FIELD_OPTIONS = {
     sampler:['euler','euler_ancestral','heun','dpm_2','dpm_2_ancestral','lms','dpmpp_2m','dpmpp_sde','ddim','uni_pc']
 };
 
-const CANVAS_GENERATOR_TYPES = ['generator','msgen','comfy','ltxDirector','video','rh'];
-const CANVAS_IMAGE_OUTPUT_TYPES = ['generator','msgen','comfy','ltxDirector','rh'];
-const CANVAS_MEDIA_OUTPUT_TYPES = ['generator','msgen','comfy','ltxDirector','video','rh'];
+const CANVAS_GENERATOR_TYPES = ['generator','comfy','ltxDirector','video','rh'];
+const CANVAS_IMAGE_OUTPUT_TYPES = ['generator','comfy','ltxDirector','rh'];
+const CANVAS_MEDIA_OUTPUT_TYPES = ['generator','comfy','ltxDirector','video','rh'];
 function resetCascadeRuntimeState(){
     cascadeRunningIds.clear();
     cascadeStopIds.clear();
@@ -2194,7 +2193,7 @@ function initCanvasImportEntry(){
 
 
 window.onload = async () => {
-    applyTheme('dark');
+    applyTheme(window.StudioTheme?.get?.() || 'dark');
     if(window.StudioI18n) StudioI18n.apply();
     document.title = tr('canvas.title');
     await loadConfig();

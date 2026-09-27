@@ -4,12 +4,8 @@
     const SCALE_KEY = 'studio_ui_scale_mode';
     const SCALE_OPTIONS = ['auto', '100', '115', '125', '140'];
 
-    /* 2026-09-15：界面统一为单一深色主题。
-       画布（以及所有页面）只保留深色，主题切换入口已停用。
-       这里在「主题控制器」这一层锁死，因此无论调用方来自
-       localStorage、postMessage 还是 StudioTheme.set()，
-       结果都只能是深色。如需恢复双主题，把 LOCKED 改为 null 即可。 */
-    const LOCKED = 'dark';
+    /* 主题控制器允许浅色试验主题；默认仍保留深色。 */
+    const LOCKED = null;
 
     function currentTheme(){
         if(LOCKED) return LOCKED;
@@ -22,7 +18,7 @@
     }
 
     function applyTheme(theme){
-        const next = LOCKED || (theme === 'dark' ? 'dark' : 'light');
+        const next = LOCKED || (theme === 'dark' || theme === 'light' ? theme : currentTheme());
         const dark = next === 'dark';
         document.documentElement.classList.toggle('studio-theme-dark', dark);
         document.documentElement.classList.toggle('theme-dark', dark);
@@ -185,7 +181,7 @@
     function removeGptChatSurface(){
         try {
             if(localStorage.getItem('studio_active_page') === 'gpt-chat') {
-                localStorage.setItem('studio_active_page', 'zimage');
+                localStorage.setItem('studio_active_page', 'canvas');
             }
         } catch(e) {}
         const selectors = [

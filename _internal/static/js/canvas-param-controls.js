@@ -61,7 +61,10 @@ function renderVideoModelControl(models){
 }
 function renderVideoDurationControl(){
     const v = Math.max(1, Math.min(60, Number(deps.getSettings().videoDuration) || 5));
-    const quick = [3, 4, 5, 6, 8, 10, 12, 15];
+    // Seedance 2.5 支持 30s 直出：当前模型是 2.5 时快捷档放宽到 20/30
+    const model = String(deps.getSettings().videoModel || '');
+    const isSd25 = /seedance[-_. ]*2[-_. ]?5/i.test(model);
+    const quick = isSd25 ? [4, 5, 6, 8, 10, 12, 15, 20, 30] : [3, 4, 5, 6, 8, 10, 12, 15];
     return `<div class="smart-control duration-control" title="${deps.escapeHtml(deps.tr('smart.videoDurationTip'))}">
         <button class="smart-pill" type="button"><i data-lucide="timer"></i><span>${v}s</span></button>
         <div class="smart-popover compact-popover">
@@ -181,20 +184,39 @@ function renderVideoToggleControl(key, label){
 function renderVideoReferenceModeControl(){
     const value = deps.videoReferenceModeValue(deps.getSettings());
     const labels = {
-        mixed:'视频+图片',
-        video_only:'仅视频参考',
-        frame_extract:'抽帧参考',
-        first_last:'首尾帧'
+        mixed:'全能参考',
+        first_last:'首尾帧',
+        video_edit:'视频编辑',
+        video_extend:'视频延长'
     };
+    // 火山 Seedance 官方三种参考场景（文案照官方，不加解释）：全能参考 / 首尾帧 / 视频编辑 / 视频延长。
+    // 旧的 video_only、frame_extract 已合并：素材直链与自动抽帧降级由后端在提交时兜底，不再让用户选。
+    const opts = [
+        ['mixed','全能参考'],
+        ['first_last','首尾帧'],
+        ['video_edit','视频编辑'],
+        ['video_extend','视频延长']
+    ];
     return `<div class="smart-control video-reference-mode-control">
         <button class="smart-pill" type="button"><span>${deps.escapeHtml(labels[value] || labels.mixed)}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
         <div class="smart-popover compact-popover">
             <div class="smart-popover-title">参考模式</div>
             <div class="model-list">
-                <button type="button" class="direct-option ${value === 'mixed' ? 'active' : ''}" data-smart-param="videoReferenceMode" data-smart-value="mixed"><span>视频+图片</span></button>
-                <button type="button" class="direct-option ${value === 'video_only' ? 'active' : ''}" data-smart-param="videoReferenceMode" data-smart-value="video_only"><span>仅视频参考</span></button>
-                <button type="button" class="direct-option ${value === 'frame_extract' ? 'active' : ''}" data-smart-param="videoReferenceMode" data-smart-value="frame_extract"><span>抽帧参考</span></button>
-                <button type="button" class="direct-option ${value === 'first_last' ? 'active' : ''}" data-smart-param="videoReferenceMode" data-smart-value="first_last"><span>首尾帧</span></button>
+                ${opts.map(([v,label]) => `<button type="button" class="direct-option ${value === v ? 'active' : ''}" data-smart-param="videoReferenceMode" data-smart-value="${v}"><span>${label}</span></button>`).join('')}
+            </div>
+        </div>
+    </div>`;
+}
+function renderVideoExtendDirectionControl(){
+    // 仅「视频延长」模式显示：向后延长=生成视频1之后的内容 / 向前延长=生成视频1之前的内容
+    const value = String(deps.getSettings().videoExtendMode || 'after');
+    return `<div class="smart-control video-extend-dir-control">
+        <button class="smart-pill" type="button"><span>${value === 'before' ? '向前延长' : '向后延长'}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+        <div class="smart-popover compact-popover">
+            <div class="smart-popover-title">延长方向</div>
+            <div class="model-list">
+                <button type="button" class="direct-option ${value === 'after' ? 'active' : ''}" data-smart-param="videoExtendMode" data-smart-value="after"><span>向后延长</span></button>
+                <button type="button" class="direct-option ${value === 'before' ? 'active' : ''}" data-smart-param="videoExtendMode" data-smart-value="before"><span>向前延长</span></button>
             </div>
         </div>
     </div>`;
@@ -294,6 +316,7 @@ function renderVideoEngineModelCombo(models){
         renderImageSpecControl: renderImageSpecControl,
         renderVideoToggleControl: renderVideoToggleControl,
         renderVideoReferenceModeControl: renderVideoReferenceModeControl,
+        renderVideoExtendDirectionControl: renderVideoExtendDirectionControl,
         renderVideoTrustedAssetControl: renderVideoTrustedAssetControl,
         renderProviderControl: renderProviderControl,
         renderModelControl: renderModelControl,
