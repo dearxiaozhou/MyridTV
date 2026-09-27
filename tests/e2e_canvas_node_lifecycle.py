@@ -29,7 +29,9 @@ e2e_canvas_node_lifecycle.py
 import json, sys
 from playwright.sync_api import sync_playwright
 
-BASE = "http://127.0.0.1:3217"
+import os
+
+BASE = os.environ.get("MYRIDTV_TEST_BASE", "http://127.0.0.1:3217")
 
 
 def check(label, ok, detail=""):
@@ -55,7 +57,7 @@ def main():
             route.fulfill(status=200, content_type="application/json",
                           body=json.dumps({"proxy": {"base_url": BASE}}))
 
-        page.route("**/static/app_config.json", rc)
+        page.route("**/static/app_config.json*", rc)
         page.goto(f"{BASE}/smart-canvas.html", wait_until="networkidle")
         page.wait_for_timeout(1500)
 
@@ -63,6 +65,12 @@ def main():
         page.evaluate("""() => { if (typeof canvas === 'undefined' || canvas === null) {
             window.canvas = { connections: [], nodes: [] };
         } }""")
+        action_module = page.evaluate("typeof CanvasNodeActionController === 'object'")
+        failures += not check("通用节点动作控制器加载", action_module, "")
+        gesture_module = page.evaluate("""typeof CanvasNodeGestureController === 'object'
+            && typeof CanvasNodeGestureController.queueDragFrame === 'function'
+            && typeof CanvasNodeGestureController.finishDrag === 'function'""")
+        failures += not check("节点拖动缩放控制器加载", gesture_module, "")
 
         def node_count():
             return page.eval_on_selector_all(".image-node", "els => els.length")
@@ -128,13 +136,53 @@ def main():
                     and abs(copies[0]["top"]-pos_before["top"]-36) <= 3
         failures += not check("复制节点位置偏移 (48,36)", offset_ok, str(pos_after))
 
+        # === 7. 节点工具栏删除按钮 ===
+        selected = page.locator(".image-node.selected")
+        selected.hover()
+        selected.locator(".floating-node-actions .node-delete").click()
+        page.wait_for_timeout(500)
+        cnt5 = node_count()
+        failures += not check("点击节点删除按钮可移除节点", cnt5 == 1, str(cnt5))
+
+        # === 8. 节点缩放（通过真实 prompt 节点右下角手柄）===
+        create_node("prompt")
+        resize_handle = page.locator(".image-node.selected .node-resize-handle")
+        handle_visible = resize_handle.count() == 1 and resize_handle.is_visible()
+        failures += not check("可缩放节点显示尺寸手柄", handle_visible, "")
+        if handle_visible:
+            before_size = page.eval_on_selector(".image-node.selected", "el => ({width: el.getBoundingClientRect().width, height: el.getBoundingClientRect().height})")
+            handle_box = resize_handle.bounding_box()
+            page.mouse.move(handle_box["x"] + handle_box["width"] / 2, handle_box["y"] + handle_box["height"] / 2)
+            page.mouse.down()
+            page.mouse.move(handle_box["x"] + handle_box["width"] / 2 + 90, handle_box["y"] + handle_box["height"] / 2 + 60, steps=8)
+            page.mouse.up()
+            page.wait_for_timeout(500)
+            after_size = page.eval_on_selector(".image-node.selected", "el => ({width: el.getBoundingClientRect().width, height: el.getBoundingClientRect().height})")
+            resized = abs(after_size["width"] - before_size["width"]) > 2 or abs(after_size["height"] - before_size["height"]) > 2
+            failures += not check("拖动尺寸手柄后节点尺寸变化", resized, f"{before_size} -> {after_size}")
+        else:
+            failures += 1
+
+        # === 9. 节点接收外部素材（URL 拖放）===
+        before_drop = node_count()
+        page.locator(".image-node.selected").evaluate("""el => {
+            const transfer = new DataTransfer();
+            transfer.setData('text/uri-list', 'https://example.test/canvas-drop.png');
+            const point = el.getBoundingClientRect();
+            el.dispatchEvent(new DragEvent('dragover', {bubbles:true, cancelable:true, dataTransfer:transfer}));
+            el.dispatchEvent(new DragEvent('drop', {bubbles:true, cancelable:true, dataTransfer:transfer, clientX:point.x+30, clientY:point.y+30}));
+        }""")
+        page.wait_for_timeout(700)
+        after_drop = node_count()
+        failures += not check("拖放外部素材后创建图片节点", after_drop == before_drop + 1, f"{before_drop} -> {after_drop}")
+
         # 无 JS 报错
         real_errors = [e for e in errors if "WebSocket" not in e and "stats" not in e]
         failures += not check("无 JS 报错", len(real_errors) == 0, str(real_errors[:3]))
 
         browser.close()
 
-    total = 8
+    total = 14
     passed = total - failures
     print(f"\nRESULT: {passed}/{total}")
     sys.exit(0 if failures == 0 else 1)

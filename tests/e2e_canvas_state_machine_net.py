@@ -24,7 +24,9 @@ e2e_canvas_state_machine_net.py
 import json, sys, urllib.request
 from playwright.sync_api import sync_playwright
 
-BASE = "http://127.0.0.1:3217"
+import os
+
+BASE = os.environ.get("MYRIDTV_TEST_BASE", "http://127.0.0.1:3217")
 
 
 def create_test_canvas():
@@ -71,7 +73,7 @@ def main():
         page = browser.new_context(viewport={"width": 1680, "height": 980}).new_page()
         js_errors = []
         page.on("pageerror", lambda e: js_errors.append(str(e)))
-        page.route("**/static/app_config.json", lambda route: route.fulfill(
+        page.route("**/static/app_config.json*", lambda route: route.fulfill(
             status=200, content_type="application/json",
             body=json.dumps({"proxy": {"base_url": BASE}})))
         page.goto(f"{BASE}/smart-canvas.html?id={canvas_id}", wait_until="networkidle")

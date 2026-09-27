@@ -22,7 +22,9 @@ GPT/架构诊断点名最容易互相打架的组合，之前 e2e 没覆盖：
 import json, sys, urllib.request
 from playwright.sync_api import sync_playwright
 
-BASE = "http://127.0.0.1:3217"
+import os
+
+BASE = os.environ.get("MYRIDTV_TEST_BASE", "http://127.0.0.1:3217")
 
 
 def create_test_canvas():
@@ -79,9 +81,11 @@ def main():
             route.fulfill(status=200, content_type="application/json",
                           body=json.dumps({"proxy": {"base_url": BASE}}))
 
-        page.route("**/static/app_config.json", rc)
+        page.route("**/static/app_config.json*", rc)
         page.goto(f"{BASE}/smart-canvas.html?id={canvas_id}", wait_until="networkidle")
         page.wait_for_timeout(2500)
+        image_interactions = page.evaluate("typeof CanvasImageNodeInteractions === 'object'")
+        failures += not check("图片缩略图交互模块加载", image_interactions, "")
 
         def center(sel):
             return page.eval_on_selector(sel, """el => {
@@ -250,7 +254,7 @@ def main():
 
         browser.close()
 
-    total = 13
+    total = 14
     passed = total - failures
     print(f"\nRESULT: {passed}/{total}")
     sys.exit(0 if failures == 0 else 1)

@@ -30,7 +30,9 @@ F. 已有生成结果图的节点不会被重复执行。
 import json, sys
 from playwright.sync_api import sync_playwright
 
-BASE = "http://127.0.0.1:3217"
+import os
+
+BASE = os.environ.get("MYRIDTV_TEST_BASE", "http://127.0.0.1:3217")
 
 
 def check(label, ok, detail=""):
@@ -113,7 +115,7 @@ def main():
             route.fulfill(status=200, content_type="application/json",
                           body=json.dumps({"proxy": {"base_url": BASE}}))
 
-        page.route("**/static/app_config.json", rc)
+        page.route("**/static/app_config.json*", rc)
         page.goto(f"{BASE}/smart-canvas.html", wait_until="networkidle")
         page.wait_for_timeout(1500)
 

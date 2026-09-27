@@ -26,7 +26,9 @@ e2e_canvas_connection.py
 import json, sys, urllib.request
 from playwright.sync_api import sync_playwright
 
-BASE = "http://127.0.0.1:3217"
+import os
+
+BASE = os.environ.get("MYRIDTV_TEST_BASE", "http://127.0.0.1:3217")
 
 
 def create_test_canvas():
@@ -67,9 +69,11 @@ def main():
             route.fulfill(status=200, content_type="application/json",
                           body=json.dumps({"proxy": {"base_url": BASE}}))
 
-        page.route("**/static/app_config.json", rc)
+        page.route("**/static/app_config.json*", rc)
         page.goto(f"{BASE}/smart-canvas.html?id={canvas_id}", wait_until="networkidle")
         page.wait_for_timeout(2500)
+        port_module = page.evaluate("typeof CanvasPortGestureController === 'object'")
+        failures += not check("端口手势模块加载", port_module, "")
 
         def create_node(ct, wait=1200):
             page.click("#canvasAddToggle")
@@ -180,7 +184,7 @@ def main():
 
         browser.close()
 
-    total = 10
+    total = 11
     passed = total - failures
     print(f"\nRESULT: {passed}/{total}")
     sys.exit(0 if failures == 0 else 1)

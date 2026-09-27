@@ -1,14 +1,12 @@
 # -*- coding: utf-8 -*-
-"""隔离测试实例：独立端口 3217 + 独立用户数据目录，不碰老王的 3107 正式实例。
-用完即杀，不留后台进程。
-"""
+"""隔离测试实例：独立端口 3217 + 每次回归独立用户数据目录，不碰 3107 正式实例。"""
 import os
 import sys
 import threading
 
-TEST_PORT = 3217
+TEST_PORT = int(os.environ.get("MYRIDTV_TEST_PORT") or 3217)
 APP_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TEST_DATA = os.path.join(APP_ROOT, "_test_userdata")
+TEST_DATA = os.path.abspath(os.environ.get("MYRIDTV_TEST_DATA_DIR") or os.path.join(APP_ROOT, "_test_userdata"))
 os.environ["MYRIDTV_USER_DATA_DIR"] = TEST_DATA
 os.makedirs(TEST_DATA, exist_ok=True)
 
@@ -19,7 +17,7 @@ proxy.PORT = TEST_PORT
 
 from http.server import ThreadingHTTPServer
 
-proxy.append_log(proxy.LOG_FILE, f"[TEST] isolated instance starting pid={os.getpid()} port={TEST_PORT}")
+proxy.append_log(proxy.LOG_FILE, f"[TEST] isolated instance starting pid={os.getpid()} port={TEST_PORT} data={TEST_DATA}")
 try:
     proxy.patch_static_versions_once()
 except Exception as exc:

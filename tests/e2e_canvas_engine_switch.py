@@ -24,7 +24,9 @@ e2e_canvas_engine_switch.py
 import json, sys
 from playwright.sync_api import sync_playwright
 
-BASE = "http://127.0.0.1:3217"
+import os
+
+BASE = os.environ.get("MYRIDTV_TEST_BASE", "http://127.0.0.1:3217")
 
 
 def check(label, ok, detail=""):
@@ -50,7 +52,19 @@ def main():
             route.fulfill(status=200, content_type="application/json",
                           body=json.dumps({"proxy": {"base_url": BASE}}))
 
-        page.route("**/static/app_config.json", rc)
+        page.route("**/static/app_config.json*", rc)
+        VID = {"99": {"class_type": "VHS_VideoCombine"}, "88": {"class_type": "MiniMaxH3ReferenceToVideo"}}
+        IMG = {"50": {"class_type": "SaveImage"}, "47": {"class_type": "KSamplerAdvanced"}}
+        def prov_route(route):
+            body = {"providers": [
+                {"id": "p_img", "name": "图片平台A", "enabled": True, "image_models": ["flux-dev"], "video_models": []},
+                {"id": "runninghub", "name": "RH-API", "enabled": True, "protocol": "runninghub",
+                 "image_models": [],
+                 "rh_workflows": [{"id": "wvid", "title": "Mock视频流", "enabled": True, "workflowJson": VID},
+                                   {"id": "wimg", "title": "Mock图片流", "enabled": True, "workflowJson": IMG}],
+                 "rh_apps": []}]}
+            route.fulfill(status=200, content_type="application/json", body=json.dumps(body))
+        page.route("**/api/providers**", prov_route)
         page.goto(f"{BASE}/smart-canvas.html", wait_until="networkidle")
         page.wait_for_timeout(1500)
 
@@ -64,57 +78,46 @@ def main():
             return page.eval_on_selector(".composer", "el => el.className")
 
         def engine_val():
-            return page.eval_on_selector("#engineSelect", "el => el.value")
+            return page.evaluate("() => settings.engine")
 
         def pill_text():
-            return page.eval_on_selector(".workflow-control .smart-pill", "el => el.innerText")
+            return page.eval_on_selector(".unified-picker-pill", "el => el.innerText")
+
+        def pick_unified(title_kw):
+            """打开统一面板，点标题含关键字的条目"""
+            page.click(".unified-picker-pill")
+            page.wait_for_timeout(400)
+            page.click(f".unified-option:has-text('{title_kw}')")
+            page.wait_for_timeout(900)
 
         # === 初始态：comfy 布局 ===
         c0 = composer_cls()
         v0 = engine_val()
         failures += not check("初始 composer 为 comfy-layout", "comfy-layout" in c0, c0)
-        failures += not check("初始 engineSelect=comfy", v0 == "comfy", v0)
+        failures += not check("初始 engine=comfy", v0 == "comfy", v0)
+        failures += not check("引擎下拉已隐藏",
+                              page.evaluate("() => getComputedStyle(document.getElementById('engineSelect')).display") == "none")
 
-        # === 切换 1：comfy → api（RunningHub）===
-        page.click(".workflow-control .smart-pill")
-        page.wait_for_timeout(400)
-        # 弹层「生成引擎」分组选 RunningHub
-        page.click(".direct-option:has-text('RunningHub')")
-        page.wait_for_timeout(800)
+        # === 切换 1：comfy → RunningHub 图片工作流（mock 或真实条目）===
+        pick_unified("Mock图片流") if page.locator(".unified-option:has-text('Mock图片流')").count() else pick_unified("Krea2")
         c1 = composer_cls()
         v1 = engine_val()
-        failures += not check("切 api 后 composer 含 api 布局", "api" in c1 and "comfy-layout" not in c1, c1)
-        failures += not check("切 api 后 engineSelect=api", v1 == "api", v1)
-        # api 布局的合并 pill 显示引擎名
-        api_pill = page.eval_on_selector_all(".composer .smart-pill",
-            "els => els.filter(e=>e.offsetWidth>0).map(e=>e.innerText)")
-        failures += not check("api 布局合并 pill 含 RunningHub",
-                              any("RunningHub" in t for t in api_pill), str(api_pill))
+        failures += not check("选 RH 条目后 engine=runninghub", v1 == "runninghub", v1)
+        failures += not check("选 RH 条目后 composer 含 rh 布局", "rh-single-row" in c1, c1)
+        api_pill = page.evaluate("() => CanvasUnifiedPicker.renderPill ? document.querySelector('.unified-picker-pill').innerText : ''")
+        # 2026-09-25 拍板：pill 只显示条目名（不拼平台标题）
+        failures += not check("统一 pill 只显示条目名(无平台前缀)", api_pill.strip() == "Mock图片流", api_pill[:80])
 
-        # === 切换 2：api → volcengine（火山引擎）===
-        # api 布局下点合并 pill（第一个 smart-pill 是引擎+模型）
-        page.click(".composer .smart-pill >> nth=0")
-        page.wait_for_timeout(400)
-        page.click(".direct-option:has-text('火山引擎')")
-        page.wait_for_timeout(800)
+        # === 切换 2：→ ComfyUI 条目（Krea 图流）===
+        pick_unified("Krea")
         v2 = engine_val()
-        c2 = composer_cls()
-        failures += not check("切火山后 engineSelect=volcengine", v2 == "volcengine", v2)
-
-        # === 切换 3：volcengine → comfy（ComfyUI生成）===
-        # 点合并 pill 切回 comfy
-        page.click(".composer .smart-pill >> nth=0")
-        page.wait_for_timeout(400)
-        page.click(".direct-option:has-text('ComfyUI生成')")
-        page.wait_for_timeout(800)
+        failures += not check("选 Comfy 条目后 engine=comfy", v2 == "comfy", v2)
+        # === 切换 3：→ 图片平台A 的模型 ===
+        pick_unified("flux-dev")
         v3 = engine_val()
         c3 = composer_cls()
-        failures += not check("切回 comfy 后 engineSelect=comfy", v3 == "comfy", v3)
-        failures += not check("切回 comfy 后 composer 回 comfy-layout", "comfy-layout" in c3, c3)
-        # comfy 布局恢复合并 pill（工作流名）
-        pill3 = pill_text() if page.eval_on_selector(".workflow-control .smart-pill",
-                       "el => !!el") else "(无 workflow-control)"
-        failures += not check("comfy 布局恢复 workflow pill", "SeedVR2" in pill3 or "Krea" in pill3 or "MM" in pill3, pill3)
+        failures += not check("选 API 条目后 engine=api", v3 == "api", v3)
+        failures += not check("api 布局含 api-single-row", "api-single-row" in c3, c3)
 
         # 无 JS 报错
         real_errors = [e for e in errors if "WebSocket" not in e and "stats" not in e]
