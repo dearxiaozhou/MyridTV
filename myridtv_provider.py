@@ -198,8 +198,6 @@ API_PROVIDER_ALLOWED_KEYS = {
     "video_models",
     "model_display_names",
     "model_protocols",
-    "ms_loras",
-    "ms_defaults_version",
     "rh_apps",
     "rh_workflows",
     "volcengine_project_name",
@@ -222,10 +220,9 @@ API_PROVIDER_REQUIRED_HINTS = {
     "model_display_names",
     "rh_apps",
     "rh_workflows",
-    "ms_loras",
     "model_protocols",
 }
-API_PROVIDER_LIST_KEYS = {"image_models", "chat_models", "video_models", "rh_apps", "rh_workflows", "ms_loras"}
+API_PROVIDER_LIST_KEYS = {"image_models", "chat_models", "video_models", "rh_apps", "rh_workflows"}
 REMOVED_NATIVE_PROVIDER_IDS = {"modelscope"}
 API_PROVIDER_BOOL_KEYS = {
     "enabled",
@@ -239,11 +236,6 @@ API_PROVIDER_BOOL_KEYS = {
 }
 
 BUILTIN_PROVIDER_IDENTITIES = {
-    "modelscope": {
-        "name": "ModelScope",
-        "protocol": "openai",
-        "base_url": "https://api-inference.modelscope.cn/v1",
-    },
     "runninghub": {
         "name": "RunningHub",
         "protocol": "runninghub",
@@ -283,7 +275,6 @@ def sanitize_api_provider_record(record):
     if provider_id.startswith("app:") or provider_id.startswith("workflow:"):
         return None
     if not any(key in record for key in API_PROVIDER_REQUIRED_HINTS) and provider_id not in {
-        "modelscope",
         "runninghub",
         "volcengine",
         "custom-api",

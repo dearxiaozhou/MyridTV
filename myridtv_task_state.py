@@ -87,6 +87,13 @@ def update_task_state(task_id, **updates):
         TASKS[safe_id] = current
         if current.get("persistent"):
             persist_tasks_locked(safe_id)
+    if current.get("status") in ("succeeded", "failed") and current.get("canvas_id") and current.get("node_id"):
+        if current.get("status") == "failed" or current.get("localized_at"):
+            try:
+                import myridtv_agent_generation
+                myridtv_agent_generation.record_agent_generation_task_log(safe_id, current)
+            except Exception as exc:
+                _agent_task_log("CanvasAgentLog", "task={} log failed: {}".format(safe_id, exc))
     return current
 
 

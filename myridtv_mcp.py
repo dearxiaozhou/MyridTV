@@ -50,7 +50,7 @@ MCP_TOOLS = {
     "canvas_save_skill": {"description": "把方法/工作流保存为可复用技能(@技能名调用)", "inputSchema":{"type":"object","properties":{"name":{"type":"string"},"content":{"type":"string"}},"required":["name","content"]}},
 }
 MCP_CACHE = {}
-# MCP 画布工具直接调用本代理自身（3107）的 API：APP_BASE 指向 server.port(3000)
+# MCP 画布工具直接调用本代理自身（3107）的 API：APP_BASE 指向 proxy.port(3107)
 # 的旧前端服务，在纯代理部署下已不可达（502/拒绝连接），画布读写会整体失败。
 # MCP_BASE 定义留主文件（值来自 PROXY_CONFIG/PORT，configure 值传）
 

@@ -230,18 +230,57 @@ def upload_kind_for_file(file_name="", content_type=""):
     return "file"
 
 
-def save_uploaded_input_file(file_info):
+def unique_saved_name(target_dir, saved_name):
+    """落盘重名自动避让：xxx.png → xxx-2.png → xxx-3.png …（避免覆盖已有素材）"""
+    if not (target_dir / saved_name).exists():
+        return saved_name
+    # 去掉已有 -N 后缀再递增，避免叠成 xxx-2-2
+    stem = re.sub(r"-\d+$", "", Path(saved_name).stem) or Path(saved_name).stem
+    suffix = Path(saved_name).suffix
+    index = 2
+    while index < 1000:
+        candidate = f"{stem}-{index}{suffix}"
+        if not (target_dir / candidate).exists():
+            return candidate
+        index += 1
+    return f"{stem}-{uuid.uuid4().hex[:6]}{suffix}"
+
+
+def save_uploaded_file(file_info, target_dir=None, url_prefix=None, kind_subdir=None):
+    """通用上传落盘：写进 target_dir，返回以 url_prefix 打头的 URL。
+
+    三个可选参数都由调用方（do_POST 的 scope 分支）给出，用来把上传物归位：
+    - target_dir / url_prefix：目标目录与其对外 URL 前缀；
+    - kind_subdir：{kind: 子目录名} 映射，按文件实际类型再下一层（图片进 images、
+      视频进 videos…），与生成产物的目录约定保持一致。
+    三者都缺省时行为与旧版 save_uploaded_input_file 逐字一致（落 assets/input）。
+    """
     original_name = str(file_info.get("file_name") or "").strip() or f"upload-{uuid.uuid4().hex[:8]}"
     content_type = str(file_info.get("content_type") or "application/octet-stream")
     data = file_info.get("data") or b""
     ext = generated_asset_extension(original_name, content_type, ".bin")
-    saved_name = f"ai_ref_{uuid.uuid4().hex[:12]}{ext}"
-    target = asset_input_dir() / saved_name
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(data)
     kind = upload_kind_for_file(original_name, content_type)
+    directory = Path(target_dir) if target_dir else asset_input_dir()
+    # 只去首尾多余斜杠再补回前导斜杠：直接 strip("/") 会把 "/assets/..." 的
+    # 前导斜杠也吃掉，产出 "assets/xxx" 这种打不开的相对 URL。
+    prefix = "/" + str(url_prefix or "").strip().strip("/")
+    if str(url_prefix or "").strip() == "":
+        try:
+            rel = directory.resolve().relative_to(Path(_ASSETS_DIR).resolve())
+            prefix = "/assets/" + "/".join(urllib.parse.quote(part) for part in rel.parts)
+        except Exception:
+            prefix = "/assets/input"
+    subdir = ""
+    if kind_subdir:
+        subdir = str(kind_subdir.get(kind) or kind_subdir.get("*") or "").strip().strip("/")
+    if subdir:
+        directory = directory / subdir
+        prefix = f"{prefix}/{urllib.parse.quote(subdir)}"
+    directory.mkdir(parents=True, exist_ok=True)
+    saved_name = unique_saved_name(directory, f"ai_ref_{uuid.uuid4().hex[:12]}{ext}")
+    (directory / saved_name).write_bytes(data)
     return {
-        "url": f"/assets/input/{urllib.parse.quote(saved_name)}",
+        "url": f"{prefix}/{urllib.parse.quote(saved_name)}",
         "name": original_name,
         "filename": saved_name,
         "kind": kind,
@@ -249,11 +288,22 @@ def save_uploaded_input_file(file_info):
     }
 
 
-def handle_ai_upload(raw_body, content_type):
+def save_uploaded_input_file(file_info):
+    """原 input 落盘入口：默认目录即 assets/input，行为逐字不变（保留给未带 scope 的调用方）。"""
+    return save_uploaded_file(file_info)
+
+
+def handle_ai_upload(raw_body, content_type, target_dir=None, url_prefix=None, kind_subdir=None):
     files = parse_multipart_files(raw_body, content_type)
     if not files:
         raise RuntimeError("上传请求里没有文件")
-    return {"ok": True, "files": [save_uploaded_input_file(file_info) for file_info in files]}
+    return {
+        "ok": True,
+        "files": [
+            save_uploaded_file(file_info, target_dir, url_prefix, kind_subdir)
+            for file_info in files
+        ],
+    }
 
 
 def handle_comfy_upload(raw_body, content_type):
@@ -289,11 +339,27 @@ def handle_comfy_upload(raw_body, content_type):
 
 
 def canvas_output_folder_name(canvas_title="", canvas_id=""):
+    """输出素材文件夹名（以画布 ID 为准做唯一锚定，标题仅作可读前缀）。
+
+    返回 ``<清洗后的标题>__<canvas_id>``：标题保留可读、改名仍同步移动；
+    ID 后缀保证全局唯一 —— 两个同名画布不再共用同一目录，purge 可精准定位、
+
+    不再需要共享判定。无标题时退回纯 ID 形态 ``c-<id>``（或 ``canvas_default``），
+
+    避免与任何标题撞名。
+    """
+    cid = str(canvas_id or "").strip()
     raw = str(canvas_title or "").strip()
     if not raw:
-        raw = f"canvas_{str(canvas_id or '').strip()[:12]}"
-    safe = re.sub(r'[\\/:*?"<>|]', '_', raw).strip().strip('.')[:80]
-    return safe or f"canvas_{str(canvas_id or '').strip()[:12] or 'default'}"
+        return f"c-{cid}" if cid else "canvas_default"
+    safe = re.sub(r'[\\/:*?"<>|]', '_', raw).strip().strip('.')
+    if not safe:
+        return f"c-{cid}" if cid else "canvas_default"
+    safe = safe[:80]
+    if cid:
+        return f"{safe}__{cid}"
+    # 缺 id（极少数历史场景）退回纯标题，保持向后兼容
+    return safe
 
 
 _RECENT_REMOTE_SAVES = {}
@@ -416,6 +482,68 @@ def canvas_output_folder_from_url(url):
     if not parts or parts[0] in {"images", "videos", "history"}:
         return ""
     return canvas_output_folder_name(parts[0], "")
+
+
+def rename_canvas_output_folder(old_title, new_title, canvas_id=""):
+    """重命名画布时同步其输出素材文件夹（输出文件夹按画布标题命名）。
+
+    返回 None 表示标题未变 / 无需变更；否则返回
+    {"old_folder","new_folder","moved","note"}。
+    冲突保护：若目标文件夹已存在（通常是另一同名画布在共享输出目录），
+    不移动目录以免覆盖其素材，仅记 note；url 改写仍会把引用指向该共享目录。
+    """
+    old_folder = canvas_output_folder_name(old_title, canvas_id)
+    new_folder = canvas_output_folder_name(new_title, canvas_id)
+    if old_folder == new_folder:
+        return None
+    output_root = asset_output_dir()
+    src = output_root / old_folder
+    dst = output_root / new_folder
+    moved = False
+    note = ""
+    if src.exists() and src.is_dir():
+        if dst.exists():
+            note = "target-exists-shared"
+        else:
+            try:
+                src.rename(dst)
+                moved = True
+            except Exception as exc:  # pragma: no cover - 文件系统异常
+                note = "rename-failed:%s" % exc
+    return {"old_folder": old_folder, "new_folder": new_folder, "moved": moved, "note": note}
+
+
+def rewrite_output_urls(obj, old_folder, new_folder):
+    """递归改写 obj（画布 dict/list）里所有 /assets/output/<old_folder>/ 形态的 url 为 new_folder。
+
+    同时匹配 quoted 与未 quoted 两种形态（url 实际是 quoted，未 quoted 仅作兜底），
+    以便重命名画布后，画布内所有节点/产物/封面引用都指向新文件夹。
+    """
+    if not old_folder or not new_folder or old_folder == new_folder:
+        return obj
+    old_q = urllib.parse.quote(old_folder, safe="")
+    new_q = urllib.parse.quote(new_folder, safe="")
+    if not old_q:
+        return obj
+    old_raw = urllib.parse.quote(old_folder, safe="/")  # 兜底：极少出现
+    prefix_q = "/assets/output/" + old_q
+    prefix_raw = "/assets/output/" + old_raw
+    new_prefix = "/assets/output/" + new_q
+
+    def walk(o):
+        if isinstance(o, str):
+            s = o
+            if prefix_q in s:
+                s = s.replace(prefix_q, new_prefix)
+            if prefix_raw in s and prefix_raw != prefix_q:
+                s = s.replace(prefix_raw, new_prefix)
+            return s
+        if isinstance(o, dict):
+            return {k: walk(v) for k, v in o.items()}
+        if isinstance(o, list):
+            return [walk(v) for v in o]
+        return o
+    return walk(obj)
 
 
 def move_output_asset_to_history(payload):

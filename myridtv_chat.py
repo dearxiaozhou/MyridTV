@@ -104,7 +104,7 @@ def chat_media_url_to_model_url(url):
             resolved = local_path.resolve()
             user_root = _G_USER_DATA_DIR().resolve()
             assets_root = _G_ASSETS_DIR().resolve()
-            # Only inline local files from the MyridTV data dir, the assets dir (资产根已迁到安装目录 D:\APP\MyridTV\assets，2026-09 迁移后这里必须同步放行，否则画布节点图全部静默不内联、Agent 读图=瞎猜), or explicit absolute files.
+            # Only inline local files from the MyridTV data dir, the installation assets dir (资产根迁移后需同步放行，否则画布节点图无法内联、Agent 无法读取), or explicit absolute files.
             if resolved.exists() and (str(resolved).startswith(str(user_root)) or str(resolved).startswith(str(assets_root)) or Path(clean).is_absolute()):
                 mime_type = mimetypes.guess_type(str(resolved))[0] or "image/png"
                 if not mime_type.startswith("image/"):

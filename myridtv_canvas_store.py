@@ -14,11 +14,15 @@ INDEPENDENT_DOC_TYPES 单例与常量归本模块，主文件留别名再导出�
 import hashlib
 import json
 import re
+import secrets
+import shutil
 import time
 import uuid
 from pathlib import Path
 
 import urllib.parse
+
+import myridtv_media_localize
 
 from myridtv_core import (
     ApiError,
@@ -63,6 +67,23 @@ def canvas_file_path(canvas_id):
 
 def smart_canvas_path(canvas_id):
     return canvas_file_path(canvas_id)
+
+
+def generate_canvas_id():
+    """生成短画布 ID：7 位纯数字（0000000-9999999）。
+
+    - URL / 文件名安全，符合 canvas_file_path 的 ``[A-Za-z0-9_-]+`` 校验。
+    - 通过文件系统存在性检查避免与已有画布（含旧 32 位 hex UUID 画布）撞名；
+      旧 UUID 画布 id 长度与字符集均与 7 位纯数字不同，天然不会误撞。
+    - 随机空间 10^7，本地单用户量级碰撞概率可忽略，碰撞则重试；
+      极端回退仍满足校验且唯一，不会让创建失败。
+    """
+    for _ in range(100):
+        candidate = "{:07d}".format(secrets.randbelow(10_000_000))
+        if not canvas_file_path(candidate).exists():
+            return candidate
+    # 极小概率：10^7 空间被占满（本地实际不可能），回退到带前缀的短串，仍合法且唯一
+    return "id" + uuid.uuid4().hex[:7]
 
 
 def default_canvas_kind(data=None):
@@ -484,6 +505,19 @@ def _merge_node_tombstones(*sources):
     return out
 
 
+def _merge_canvas_logs(*sources):
+    """Keep task receipts when an older canvas client saves its local log list."""
+    merged = {}
+    for source in sources:
+        for log in source if isinstance(source, list) else []:
+            if not isinstance(log, dict):
+                continue
+            key = str(log.get("taskId") or log.get("id") or "").strip()
+            if key:
+                merged[key] = log
+    return sorted(merged.values(), key=lambda log: int(log.get("createdAt") or 0), reverse=True)[:500]
+
+
 def _drop_tombstoned_nodes(record):
     """按 record["deleted"] 墓碑过滤 nodes/connections，杜绝陈旧客户端复活已删节点。"""
     dead = {str(t.get("id")) for t in (record.get("deleted") or []) if isinstance(t, dict) and t.get("id")}
@@ -560,7 +594,7 @@ def list_canvas_records(include_deleted=False):
 
 def create_canvas_record(payload=None):
     payload = payload if isinstance(payload, dict) else {}
-    canvas_id = uuid.uuid4().hex
+    canvas_id = generate_canvas_id()
     kind = default_canvas_kind(payload)
     now_ms = int(time.time() * 1000)
     canvas = normalize_canvas_structure(canvas_id, {
@@ -607,7 +641,7 @@ def save_canvas_record(canvas_id, payload=None):
         "pinned": bool(payload.get("pinned")) if "pinned" in payload else bool(current.get("pinned")),
         "nodes": payload.get("nodes") if isinstance(payload.get("nodes"), list) else list(current.get("nodes") or []),
         "connections": payload.get("connections") if isinstance(payload.get("connections"), list) else list(current.get("connections") or []),
-        "logs": payload.get("logs") if isinstance(payload.get("logs"), list) else list(current.get("logs") or []),
+        "logs": _merge_canvas_logs(current.get("logs"), payload.get("logs")),
         "viewport": payload.get("viewport") if isinstance(payload.get("viewport"), dict) else dict(current.get("viewport") or {"x": 0, "y": 0, "scale": 1}),
         "settings": payload.get("settings") if isinstance(payload.get("settings"), dict) else dict(current.get("settings") or {}),
         "deleted": _merge_node_tombstones(current.get("deleted"), payload.get("deleted")),
@@ -627,6 +661,12 @@ def update_canvas_meta(canvas_id, patch=None):
     current = read_canvas_record(canvas_id, include_deleted=False)
     kind = default_canvas_kind(current)
     now_ms = int(time.time() * 1000)
+    # 重命名联动：标题变化时同步输出素材文件夹并重写画布内所有引用 url
+    new_title = patch.get("title")
+    if new_title is not None and str(new_title).strip() != str(current.get("title") or "").strip():
+        info = myridtv_media_localize.rename_canvas_output_folder(current.get("title"), new_title, canvas_id)
+        if info:
+            current = myridtv_media_localize.rewrite_output_urls(current, info["old_folder"], info["new_folder"])
     if "pinned" in patch:
         pinned = bool(patch.get("pinned"))
     else:
@@ -671,8 +711,78 @@ def restore_canvas_record(canvas_id):
     return current
 
 
+def _legacy_output_folder_name(title, canvas_id):
+    """复刻切换前的纯标题命名，用于定位存量画布可能仍在用的旧格式目录。"""
+    raw = str(title or "").strip()
+    if not raw:
+        raw = f"canvas_{str(canvas_id or '').strip()[:12]}"
+    safe = re.sub(r'[\\/:*?"<>|]', '_', raw).strip().strip('.')[:80]
+    return safe or f"canvas_{str(canvas_id or '').strip()[:12] or 'default'}"
+
+
+def _output_folder_shared_by_others(canvas_id, folder):
+    """扫描其它画布记录文件，任一旧格式目录名等于 folder 即视为共享，返回 True。"""
+    canvas_dir = _USER_DATA_DIR / "data" / "canvases"
+    try:
+        for p in canvas_dir.glob("*.json"):
+            if p.stem == str(canvas_id or "").strip():
+                continue
+            try:
+                rec = read_json_file(p, {})
+            except Exception:
+                continue
+            other_legacy = _legacy_output_folder_name(
+                rec.get("title"), str(rec.get("id") or "").strip())
+            if other_legacy == folder:
+                return True
+    except Exception as exc:
+        append_log(_log_file(), f"purge legacy shared-check failed id={canvas_id}: {exc}")
+    return False
+
+
+def _purge_canvas_output_folder(canvas_id, title):
+    """彻底删除画布时联动移除其输出素材文件夹（以画布 ID 为准做唯一锚定）。
+
+    切换为 ``<标题>__<ID>`` 命名后，主目录全局唯一，可直接删除、无需共享判定。
+    兼容切换前存量画布：它们可能仍把素材放在旧格式的纯标题目录 ``<标题>`` 下，
+    若该旧目录存在且不被其它任何画布（活跃/回收站）共享，则一并清理；共享则保留，
+    避免误删他人素材。返回 True 表示至少移除了一个目录。
+    """
+    cid = str(canvas_id or "").strip()
+    output_root = myridtv_media_localize.asset_output_dir()
+    removed = False
+    # 1) 新格式目录（唯一，直接删）
+    folder = myridtv_media_localize.canvas_output_folder_name(title, cid)
+    if folder:
+        target = output_root / folder
+        if target.exists() and target.is_dir():
+            try:
+                shutil.rmtree(target)
+                removed = True
+            except Exception as exc:
+                append_log(_log_file(), f"purge output folder remove failed id={cid}: {exc}")
+    # 2) 兼容旧格式纯标题目录（切换前存量）：仅当不被其它画布共享时才删
+    legacy = _legacy_output_folder_name(title, cid)
+    if legacy and legacy != folder:
+        legacy_target = output_root / legacy
+        if legacy_target.exists() and legacy_target.is_dir():
+            if not _output_folder_shared_by_others(cid, legacy):
+                try:
+                    shutil.rmtree(legacy_target)
+                    removed = True
+                except Exception as exc:
+                    append_log(_log_file(), f"purge legacy output folder remove failed id={cid}: {exc}")
+    return removed
+
+
 def purge_canvas_record(canvas_id):
     path = canvas_file_path(canvas_id)
+    title = ""
+    if path.exists():
+        try:
+            title = str(read_json_file(path, {}).get("title") or "").strip()
+        except Exception:
+            pass
     if not path.exists():
         raise ApiError(404, f"目标画布不存在: {canvas_id}")
     path.unlink()
@@ -681,15 +791,19 @@ def purge_canvas_record(canvas_id):
         _r_prune_canvas_history(canvas_id)
     except Exception as exc:
         append_log(_log_file(), f"purge canvas history hook failed: {exc}")
-    return {"ok": True, "id": canvas_id}
+    # 联动清理：移除其输出素材文件夹（按标题命名）；
+    # 仍有其它画布（含回收站内）共享该输出目录时保留，避免误删他人素材。
+    removed_output = _purge_canvas_output_folder(canvas_id, title)
+    return {"ok": True, "id": canvas_id, "removed_output": removed_output}
 
 
 def purge_all_trash_records():
     """永久清空回收站：删除所有 deleted_at > 0 的画布文件，返回清理数量与列表。"""
     canvas_dir = _USER_DATA_DIR / "data" / "canvases"
     if not canvas_dir.exists():
-        return {"ok": True, "purged": 0, "ids": []}
+        return {"ok": True, "purged": 0, "ids": [], "removed_outputs": 0}
     purged_ids = []
+    removed_outputs = 0
     for path in canvas_dir.iterdir():
         if not path.is_file() or path.suffix != ".json":
             continue
@@ -698,9 +812,13 @@ def purge_all_trash_records():
         except Exception:
             continue
         if data.get("deleted_at"):
+            title = str(data.get("title") or "").strip()
             try:
                 path.unlink()
                 purged_ids.append(path.stem)
+                # 联动清理：移除该画布的输出素材文件夹（共享则跳过，最后保留者移除）
+                if _purge_canvas_output_folder(path.stem, title):
+                    removed_outputs += 1
             except Exception as exc:
                 append_log(_log_file(), f"purge_all_trash failed for {path.name}: {exc}")
     for purged_id in purged_ids:
@@ -708,7 +826,7 @@ def purge_all_trash_records():
             _r_prune_canvas_history(purged_id)
         except Exception as exc:
             append_log(_log_file(), f"purge_all canvas history hook failed id={purged_id}: {exc}")
-    return {"ok": True, "purged": len(purged_ids), "ids": purged_ids}
+    return {"ok": True, "purged": len(purged_ids), "ids": purged_ids, "removed_outputs": removed_outputs}
 
 
 # ====== 画布导出 / 导入（带格式版本的信封）======
@@ -793,7 +911,7 @@ def import_canvas_payload(payload):
         notes.append("裸画布数据（无导出信封）")
     raw.pop("deleted_at", None)
     media = sorted(collect_canvas_media_urls(raw))
-    new_id = uuid.uuid4().hex
+    new_id = generate_canvas_id()
     now_ms = int(time.time() * 1000)
     title = str(raw.get("title") or "").strip() or "导入的画布"
     canvas = normalize_canvas_structure(new_id, {

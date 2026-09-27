@@ -114,7 +114,6 @@ DEFAULT_AGENTS = {
     },
 }
 DEFAULT_CONFIG = {
-    "server": {"host": "127.0.0.1", "port": 3000, "base_url": "http://127.0.0.1:3000"},
     "proxy": {"host": "127.0.0.1", "port": 3107, "base_url": "http://127.0.0.1:3107"},
     "agent": {
         "active_id": "codex",
@@ -170,16 +169,16 @@ def write_static_app_config(raw):
 
 def apply_app_config(merged):
     """boot 与 write_app_config 共用：把 merged 应用回主模块 globals（派生绑定单点）。"""
-    global APP_CONFIG, SERVER_CONFIG, PROXY_CONFIG, AGENT_CONFIG, RUNNINGHUB_CONFIG, PATHS_CONFIG, ENV_FILE, APP_BASE, PORT, LOG_FILE
+    global APP_CONFIG, PROXY_CONFIG, AGENT_CONFIG, RUNNINGHUB_CONFIG, PATHS_CONFIG, ENV_FILE, APP_BASE, PORT, LOG_FILE
     APP_CONFIG = merged
-    SERVER_CONFIG = APP_CONFIG.get("server") or {}
     PROXY_CONFIG = APP_CONFIG.get("proxy") or {}
     AGENT_CONFIG = active_agent_entry(APP_CONFIG)
     RUNNINGHUB_CONFIG = APP_CONFIG.get("runninghub") or {}
     PATHS_CONFIG = APP_CONFIG.get("paths") or {}
     ENV_FILE = root_path(PATHS_CONFIG.get("env_file"), "API/.env")
     LOG_FILE = root_path(PATHS_CONFIG.get("proxy_log"), "data/logs/rh_official_proxy.log")
-    APP_BASE = str(SERVER_CONFIG.get("base_url") or f"http://{SERVER_CONFIG.get('host', '127.0.0.1')}:{SERVER_CONFIG.get('port', 3000)}").rstrip("/")
+    # app_base = 本代理自身地址（原为已废弃的 server(3000) 内部服务；该服务 2026-09 已不存在）
+    APP_BASE = str(PROXY_CONFIG.get("base_url") or f"http://{PROXY_CONFIG.get('host', '127.0.0.1')}:{PROXY_CONFIG.get('port', 3107)}").rstrip("/")
     PORT = int(PROXY_CONFIG.get("port") or 3107)
 
 
@@ -202,7 +201,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.23.previzcomposition85"
+STATIC_VERSION = "2026.09.26.rhfinaloutput88"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -1312,8 +1311,54 @@ def generated_asset_extension(file_name="", content_type="", default_ext=".png")
 def upload_kind_for_file(file_name="", content_type=""):
     return myridtv_media_localize.upload_kind_for_file(file_name, content_type)
 
-def handle_ai_upload(raw_body, content_type):
-    return myridtv_media_localize.handle_ai_upload(raw_body, content_type)
+def _upload_target_for_scope(request_path=""):
+    """按 /api/ai/upload 的 query 决定上传物落盘位置（返回 target_dir, url_prefix, kind_subdir）。
+
+    scope=canvas&canvas_id=xxx
+        画布类动作（上传 / 导入 / 粘贴拖入 / 裁剪外扩 / Agent 附件 / 封面）→
+        assets/output/<画布目录>/<images|videos|audios|files>/
+        这样上传物随画布改名一起搬移、随画布彻底删除一起清理（此前一律进
+        assets/input，与画布无关联，删画布后成为孤儿）。
+    scope=library
+        素材库（跨画布、不随任何画布删除）→ assets/library/
+        该目录历史上就用于存放素材库文件（现存 lib_* 旧文件），后因上传被统一到
+        /api/ai/upload 而失去写入方，这里恢复。
+    缺省
+        assets/input/——旧行为，兼容未带 scope 的调用方（如设置页工作流预览）。
+    """
+    query = request_path.split("?", 1)[1] if "?" in str(request_path or "") else ""
+    params = urllib.parse.parse_qs(query)
+    scope = str((params.get("scope") or [""])[0]).strip().lower()
+    if scope == "library":
+        return str(ASSETS_DIR / "library"), "/assets/library", None
+    if scope == "canvas":
+        canvas_id = str((params.get("canvas_id") or [""])[0]).strip()
+        if not canvas_id:
+            return "", "", None
+        title = ""
+        try:
+            title = str(read_canvas_record(canvas_id, include_deleted=True).get("title") or "").strip()
+        except Exception:
+            title = ""
+        folder = canvas_output_folder_name(title, canvas_id)
+        if not folder:
+            return "", "", None
+        return (
+            str(ASSETS_DIR / "output" / folder),
+            "/assets/output/" + urllib.parse.quote(str(folder), safe=""),
+            {
+                "image": output_asset_subdir_for_kind("image") or "images",
+                "video": output_asset_subdir_for_kind("video") or "videos",
+                "audio": output_asset_subdir_for_kind("audio") or "audios",
+                "*": "files",
+            },
+        )
+    return "", "", None
+
+
+def handle_ai_upload(raw_body, content_type, target_dir=None, url_prefix=None, kind_subdir=None):
+    return myridtv_media_localize.handle_ai_upload(
+        raw_body, content_type, target_dir, url_prefix, kind_subdir)
 
 def handle_comfy_upload(raw_body, content_type):
     return myridtv_media_localize.handle_comfy_upload(raw_body, content_type)
@@ -1619,35 +1664,6 @@ class Handler(BaseHTTPRequestHandler):
             content_type = response.headers.get("Content-Type", "application/octet-stream").split(";", 1)[0].strip()
         self._send_bytes(200, raw, content_type or "application/octet-stream")
         return True
-
-    def _forward_upstream(self, method, request_path, body=None):
-        target = f"{APP_BASE}{request_path}"
-        headers = {}
-        content_type = self.headers.get("Content-Type")
-        if content_type:
-            headers["Content-Type"] = content_type
-        request = urllib.request.Request(target, data=body, headers=headers, method=method)
-        try:
-            with urllib.request.urlopen(request, timeout=180) as response:
-                raw = response.read()
-                self._send_bytes(
-                    getattr(response, "status", 200),
-                    raw,
-                    response.headers.get("Content-Type") or "application/json; charset=utf-8",
-                )
-                return True
-        except urllib.error.HTTPError as exc:
-            raw = exc.read() or json.dumps({"detail": str(exc)}, ensure_ascii=False).encode("utf-8")
-            self._send_bytes(
-                getattr(exc, "code", 502),
-                raw,
-                exc.headers.get("Content-Type") if exc.headers else "application/json; charset=utf-8",
-            )
-            return True
-        except Exception as exc:
-            append_log(LOG_FILE, f"forward {method} {request_path} failed: {exc}")
-            self._send(502, {"detail": str(exc)})
-            return True
 
     def do_OPTIONS(self):
         self._send(200, {"ok": True})
@@ -1977,9 +1993,6 @@ class Handler(BaseHTTPRequestHandler):
             for _cm in Handler._GET_CONDS:
                 if getattr(self, _cm)(request_path, canvas_route, canvas_id,
                                       workflow_route, workflow_name):
-                    return
-            if request_path.startswith("/api/"):
-                if self._forward_upstream("GET", self.path):
                     return
             self._send(404, {"detail": "not found"})
         except ApiError as exc:
@@ -2579,7 +2592,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, handle_comfy_upload(raw_body, content_type))
                 return
             if request_path == "/api/ai/upload" and "multipart/form-data" in content_type.lower():
-                self._send(200, handle_ai_upload(raw_body, content_type))
+                _dir, _prefix, _subdir = _upload_target_for_scope(self.path)
+                self._send(200, handle_ai_upload(raw_body, content_type, _dir, _prefix, _subdir))
                 return
             payload = json.loads(raw_body.decode("utf-8") or "{}") if raw_body else {}
             _rm = Handler._POST_ROUTES_B1.get(request_path)
@@ -2630,9 +2644,6 @@ class Handler(BaseHTTPRequestHandler):
                 if getattr(self, _cm)(request_path, payload, canvas_route, canvas_id,
                                       workflow_route, workflow_name):
                     return
-            if request_path.startswith("/api/"):
-                if self._forward_upstream("POST", self.path, raw_body):
-                    return
             self._send(404, {"detail": "not found"})
         except CanvasConflictError as exc:
             self._send(exc.status, {"detail": exc.detail, "canvas": exc.current_canvas})
@@ -2672,9 +2683,6 @@ class Handler(BaseHTTPRequestHandler):
                 library_id = urllib.parse.unquote(request_path.rsplit("/", 1)[-1])
                 self._send(200, update_prompt_library_record(library_id, payload))
                 return
-            if request_path.startswith("/api/"):
-                if self._forward_upstream("PATCH", self.path, raw_body):
-                    return
             self._send(404, {"detail": "not found"})
         except ApiError as exc:
             self._send(exc.status, {"detail": exc.detail, **exc.payload})
@@ -2708,9 +2716,31 @@ class Handler(BaseHTTPRequestHandler):
         return
 
     def _put_canvas_item(self, payload, request_path, canvas_route, canvas_id, workflow_route, workflow_name):
-        """do_PUT 路由表 handler：原分支 route ('canvas', 'item') 机械表化（体逐字）"""
+        """do_PUT 路由表 handler：原分支 route ('canvas', 'item') 机械表化（体逐字）
+        + 重命名联动：标题变化时同步输出素材文件夹并重写画布内所有引用 url。"""
+        payload = payload if isinstance(payload, dict) else {}
+        current = read_canvas_record(canvas_id, include_deleted=True)
+        renamed = None
+        new_title = payload.get("title")
+        old_title = current.get("title")
+        if new_title is not None and str(new_title).strip() != str(old_title or "").strip():
+            info = myridtv_media_localize.rename_canvas_output_folder(old_title, new_title, canvas_id)
+            if info:
+                # 改写既有画布数据里的引用（payload 可能只带了 title，未带 nodes）
+                rewritten = myridtv_media_localize.rewrite_output_urls(current, info["old_folder"], info["new_folder"])
+                if isinstance(rewritten, dict):
+                    if "nodes" in rewritten:
+                        payload["nodes"] = rewritten.get("nodes")
+                    if "artifacts" in rewritten:
+                        payload["artifacts"] = rewritten.get("artifacts")
+                    if "cover" in rewritten:
+                        payload["cover"] = rewritten.get("cover")
+                renamed = info
         saved = save_canvas_record(canvas_id, payload)
-        self._send(200, {"ok": True, "canvas": saved})
+        resp = {"ok": True, "canvas": saved}
+        if renamed:
+            resp["renamed"] = renamed
+        self._send(200, resp)
         return
 
     _PUT_ROUTES = [
@@ -2737,9 +2767,6 @@ class Handler(BaseHTTPRequestHandler):
                         or (_key[0] == "canvas" and canvas_route == _key[1]))):
                     getattr(self, _m)(payload, request_path, canvas_route, canvas_id, workflow_route, workflow_name)
                     break
-            if request_path.startswith("/api/"):
-                if self._forward_upstream("PUT", self.path, raw_body):
-                    return
             self._send(404, {"detail": "not found"})
         except CanvasConflictError as exc:
             self._send(exc.status, {"detail": exc.detail, "canvas": exc.current_canvas})
@@ -2832,9 +2859,6 @@ class Handler(BaseHTTPRequestHandler):
                         or (_key[0] == "canvas" and canvas_route == _key[1]))):
                     getattr(self, _m)(request_path, canvas_route, canvas_id, workflow_route, workflow_name)
                     break
-            if request_path.startswith("/api/"):
-                if self._forward_upstream("DELETE", self.path):
-                    return
             self._send(404, {"detail": "not found"})
         except ApiError as exc:
             self._send(exc.status, {"detail": exc.detail, **exc.payload})

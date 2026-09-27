@@ -130,6 +130,55 @@ def _agent_extract_image_urls(task_state):
     return urls
 
 
+def record_agent_generation_task_log(task_id, state):
+    """Persist an Agent API result even when no canvas tab is polling the task."""
+    cid = str(state.get("canvas_id") or "").strip()
+    nid = str(state.get("node_id") or "").strip()
+    status = str(state.get("status") or "").strip()
+    if not cid or not nid or status not in ("succeeded", "failed"):
+        return
+    outputs = _agent_extract_image_urls(state)
+    if status == "succeeded" and not outputs:
+        return
+    for _ in range(4):
+        canvas_response = myridtv_agent_state._agent_http("GET", "/api/canvases/{}".format(urllib.parse.quote(cid)))
+        canvas = canvas_response.get("canvas") if isinstance(canvas_response, dict) else None
+        if not isinstance(canvas, dict):
+            return
+        node = next((n for n in (canvas.get("nodes") or []) if isinstance(n, dict) and str(n.get("id") or "") == nid), None)
+        if node and node.get("__origin") != "agent_tool_generation":
+            return
+        if not node and not nid.startswith("agent_"):
+            return
+        node = node or {}
+        logs = canvas.get("logs") if isinstance(canvas.get("logs"), list) else []
+        if any(isinstance(log, dict) and (log.get("taskId") == task_id or log.get("id") == "log_" + task_id) for log in logs):
+            return
+        run_settings = node.get("runSettings") if isinstance(node.get("runSettings"), dict) else {}
+        created = float(state.get("created_at") or time.time())
+        completed = float(state.get("completed_at") or time.time())
+        entry = {
+            "id": "log_" + task_id,
+            "taskId": task_id,
+            "createdAt": int(completed * 1000),
+            "status": "success" if status == "succeeded" else "failed",
+            "platform": "RH-API" if state.get("provider_id") == "runninghub" else str(state.get("provider_id") or "API"),
+            "nodeType": node.get("type") or "smart-image",
+            "model": str(state.get("model") or run_settings.get("model") or "API Image"),
+            "request": {"task_id": task_id, "provider_id": state.get("provider_id") or run_settings.get("provider_id") or "", "model": state.get("model") or run_settings.get("model") or ""},
+            "prompt": node.get("runPrompt") or node.get("promptDraftText") or "",
+            "outputs": outputs,
+            "refs": node.get("runPromptRefs") or [],
+            "runMs": max(0, int((completed - created) * 1000)),
+            "error": str(state.get("error") or "") if status == "failed" else "",
+        }
+        saved = myridtv_agent_state._agent_http("PUT", "/api/canvases/{}".format(urllib.parse.quote(cid)),
+                                              {"logs": [entry] + logs, "base_updated_at": canvas.get("updated_at")}, timeout=30)
+        if isinstance(saved, dict) and (saved.get("ok") or isinstance(saved.get("canvas"), dict)):
+            return
+    append_log(_log_file(), "[CanvasAgentLog] save failed task={}".format(task_id))
+
+
 def _agent_localize_urls(urls):
     if not urls:
         return
@@ -190,7 +239,7 @@ def _agent_add_pending_task_to_node(canvas_id, node_id, task_id, kind="image"):
     return save.get("ok", save.get("canvas") is not None)
 
 
-def _agent_attach_result_to_node(cid, canvas, node_id, urls):
+def _agent_attach_result_to_node(cid, canvas, node_id, urls, task_id=""):
     node = None
     for n in canvas.get("nodes") or []:
         if isinstance(n, dict) and str(n.get("id")) == str(node_id):
@@ -200,17 +249,24 @@ def _agent_attach_result_to_node(cid, canvas, node_id, urls):
         return False
     images = []
     try:
+        existing = node.get("images") or []
+        if not isinstance(existing, list):
+            existing = []
+        seen_urls = {str(img.get("url") or "").strip() for img in existing if isinstance(img, dict)}
+        seen_task_ids = {str(img.get("generationTaskId") or "").strip() for img in existing if isinstance(img, dict)}
         for url in urls:
+            if str(url).strip() in seen_urls or (task_id and task_id in seen_task_ids):
+                continue
+            seen_urls.add(str(url).strip())
             w, h = _agent_png_size(_agent_local_path_for_url(url))
             item = {"url": url, "name": str(url).rsplit("/", 1)[-1], "kind": "image", "generatedResult": True}
+            if task_id:
+                item["generationTaskId"] = task_id
             if w and h:
                 item["natural_w"] = w
                 item["natural_h"] = h
             images.append(item)
         # 与前端标准流程一致：append 而非覆盖，保留节点已有图片
-        existing = node.get("images") or []
-        if not isinstance(existing, list):
-            existing = []
         node["images"] = existing + images
         node["status"] = "ready"  # 状态机：生成/回填成功 -> ready
         # 补前端重跑归档所需时间戳：nodeHasCompletedGeneration 认 runAt/runFinishedAt，
@@ -366,7 +422,7 @@ def _agent_tool_check_generation(args):
             try:
                 if not cid:
                     cid = myridtv_agent_state._agent_latest_canvas_id()
-                attached = _agent_attach_result_to_node(cid, myridtv_agent_state._agent_get_canvas(cid)[1], node_id, urls)
+                attached = _agent_attach_result_to_node(cid, myridtv_agent_state._agent_get_canvas(cid)[1], node_id, urls, task_id)
             except Exception as exc:
                 return {"ok": True, "status": "succeeded", "task_id": task_id, "images": urls,
                         "attached_error": str(exc)}

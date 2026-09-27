@@ -157,12 +157,54 @@ def _extract_rh_wss(raw):
     return None
 
 
+def keep_final_workflow_outputs(urls, raw):
+    """云端工作流「只保存最终结果」（2026-09-26 老王定案）。
+
+    本地 ComfyUI 的等价行为见 myridtv_comfy.select_comfy_output_nodes：
+    一个工作流里存在多个输出节点时只保留**最后一个**（`if len(image_nodes) > 1: return [image_nodes[-1]]`）。
+    云端工作流（RH）会把每个输出节点的产物都回传，于是「一采」的结果也一起被保存下来 ——
+    这里按同样的规则收敛：按 RH 回传的 nodeId 分组，只留最后一个 nodeId 的那组。
+
+    仅在结果条目**带 nodeId**（= RH 云端工作流任务）时生效：
+    - 标准模型 API（flare/nano-banana 等）的 results 没有 nodeId，多图是「张数」特性，一律不动；
+    - 只有一个输出节点时也不动（无「最终」可言）。
+    """
+    if not isinstance(raw, dict):
+        return urls
+    results = raw.get("results")
+    if not isinstance(results, list) or len(results) < 2:
+        data = raw.get("data") if isinstance(raw.get("data"), dict) else None
+        if not data:
+            return urls
+        results = data.get("results") or data.get("outputs") or []
+    if not isinstance(results, list) or len(results) < 2:
+        return urls
+    items = [item for item in results if isinstance(item, dict)]
+    if len(items) != len(results):
+        return urls
+    node_ids = [str(item.get("nodeId") or "").strip() for item in items]
+    if not all(node_ids):
+        return urls  # 非工作流任务（标准模型 API）：不裁剪
+    last_node = node_ids[-1]
+    if all(nid == last_node for nid in node_ids):
+        return urls  # 只有一个输出节点：不裁剪
+    kept = [str(item.get("url") or item.get("fileUrl") or item.get("downloadUrl") or "").strip()
+            for item, nid in zip(items, node_ids) if nid == last_node]
+    kept = [url for url in kept if url]
+    if not kept:
+        return urls
+    append_log(_log_file(), f"rh workflow outputs trimmed to final node: nodeId={last_node} kept={len(kept)} dropped={len(urls) - len(kept)}")
+    return kept
+
+
 def runninghub_query_task(task_id):
     errors = []
     for helper in (runninghub_query_v2, runninghub_query_legacy):
         try:
             result = helper(task_id)
             if result.get("status"):
+                if str(result.get("status") or "").upper() == "SUCCESS":
+                    result["urls"] = keep_final_workflow_outputs(result.get("urls") or [], result.get("raw"))
                 return result
         except Exception as exc:
             errors.append(str(exc))

@@ -838,20 +838,16 @@ def build_local_config_payload():
     image_models = []
     chat_models = []
     video_models = []
-    ms_chat_models = []
     for provider in providers:
         if not isinstance(provider, dict):
             continue
         image_models.extend([item for item in (provider.get("image_models") or []) if isinstance(item, str) and item.strip()])
         chat_models.extend([item for item in (provider.get("chat_models") or []) if isinstance(item, str) and item.strip()])
         video_models.extend([item for item in (provider.get("video_models") or []) if isinstance(item, str) and item.strip()])
-        if str(provider.get("id") or "").strip() == "modelscope":
-            ms_chat_models.extend([item for item in (provider.get("chat_models") or []) if isinstance(item, str) and item.strip()])
     return {
         "image_models": sorted(set(image_models)),
         "chat_models": sorted(set(chat_models)),
         "video_models": sorted(set(video_models)),
-        "ms_chat_models": sorted(set(ms_chat_models)),
         "api_providers": providers,
         "comfy_instances": read_comfy_instances(),
         "image_model": (sorted(set(image_models))[0] if image_models else ""),

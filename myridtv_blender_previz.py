@@ -515,6 +515,7 @@ def run_blender_previz(payload):
         append_log(_log_file(), "previz llm disabled")
     if not canvas_title:
         canvas_title = "未命名画布"
+    canvas_folder = myridtv_media_localize.canvas_output_folder_name(canvas_title, canvas_id)
     if not _G_PREVIZ_DIR.exists():
         raise RuntimeError(f"预演脚本目录不存在: {_G_PREVIZ_DIR}")
     width, height = _r_previz_ratio_size(payload.get("aspectRatio"))
@@ -549,7 +550,7 @@ def run_blender_previz(payload):
                  "--width", str(width), "--height", str(height), "--fps", str(_G_PREVIZ_FPS)]
     run_cmd(parse_cmd)
     # 2) Blender Workbench 渲染；最终视频和 .blend 都归档到当前画布资产目录。
-    canvas_output_dir = _G_ASSETS_DIR / "output" / canvas_title
+    canvas_output_dir = _G_ASSETS_DIR / "output" / canvas_folder
     video_dir = canvas_output_dir / "videos"
     blend_dir = canvas_output_dir / "blender"
     video_dir.mkdir(parents=True, exist_ok=True)
@@ -573,7 +574,7 @@ def run_blender_previz(payload):
     if not video_path.exists():
         raise RuntimeError("预演视频未生成")
     size = video_path.stat().st_size
-    url = myridtv_media_localize.asset_output_url(video_name, "video", canvas_folder=canvas_title)
+    url = myridtv_media_localize.asset_output_url(video_name, "video", canvas_folder=canvas_folder)
     # 镜头表 JSON 是整个链路的唯一事实来源：与可编辑 .blend / MP4 一起归档，
     # 再从同一 JSON 生成 AI 视频提示词，绝不反向从自然语言重新猜镜头。
     data_json_path = data_dir / f"previz_{tag}_镜头数据.json"
@@ -622,8 +623,8 @@ def run_blender_previz(payload):
         "backend": "blender-previz",
         "video_url": url,
         "duration_seconds": duration_seconds,
-        "previs_data_url": myridtv_media_localize.asset_output_url(data_json_path.name, "file", canvas_folder=f"{canvas_title}/previs_data"),
-        "video_prompt_url": myridtv_media_localize.asset_output_url(prompt_path.name, "file", canvas_folder=f"{canvas_title}/previs_data"),
-        "validation_url": myridtv_media_localize.asset_output_url(validation_path.name, "file", canvas_folder=f"{canvas_title}/previs_data"),
+        "previs_data_url": myridtv_media_localize.asset_output_url(data_json_path.name, "file", canvas_folder=f"{canvas_folder}/previs_data"),
+        "video_prompt_url": myridtv_media_localize.asset_output_url(prompt_path.name, "file", canvas_folder=f"{canvas_folder}/previs_data"),
+        "validation_url": myridtv_media_localize.asset_output_url(validation_path.name, "file", canvas_folder=f"{canvas_folder}/previs_data"),
         "validation": validation,
     }

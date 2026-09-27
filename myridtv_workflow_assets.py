@@ -13,6 +13,7 @@ import myridtv_canvas_store
 import myridtv_comfy
 import myridtv_core
 import myridtv_libraries
+import myridtv_media_localize
 from myridtv_core import ApiError
 
 _G_LOG_FILE = lambda: None
@@ -180,7 +181,7 @@ def save_blender_payload_asset(payload):
                 canvas_title = str((myridtv_core.read_json_file(cpath, {}) or {}).get("title") or "").strip()
     except Exception:
         canvas_title = ""
-    folder = canvas_title or "未命名画布"
+    folder = myridtv_media_localize.canvas_output_folder_name(canvas_title, cid)
     target_dir = _G_ASSETS_DIR() / "output" / folder / sub
     url = f"/assets/output/{urllib.parse.quote(folder)}/{sub}/{urllib.parse.quote(unique_name)}"
     target = target_dir / unique_name

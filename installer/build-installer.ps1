@@ -1,6 +1,7 @@
 ﻿param(
     [string]$PythonDir = '',
     [string]$SourceDir = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path,
+    [string]$BuildRoot = (Join-Path $PSScriptRoot 'build'),
     [switch]$Sign,
     [string]$SignToolPath = '',
     [string]$SignCertPath = '',
@@ -18,9 +19,41 @@ $ErrorActionPreference = 'Stop'
 
 $stageScript = Join-Path $PSScriptRoot 'prepare-release.ps1'
 $issFile = Join-Path $PSScriptRoot 'MyridTV.iss'
-$buildRoot = Join-Path $PSScriptRoot 'build'
+$buildRoot = [System.IO.Path]::GetFullPath($BuildRoot)
 $stageDir = Join-Path $buildRoot 'MyridTV'
 $outputDir = Join-Path $buildRoot 'installer'
+
+# Check the compiler before clearing any previous build output.
+$isccPreflight = Get-Command iscc -ErrorAction SilentlyContinue
+if (-not $isccPreflight) {
+    $isccPreflightPaths = @()
+    foreach ($candidateRoot in @($env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:LOCALAPPDATA)) {
+        if (-not $candidateRoot) { continue }
+        $isccPreflightPaths += (Join-Path $candidateRoot 'Inno Setup 6\ISCC.exe')
+        $isccPreflightPaths += (Join-Path $candidateRoot 'Inno Setup 7\ISCC.exe')
+        $isccPreflightPaths += (Join-Path $candidateRoot 'Programs\Inno Setup 6\ISCC.exe')
+        $isccPreflightPaths += (Join-Path $candidateRoot 'Programs\Inno Setup 7\ISCC.exe')
+    }
+    $isccPreflight = $isccPreflightPaths | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+}
+if (-not $isccPreflight) {
+    foreach ($registryKey in @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
+    )) {
+        $innoInstall = Get-ItemProperty -Path $registryKey -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -like 'Inno Setup*' -and $_.InstallLocation } |
+            Select-Object -First 1
+        if ($innoInstall -and (Test-Path -LiteralPath (Join-Path $innoInstall.InstallLocation 'ISCC.exe'))) {
+            $isccPreflight = $true
+            break
+        }
+    }
+}
+if (-not $isccPreflight) {
+    throw "ISCC.exe not found. Install Inno Setup (https://jrsoftware.org/isinfo.php) or add ISCC.exe to PATH. Existing build files were left untouched."
+}
 
 # Keep one reproducible build tree instead of accumulating old publish copies.
 foreach ($oldBuildDir in @(
@@ -37,6 +70,7 @@ foreach ($oldBuildDir in @(
 
 & $stageScript `
     -SourceDir $SourceDir `
+    -BuildRoot $buildRoot `
     -StageDir $stageDir `
     -PythonDir $PythonDir `
     -Sign:$Sign `

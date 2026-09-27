@@ -1,6 +1,7 @@
 ﻿param(
     [string]$SourceDir = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path,
-    [string]$StageDir = (Join-Path $PSScriptRoot 'build\MyridTV'),
+    [string]$BuildRoot = (Join-Path $PSScriptRoot 'build'),
+    [string]$StageDir = '',
     [string]$PythonDir = '',
     [switch]$Sign,
     [string]$SignToolPath = '',
@@ -98,6 +99,8 @@ function Should-SkipRelativePath {
         '__pycache__',
         'tests',
         '_test_userdata',
+        '.hermes',
+        '.github',
         'MyridTV',
         '.git',
         '.githooks',
@@ -115,9 +118,11 @@ function Should-SkipRelativePath {
     if ($fileName -match '(?i)\.bak') { return $true }
     if ($fileName -match '(?i)\.log$') { return $true }
 
-    # 根级开发/临时遗留不进包：下划线开头（_internal 除外）、gate_restart*、canvas_*.json、根级 png
+    # 根级开发/临时遗留不进包：代理测试脚本、AGENTS.md、下划线开头（_internal 除外）、gate_restart*、canvas_*.json、根级 png
     # 只在应用树根（-AppRoot）判定——bundled Python 的 DLLs 目录拷贝时相对路径是纯文件名，不能当根级判
     if ($AppRoot -and ($normalized -notmatch [regex]::Escape($sep))) {
+        if ($fileName -match '(?i)^rh_node_test\d*\.js$') { return $true }
+        if ($fileName.Equals('AGENTS.md', [System.StringComparison]::OrdinalIgnoreCase)) { return $true }
         if (-not $fileName.Equals('_internal', [System.StringComparison]::OrdinalIgnoreCase) -and $fileName.StartsWith('_')) { return $true }
         if ($fileName -match '(?i)^gate_restart') { return $true }
         if ($fileName -match '(?i)^canvas_.*\.json$') { return $true }
@@ -602,7 +607,7 @@ function Build-Launcher {
         throw 'dotnet CLI not found. Install .NET SDK 9 first, then run packaging again.'
     }
 
-    $publishDir = Join-Path $PSScriptRoot 'build\launcher-publish'
+    $publishDir = Join-Path $BuildRoot 'launcher-publish'
     Remove-IfExists $publishDir
     New-Item -ItemType Directory -Force -Path $publishDir | Out-Null
 
@@ -644,7 +649,7 @@ function Build-DesktopHost {
         throw 'dotnet CLI not found. Install .NET SDK 9 first, then run packaging again.'
     }
 
-    $publishDir = Join-Path $PSScriptRoot 'build\desktop-publish'
+    $publishDir = Join-Path $BuildRoot 'desktop-publish'
     Remove-IfExists $publishDir
     New-Item -ItemType Directory -Force -Path $publishDir | Out-Null
 
@@ -676,6 +681,8 @@ function Build-DesktopHost {
 # $StageDir  = installer/build/MyridTV/（本脚本生成的打包快照，会被整目录清空+重建，切勿手改）
 # 开发者只改 _internal/ 等源文件；本步骤后 installer/build/ 会被完全覆盖刷新。
 $SourceDir = [System.IO.Path]::GetFullPath($SourceDir)
+$BuildRoot = [System.IO.Path]::GetFullPath($BuildRoot)
+if (-not $StageDir) { $StageDir = Join-Path $BuildRoot 'MyridTV' }
 $StageDir = [System.IO.Path]::GetFullPath($StageDir)
 $PythonDir = Resolve-ActualPythonDir -RequestedDir $PythonDir -AppSourceDir $SourceDir
 
