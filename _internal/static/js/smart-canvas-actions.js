@@ -8,7 +8,7 @@
   }
 
   function smartImageContextActionIds() {
-    return ['add-agent', 'duplicate-node', 'view-image', 'img2img', 'save-asset', 'copy-path', 'open-folder', 'set-cover', 'asset-follow-latest', 'asset-pin-version', 'asset-save-version'];
+    return ['add-agent', 'duplicate-node', 'redirect-input-source', 'view-image', 'img2img', 'save-asset', 'copy-path', 'open-folder', 'set-cover', 'asset-follow-latest', 'asset-pin-version', 'asset-save-version'];
   }
 
   function duplicateNodeConnections(connections, sourceId, copyId) {

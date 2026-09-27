@@ -86,7 +86,7 @@ with sync_playwright() as pw:
     check("直接拖入文件只接受支持的图像格式", result["files"] == {"type": "files", "names": ["portrait.png"]}, result["files"])
     check("HTML 链接与 URI 列表可解析远端图片地址", result["html"] == {"type": "url", "url": "https://cdn.example.test/look.png"}
           and result["remote"] == {"type": "url", "url": "https://cdn.example.test/hero.png"}, {"html": result["html"], "remote": result["remote"]})
-    check("本地 file URL 解码并去重，过滤非图片路径", result["local"] == {"type": "localPaths", "localPaths": ["file:///C:/Users/Art Team/Picture One.png"]}, result["local"])
+    check("本地路径文本不再被识别为可导入媒体（后端从未实现本地导入接口）", result["local"] == {"type": "none"}, result["local"])
     check("文件夹递归读取并过滤不支持文件", result["directory"] == {"type": "files", "names": ["nested.jpg"]}, result["directory"])
     check("识别素材拖放（含拖动中受限载荷）、输入缩略图及系统文件提示", result["detection"] == {"asset": True, "hiddenAsset": True, "thumb": True, "hint": True}, result["detection"])
     check("图片名称解码并忽略查询参数和片段", result["name"] == "房间.png", result["name"])

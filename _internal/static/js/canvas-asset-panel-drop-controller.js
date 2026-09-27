@@ -1,4 +1,5 @@
-/* Owns asset-panel drag-over feedback and imported-media drop routing. */
+/* Owns asset-panel drag-over feedback and imported-media drop routing.
+   Local-path drops are no longer supported (backend never implemented the import endpoint). */
 (function(global){
     'use strict';
 
@@ -59,9 +60,6 @@
             if(payload.type === 'files'){
                 const uploaded = await deps.uploadFiles(payload.files);
                 for(const file of uploaded) if(file?.url) await deps.addUrlToAssetLibrary(file.url, file.name || '');
-            } else if(payload.type === 'localPaths'){
-                const imported = await deps.importLocalImages(payload.localPaths);
-                for(const file of imported) if(file?.url) await deps.addUrlToAssetLibrary(file.url, file.name || '');
             } else if(payload.type === 'url'){
                 await deps.addUrlToAssetLibrary(payload.url, deps.imageNameFromUrl(payload.url));
             }

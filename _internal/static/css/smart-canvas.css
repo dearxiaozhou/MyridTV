@@ -3345,11 +3345,11 @@ body.canvas-mode-objects .node-port { display:none !important; }
 .image-node.empty-node .node-drop-hint { position:absolute; left:50%; top:calc(50% + 20px); transform:translateX(-50%); width:auto; max-width:92%; text-align:center; margin:0; opacity:.55; pointer-events:none; }
 .image-node.empty-node .node-media-hint i, .image-node.empty-node .node-media-hint svg { width:26px; height:26px; }
 /* pill upload button: hover-reveal, top-center inside node, like delete button but bigger; cursor:pointer */
-.image-node.empty-node .upload-node-btn { position:absolute; left:50%; top:10px; transform:translateX(-50%); display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 14px; border:0; border-radius:16px; background:transparent; color:#e0e0e0; font-size:12.5px; font-weight:600; cursor:pointer; opacity:0; pointer-events:none; transition:opacity .14s ease, background-color .14s ease; z-index:9; }
-.image-node.empty-node .upload-node-btn i, .image-node.empty-node .upload-node-btn svg { width:15px; height:15px; }
-.image-node.empty-node:hover .upload-node-btn { opacity:1; pointer-events:auto; }
-.image-node.empty-node .upload-node-btn:hover { background:#2d2d2d; }
-.image-node.empty-node .upload-node-btn, .image-node.empty-node .upload-node-btn * { cursor:pointer !important; }
+.image-node .upload-node-btn { position:absolute; left:50%; top:10px; transform:translateX(-50%); display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 14px; border:0; border-radius:16px; background:transparent; color:#e0e0e0; font-size:12.5px; font-weight:600; cursor:pointer; opacity:0; pointer-events:none; transition:opacity .14s ease, background-color .14s ease; z-index:9; }
+.image-node .upload-node-btn i, .image-node .upload-node-btn svg { width:15px; height:15px; }
+.image-node:hover .upload-node-btn { opacity:1; pointer-events:auto; }
+.image-node .upload-node-btn:hover { background:#2d2d2d; }
+.image-node .upload-node-btn, .image-node .upload-node-btn * { cursor:pointer !important; }
 .image-node.empty-node, .image-node.empty-node .node-drop { cursor:pointer; }
 
 /* Bottom-left tools run horizontally: connections, shortcuts, log, minimap. */

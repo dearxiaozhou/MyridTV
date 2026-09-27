@@ -55,7 +55,6 @@ with sync_playwright() as pw:
         resolvePayload:transfer=>CanvasImageDropPayload.resolve(transfer),
         imageNameFromUrl:url=>CanvasImageDropPayload.imageNameFromUrl(url),
         uploadFiles:async files=>{calls.uploaded.push(files.map(file=>file.name));return files.map(file=>({url:'/uploaded/'+file.name,name:file.name}));},
-        importLocalImages:async paths=>{calls.imported.push([...paths]);return paths.map(path=>({url:'/imported/'+path.split(/[\\\\/]/).pop(),name:path.split(/[\\\\/]/).pop()}));},
         addUrlToAssetLibrary:async(url,name)=>calls.added.push({url,name}),
         toast:message=>calls.toasts.push(message),assetAddFailMessage:()=>'素材导入失败'
       });
@@ -92,8 +91,8 @@ with sync_playwright() as pw:
     check("从画布拖入的图片直接加入素材库", {"url": "/canvas/frame.png", "name": "画布帧"} in result["calls"]["added"], result["calls"]["added"])
     check("拖入本地图片时上传并过滤不支持的文件", result["calls"]["uploaded"] == [["角色.png"]]
           and {"url": "/uploaded/角色.png", "name": "角色.png"} in result["calls"]["added"], result["calls"])
-    check("拖入本地路径时经本地导入接口后加入素材库", result["calls"]["imported"] == [["C:\\Users\\Artist\\本地.png"]]
-          and {"url": "/imported/本地.png", "name": "本地.png"} in result["calls"]["added"], result["calls"])
+    check("拖入本地路径不再走已移除的本地导入接口且不产生素材", result["calls"]["imported"] == []
+          and not [item for item in result["calls"]["added"] if str(item.get("url", "")).startswith("/imported/")], result["calls"])
     check("拖入网页图片链接时提取文件名并加入素材库", {"url": "https://cdn.example.test/look.png?size=1", "name": "look.png"} in result["calls"]["added"], result["calls"]["added"])
     check("未知拖放不拦截画布事件且错误素材数据会提示", result["unsupportedIgnored"] and result["calls"]["toasts"] == ["素材导入失败"]
           and result["badCanvasImage"] == {"prevented": True, "stopped": True}, {"unsupportedIgnored": result["unsupportedIgnored"], "toasts": result["calls"]["toasts"]})

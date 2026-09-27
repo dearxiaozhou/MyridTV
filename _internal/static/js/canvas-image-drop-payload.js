@@ -1,9 +1,8 @@
-/* Normalizes files, asset references, local paths, and URLs from browser drops. */
+/* Normalizes files, asset references, and URLs from browser drops. */
 (function(global){
     'use strict';
 
     const deps = {};
-    const IMAGE_DROP_EXT_RE = /\.(png|jpe?g|webp|gif)$/i;
     const TEXT_TYPES = [
         'text/uri-list',
         'text/plain',
@@ -74,32 +73,8 @@
         return /^https?:\/\/.+/i.test(text) || /^data:image\//i.test(text) || /^blob:/i.test(text);
     }
 
-    function isLocalImagePath(value){
-        const text = String(value || '').trim();
-        if(!text) return false;
-        let path = text;
-        if(/^file:/i.test(path)){
-            try {
-                const url = new global.URL(path);
-                if(url.protocol !== 'file:') return false;
-                path = decodeURIComponent(url.pathname || path);
-            } catch(_) {
-                return false;
-            }
-        }
-        if(/^\/[a-zA-Z]:[\\/]/.test(path)) path = path.slice(1);
-        const clean = path.split(/[?#]/, 1)[0];
-        const isWindowsPath = /^[a-zA-Z]:[\\/]/.test(clean);
-        const isPosixPath = clean.startsWith('/');
-        return (isWindowsPath || isPosixPath) && IMAGE_DROP_EXT_RE.test(clean);
-    }
-
     function imageFiles(dataTransfer){
         return [...(dataTransfer?.files || [])].filter(deps.isSupportedUploadFile || (() => false));
-    }
-
-    function localImagePaths(dataTransfer){
-        return unique(textCandidates(dataTransfer).filter(isLocalImagePath));
     }
 
     function imageNameFromUrl(url){
@@ -121,8 +96,6 @@
         } catch(_) {}
         const files = imageFiles(dataTransfer);
         if(files.length) return {type:'files', files};
-        const localPaths = localImagePaths(dataTransfer);
-        if(localPaths.length) return {type:'localPaths', localPaths};
         const url = textCandidates(dataTransfer).find(isRemoteValue) || '';
         if(url) return {type:'url', url};
         return {type:'none'};

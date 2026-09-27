@@ -1,4 +1,4 @@
-/* Owns image upload, local-path import, and routing imported media into nodes. */
+/* Owns image upload and routing imported media into nodes. */
 (function(global){
     'use strict';
 
@@ -22,18 +22,6 @@
         }));
     }
 
-    async function importLocalImages(paths){
-        if(!paths?.length) return [];
-        const response = await deps.fetcher('/api/ai/import-local-image', {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({paths})
-        });
-        if(!response.ok) throw new Error(await deps.responseErrorMessage(response, deps.uploadFailMessage()));
-        const data = await response.json();
-        return data.files || [];
-    }
-
     async function handleFiles(files, targetId='', options={}){
         try {
             const fileList = [...(files || [])].filter(deps.isSupportedUploadFile);
@@ -53,10 +41,7 @@
     async function handleDropPayload(payload, targetId='', options={}){
         try {
             if(payload.type === 'files') await handleFiles(payload.files, targetId, options);
-            else if(payload.type === 'localPaths'){
-                if(!options.skipUndo) deps.pushUndo();
-                deps.appendImagesToNode(await importLocalImages(payload.localPaths), targetId, options);
-            } else if(payload.type === 'asset'){
+            else if(payload.type === 'asset'){
                 if(!options.skipUndo) deps.pushUndo();
                 const image = {url:payload.url, name:payload.name || deps.imageNameFromUrl(payload.url), kind:payload.kind || 'image'};
                 if(payload.assetId){ image.assetId = payload.assetId; image.assetVersionMode = 'latest'; }
@@ -70,5 +55,5 @@
         }
     }
 
-    global.CanvasImageImportController = {configure, uploadFiles, importLocalImages, handleFiles, handleDropPayload};
+    global.CanvasImageImportController = {configure, uploadFiles, handleFiles, handleDropPayload};
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -3661,7 +3661,8 @@ CanvasImageContextMenuController.configure({
     loadAssetLibrary:() => loadAssetLibrary(),
     addUrlToAssetLibrary:(...args) => addUrlToAssetLibrary(...args),
     getSelectedNodeIds:() => selectedNodeIds(),
-    bringNodesToFront:(...args) => bringNodesToFront(...args)
+    bringNodesToFront:(...args) => bringNodesToFront(...args),
+    enterRedirectPickMode:nodeId => enterRedirectPickMode(nodeId)
 });
 
 // ===== 图片缩略图交互（canvas-image-node-interactions.js）：主文件侧注入 =====
@@ -8922,7 +8923,7 @@ const title = isScript ? '剧本' : isTable ? '镜头表' : node.type === 'smart
 const html = `<div class="image-node ${isEmpty ? 'empty-node' : ''} ${isGroup ? 'group-node' : ''} ${node.groupLayout?.mode === 'preserve' ? 'preserved-group-node' : ''} ${isCanvasGroupNode(node) ? 'canvas-group-node' : ''} ${isHistory ? 'history-group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isScript ? 'script-smart-node' : ''} ${isTable ? 'table-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isBlenderPreview ? 'blender-preview-node' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''} ${node.comfyStatus === 'running' ? 'comfy-running' : ''} ${node.comfyStatus === 'queued' ? 'comfy-queued' : ''} node-status-${escapeHtml(node.status || 'ready')} node-role-${escapeHtml(node.role || 'media')}" data-id="${escapeHtml(node.id)}" data-status="${escapeHtml(node.status || 'ready')}" data-role="${escapeHtml(node.role || 'media')}" data-comfy-status="${escapeHtml(node.comfyStatus || '')}" ${(node.comfyStatus === 'queued' && Number(node.comfyQueuePosition ?? -1) > 0) ? `data-comfy-queue="${Number(node.comfyQueuePosition)}"` : ''} style="left:${node.x || 0}px;top:${node.y || 0}px;width:${layout.width}px;height:${layout.height}px;z-index:${isCanvasGroupNode(node) ? 1 : nodeLayerZ(node)}">
             <div class="node-head"><div class="node-title">${node.canvasSetEnabled === true ? `<span class="node-set-badge" title="${escapeAttr(tr('smart.setBadgeTip'))}">SET</span>` : ''}${title}</div><div class="node-actions">${deleteBtn}</div></div>
             ${isCanvasGroupNode(node) ? `<div class="canvas-group-header"><span class="canvas-group-title-display" title="双击重命名">${escapeHtml(node.title || '未命名组')}</span><button class="canvas-group-delete node-delete" type="button" title="删除组"><i data-lucide="trash-2"></i></button></div>` : ''}
-            ${!isCanvasGroupNode(node) ? (!isEmpty ? `<div class="floating-node-set">${canvasNodeSetToggleHtml(node)}</div><div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>` : `<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>`) : ''}
+            ${!isCanvasGroupNode(node) ? (!isEmpty ? `<div class="floating-node-set">${canvasNodeSetToggleHtml(node)}</div>${(node.type === 'smart-image' || node.type === 'smart-video' || node.type === 'smart-audio' || !node.type) ? '<button class="node-move-lines" type="button" title="把线移到新素材（点此节点，再点目标素材，旧素材所有连线整体平移，图片与节点均不动）"><i data-lucide="link"></i></button>' : ''}${(node.type === 'smart-image' || node.type === 'smart-video' || node.type === 'smart-audio' || !node.type) ? '<button class="upload-node-btn" type="button" data-upload-action="files"><i data-lucide="upload"></i><span>上传</span></button>' : ''}<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>` : `<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>`) : ''}
             ${runTimePillHtml(node)}
             ${comfyNodeNote}
             <div class="node-body">${body}</div>
@@ -9566,6 +9567,119 @@ function pickMediaForSmartNode(nodeId){
     document.body.appendChild(input);
     input.click();
 }
+// 已移除：右键「替换素材」画廊(openInCanvasReplaceGallery)、replaceMediaForSmartNode、revertMediaVersion
+// 原因：用户反馈画布内替换画廊太卡，2026-09-27 删除。本地上传仍由 upload-node-btn → pickMediaForSmartNode 提供。
+
+(function injectNodeMoveLinesUi(){
+    if(document.getElementById('node-move-lines-style')) return;
+    const st = document.createElement('style');
+    st.id = 'node-move-lines-style';
+    st.textContent = [
+        '.node-move-lines{position:absolute;top:7px;left:44px;z-index:10;width:26px;height:26px;border-radius:7px;border:1px solid #3a3d42;background:#2a2d33;color:#cfd3d8;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;padding:0;transition:opacity .15s,background .15s,border-color .15s;}',
+        '.image-node:hover .node-move-lines,.image-node.selected .node-move-lines{opacity:1;}',
+        '.node-move-lines:hover{background:#34383f;border-color:#6aa9ff;color:#fff;}',
+        '.node-move-lines svg{width:15px;height:15px;}',
+        '.image-node.node-move-candidate{outline:2px dashed #6aa9ff;outline-offset:2px;}',
+        '.move-lines-banner{position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:3000;background:rgba(31,31,31,.96);color:#fff;padding:8px 14px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 10px 30px rgba(0,0,0,.4);display:none;}'
+    ].join('');
+    document.head.appendChild(st);
+})();
+
+// ===== 把线移到新素材：原节点保留、图片不动，仅将旧素材所有 outgoing 连线整体平移到新素材 =====
+let redirectPickMode = null;
+
+function enterRedirectPickMode(sourceId){
+    const src = nodes.find(n => n.id === sourceId);
+    if(!src){ toast('无法作为来源'); return; }
+    exitRedirectPickMode();
+    redirectPickMode = { sourceId };
+    nodes.forEach(n => {
+        if(n.id === sourceId) return;
+        if(n.type !== 'smart-image' && n.type !== 'smart-video' && n.type !== 'smart-audio' && n.type) return;
+        const el = world.querySelector('.image-node[data-id="'+CSS.escape(n.id)+'"]');
+        if(el) el.classList.add('node-move-candidate');
+    });
+    let banner = document.getElementById('move-lines-banner');
+    if(!banner){ banner = document.createElement('div'); banner.id='move-lines-banner'; banner.className='move-lines-banner'; document.body.appendChild(banner); }
+    banner.textContent = '把线移到新素材：点另一个素材节点 → 旧素材所有连线整体平移（图片与节点均不动）。Esc / 点空白取消';
+    banner.style.display = 'block';
+    toast('已进入「把线移到新素材」：点选目标素材节点');
+}
+
+function exitRedirectPickMode(){
+    if(!redirectPickMode) return;
+    redirectPickMode = null;
+    world.querySelectorAll('.image-node.node-move-candidate').forEach(el => el.classList.remove('node-move-candidate'));
+    const banner = document.getElementById('move-lines-banner');
+    if(banner) banner.style.display = 'none';
+}
+
+function applyMoveLinesToNewSource(oldId, newId){
+    const conns = canvas.connections || [];
+    const oldNode = nodes.find(n => n.id === oldId);
+    const newNode = nodes.find(n => n.id === newId);
+    if(!oldNode || !newNode || oldId === newId) return false;
+    let moved = 0;
+    conns.forEach(c => {
+        if(c.from !== oldId) return;
+        const dup = conns.some(o => o !== c && o.from === newId && o.to === c.to && (o.kind || 'flow') === (c.kind || 'flow'));
+        if(dup) return;
+        c.from = newId;
+        moved++;
+    });
+    const idsByTo = {};
+    conns.forEach(c => { if(c.to){ (idsByTo[c.to] = idsByTo[c.to] || new Set()).add(c.from); } });
+    nodes.forEach(n => { if(idsByTo[n.id]) n.inputNodeIds = Array.from(idsByTo[n.id]); });
+    return moved > 0;
+}
+
+document.addEventListener('mousedown', function(e){
+    const btn = e.target && e.target.closest ? e.target.closest('.node-move-lines') : null;
+    if(btn){
+        e.preventDefault();
+        e.stopPropagation();
+        const el = btn.closest('.image-node');
+        const id = el && el.dataset.id;
+        if(id && !redirectPickMode) enterRedirectPickMode(id);
+    }
+}, true);
+
+document.addEventListener('click', function(e){
+    const btn = e.target && e.target.closest ? e.target.closest('.node-move-lines') : null;
+    if(btn){
+        e.preventDefault();
+        e.stopPropagation();
+        const el = btn.closest('.image-node');
+        const id = el && el.dataset.id;
+        if(id && !redirectPickMode) enterRedirectPickMode(id);
+        return;
+    }
+}, true);
+
+document.addEventListener('click', function(e){
+    if(!redirectPickMode) return;
+    if(e.target && e.target.closest && e.target.closest('.node-move-lines')) return;
+    const nodeEl = e.target && e.target.closest ? e.target.closest('.image-node') : null;
+    if(nodeEl){
+        const id = nodeEl.dataset.id;
+        e.preventDefault();
+        e.stopPropagation();
+        if(id && id !== redirectPickMode.sourceId){
+            pushUndo();
+            const ok = applyMoveLinesToNewSource(redirectPickMode.sourceId, id);
+            if(ok){ render(); scheduleSave(); toast('已把该素材所有连线移到新素材（图片与节点均不动）'); }
+            else { toast('该素材没有可移动的连线'); }
+        }
+        exitRedirectPickMode();
+        return;
+    }
+    exitRedirectPickMode();
+}, true);
+
+document.addEventListener('keydown', function(e){
+    if(redirectPickMode && e.key === 'Escape'){ e.preventDefault(); exitRedirectPickMode(); }
+}, true);
+
 function bindNodeEvents(){
     // 只有本轮刚创建的节点需要绑定；HTML 未变化的节点沿用已有监听器
     const stamp = String(nodeRenderStamp);
@@ -11133,9 +11247,6 @@ function appendImagesToSmartNode(uploaded, targetId='', opts={}){
 }
 async function handleFiles(files, targetId='', opts={}){
     return CanvasImageImportController.handleFiles(files, targetId, opts);
-}
-async function importSmartLocalImages(paths){
-    return CanvasImageImportController.importLocalImages(paths);
 }
 async function handleSmartImageDropPayload(payload, targetId='', opts={}){
     return CanvasImageImportController.handleDropPayload(payload, targetId, opts);
@@ -15193,7 +15304,6 @@ CanvasAssetPanelDropController.configure({
     resolvePayload: dataTransfer => CanvasImageDropPayload.resolve(dataTransfer),
     imageNameFromUrl: url => CanvasImageDropPayload.imageNameFromUrl(url),
     uploadFiles: files => CanvasImageImportController.uploadFiles(files),
-    importLocalImages: paths => CanvasImageImportController.importLocalImages(paths),
     addUrlToAssetLibrary: (...args) => addUrlToAssetLibrary(...args),
     toast: message => toast(message),
     assetAddFailMessage: () => tr('smart.assetAddFail')

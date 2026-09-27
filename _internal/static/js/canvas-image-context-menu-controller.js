@@ -45,6 +45,7 @@
         const labels = {
             'add-agent':'加入Agent',
             'duplicate-node':'复制节点',
+            'redirect-input-source':'把线移到新素材',
             'view-image':'查看图片',
             'img2img':'图生图',
             'save-asset':'加入素材库',
@@ -163,6 +164,8 @@
                 })
             }).catch(() => {});
         }
+        // 已移除 replace-material / revert-media-version（2026-09-27 用户反馈太卡）
+        if(action === 'redirect-input-source') return deps.enterRedirectPickMode(nodeId);
     }
 
     function open(nodeId, imageIndex, event){
@@ -198,6 +201,8 @@
         setItemVisible('asset-follow-latest', hasAssetRef && mode !== 'latest');
         setItemVisible('asset-pin-version', hasAssetRef && mode === 'latest');
         setItemVisible('asset-save-version', hasAssetRef);
+        // 已移除 replace-material / revert-media-version 可见性（2026-09-27）
+        setItemVisible('redirect-input-source', Array.isArray(node?.images));
         menu.classList.add('open');
     }
 
