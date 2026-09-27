@@ -9570,115 +9570,19 @@ function pickMediaForSmartNode(nodeId){
 // 已移除：右键「替换素材」画廊(openInCanvasReplaceGallery)、replaceMediaForSmartNode、revertMediaVersion
 // 原因：用户反馈画布内替换画廊太卡，2026-09-27 删除。本地上传仍由 upload-node-btn → pickMediaForSmartNode 提供。
 
-(function injectNodeMoveLinesUi(){
-    if(document.getElementById('node-move-lines-style')) return;
-    const st = document.createElement('style');
-    st.id = 'node-move-lines-style';
-    st.textContent = [
-        '.node-move-lines{position:absolute;top:7px;left:44px;z-index:10;width:26px;height:26px;border-radius:7px;border:1px solid #3a3d42;background:#2a2d33;color:#cfd3d8;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;padding:0;transition:opacity .15s,background .15s,border-color .15s;}',
-        '.image-node:hover .node-move-lines,.image-node.selected .node-move-lines{opacity:1;}',
-        '.node-move-lines:hover{background:#34383f;border-color:#6aa9ff;color:#fff;}',
-        '.node-move-lines svg{width:15px;height:15px;}',
-        '.image-node.node-move-candidate{outline:2px dashed #6aa9ff;outline-offset:2px;}',
-        '.move-lines-banner{position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:3000;background:rgba(31,31,31,.96);color:#fff;padding:8px 14px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 10px 30px rgba(0,0,0,.4);display:none;}'
-    ].join('');
-    document.head.appendChild(st);
-})();
-
-// ===== 把线移到新素材：原节点保留、图片不动，仅将旧素材所有 outgoing 连线整体平移到新素材 =====
-let redirectPickMode = null;
-
-function enterRedirectPickMode(sourceId){
-    const src = nodes.find(n => n.id === sourceId);
-    if(!src){ toast('无法作为来源'); return; }
-    exitRedirectPickMode();
-    redirectPickMode = { sourceId };
-    nodes.forEach(n => {
-        if(n.id === sourceId) return;
-        if(n.type !== 'smart-image' && n.type !== 'smart-video' && n.type !== 'smart-audio' && n.type) return;
-        const el = world.querySelector('.image-node[data-id="'+CSS.escape(n.id)+'"]');
-        if(el) el.classList.add('node-move-candidate');
-    });
-    let banner = document.getElementById('move-lines-banner');
-    if(!banner){ banner = document.createElement('div'); banner.id='move-lines-banner'; banner.className='move-lines-banner'; document.body.appendChild(banner); }
-    banner.textContent = '把线移到新素材：点另一个素材节点 → 旧素材所有连线整体平移（图片与节点均不动）。Esc / 点空白取消';
-    banner.style.display = 'block';
-    toast('已进入「把线移到新素材」：点选目标素材节点');
-}
-
-function exitRedirectPickMode(){
-    if(!redirectPickMode) return;
-    redirectPickMode = null;
-    world.querySelectorAll('.image-node.node-move-candidate').forEach(el => el.classList.remove('node-move-candidate'));
-    const banner = document.getElementById('move-lines-banner');
-    if(banner) banner.style.display = 'none';
-}
-
-function applyMoveLinesToNewSource(oldId, newId){
-    const conns = canvas.connections || [];
-    const oldNode = nodes.find(n => n.id === oldId);
-    const newNode = nodes.find(n => n.id === newId);
-    if(!oldNode || !newNode || oldId === newId) return false;
-    let moved = 0;
-    conns.forEach(c => {
-        if(c.from !== oldId) return;
-        const dup = conns.some(o => o !== c && o.from === newId && o.to === c.to && (o.kind || 'flow') === (c.kind || 'flow'));
-        if(dup) return;
-        c.from = newId;
-        moved++;
-    });
-    const idsByTo = {};
-    conns.forEach(c => { if(c.to){ (idsByTo[c.to] = idsByTo[c.to] || new Set()).add(c.from); } });
-    nodes.forEach(n => { if(idsByTo[n.id]) n.inputNodeIds = Array.from(idsByTo[n.id]); });
-    return moved > 0;
-}
-
-document.addEventListener('mousedown', function(e){
-    const btn = e.target && e.target.closest ? e.target.closest('.node-move-lines') : null;
-    if(btn){
-        e.preventDefault();
-        e.stopPropagation();
-        const el = btn.closest('.image-node');
-        const id = el && el.dataset.id;
-        if(id && !redirectPickMode) enterRedirectPickMode(id);
-    }
-}, true);
-
-document.addEventListener('click', function(e){
-    const btn = e.target && e.target.closest ? e.target.closest('.node-move-lines') : null;
-    if(btn){
-        e.preventDefault();
-        e.stopPropagation();
-        const el = btn.closest('.image-node');
-        const id = el && el.dataset.id;
-        if(id && !redirectPickMode) enterRedirectPickMode(id);
-        return;
-    }
-}, true);
-
-document.addEventListener('click', function(e){
-    if(!redirectPickMode) return;
-    if(e.target && e.target.closest && e.target.closest('.node-move-lines')) return;
-    const nodeEl = e.target && e.target.closest ? e.target.closest('.image-node') : null;
-    if(nodeEl){
-        const id = nodeEl.dataset.id;
-        e.preventDefault();
-        e.stopPropagation();
-        if(id && id !== redirectPickMode.sourceId){
-            pushUndo();
-            const ok = applyMoveLinesToNewSource(redirectPickMode.sourceId, id);
-            if(ok){ render(); scheduleSave(); toast('已把该素材所有连线移到新素材（图片与节点均不动）'); }
-            else { toast('该素材没有可移动的连线'); }
-        }
-        exitRedirectPickMode();
-        return;
-    }
-    exitRedirectPickMode();
-}, true);
-
-document.addEventListener('keydown', function(e){
-    if(redirectPickMode && e.key === 'Escape'){ e.preventDefault(); exitRedirectPickMode(); }
-}, true);
+// redirect-lines 域外移 canvas-redirect-lines.js（第九刀），redirectPickMode 随域自持。
+if(globalThis.CanvasRedirectLines){CanvasRedirectLines.configure({
+        pushUndo: (...a) => pushUndo(...a),
+        render: (...a) => render(...a),
+        scheduleSave: (...a) => scheduleSave(...a),
+        toast: (...a) => toast(...a),
+        canvas: () => canvas,
+        nodes: () => nodes,
+        world: () => world
+});}
+function enterRedirectPickMode(){return CanvasRedirectLines.enterRedirectPickMode.apply(null, arguments);}
+function exitRedirectPickMode(){return CanvasRedirectLines.exitRedirectPickMode.apply(null, arguments);}
+function applyMoveLinesToNewSource(){return CanvasRedirectLines.applyMoveLinesToNewSource.apply(null, arguments);}
 
 function bindNodeEvents(){
     // 只有本轮刚创建的节点需要绑定；HTML 未变化的节点沿用已有监听器
