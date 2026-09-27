@@ -12674,129 +12674,28 @@ function cascadeOutputTitle(kind='image', count=1){
     if(Number(count) > 1) return kind === 'video' ? 'Videos' : kind === 'audio' ? 'Audios' : kind === 'text' ? 'Texts' : 'Group';
     return kind === 'video' ? 'Video' : kind === 'audio' ? 'Audio' : kind === 'text' ? 'Text' : kind === 'file' ? 'File' : 'Image';
 }
-function cleanHistoryImages(images=[]){
- const seen = new Set();
- return (images || [])
- .filter(img => img?.url)
-        .map(img => stripImageGenerationMeta({...img}))
-        .filter(img => {
-            const key = `${img.kind || ''}|${img.url || ''}`;
-            if(seen.has(key)) return false;
-            seen.add(key);
- return true;
- });
-}
-function shouldMoveOutputAssetToHistory(url){
- const value = String(url || '').trim();
- if(!value.startsWith('/assets/output/')) return false;
- if(value.includes('/history/')) return false; // 任意层级 history 目录都算已归档（含画布同名子目录），与后端 skip 对齐
- if(value.startsWith('/assets/output/videos/')) return false;
- return generatedOutputKindForName(value, 'image') === 'image';
-}
-async function moveOutputImagesToHistoryForRun(images=[]){
- const moved = new Map();
- for(const img of images || []){
- const oldUrl = String(img?.url || '').trim();
- if(!shouldMoveOutputAssetToHistory(oldUrl)) continue;
- try {
- const res = await fetch('/api/move-to-history', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url:oldUrl})});
- const data = await res.json().catch(() => ({}));
- const nextUrl = data?.moved || data?.url || '';
- if(res.ok && nextUrl){
- moved.set(oldUrl, nextUrl);
- img.url = nextUrl;
- ['sourceUrl','localUrl','originalLocalUrl','source_url','local_url'].forEach(key => {
- if(img[key] === oldUrl) img[key] = nextUrl;
- });
- }
- } catch(_) {}
- }
- return moved;
-}
-function remapRefsForMovedAssets(refs=[], moved=new Map()){
- if(!moved?.size) return refs || [];
- return (refs || []).map(ref => {
- const oldUrl = String(ref?.url || '');
- const nextUrl = moved.get(oldUrl);
- if(!nextUrl) return ref;
- const copy = {...ref, url:nextUrl};
- ['sourceUrl','localUrl','originalLocalUrl','source_url','local_url'].forEach(key => {
- if(copy[key] === oldUrl) copy[key] = nextUrl;
- });
- return copy;
- });
-}
-function updatePromptMentionUrlsForMovedAssets(moved=new Map()){
- if(!promptInput || !moved?.size) return;
- promptInput.querySelectorAll('.mention-image-token').forEach(token => {
- const oldUrl = token.dataset.url || '';
- const nextUrl = moved.get(oldUrl);
- if(!nextUrl) return;
- token.dataset.url = nextUrl;
- const media = token.querySelector('img,video');
- if(media) media.setAttribute('src', nextUrl);
- });
-}
-function hasHistoryConnection(nodeId, groupId){
-    return Boolean(nodeId && groupId && (canvas?.connections || []).some(conn => conn.from === nodeId && conn.to === groupId && (conn.kind || 'flow') === 'history'));
-}
-function demoteHistoryGroupNode(group){
-    if(!group) return;
-    delete group.historyFor;
-    delete group.isHistoryGroup;
-    if(group.title === '历史分组'){
-        const count = (group.images || []).length;
-        group.title = count > 1 ? 'Group' : count === 1 ? 'Image' : tr('smart.createImportNode');
-    }
-}
-function historyGroupForNode(node){
-    if(!node?.id) return null;
-    let matched = null;
-    nodes.forEach(n => {
-        if(!isHistoryGroupNode(n) || n.historyFor !== node.id) return;
-        if(hasHistoryConnection(node.id, n.id)){
-            if(!matched) matched = n;
-        } else {
-            demoteHistoryGroupNode(n);
-        }
-    });
-    return matched;
-}
-function positionHistoryGroupForNode(node, group){
-    if(!node || !group) return;
-    const r = nodeRect(node);
-    const gr = nodeRect(group);
-    if(!Number.isFinite(Number(group.x))) group.x = Math.round((Number(node.x) || 0) + Math.max(0, (r.width - gr.width) / 2));
-    if(!Number.isFinite(Number(group.y))) group.y = Math.round((Number(node.y) || 0) + r.height + 56);
-}
-function ensureHistoryGroupForNode(node){
-    if(!node?.id) return null;
-    let group = historyGroupForNode(node);
-    if(!group){
-        const r = nodeRect(node);
-        group = {
-            id:uid('smart'),
-            type:'smart-image',
-            x:Math.round(Number(node.x || 0)),
-            y:Math.round(Number(node.y || 0) + r.height + 56),
-            title:'历史分组',
-            images:[],
-            historyFor:node.id,
-            isHistoryGroup:true,
-            scale:MEDIA_GROUP_DEFAULT_SCALE,
-            created_at:Date.now()
-        };
-        nodeStore.addNode(group, 'user_manual');
-    }
-    group.type = 'smart-image';
-    group.title = '历史分组';
-    group.isHistoryGroup = true;
-    group.historyFor = node.id;
-    if(!Number.isFinite(Number(group.scale))) group.scale = MEDIA_GROUP_DEFAULT_SCALE;
-    addConnection(node.id, group.id, 'history');
-    positionHistoryGroupForNode(node, group);
-    return group;
-}
+// 归档组域外移 canvas-history-archive-group.js（第七刀）。historyGroupNodeIds 读写分双通道。
+if(globalThis.CanvasHistoryArchiveGroup){CanvasHistoryArchiveGroup.configure({
+        addConnection: (...a) => addConnection(...a),
+        generatedOutputKindForName: (...a) => generatedOutputKindForName(...a),
+        isHistoryGroupNode: (...a) => isHistoryGroupNode(...a),
+        nodeRect: (...a) => nodeRect(...a),
+        stripImageGenerationMeta: (...a) => stripImageGenerationMeta(...a),
+        uid: (...a) => uid(...a),
+        MEDIA_GROUP_DEFAULT_SCALE: () => MEDIA_GROUP_DEFAULT_SCALE,
+        assets: () => assets,
+        canvas: () => canvas,
+        nodeStore: () => nodeStore,
+        nodes: () => nodes,
+        promptInput: () => promptInput
+});}
+function cleanHistoryImages(){return CanvasHistoryArchiveGroup.cleanHistoryImages.apply(null, arguments);}
+function moveOutputImagesToHistoryForRun(){return CanvasHistoryArchiveGroup.moveOutputImagesToHistoryForRun.apply(null, arguments);}
+function remapRefsForMovedAssets(){return CanvasHistoryArchiveGroup.remapRefsForMovedAssets.apply(null, arguments);}
+function updatePromptMentionUrlsForMovedAssets(){return CanvasHistoryArchiveGroup.updatePromptMentionUrlsForMovedAssets.apply(null, arguments);}
+function demoteHistoryGroupNode(){return CanvasHistoryArchiveGroup.demoteHistoryGroupNode.apply(null, arguments);}
+function historyGroupForNode(){return CanvasHistoryArchiveGroup.historyGroupForNode.apply(null, arguments);}
+function ensureHistoryGroupForNode(){return CanvasHistoryArchiveGroup.ensureHistoryGroupForNode.apply(null, arguments);}
 function replaceOutputsToNodeWithHistory(node, additions, kind='image', meta=null, options={}){
     if(!node || !additions?.length) return [];
     const beforeRight = (Number(node.x) || 0) + nodeRect(node).width;
