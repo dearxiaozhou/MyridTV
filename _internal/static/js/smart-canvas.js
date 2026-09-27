@@ -6495,203 +6495,33 @@ async function uploadCurrentSmartVideosToCloud(){
         if(btn) btn.disabled = false;
     }
 }
-function rhRequiredLabel(field){
-    return field?.label || field?.fieldName || `#${field?.nodeId || ''}`;
-}
-function rhPruneWorkflowForMissingFields(workflowJson, missingFields){
-    if(!workflowJson || typeof workflowJson !== 'object' || !missingFields?.length) return null;
-    const workflow = JSON.parse(JSON.stringify(workflowJson));
-    const removeIds = new Set();
-    missingFields.forEach(field => {
-        const node = workflow[String(field.nodeId)];
-        if(node?.inputs && Object.prototype.hasOwnProperty.call(node.inputs, field.fieldName)){
-            delete node.inputs[field.fieldName];
-        }
-        if(node && (!node.inputs || !Object.keys(node.inputs).length)){
-            removeIds.add(String(field.nodeId));
-        }
-    });
-    removeIds.forEach(id => delete workflow[id]);
-    Object.values(workflow).forEach(node => {
-        if(!node?.inputs || typeof node.inputs !== 'object') return;
-        Object.entries(node.inputs).forEach(([name, value]) => {
-            if(rhIsWorkflowLinkValue(value) && removeIds.has(String(value[0]))) delete node.inputs[name];
-        });
-    });
-    return workflow;
-}
-// 节点开关：把指定节点整节点从 workflow JSON 中移除，并断开下游对它的引用（等同 ComfyUI 的旁路/跳过）。
-function rhPruneWorkflowNodes(workflowJson, nodeIds){
-    const ids = new Set((nodeIds || []).map(id => String(id)));
-    if(!workflowJson || typeof workflowJson !== 'object' || !ids.size) return null;
-    const workflow = JSON.parse(JSON.stringify(workflowJson));
-    ids.forEach(id => delete workflow[id]);
-    Object.values(workflow).forEach(node => {
-        if(!node?.inputs || typeof node.inputs !== 'object') return;
-        Object.entries(node.inputs).forEach(([name, value]) => {
-            if(rhIsWorkflowLinkValue(value) && ids.has(String(value[0]))) delete node.inputs[name];
-        });
-    });
-    return workflow;
-}
-async function rhBuildWorkflowRequestExtras(media, nodeInfoList, sourceSettings=settings){
-    const config = await currentRunningHubWorkflowConfig(sourceSettings);
-    if(!config) return {};
-    const pruneMode = (config.optionalImageMode || 'prune-workflow') === 'prune-workflow';
-    const fields = rhActiveFields(sourceSettings);
-    const indexes = rhFieldIndexes(fields, sourceSettings);
-    const missingOptional = [];
-    // 未暴露的图片槽位缺图时，按 nodeId 整节点裁掉（LoadImage 只有 image 一个输入，等价于旁路）。
-    const missingSlotNodeIds = [];
-    if(pruneMode){
-        const imageSlots = rhWorkflowImageSlots(selectedRunningHubRef(sourceSettings));
-        if(imageSlots.length){
-            // 图片槽位由工作流自动识别 → 覆盖「全部」槽位，不要求先在 API 设置里暴露。
-            imageSlots.forEach((slot, idx) => {
-                if(rhNodeIsOff(slot.nodeId, sourceSettings)) return; // 已被节点开关关掉，交给 offNodeIds 处理
-                const field = fields.find(f => String(f.nodeId) === String(slot.nodeId));
-                const hasInput = Boolean(media.image?.[idx]?.url);
-                if(field?.required === true && !hasInput) throw new Error(`RunningHub 工作流缺少必选图片：${rhRequiredLabel(field)}`);
-                if(hasInput) return;
-                if(field) missingOptional.push(field);
-                else missingSlotNodeIds.push(String(slot.nodeId));
-            });
-        } else {
-            // 兜底：工作流识别不出图片槽位时，沿用原来「按已暴露字段」的逻辑。
-            for(const field of fields){
-                if(rhFieldKind(field) !== 'image') continue;
-                const key = rhParamKey(field.nodeId, field.fieldName);
-                const idx = indexes[key] || 0;
-                const hasInput = Boolean(media.image?.[idx]?.url);
-                if(field.required === true && !hasInput) throw new Error(`RunningHub 工作流缺少必选图片：${rhRequiredLabel(field)}`);
-                if(field.required !== true && !hasInput) missingOptional.push(field);
-            }
-        }
-    }
-    // 节点开关关掉的节点：不依赖 optionalImageMode 策略，始终裁剪。
-    // 注意 rhActiveFields 已把被关节点的字段过滤掉，所以 nodeInfoList 里通常本就没有它们的参数，
-    // 这里再按 nodeId 兜底清一次，防止本地缓存与云端字段不一致时把参数带上去。
-    const offNodeIds = rhNodeOffIds(sourceSettings);
-    if(!missingOptional.length && !missingSlotNodeIds.length && !offNodeIds.length) return {};
-    const dropKeys = new Set();
-    missingOptional.forEach(field => dropKeys.add(rhParamKey(field.nodeId, field.fieldName)));
-    offNodeIds.forEach(id => {
-        fields.forEach(field => { if(String(field.nodeId) === String(id)) dropKeys.add(rhParamKey(field.nodeId, field.fieldName)); });
-    });
-    for(let i = nodeInfoList.length - 1; i >= 0; i--){
-        if(dropKeys.has(rhParamKey(nodeInfoList[i].nodeId, nodeInfoList[i].fieldName))) nodeInfoList.splice(i, 1);
-    }
-    let workflow = config.workflowJson || {};
-    if(missingOptional.length) workflow = rhPruneWorkflowForMissingFields(workflow, missingOptional) || workflow;
-    if(offNodeIds.length) workflow = rhPruneWorkflowNodes(workflow, offNodeIds) || workflow;
-    if(missingSlotNodeIds.length) workflow = rhPruneWorkflowNodes(workflow, missingSlotNodeIds) || workflow;
-    // RH 的 /task/openapi/create 只认 JSON 字符串（官方文档：workflow string - Custom full workflow
-    // in JSON string format）。传对象会被判为非法 → {"code":404,"msg":"NOT_FOUND"}（2026-09-16 实测复现）。
-    return Object.keys(workflow || {}).length ? {workflow: JSON.stringify(workflow)} : {};
-}
-async function rhUploadValueIfNeeded(value, sourceSettings=settings){
-    const text = String(value || '').trim();
-    if(!text) return '';
-    if(!/^https?:\/\//i.test(text) && !text.startsWith('/output/') && !text.startsWith('/assets/')) return text;
-    const res = await fetch('/api/runninghub/upload-asset', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({url:text, useWallet:(sourceSettings || settings).rhPayment === 'wallet'})
-    });
-    const data = await res.json();
-    if(!res.ok || data.success === false) throw new Error(data.detail || data.error || tr('smart.rhUploadFailed'));
-    return data.data?.fileName || text;
-}
-async function rhBuildNodeInfoList(media, sourceSettings=settings, randomValues=smartRhRandomValues){
-    const fields = rhActiveFields(sourceSettings);
-    const result = [];
-    const indexes = rhFieldIndexes(fields, sourceSettings);
-    const mode = rhCurrentKind(sourceSettings);
-    for(const field of fields){
-        const kind = rhFieldKind(field);
-        const key = rhParamKey(field.nodeId, field.fieldName);
-        // workflow 模式：非媒体字段默认不覆盖云端工作流的默认值（保持原设计），
-        // 但用户在节点上显式改过值的必须提交 —— 否则「参数设置好了」等于没设置（2026-09-16）。
-        const userEdited = String(sourceSettings?.rhParams?.[key]?.value ?? '').trim() !== '';
-        if(mode === 'workflow' && field.sourceFromUpstream === false && !['image','video','audio'].includes(kind) && !userEdited) continue;
-        if(mode === 'workflow' && kind === 'image'){
-            const idx = indexes[key] || 0;
-            if(field.required !== true && !media.image?.[idx]?.url) continue;
-        }
-        let value = rhParamValue(field, media, sourceSettings, fields, randomValues);
-        if(rhFieldRole(field) === 'prompt' && !String(value || '').trim()) value = rhDefaultValue(field);
-        if(['image','video','audio'].includes(kind)) value = await rhUploadValueIfNeeded(value, sourceSettings);
-        if(['number','slider'].includes(kind) && String(value ?? '').trim() !== '' && !Number.isNaN(Number(value))) value = Number(value);
-        if(typeof value === 'string' && /[\r\n]/.test(value)) value = value.split(/\r?\n/).map(s => s.trim()).filter(Boolean)[0] || '';
-        result.push({nodeId:field.nodeId, fieldName:field.fieldName, fieldValue:value});
-    }
-    // 图片槽位自动补全（零配置，2026-09-16）：工作流里自动识别出的图片槽位，即使没在 API 设置里暴露，
-    // 只要画布上传了对应序号的图片也要提交 —— 否则「不暴露就传不进去」，后面自动裁剪还会把用户的图一起裁掉。
-    if(mode === 'workflow'){
-        const slots = rhWorkflowImageSlots(selectedRunningHubRef(sourceSettings));
-        const covered = new Set(result.map(item => rhParamKey(item.nodeId, item.fieldName)));
-        for(let idx = 0; idx < slots.length; idx++){
-            const slot = slots[idx];
-            if(fields.some(f => String(f.nodeId) === String(slot.nodeId))) continue; // 已暴露 → 上面的循环已处理
-            if(rhNodeIsOff(slot.nodeId, sourceSettings)) continue;
-            const url = media?.image?.[idx]?.url;
-            if(!url) continue;
-            const key = rhParamKey(slot.nodeId, slot.fieldName);
-            if(covered.has(key)) continue;
-            covered.add(key);
-            const value = await rhUploadValueIfNeeded(url, sourceSettings);
-            result.push({nodeId:String(slot.nodeId), fieldName:slot.fieldName, fieldValue:value});
-        }
-    }
-    return result;
-}
-function renderRhSettingField(field){
-    const key = rhParamKey(field.nodeId, field.fieldName);
-    const kind = rhFieldRole(field);
-    const label = field.label || field.fieldName || 'Field';
-    const value = rhParamValue(field, null);
-    const options = rhExtractFieldOptions(field);
-    if(kind === 'boolean'){
-        const active = String(value).toLowerCase() === 'true';
-        return `<button type="button" class="setting-check ${active ? 'active' : ''}" data-rh-bool="${escapeHtml(key)}"><span class="check-box"></span><span>${escapeHtml(label)}</span></button>`;
-    }
-    if(kind === 'slider'){
-        const min = Number.isFinite(Number(field.min)) ? Number(field.min) : 0;
-        const max = Number.isFinite(Number(field.max)) && Number(field.max) > min ? Number(field.max) : 1;
-        const step = Number.isFinite(Number(field.step)) && Number(field.step) > 0 ? Number(field.step) : 0.01;
-        const numericValue = Number.isFinite(Number(value)) ? Number(value) : min;
-        return `<div class="smart-control rh-slider-control" title="${escapeHtml(label)}">
-            <button class="smart-pill" type="button"><span class="sub">${escapeHtml(label)}</span><span class="rh-slider-pill-value">${escapeHtml(numericValue)}</span></button>
-            <div class="smart-popover compact-popover rh-picker-popover rh-param-popover rh-slider-popover">
-                <div class="smart-popover-title"><span>${escapeHtml(label)}</span><span class="rh-slider-value">${escapeHtml(numericValue)}</span></div>
-                <input type="range" class="smart-range rh-slider-input" data-rh-param="${escapeHtml(key)}" data-rh-type="slider" min="${escapeHtml(min)}" max="${escapeHtml(max)}" step="${escapeHtml(step)}" value="${escapeHtml(numericValue)}">
-            </div>
-        </div>`;
-    }
-    if(options?.length){
-        const curLabel = String(value || options[0] || label);
-        return `<div class="smart-control rh-dropdown-control" title="${escapeHtml(label)}">
-            <button class="smart-pill" type="button"><span class="sub">${escapeHtml(curLabel)}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
-            <div class="smart-popover compact-popover rh-picker-popover rh-param-popover">
-                <div class="smart-popover-title">${escapeHtml(label)}</div>
-                <div class="model-list rh-param-list">
-                    ${options.map(o => `<button type="button" class="direct-option ${String(o) === String(value) ? 'active' : ''}" data-rh-pick="${escapeHtml(key)}" data-rh-value="${escapeHtml(o)}"><span>${escapeHtml(o)}</span></button>`).join('') || `<div class="muted-note">${escapeHtml(tr('smart.noOption'))}</div>`}
-                </div>
-            </div>
-        </div>`;
-    }
-    const type = kind === 'number' ? 'number' : 'text';
-    const inputHtml = `<input type="${type}" data-rh-param="${escapeHtml(key)}" value="${escapeHtml(value)}">`;
-    if(kind === 'number' && rhRandomEnabled(field)){
-        const active = smartRhRandomActive(key);
-        return `<div class="num-with-dice" title="${escapeHtml(label)}">
-            <span class="num-label">${escapeHtml(label)}</span>
-            ${inputHtml}
-            <button type="button" class="dice-btn ${active ? 'active' : ''}" data-rh-random="${escapeHtml(key)}" title="${escapeHtml(active ? tr('smart.diceOn') : tr('smart.diceOff'))}"><i data-lucide="dice-5"></i></button>
-        </div>`;
-    }
-    return `<div class="num-compact ${type === 'text' ? 'rh-text-param' : ''}" title="${escapeHtml(label)}"><span class="num-label">${escapeHtml(label)}</span>${inputHtml}</div>`;
-}
+
+// Rh 工作流构建域外移 canvas-rh-workflow-builder.js（第一刀），此处留注入与薄代理。
+if(globalThis.CanvasRhWorkflowBuilder){CanvasRhWorkflowBuilder.configure({
+        currentRunningHubWorkflowConfig: (...a) => currentRunningHubWorkflowConfig(...a),
+        escapeHtml: (...a) => escapeHtml(...a),
+        rhActiveFields: (...a) => rhActiveFields(...a),
+        rhCurrentKind: (...a) => rhCurrentKind(...a),
+        rhDefaultValue: (...a) => rhDefaultValue(...a),
+        rhExtractFieldOptions: (...a) => rhExtractFieldOptions(...a),
+        rhFieldIndexes: (...a) => rhFieldIndexes(...a),
+        rhFieldKind: (...a) => rhFieldKind(...a),
+        rhFieldRole: (...a) => rhFieldRole(...a),
+        rhIsWorkflowLinkValue: (...a) => rhIsWorkflowLinkValue(...a),
+        rhNodeIsOff: (...a) => rhNodeIsOff(...a),
+        rhNodeOffIds: (...a) => rhNodeOffIds(...a),
+        rhParamKey: (...a) => rhParamKey(...a),
+        rhParamValue: (...a) => rhParamValue(...a),
+        rhRandomEnabled: (...a) => rhRandomEnabled(...a),
+        rhWorkflowImageSlots: (...a) => rhWorkflowImageSlots(...a),
+        selectedRunningHubRef: (...a) => selectedRunningHubRef(...a),
+        settings: () => settings,
+        smartRhRandomActive: (...a) => smartRhRandomActive(...a),
+        smartRhRandomValues: () => smartRhRandomValues
+});}
+function rhBuildWorkflowRequestExtras(){return CanvasRhWorkflowBuilder.rhBuildWorkflowRequestExtras.apply(null, arguments);}
+function rhBuildNodeInfoList(){return CanvasRhWorkflowBuilder.rhBuildNodeInfoList.apply(null, arguments);}
+function renderRhSettingField(){return CanvasRhWorkflowBuilder.renderRhSettingField.apply(null, arguments);}
 function comfyRandomEnabledField(field){ return field?.type === 'number' && field.random_enabled === true; }
 function smartComfyRandomActive(fieldId){
     return smartComfyRandomActiveFor(settings, fieldId);
