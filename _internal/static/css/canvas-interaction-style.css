@@ -1,0 +1,96 @@
+/* Shared interaction language: neutral surfaces with a clear green selected state. */
+:is(button.active, [role="tab"].active, [role="tab"][aria-selected="true"],
+    button[aria-pressed="true"], [role="button"].active,
+    [role="option"].selected, [role="option"][aria-selected="true"],
+    .canvas-input-mode-toggle.is-objects):not(:disabled):not(.tc-btn-danger):not(.is-running):not(.is-stop):not(.canvas-color-swatch) {
+  color: var(--x-selected-text) !important;
+  background: var(--x-selected-fill) !important;
+  border-color: var(--x-selected-line) !important;
+  box-shadow: inset 0 0 0 1px var(--x-selected-ring) !important;
+}
+
+/* Selected cards and rows that are not buttons. */
+:is(.asset-card.active, .asset-card.selected, .canvas-item.active,
+    .prompt-template-card.active, .workflow-card.active, .provider-card.active,
+    .provider-card-banner.active, .api-step-card.active, .api-model-tab.active,
+    .canvas-agent-bs-card.selected, .canvas-agent-ic-opt.selected,
+    .canvas-agent-av-option.selected, .canvas-agent-artifact-item.active,
+    .tc-item.selected, .tree-row.active, .tree-parent.active, .tree-child.active,
+    .skill-row.active, .prompt-row.active, .nav-row.active,
+    .group-name.active, .rh-app-field-card.active, .rh-editor-field-row.active,
+    .rh-editor-keep.active, .rh-editor-random.active, .rh-editor-required.active,
+    [role="option"].selected, [role="option"][aria-selected="true"]) {
+  border-color: var(--x-selected-line) !important;
+  background-color: var(--x-selected-fill) !important;
+  box-shadow: inset 0 0 0 1px var(--x-selected-ring) !important;
+}
+
+/* Canvas node selection keeps its existing outline shape, with the same green accent. */
+.image-node.selected::after {
+  border-color: var(--x-selected-line) !important;
+  filter: drop-shadow(0 0 5px var(--x-selected-ring)) !important;
+}
+
+.node.selected::after {
+  background: var(--x-selected-line) !important;
+  filter: drop-shadow(0 0 5px var(--x-selected-ring)) !important;
+}
+
+.minimap-node.selected {
+  background: var(--x-selected-fill) !important;
+  border-color: var(--x-selected-line) !important;
+  box-shadow: 0 0 0 1px var(--x-selected-ring) !important;
+}
+
+/* Preserve each palette swatch's own color; use green only for its selection ring. */
+button.canvas-color-swatch.active {
+  background: var(--cc, transparent) !important;
+  border-color: var(--x-selected-line) !important;
+  box-shadow: 0 0 0 2px var(--x-selected-ring) !important;
+}
+
+.canvas-input-mode-toggle.is-objects,
+.rh-editor-gnode.is-active rect {
+  border-color: var(--x-selected-line) !important;
+  stroke: var(--x-selected-line) !important;
+}
+
+/* Explicit app-wide navigation and toolbar states. These controls previously
+   used the legacy blue active fill independently of the shared state rule. */
+#tc-filter .tc-chip.active {
+  border-color: var(--x-selected-line) !important;
+  background: var(--x-selected-fill) !important;
+  color: var(--x-selected-text) !important;
+  box-shadow: inset 0 0 0 1px var(--x-selected-ring) !important;
+}
+
+.bottom-dock .dock-pill.active {
+  border-color: var(--x-selected-line) !important;
+  background: var(--x-selected-fill) !important;
+  color: var(--x-selected-text) !important;
+  box-shadow: inset 0 0 0 1px var(--x-selected-ring) !important;
+}
+
+.canvas-bottom-tools .canvas-bottom-button.active,
+.canvas-bottom-tools .canvas-input-mode-toggle.is-objects {
+  border: 1px solid var(--x-selected-line) !important;
+  background: var(--x-selected-fill) !important;
+  color: var(--x-selected-text) !important;
+  box-shadow: inset 0 0 0 1px var(--x-selected-ring) !important;
+}
+
+/* Hover and keyboard focus echo the selected control without changing page layout. */
+button:not(:disabled):not(.tc-btn-danger):hover,
+[role="button"]:not([aria-disabled="true"]):hover {
+  border-color: var(--x-selected-line);
+}
+
+button:focus-visible,
+[role="button"]:focus-visible,
+[role="tab"]:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--x-selected-line);
+  outline-offset: 2px;
+}
