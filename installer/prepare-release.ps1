@@ -99,6 +99,7 @@ function Should-SkipRelativePath {
         '__pycache__',
         'tests',
         '_test_userdata',
+        'outputs',
         '.hermes',
         '.github',
         'MyridTV',
