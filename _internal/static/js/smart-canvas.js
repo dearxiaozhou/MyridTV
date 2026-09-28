@@ -563,6 +563,21 @@ const APP_RUNTIME_CONFIG_DEFAULTS = {
 let appRuntimeConfig = APP_RUNTIME_CONFIG_DEFAULTS;
 let appRuntimeConfigLoaded = false;
 let RH_OFFICIAL_PROXY_BASE = APP_RUNTIME_CONFIG_DEFAULTS.proxy.base_url;
+// B1/L1 状态快照访问器（只读注册表，行为中性）：12 个核心顶层态统一 getter 入口，写仍走原路径。
+if(globalThis.CanvasStateHub){CanvasStateHub.configure({
+        nodes: () => nodes,
+        settings: () => settings,
+        canvas: () => canvas,
+        canvasId: () => canvasId,
+        selectedId: () => selectedId,
+        selectedIds: () => selectedIds,
+        selectedImage: () => selectedImage,
+        apiProviders: () => apiProviders,
+        runningHubWorkflowCache: () => runningHubWorkflowCache,
+        comfyWorkflows: () => comfyWorkflows,
+        smartRhRandomValues: () => smartRhRandomValues,
+        world: () => world
+});}
 function mergeAppRuntimeConfig(base, override){
     const merged = {...(base || {})};
     Object.entries(override || {}).forEach(([key, value]) => {
