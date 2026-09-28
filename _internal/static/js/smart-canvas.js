@@ -4434,268 +4434,66 @@ function renderComposerReferenceModeSlot(){
     bindComposerReferenceModeControl();
 }
 // 可信素材模式：打开后可选择素材来源——素材库认证链接 / 自行上传云端 / 自行输入网址。
-function renderVideoTrustedAssetControl() {
-    return CanvasParamControls.renderVideoTrustedAssetControl.apply(null, arguments);
-}
-function renderVideoExtendDirectionControl() {
-    return CanvasParamControls.renderVideoExtendDirectionControl.apply(null, arguments);
-}
-function optionHtml(value, label, selected) {
-    return CanvasSpecControls.optionHtml.apply(null, arguments);
-}
-function parseSizeValue(value){
-    const match = String(value || '').trim().match(/^(\d+)\s*[xX*]\s*(\d+)$/);
-    return match ? {width:match[1], height:match[2]} : null;
-}
-function parseRatioValue(value){
-    const raw = String(value || '').trim();
-    const parts = raw.includes(':') ? raw.split(':') : raw.split(/[xX*]/);
-    if(parts.length !== 2) return 0;
-    const w = Number(parts[0]);
-    const h = Number(parts[1]);
-    return w > 0 && h > 0 ? w / h : 0;
-}
-function apiImageSize(ratioValue, resolutionValue, customRatioValue='', customSizeValue=''){
-    if(resolutionValue === 'custom') return String(customSizeValue || '').trim();
-    const resolutionKey = resolutionValue || '1k';
-    if(ratioValue === 'custom' || ratioValue === 'source'){
-        const parsed = parseRatioValue(customRatioValue);
-        const longSide = RES_LONG_SIDE[resolutionKey] || 1024;
-        if(parsed){
-            const pixelLimit = RES_PIXEL_LIMIT[resolutionKey] || (longSide * longSide);
-            const rawWidth = parsed >= 1 ? longSide : Math.min(longSide * parsed, Math.sqrt(pixelLimit * parsed));
-            const rawHeight = parsed >= 1 ? Math.min(longSide / parsed, Math.sqrt(pixelLimit / parsed)) : longSide;
-            const width = Math.floor(rawWidth / 16) * 16;
-            const height = Math.floor(rawHeight / 16) * 16;
-            return `${Math.max(64, width)}x${Math.max(64, height)}`;
-        }
-    }
-    const ratioKey = ratioValue && SIZE_MAP[ratioValue] ? ratioValue : 'square';
-    return SIZE_MAP[ratioKey]?.[resolutionKey] || SIZE_MAP.square[resolutionKey] || SIZE_MAP.square['1k'];
-}
-function rhOfficialNormalizeModel(model){
-    return String(model || '').trim().replace('rhart-image-g-2-offcial', 'rhart-image-g-2-official');
-}
-function rhOfficialModelForRun(model, refs){
-    const clean = rhOfficialNormalizeModel(model);
-    if(imageRefsOnly(refs || []).length && clean === 'rhart-image-g-2-official/text-to-image') return 'rhart-image-g-2-official/image-to-image';
-    return clean;
-}
-function shouldUseRhOfficialProxy(payload){
-    const model = rhOfficialNormalizeModel(payload?.model);
-    if(model === 'blender-previz' || payload?.provider_id === 'blender') return true;
-    return model.startsWith('rhart-image-g-2/') || model.startsWith('rhart-image-g-2/official/')
-        || model.startsWith('rhart-image-g-2.5/') || model.startsWith('rhart-image-g-2.5/official/');
-}
-function rhOfficialResolutionForRun(sourceSettings=settings){
-    const value = String(sourceSettings?.resolution || '1k').trim().toLowerCase();
-    return ['1k','2k','4k','8k'].includes(value) ? value : '1k';
-}
-function rhOfficialAspectRatioForRun(sourceSettings=settings){
-    const ratioKey = String(sourceSettings?.ratio || 'square').trim();
-    const mapped = {
-        square:'1:1',
-        landscape:'3:2',
-        portrait:'2:3',
-        landscape43:'4:3',
-        portrait43:'3:4',
-        wide:'16:9',
-        story:'9:16',
-        ultrawide:'21:9',
-        ultratall:'9:21'
-    };
-    if(mapped[ratioKey]) return mapped[ratioKey];
-    const custom = String(sourceSettings?.customRatio || '').trim();
-    if(/^\d+\s*:\s*\d+$/.test(custom)) return custom.replace(/\s+/g, '');
-    const size = parseSizeValue(sourceSettings?.customSize || '');
-    if(size){
-        const w = Number(size.width);
-        const h = Number(size.height);
-        if(w > 0 && h > 0){
-            const gcd = (a, b) => b ? gcd(b, a % b) : a;
-            const g = gcd(w, h);
-            return `${Math.round(w / g)}:${Math.round(h / g)}`;
-        }
-    }
-    return '1:1';
-}
-function normalizeApiSizeSettings(prefix=''){
-    const ratioKey = prefix ? `${prefix}Ratio` : 'ratio';
-    const resKey = prefix ? `${prefix}Resolution` : 'resolution';
-}
-async function ensureComfyWorkflow(name){
-    return CanvasComfyJobEngine.ensureComfyWorkflow(name);
-}
-function currentComfyWorkflowData(){
-    const name = resolveComfyWorkflowName(settings.comfyWorkflow || comfyWorkflows[0]?.name || '');
-    return name ? (comfyWorkflowCache[name] || null) : null;
-}
-function currentComfyFields(){
-    return currentComfyWorkflowData()?.config?.fields || [];
-}
-function comfyFieldMeta(field, workflowData=currentComfyWorkflowData()){
-    const node = workflowData?.workflow?.[field?.node] || null;
-    const classType = String(node?.class_type || '').toLowerCase();
-    const nodeTitle = String(node?._meta?.title || '').toLowerCase();
-    const inputKey = String(field?.input || '').toLowerCase();
-    const fieldName = String(field?.name || '').toLowerCase();
-    return {
-        node,
-        classType,
-        nodeTitle,
-        inputKey,
-        fieldName,
-        fullText:`${classType} ${nodeTitle} ${inputKey} ${fieldName}`.trim()
-    };
-}
-function customComfyPromptFields(runSettings=settings){
- if((runSettings?.engine || settings.engine) !== 'comfy') return [];
- normalizeComfyWorkflowSelection(runSettings);
- const workflowName = resolveComfyWorkflowName(runSettings?.comfyWorkflow || settings.comfyWorkflow || comfyWorkflows[0]?.name || '');
- const data = workflowName ? (comfyWorkflowCache[workflowName] || null) : null;
- const fields = data?.config?.fields || [];
- return fields.filter(field => comfyFieldKind(field, data) === 'prompt');
-}
-function normalizeComfyWorkflowSelection(target=settings){
- if(!target || typeof target !== 'object') return target;
- target.comfyMode = 'custom';
- target.comfyWorkflow = resolveComfyWorkflowName(target.comfyWorkflow || '');
- if(!target.comfyWorkflow || !comfyWorkflows.some(w => w.name === target.comfyWorkflow)){
- target.comfyWorkflow = comfyWorkflows[0]?.name || '';
- }
- if(!target.comfyParams || typeof target.comfyParams !== 'object') target.comfyParams = {};
- if(!target.comfyModes || typeof target.comfyModes !== 'object') target.comfyModes = {};
- return target;
-}
-async function ensureCustomComfyWorkflowReady(runSettings=settings){
- if((runSettings?.engine || settings.engine) !== 'comfy') return null;
- normalizeComfyWorkflowSelection(runSettings);
- const workflowName = resolveComfyWorkflowName(runSettings?.comfyWorkflow || settings.comfyWorkflow || comfyWorkflows[0]?.name || '');
- if(!workflowName) return null;
- return ensureComfyWorkflow(workflowName);
-}
-function allowsPromptlessCustomComfy(runSettings=settings){
- if((runSettings?.engine || settings.engine) !== 'comfy') return false;
- normalizeComfyWorkflowSelection(runSettings);
- return customComfyPromptFields(runSettings).length === 0;
-}
-function comfyParamValue(field){
-    settings.comfyParams = settings.comfyParams || {};
-    if(settings.comfyParams[field.id] !== undefined) return settings.comfyParams[field.id];
-    return field.default ?? (field.type === 'boolean' ? false : (field.type === 'number' || field.type === 'slider' ? 0 : ''));
-}
-function formatComfySliderValue(value, step=1){
-    const num = Number(value);
-    if(!Number.isFinite(num)) return value ?? '';
-    const stepText = String(step ?? 1);
-    const decimals = stepText.includes('.') ? Math.min(6, stepText.split('.')[1].length) : 0;
-    return num.toFixed(decimals).replace(/\.?0+$/, '');
-}
-function updateComfySliderValueLabel(input, value){
-    const fieldId = input?.dataset?.comfyParam || '';
-    const field = currentComfyFields().find(f => f.id === fieldId);
-    const label = dynamicParams?.querySelector?.(`[data-slider-val="${CSS.escape(fieldId)}"]`);
-    if(label) label.textContent = formatComfySliderValue(value, input?.step || field?.step || 1);
-}
-function updateProviderModels(){ renderDynamicParams(); }
-function renderDynamicParams(){
-    if(!dynamicParams) return;
-    // 槽若被上轮搬进参数排，先归位到原容器，避免下面 innerHTML= 连节点冲掉
-    composerSlotHomes.forEach((home, slot) => {
-        if (slot.parentElement !== home && home.isConnected) home.appendChild(slot);
-    });
-    const availableEngines = smartAvailableEngines();
-    settings.engine = availableEngines.includes(settings.engine) ? settings.engine : (availableEngines[0] || 'api');
-    composer.classList.toggle('comfy-layout', settings.engine === 'comfy');
-    composer.classList.toggle('blender-layout', settings.engine === 'blender');
-    // API 类引擎（api/volcengine/runninghub）图片模式：参数选择按钮合并为单排
-    composer.classList.toggle('api-single-row', isApiLikeEngine(settings.engine) && settings.apiKind !== 'video');
-    // API 类引擎视频模式：同样的紧凑单排布局
-    composer.classList.toggle('api-video-row', isApiLikeEngine(settings.engine) && settings.apiKind === 'video');
-    // RH-API 工作流模式（runninghub）：与图片模式同款紧凑单排 chip 布局（2026-09-15 统一）
-    composer.classList.toggle('rh-single-row', settings.engine === 'runninghub');
-    // —— 3D预演：只保留视频比例（控制 Blender 渲染分辨率），上移到引擎一排 ——
-    if(CanvasPrevizControls.renderBlenderControls()) return;
-    // 非 3D预演：恢复 图片/视频 切换 + 按钮原样
-    const toggle2 = document.getElementById('apiKindToggle');
-    if(toggle2) toggle2.style.display = '';
-    const headEl2 = document.querySelector('.composer-head');
-    if(headEl2) headEl2.style.flexWrap = '';
-    document.querySelectorAll('.blender-ratio-item, .blender-asset-item, .blender-lens-item, .blender-engine-label, .previz-llm-row').forEach(el => el.remove());
-    const rb2 = document.getElementById('runBtn');
-    if(rb2){
-        rb2.querySelector('span').textContent = '运行';
-        rb2.style.minWidth = '';
-        rb2.style.width = '';
-        rb2.style.height = '';
-        rb2.style.fontSize = '';
-        rb2.style.justifyContent = '';
-        rb2.style.gap = '';
-        rb2.style.borderRadius = '';
-        rb2.style.marginLeft = '';
-        // 把按钮放回右侧 run 区（非 3D预演 时保持原样）
-        const actionsRow2 = document.querySelector('.composer-actions');
-        if(actionsRow2){
-            actionsRow2.style.display = '';
-            actionsRow2.style.gridColumn = '';
-            if(rb2.parentElement !== actionsRow2) actionsRow2.appendChild(rb2);
-        }
-    }
-    settings.apiKind = settings.apiKind === 'video' ? 'video' : 'image';
-    clearVolcengineSelectionOutsideVolcengine(settings);
-    syncEngineSelectOptions();
-    syncApiKindToggleVisibility();
-    if(settings.engine === 'api'){
-        if(settings.apiKind === 'video') renderApiVideoParams();
-        else renderApiParams();
-    }
-    else if(settings.engine === 'volcengine'){
-        if(settings.apiKind === 'video') renderVolcengineVideoParams();
-        else renderVolcengineParams();
-    }
-    else if(settings.engine === 'runninghub') renderRunningHubParams();
-    else renderComfyParams();
-    renderComposerReferenceModeSlot();
-    renderComposerStyleControl();
-    relocateComposerSlotsToParamRow();
-    bindDynamicParams();
-    updatePromptPlaceholder();
-    syncApiKindToggleVisibility();
-    persistActiveSmartSettings();
-    // 运行按钮图标：2026-09-16 老王「统一成那个箭头+圆圈」——
-    // 所有引擎/布局一律 arrow-up（原来只有 API/RH 单排用 arrow-up，其余用 sparkles，
-    // 同一个按钮在不同引擎下两种图标）。圆形的形状由各布局的 CSS 决定（comfy 30px / API·RH 26px）。
-    const runIcon = document.querySelector('#runBtn [data-lucide]');
-    if(runIcon && runIcon.getAttribute('data-lucide') !== 'arrow-up'){
-        runIcon.setAttribute('data-lucide', 'arrow-up');
-        if(window.lucide) lucide.createIcons();
-    }
-    if(window.lucide) lucide.createIcons();
-}
-function renderApiParams(){
-    const providers = imageProviders();
-    if(!settings.provider_id || !providers.some(p => p.id === settings.provider_id)) settings.provider_id = providers[0]?.id || '';
-    const models = filterJimengImageModels(providerImageModels(settings.provider_id));
-    if(!settings.model || !models.includes(settings.model)) settings.model = models[0] || '';
-    normalizeApiSizeSettings('');
-    const outpaintLocked = settings.outpaintResolutionLocked === true;
-    // 2026-09-16：「自定义比例 / 自定义尺寸」的输入框已并入规格弹层（.image-spec-popover）内部，
-    // 不再作为独立一格塞进参数排——单排布局（api-single-row，flex-wrap:nowrap）下它会撑开
-    // 参数列并把运行按钮挤出可视区。设置项本身没变，只是换了落点。
-    dynamicParams.innerHTML = `
-        ${renderUnifiedPickerControl()}
-        ${outpaintLocked ? `${renderResolutionControl('')}${renderQualityControl()}` : renderComboSpecCount()}
-    `;
-}
-function normalizeHiddenVideoToggles(){
-    settings.videoEnableUpsample = false;
-    settings.videoCameraFixed = false;
-    settings.videoWatermark = false;
-    settings.videoMultimodal = false;
-    settings.videoUseFrameRoles = videoReferenceModeValue(settings) === 'first_last';
-    // 可信素材=独立开关（与参考模式解耦）；非视频链路一律关（该 toggle 本就被隐藏）
-    settings.videoTrustedAsset = settings.videoTrustedAsset === true;
-}
+// 视频/RH参数+Comfy工作流带外移 canvas-video-comfy-params.js（第十七刀）。块内零整写，值型走 getter。
+if(globalThis.CanvasVideoComfyParams){CanvasVideoComfyParams.configure({
+        bindDynamicParams: (...a) => bindDynamicParams(...a),
+        clearVolcengineSelectionOutsideVolcengine: (...a) => clearVolcengineSelectionOutsideVolcengine(...a),
+        comfyFieldKind: (...a) => comfyFieldKind(...a),
+        filterJimengImageModels: (...a) => filterJimengImageModels(...a),
+        imageProviders: (...a) => imageProviders(...a),
+        imageRefsOnly: (...a) => imageRefsOnly(...a),
+        isApiLikeEngine: (...a) => isApiLikeEngine(...a),
+        persistActiveSmartSettings: (...a) => persistActiveSmartSettings(...a),
+        providerImageModels: (...a) => providerImageModels(...a),
+        relocateComposerSlotsToParamRow: (...a) => relocateComposerSlotsToParamRow(...a),
+        renderApiVideoParams: (...a) => renderApiVideoParams(...a),
+        renderComboSpecCount: (...a) => renderComboSpecCount(...a),
+        renderComfyParams: (...a) => renderComfyParams(...a),
+        renderComposerReferenceModeSlot: (...a) => renderComposerReferenceModeSlot(...a),
+        renderComposerStyleControl: (...a) => renderComposerStyleControl(...a),
+        renderQualityControl: (...a) => renderQualityControl(...a),
+        renderResolutionControl: (...a) => renderResolutionControl(...a),
+        renderRunningHubParams: (...a) => renderRunningHubParams(...a),
+        renderUnifiedPickerControl: (...a) => renderUnifiedPickerControl(...a),
+        renderVolcengineParams: (...a) => renderVolcengineParams(...a),
+        renderVolcengineVideoParams: (...a) => renderVolcengineVideoParams(...a),
+        resolveComfyWorkflowName: (...a) => resolveComfyWorkflowName(...a),
+        smartAvailableEngines: (...a) => smartAvailableEngines(...a),
+        syncApiKindToggleVisibility: (...a) => syncApiKindToggleVisibility(...a),
+        syncEngineSelectOptions: (...a) => syncEngineSelectOptions(...a),
+        updatePromptPlaceholder: (...a) => updatePromptPlaceholder(...a),
+        videoReferenceModeValue: (...a) => videoReferenceModeValue(...a),
+        RES_LONG_SIDE: () => RES_LONG_SIDE,
+        RES_PIXEL_LIMIT: () => RES_PIXEL_LIMIT,
+        SIZE_MAP: () => SIZE_MAP,
+        comfyWorkflowCache: () => comfyWorkflowCache,
+        comfyWorkflows: () => comfyWorkflows,
+        composer: () => composer,
+        composerSlotHomes: () => composerSlotHomes,
+        dynamicParams: () => dynamicParams,
+        settings: () => settings
+});}
+function renderVideoExtendDirectionControl(){return CanvasVideoComfyParams.renderVideoExtendDirectionControl.apply(null, arguments);}
+function parseSizeValue(){return CanvasVideoComfyParams.parseSizeValue.apply(null, arguments);}
+function apiImageSize(){return CanvasVideoComfyParams.apiImageSize.apply(null, arguments);}
+function rhOfficialModelForRun(){return CanvasVideoComfyParams.rhOfficialModelForRun.apply(null, arguments);}
+function shouldUseRhOfficialProxy(){return CanvasVideoComfyParams.shouldUseRhOfficialProxy.apply(null, arguments);}
+function rhOfficialResolutionForRun(){return CanvasVideoComfyParams.rhOfficialResolutionForRun.apply(null, arguments);}
+function rhOfficialAspectRatioForRun(){return CanvasVideoComfyParams.rhOfficialAspectRatioForRun.apply(null, arguments);}
+function normalizeApiSizeSettings(){return CanvasVideoComfyParams.normalizeApiSizeSettings.apply(null, arguments);}
+function ensureComfyWorkflow(){return CanvasVideoComfyParams.ensureComfyWorkflow.apply(null, arguments);}
+function currentComfyWorkflowData(){return CanvasVideoComfyParams.currentComfyWorkflowData.apply(null, arguments);}
+function currentComfyFields(){return CanvasVideoComfyParams.currentComfyFields.apply(null, arguments);}
+function comfyFieldMeta(){return CanvasVideoComfyParams.comfyFieldMeta.apply(null, arguments);}
+function normalizeComfyWorkflowSelection(){return CanvasVideoComfyParams.normalizeComfyWorkflowSelection.apply(null, arguments);}
+function ensureCustomComfyWorkflowReady(){return CanvasVideoComfyParams.ensureCustomComfyWorkflowReady.apply(null, arguments);}
+function allowsPromptlessCustomComfy(){return CanvasVideoComfyParams.allowsPromptlessCustomComfy.apply(null, arguments);}
+function comfyParamValue(){return CanvasVideoComfyParams.comfyParamValue.apply(null, arguments);}
+function formatComfySliderValue(){return CanvasVideoComfyParams.formatComfySliderValue.apply(null, arguments);}
+function updateComfySliderValueLabel(){return CanvasVideoComfyParams.updateComfySliderValueLabel.apply(null, arguments);}
+function updateProviderModels(){return CanvasVideoComfyParams.updateProviderModels.apply(null, arguments);}
+function renderDynamicParams(){return CanvasVideoComfyParams.renderDynamicParams.apply(null, arguments);}
+function normalizeHiddenVideoToggles(){return CanvasVideoComfyParams.normalizeHiddenVideoToggles.apply(null, arguments);}
 // API 视频单排：平台+模型合并下拉（与图片版 renderEngineModelCombo 同款）
 function renderVideoEngineModelCombo(models) {
     return CanvasParamControls.renderVideoEngineModelCombo.apply(null, arguments);
