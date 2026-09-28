@@ -2742,191 +2742,70 @@ async function canvasAgentSubmitInteractionReceipt({card_id='', intent='', selec
         toast('提交回执失败：' + (e.message || e));
     }
 }
-async function sendCanvasAgentMessage(resendUserMessage = null){
-    if(canvasAgentSending) return;
-    closeCanvasAgentMention();
-    let refs;
-    let messageText;
-    let userMessage;
-    let thinkingMessage;
-    if(resendUserMessage){
-        // 编辑重发路径：不读输入框、不新建 user 消息，直接复用被编辑的那条
-        userMessage = resendUserMessage;
-        messageText = String(userMessage.text || '').trim();
-        refs = Array.isArray(userMessage.refs) ? userMessage.refs.slice() : [];
-        if(!messageText && !refs.length){ toast('编辑内容不能为空'); return; }
-        if(!messageText){
-            const onlyFileRefs2 = refs.length && !imageRefsOnly(refs).length && !videoRefsOnly(refs).length;
-            messageText = onlyFileRefs2 ? '读取附件文本内容，自行识别内容类型后给出创作建议，如果是图片就解析图片内容。' : '请分析这些画布资源，并给出可执行的创作建议。';
-            userMessage.text = messageText;
-        }
-    } else {
-        const text = String(canvasAgentInput?.value || '').trim();
-        if(!text && !canvasAgentRefsState.length){
-            toast('先输入想法，或加入画布资源');
-            return;
-        }
-        refs = canvasAgentRefsState.slice();
-        const onlyFileRefs = refs.length && !imageRefsOnly(refs).length && !videoRefsOnly(refs).length;
-        messageText = text || (onlyFileRefs ? '读取附件文本内容，自行识别内容类型后给出创作建议，如果是图片就解析图片内容。' : '请分析这些画布资源，并给出可执行的创作建议。');
-        if(canvasAgentQuoteState?.text){
-            messageText = `【引用】\n${canvasAgentQuoteState.text}\n\n${messageText}`;
-            canvasAgentQuoteState = null;
-            renderCanvasAgentQuoteCard();
-        }
-        userMessage = {id:uid('agent_msg'), role:'user', text:messageText, refs, chosenId:canvasAgentPendingChosenId || '', createdAt:Date.now()};
-        canvasAgentPendingChosenId = '';
-    }
-    thinkingMessage = {id:uid('agent_msg'), role:'assistant', text:'思考中', status:'thinking', createdAt:Date.now()};
-    const localActionPlan = buildCanvasAgentStoryboardPlan(messageText, refs);
-    if(!resendUserMessage) canvasAgentMessagesState.push(userMessage);
-    canvasAgentMessagesState.push(thinkingMessage);
-    canvasAgentRefsState = [];
-    canvasAgentMentionPoolSnapshot = []; // 编号表随引用条一起清空
-    if(!resendUserMessage){
-        if(canvasAgentInput) canvasAgentInput.value = '';
-        resizeCanvasAgentInput();
-    }
-    renderCanvasAgentRefs();
-    renderCanvasAgentMessages();
-    await persistCanvasAgentSession();
-    setCanvasAgentBusy(true);
-    canvasAgentAbortController = new AbortController();
-    canvasAgentActiveRequestId = uid('agent_req');
-    try {
-        await waitForCanvasAgentProxy();
-        const chatProviders = canvasAgentChatProviders();
-        if(!chatProviders.length) throw new Error('未配置可用的聊天 API Key，请在 API 设置里启用一个带聊天模型的 OpenAI 兼容提供商。');
-        const preset = canvasAgentModelPreset || canvasAgentLoadPreset();
-        const generationPreset = buildCanvasAgentGenerationPreset(preset, imageRefsOnly(refs.filter(ref => ref?.url)).length ? 'i2i' : 't2i');
-        const mediaRefs = refs.filter(ref => ref?.url);
-        const images = imageRefsOnly(mediaRefs).map(ref => ({
-            url:ref.url,
-            source_url:ref.source_url || ref.sourceUrl || '',
-            name:ref.name || '',
-            nodeId:ref.nodeId || '',
-            imageIndex:ref.imageIndex ?? ''
-        }));
-        const videos = videoRefsOnly(mediaRefs).map(ref => ref.url);
-        const fileRefs = refs.filter(ref => ['text', 'file'].includes(mediaKindForItem(ref)));
-        const files = fileRefs.map(ref => ({
-            url:ref.url,
-            name:ref.name || '',
-            kind:mediaKindForItem(ref),
-            content_type:ref.content_type || '',
-            content_chars:textContentValue(ref).length
-        }));
-        const fileTranscript = canvasAgentFileTranscript(refs) + canvasAgentArtifactTranscript(refs);
-        const attachSummary = canvasAgentAttachmentSummary(mediaRefs);
-        const requestHistory = canvasAgentHistoryForRequest();
-        const requestMessage = canvasAgentUsesLocalCodex()
-            ? canvasAgentRequestMessageForLocalCodex(messageText, attachSummary, fileTranscript)
-            : canvasAgentRequestMessage(messageText, attachSummary, requestHistory, fileTranscript);
-        let result = null;
-        let lastError = null;
-        for(const chatProvider of chatProviders){
-            const provider = chatProvider.id;
-            const model = resolveCanvasAgentChatModel(chatProvider);
-            try {
-                const activeAgentName = canvasAgentRoleName(canvasAgentActiveEntry(), 'Myrid-Agent');
-                const requestPayload = {
-                    message:requestMessage,
-                    messages:requestHistory,
-                    images,
-                    videos,
-                    files,
-                    canvas_id:canvasId || '',
-                    agent_session_id:canvasAgentSessionId || '',
-                    request_id:canvasAgentActiveRequestId,
-                    model,
-                    provider,
-                    agent_id:canvasAgentActiveId,
-                    generation_preset:generationPreset,
-                    system_prompt:`你是 MyridTV 无限画布里的 ${activeAgentName}。你擅长理解画布素材、生成创意方案、镜头/海报/电商/品牌提示词，并给出可以直接放进生成框的中文提示词。回答要具体、可执行。`
-                };
-                if(canvasAgentBrainstormState){
-                    requestPayload.brainstorm = {
-                        stage:canvasAgentBrainstormState.stage || '方向探索',
-                        decisions:canvasAgentBrainstormState.decisions || []
-                    };
-                }
-                result = await fetchCanvasAgentLLM(requestPayload, undefined, canvasAgentAbortController?.signal);
-                break;
-            } catch(providerError) {
-                if(providerError?.userStopped) throw providerError;
-                lastError = providerError;
-            }
-        }
-        if(!result) throw lastError || new Error('Agent 请求失败');
-        const normalizedResult = normalizeCanvasAgentResult(result);
-        const thinkingIndex = canvasAgentMessagesState.findIndex(msg => msg.id === thinkingMessage.id);
-        if(isCanvasAgentStoppedEmptyReply(result, normalizedResult.text)){
-            if(thinkingIndex >= 0) canvasAgentMessagesState.splice(thinkingIndex, 1);
-            renderCanvasAgentMessages();
-            await persistCanvasAgentSession();
-            toast('已停止生成');
-            return;
-        }
-        const reply = normalizedResult.text || '没有收到有效回复。';
-        canvasAgentLastReply = reply;
-        canvasAgentLastReplyRefs = mediaRefs;
-const replyActionPlan = buildCanvasAgentStoryboardPlanFromReply(reply, localActionPlan);
-let brainstormCard = null;
-let displayReply = reply;
-// 解析不依赖头脑风暴开关：只要回复本身是候选 JSON，就总是建卡片（重开后状态丢失也能正确显示）
-const parsed = canvasAgentParseBrainstormReply(reply);
-if(parsed && (Array.isArray(parsed.candidates) || parsed.stage)){
-    brainstormCard = parsed;
-    displayReply = parsed.question || reply;
-    if(canvasAgentBrainstormState){
-        canvasAgentBrainstormState.stage = parsed.stage || canvasAgentBrainstormState.stage;
-        if(Array.isArray(parsed.decisions) && parsed.decisions.length) canvasAgentBrainstormState.decisions = parsed.decisions;
-        if(parsed.done) canvasAgentBrainstormState.done = true;
-        renderCanvasAgentBrainstormBar();
-    }
-}
-const assistantMessage = {
-    id:uid('agent_msg'),
-    role:'assistant',
-    text:displayReply,
-    sourceRefs:mediaRefs,
-    actionPlan:replyActionPlan,
-    brainstormCard,
-        toolTrace: normalizedResult.toolTrace,
-        nodeIds: normalizedResult.nodeIds || [],
-        suggestions: normalizedResult.suggestions || [],
-        quickActions: normalizedResult.quickActions || [],
-        interaction: normalizedResult.interaction || null,
-        loadedSkills: normalizedResult.loadedSkills || [],
-        task: normalizedResult.task || null,
-        step: normalizedResult.step || null,
-        progress: normalizedResult.progress || null,
-        latencyText: canvasAgentFormatLatency(thinkingMessage?.createdAt ? Date.now() - thinkingMessage.createdAt : 0)
-};
-        if(thinkingIndex >= 0) canvasAgentMessagesState.splice(thinkingIndex, 1, assistantMessage);
-        else canvasAgentMessagesState.push(assistantMessage);
-        renderCanvasAgentMessages();
-        await persistCanvasAgentSession();
-    } catch(e) {
-        const stopped = !!e?.userStopped;
-        const msg = stopped ? '已停止生成' : canvasAgentFriendlyError(e);
-        const thinkingIndex = canvasAgentMessagesState.findIndex(item => item.id === thinkingMessage.id);
-        if(stopped){
-            if(thinkingIndex >= 0) canvasAgentMessagesState.splice(thinkingIndex, 1);
-            renderCanvasAgentMessages();
-            await persistCanvasAgentSession();
-            toast(msg);
-            return;
-        }
-        const errorMessage = {id:uid('agent_msg'), role:'assistant', text:`请求失败：${msg}`};
-        if(thinkingIndex >= 0) canvasAgentMessagesState.splice(thinkingIndex, 1, errorMessage);
-        else canvasAgentMessagesState.push(errorMessage);
-        renderCanvasAgentMessages();
-        toast(msg);
-    } finally {
-        setCanvasAgentBusy(false);
-    }
-}
+// Agent 主发送链外移 canvas-agent-send-chain.js（第十三刀）。9 个会话态写入走 setter 回主文件真变量。
+if(globalThis.CanvasAgentSendChain){CanvasAgentSendChain.configure({
+        buildCanvasAgentGenerationPreset: (...a) => buildCanvasAgentGenerationPreset(...a),
+        buildCanvasAgentStoryboardPlan: (...a) => buildCanvasAgentStoryboardPlan(...a),
+        buildCanvasAgentStoryboardPlanFromReply: (...a) => buildCanvasAgentStoryboardPlanFromReply(...a),
+        canvasAgentActiveEntry: (...a) => canvasAgentActiveEntry(...a),
+        canvasAgentArtifactTranscript: (...a) => canvasAgentArtifactTranscript(...a),
+        canvasAgentAttachmentSummary: (...a) => canvasAgentAttachmentSummary(...a),
+        canvasAgentChatProviders: (...a) => canvasAgentChatProviders(...a),
+        canvasAgentFileTranscript: (...a) => canvasAgentFileTranscript(...a),
+        canvasAgentFormatLatency: (...a) => canvasAgentFormatLatency(...a),
+        canvasAgentFriendlyError: (...a) => canvasAgentFriendlyError(...a),
+        canvasAgentHistoryForRequest: (...a) => canvasAgentHistoryForRequest(...a),
+        canvasAgentLoadPreset: (...a) => canvasAgentLoadPreset(...a),
+        canvasAgentParseBrainstormReply: (...a) => canvasAgentParseBrainstormReply(...a),
+        canvasAgentRequestMessage: (...a) => canvasAgentRequestMessage(...a),
+        canvasAgentRequestMessageForLocalCodex: (...a) => canvasAgentRequestMessageForLocalCodex(...a),
+        canvasAgentRoleName: (...a) => canvasAgentRoleName(...a),
+        canvasAgentUsesLocalCodex: (...a) => canvasAgentUsesLocalCodex(...a),
+        closeCanvasAgentMention: (...a) => closeCanvasAgentMention(...a),
+        fetchCanvasAgentLLM: (...a) => fetchCanvasAgentLLM(...a),
+        imageRefsOnly: (...a) => imageRefsOnly(...a),
+        isCanvasAgentStoppedEmptyReply: (...a) => isCanvasAgentStoppedEmptyReply(...a),
+        mediaKindForItem: (...a) => mediaKindForItem(...a),
+        normalizeCanvasAgentResult: (...a) => normalizeCanvasAgentResult(...a),
+        persistCanvasAgentSession: (...a) => persistCanvasAgentSession(...a),
+        renderCanvasAgentBrainstormBar: (...a) => renderCanvasAgentBrainstormBar(...a),
+        renderCanvasAgentMessages: (...a) => renderCanvasAgentMessages(...a),
+        renderCanvasAgentQuoteCard: (...a) => renderCanvasAgentQuoteCard(...a),
+        renderCanvasAgentRefs: (...a) => renderCanvasAgentRefs(...a),
+        resizeCanvasAgentInput: (...a) => resizeCanvasAgentInput(...a),
+        resolveCanvasAgentChatModel: (...a) => resolveCanvasAgentChatModel(...a),
+        setCanvasAgentBusy: (...a) => setCanvasAgentBusy(...a),
+        textContentValue: (...a) => textContentValue(...a),
+        toast: (...a) => toast(...a),
+        uid: (...a) => uid(...a),
+        videoRefsOnly: (...a) => videoRefsOnly(...a),
+        waitForCanvasAgentProxy: (...a) => waitForCanvasAgentProxy(...a),
+        canvasAgentAbortController: () => canvasAgentAbortController,
+        canvasAgentActiveRequestId: () => canvasAgentActiveRequestId,
+        canvasAgentLastReply: () => canvasAgentLastReply,
+        canvasAgentLastReplyRefs: () => canvasAgentLastReplyRefs,
+        canvasAgentMentionPoolSnapshot: () => canvasAgentMentionPoolSnapshot,
+        canvasAgentPendingChosenId: () => canvasAgentPendingChosenId,
+        canvasAgentQuoteState: () => canvasAgentQuoteState,
+        canvasAgentRefsState: () => canvasAgentRefsState,
+        canvasAgentSending: () => canvasAgentSending,
+        canvasAgentActiveId: () => canvasAgentActiveId,
+        canvasAgentInput: () => canvasAgentInput,
+        canvasAgentMessagesState: () => canvasAgentMessagesState,
+        canvasAgentModelPreset: () => canvasAgentModelPreset,
+        canvasAgentSessionId: () => canvasAgentSessionId,
+        canvasId: () => canvasId,
+        setCanvasAgentAbortController: v => { canvasAgentAbortController = v; },
+        setCanvasAgentActiveRequestId: v => { canvasAgentActiveRequestId = v; },
+        setCanvasAgentLastReply: v => { canvasAgentLastReply = v; },
+        setCanvasAgentLastReplyRefs: v => { canvasAgentLastReplyRefs = v; },
+        setCanvasAgentMentionPoolSnapshot: v => { canvasAgentMentionPoolSnapshot = v; },
+        setCanvasAgentPendingChosenId: v => { canvasAgentPendingChosenId = v; },
+        setCanvasAgentQuoteState: v => { canvasAgentQuoteState = v; },
+        setCanvasAgentRefsState: v => { canvasAgentRefsState = v; },
+        setCanvasAgentSending: v => { canvasAgentSending = v; }
+});}
+function sendCanvasAgentMessage(){return CanvasAgentSendChain.sendCanvasAgentMessage.apply(null, arguments);}
 function useCanvasAgentReply(text=canvasAgentLastReply, refs=canvasAgentLastReplyRefs){
     const value = String(text || '').trim();
     if(!value){
