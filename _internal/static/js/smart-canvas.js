@@ -12092,252 +12092,55 @@ if(globalThis.CanvasGenerationRunner){CanvasGenerationRunner.configure({
         setUndoSuppressed: v => { undoSuppressed = v; }
 });}
 function runGeneration(){return CanvasGenerationRunner.runGeneration.apply(null, arguments);}
-async function runPromptLLMNode(nodeId){
-    const node = nodes.find(n => n.id === nodeId);
-    if(!node || node.type !== 'smart-prompt') return;
-    const message = (node.llmInstruction || node.text || '').trim();
-    if(!message){ toast(tr('smart.promptLlmNeedText')); return; }
-    const systemPrompt = (node.llmSystemPrompt || '').trim();
-    node.llmEnabled = true;
-    node.running = true;
-    render();
-    try {
-        const provider = resolveChatProviderId(node.llmProvider || '');
-        const model = resolveChatModel(node.llmModel || '', provider);
-        const mediaRefs = promptNodeInputMediaForLLM(node);
-        const images = imageRefsOnly(mediaRefs).map(img => ({
-            url:img.url,
-            source_url:img.source_url || img.sourceUrl || '',
-            name:img.name || '',
-            nodeId:img.nodeId || '',
-            imageIndex:img.imageIndex ?? ''
-        })).filter(img => img.url);
-        const videos = videoRefsOnly(mediaRefs).map(video => video.url).filter(Boolean);
-        const llmPayload = {
-            message,
-            messages:[],
-            images,
-            videos,
-            model,
-            provider,
-            system_prompt:node.llmSystemEnabled ? (systemPrompt || 'You are a helpful prompt assistant.') : ''
-        };
-        const result = await fetch(canvasLLMEndpointForPayload(llmPayload), {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify(llmPayload)
-        }).then(async r => {
-            if(!r.ok) throw new Error(await r.text());
-            return r.json();
-        });
-        node.text = (result.text || '').trim();
-        node.llmProvider = provider;
-        node.llmModel = model;
-        scheduleSave();
-    } catch(e) {
-        toast((e.message || tr('smart.promptLlmFailed')).slice(0, 160));
-    } finally {
-        node.running = false;
-        render();
-    }
-}
-function comfyFieldKind(field, workflowData=currentComfyWorkflowData()){
-    if(['image','video','audio'].includes(field?.type)) return field.type;
-    const meta = comfyFieldMeta(field, workflowData);
-    const excludedPromptNode = /previewany|preview|save\s*text|savetext|save_text/.test(meta.classType)
-        || /预览|保存文本|保存文件|输出/.test(meta.nodeTitle)
-        || /preview|markdown|output|save|file|path|name/.test(meta.inputKey);
-    if(excludedPromptNode) return 'setting';
-    const promptNode = /cliptextencode|primitivestringmultiline|prompt/.test(meta.classType)
-        || /提示词|正向|负向|prompt/.test(meta.nodeTitle);
-    const promptField = /(^|[\s_-])(prompt|positive|negative)([\s_-]|$)|提示词|正向|负向/.test(meta.fullText);
-    if(promptNode && (meta.inputKey === 'text' || meta.inputKey === 'value' || field?.type === 'textarea' || promptField)) return 'prompt';
-    if(promptField) return 'prompt';
-    return 'setting';
-}
-async function runApiGeneration(prompt, refs, runSettings=settings, sourceNode=null){
-    if(!runSettings.provider_id || !runSettings.model) throw new Error(tr('smart.errNoApiModel'));
-    const count = Math.max(1, Math.min(8, Number(runSettings.count || 1)));
-    const referenceImages = imageRefsOnly(refs);
-    const payload = {
-        prompt,
-        provider_id:runSettings.provider_id,
-        model:rhOfficialModelForRun(runSettings.model, referenceImages),
-        size:sizeForRun(runSettings),
-        quality:runSettings.quality || 'auto',
-        n:1,
-        reference_images:referenceImages,
-        canvas_id:canvasId || '',
-        canvas_title:String(canvas?.title || document.getElementById('smartTitle')?.textContent || '').trim(),
-        node_id:String(sourceNode?.id || '')
-    };
-    // —— 3D预演：强制 blender 平台 + 单视频 ——
-    if((runSettings.engine || settings.engine) === 'blender'){
-        normalizePrevizLlmSettings(runSettings);
-        payload.provider_id = 'blender';
-        payload.model = 'blender-previz';
-        payload.n = 1;
-        payload.count = 1;
-        payload.aspectRatio = rhOfficialAspectRatioForRun(runSettings);
-        payload.previz_llm_enabled = runSettings.previzLlmEnabled === true;
-        payload.previz_llm_provider = runSettings.previzLlmProvider || '';
-        payload.previz_llm_model = runSettings.previzLlmModel || '';
-        delete payload.size;
-        delete payload.quality;
-    }
-    if(shouldUseRhOfficialProxy(payload)){
-        payload.resolution = rhOfficialResolutionForRun(runSettings);
-        payload.aspectRatio = rhOfficialAspectRatioForRun(runSettings);
-        if(!payload.quality || payload.quality === 'auto') payload.quality = 'medium';
-    }
-    const taskBase = shouldUseRhOfficialProxy(payload) ? RH_OFFICIAL_PROXY_BASE : '';
-    const tasks = await Promise.all(Array.from({length:count}, () => fetch(`${taskBase}/api/canvas-image-tasks`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}).then(async r => {
-        if(!r.ok) throw new Error(await r.text());
-        return r.json();
-    })));
-    return {taskIds:tasks.map(task => task.task_id).filter(Boolean), count};
-}
-async function runRunningHubGeneration(prompt, refs, runSettings=settings){
-    const ref = selectedRunningHubRef(runSettings);
-    if(!ref) throw new Error(tr('smart.rhNeedConfig'));
-    const fields = rhActiveFields(runSettings);
-    if(!fields.length) throw new Error(tr('smart.rhNeedFields'));
-    const randomValues = {};
-    const mode = ref.kind;
-    const media = rhMediaForRun(prompt, refs);
-    const nodeInfoList = await rhBuildNodeInfoList(media, runSettings, randomValues);
-    const workflowExtras = mode === 'workflow' ? await rhBuildWorkflowRequestExtras(media, nodeInfoList, runSettings) : {};
-    const endpoint = mode === 'workflow' ? '/api/runninghub/workflow-submit' : '/api/runninghub/submit';
-    const body = mode === 'workflow'
-        ? {workflowId:ref.id, nodeInfoList, useWallet:runSettings.rhPayment === 'wallet', ...workflowExtras}
-        : {webappId:ref.id, nodeInfoList, instanceType:runSettings.rhInstanceType || '', useWallet:runSettings.rhPayment === 'wallet'};
-    const submit = await fetch(endpoint, {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify(body)
-    }).then(async r => {
-        const data = await r.json();
-        if(!r.ok || data.success === false) throw new Error(data.detail || data.error || tr('smart.rhFailed'));
-        return data.data || data;
-    });
-    const taskId = submit.taskId;
-    if(!taskId) throw new Error(tr('smart.rhNoTaskId'));
-    for(let i = 0; i < 720; i++){
-        await sleep(2500);
-        const data = await fetch(`/api/runninghub/query?taskId=${encodeURIComponent(taskId)}`).then(async r => {
-            const json = await r.json();
-            if(!r.ok || json.success === false) throw new Error(json.detail || json.error || tr('smart.rhFailed'));
-            return json.data || json;
-        });
-        if(data.status === 'SUCCESS'){
-            const urls = data.urls || [];
-            if(!urls.length) throw new Error(tr('smart.rhOutputsEmpty'));
-            return urls;
-        }
-        if(data.status === 'FAILED') throw new Error(data.failReason || tr('smart.rhFailed'));
-    }
-    throw new Error(tr('smart.rhTimeout'));
-}
-async function runApiVideoGeneration(prompt, refs, runSettings=settings){
-    if(!runSettings.videoModel) throw new Error(tr('smart.errNoVideoModel'));
-    try {
-        let uploadedRefs = applyUploadedUrlsToSmartRefs(refs, runSettings);
-        let referenceMode = videoReferenceModeValue(runSettings);
-        // 可信素材：来源=素材库时启用 asset:// 认证路由（与参考模式解耦，独立开关）
-        const trustedSource = (runSettings.videoTrustedAsset === true && ['library','cloud','manual'].includes(runSettings.videoTrustedSource)) ? runSettings.videoTrustedSource : 'none';
-        const useAssetUris = trustedSource === 'library';
-        const targetPlatform = videoProviderPlatform(runSettings.videoProvider || 'comfly');
-        if(trustedSource === 'cloud'){
-            await uploadCurrentSmartVideosToCloud();
-            uploadedRefs = applyUploadedUrlsToSmartRefs(refs, runSettings);
-        }
-        let mismatchedAsset = false;
-        const effUrl = ref => {
-            const uris = (ref && ref.asset_uris && typeof ref.asset_uris === 'object') ? ref.asset_uris : null;
-            if(useAssetUris && uris && Object.keys(uris).length){
-                // asset:// 与平台绑定：取当前视频平台对应的认证地址；该素材没注册到这个平台就回退本地 url
-                if(targetPlatform && uris[targetPlatform]) return uris[targetPlatform];
-                mismatchedAsset = true;
-            }
-            return ref?.url;
-        };
-        const refImages = imageRefsOnly(uploadedRefs).map((ref, i) => {
-            const item = {url:effUrl(ref), name:ref.name || `图${i + 1}`};
-            if(runSettings.videoUseFrameRoles){
-                if(i === 0) item.role = 'first_frame';
-                else if(i === 1) item.role = 'last_frame';
-            }
-            return item;
-        });
-        const manualVideo = manualSmartVideoLink(runSettings)?.url || '';
-        let refVideos = manualVideo ? manualSmartMediaLinks(runSettings).map(item => item.url).filter(Boolean) : videoRefsOnly(uploadedRefs).map(ref => effUrl(ref)).filter(Boolean);
-        const refAudios = audioRefsOnly(uploadedRefs).map(ref => effUrl(ref)).filter(Boolean).slice(0, 3);
-        // 官方编辑/延长任务：提示词必须用「严格编辑视频N」「向前/向后延长视频N」句式指代源视频，
-        // 不能写成「参考视频N」，否则被模型误判为参考任务（官方硬约束；Seedance 2.0/2.5 系列均支持编辑·延长）。
-        if(referenceMode === 'video_edit' || referenceMode === 'video_extend'){
-            const isSeedanceFamily = targetPlatform === 'volcengine' || /seedance/i.test(String(runSettings.videoModel || ''));
-            if(!isSeedanceFamily){
-                toast('视频编辑/延长是 Seedance 系列能力，当前模型按全能参考提交');
-                referenceMode = 'mixed';
-            } else {
-                if(!refVideos.length) throw new Error(referenceMode === 'video_edit' ? '视频编辑需要先连入 1 段源视频（把视频节点连到本节点输入）' : '视频延长需要先连入 1 段源视频（把视频节点连到本节点输入）');
-                if(refVideos.length > 1) toast('编辑/延长只使用最先连入的 1 段源视频');
-                refVideos = refVideos.slice(0, 1);
-                const directive = referenceMode === 'video_edit'
-                    ? `严格编辑视频1：${prompt}`
-                    : ((runSettings.videoExtendMode === 'before' ? '向前延长视频1：' : '向后延长视频1：') + prompt);
-                prompt = `请勿复述视频1原内容。${directive}`;
-            }
-        }
-        if(mismatchedAsset) toast('部分认证素材属于其它平台，已回退为普通素材。切换到对应平台的视频接口才能用 asset:// 认证地址。');
-        const payload = {
-            prompt,
-            provider_id: runSettings.videoProvider || 'comfly',
-            model: runSettings.videoModel,
-            duration: Math.max(1, Math.min(60, Number(runSettings.videoDuration) || 5)),
-            aspect_ratio: runSettings.videoAspect || '16:9',
-            canvas_id: canvasId,
-            resolution: runSettings.videoResolution || '',
-            images: refImages,
-            videos: refVideos,
-            audios: refAudios,
-            enhance_prompt: Boolean(runSettings.videoEnhancePrompt),
-            enable_upsample: false,
-            watermark: false,
-            camerafixed: false,
-            generate_audio: Boolean(runSettings.videoGenerateAudio),
-            multimodal: false,
-            trusted_asset: useAssetUris,
-            reference_mode: referenceMode
-        };
-        const result = await fetch('/api/canvas-video', {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify(payload)
-        }).then(async r => { if(!r.ok) throw new Error(await smartResponseErrorMessage(r, tr('smart.errRunFailed'))); return r.json(); });
-        if(result && result.jimeng_pending) throw new CanvasSmartTaskSupervisor.JimengPendingSignal({submitId:result.submit_id, kind:result.kind || 'video', queueInfo:result.queue_info, message:result.message});
-        return {
-            urls: resultMediaUrls(result),
-            taskIds: taskIdsFromResult(result),
-            kind: 'video',
-            raw: result
-        };
-    } finally {
-        transientSmartCloudLinks = [];
-    }
-}
-async function urlToBase64(url){
-    const res = await fetch(url);
-    if(!res.ok) throw new Error(tr('smart.errImageRead'));
-    const blob = await res.blob();
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-    });
-}
-function sleep(ms){ return new Promise(resolve => setTimeout(resolve, ms)); }
+// 生成引擎分发带外移 canvas-engine-dispatch.js（第十九刀）。JimengPendingSignal 类与 transientSmartCloudLinks 走 deps 通道。
+if(globalThis.CanvasEngineDispatch){CanvasEngineDispatch.configure({
+        applyUploadedUrlsToSmartRefs: (...a) => applyUploadedUrlsToSmartRefs(...a),
+        audioRefsOnly: (...a) => audioRefsOnly(...a),
+        canvasLLMEndpointForPayload: (...a) => canvasLLMEndpointForPayload(...a),
+        comfyFieldMeta: (...a) => comfyFieldMeta(...a),
+        currentComfyWorkflowData: (...a) => currentComfyWorkflowData(...a),
+        imageRefsOnly: (...a) => imageRefsOnly(...a),
+        manualSmartMediaLinks: (...a) => manualSmartMediaLinks(...a),
+        manualSmartVideoLink: (...a) => manualSmartVideoLink(...a),
+        normalizePrevizLlmSettings: (...a) => normalizePrevizLlmSettings(...a),
+        promptNodeInputMediaForLLM: (...a) => promptNodeInputMediaForLLM(...a),
+        render: (...a) => render(...a),
+        resolveChatModel: (...a) => resolveChatModel(...a),
+        resolveChatProviderId: (...a) => resolveChatProviderId(...a),
+        resultMediaUrls: (...a) => resultMediaUrls(...a),
+        rhActiveFields: (...a) => rhActiveFields(...a),
+        rhBuildNodeInfoList: (...a) => rhBuildNodeInfoList(...a),
+        rhBuildWorkflowRequestExtras: (...a) => rhBuildWorkflowRequestExtras(...a),
+        rhMediaForRun: (...a) => rhMediaForRun(...a),
+        rhOfficialAspectRatioForRun: (...a) => rhOfficialAspectRatioForRun(...a),
+        rhOfficialModelForRun: (...a) => rhOfficialModelForRun(...a),
+        rhOfficialResolutionForRun: (...a) => rhOfficialResolutionForRun(...a),
+        scheduleSave: (...a) => scheduleSave(...a),
+        selectedRunningHubRef: (...a) => selectedRunningHubRef(...a),
+        shouldUseRhOfficialProxy: (...a) => shouldUseRhOfficialProxy(...a),
+        sizeForRun: (...a) => sizeForRun(...a),
+        smartResponseErrorMessage: (...a) => smartResponseErrorMessage(...a),
+        taskIdsFromResult: (...a) => taskIdsFromResult(...a),
+        toast: (...a) => toast(...a),
+        uploadCurrentSmartVideosToCloud: (...a) => uploadCurrentSmartVideosToCloud(...a),
+        videoProviderPlatform: (...a) => videoProviderPlatform(...a),
+        videoReferenceModeValue: (...a) => videoReferenceModeValue(...a),
+        videoRefsOnly: (...a) => videoRefsOnly(...a),
+        JimengPendingSignal: CanvasSmartTaskSupervisor.JimengPendingSignal,
+        transientSmartCloudLinks: () => transientSmartCloudLinks,
+        RH_OFFICIAL_PROXY_BASE: () => RH_OFFICIAL_PROXY_BASE,
+        canvas: () => canvas,
+        canvasId: () => canvasId,
+        nodes: () => nodes,
+        settings: () => settings,
+        setTransientSmartCloudLinks: v => { transientSmartCloudLinks = v; }
+});}
+function runPromptLLMNode(){return CanvasEngineDispatch.runPromptLLMNode.apply(null, arguments);}
+function comfyFieldKind(){return CanvasEngineDispatch.comfyFieldKind.apply(null, arguments);}
+function runApiGeneration(){return CanvasEngineDispatch.runApiGeneration.apply(null, arguments);}
+function runRunningHubGeneration(){return CanvasEngineDispatch.runRunningHubGeneration.apply(null, arguments);}
+function runApiVideoGeneration(){return CanvasEngineDispatch.runApiVideoGeneration.apply(null, arguments);}
+function sleep(){return CanvasEngineDispatch.sleep.apply(null, arguments);}
 // 清掉「运行中」外观，但保留 comfyPromptId —— 后端重启/任务记录丢失时，
 // prompt_id 是之后把 ComfyUI 已经跑完的结果认领回节点的唯一钥匙，不能删。
 function clearComfyRunStateKeepPromptId(node){
