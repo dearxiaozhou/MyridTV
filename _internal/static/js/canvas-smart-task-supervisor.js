@@ -477,6 +477,7 @@ async function recoverCompletedEmptySmartNodes(){
 
     global.CanvasSmartTaskSupervisor = {
         configure,
+        JimengPendingSignal,
         runComfyWorkflowJob,
         runComfyGeneration,
         runComfyText,
