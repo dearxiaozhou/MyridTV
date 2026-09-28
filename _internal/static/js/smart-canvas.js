@@ -1471,100 +1471,34 @@ function canvasAgentMediaLabel(item, index=0) {
 function canvasAgentRefFromImage(img, node=null, index=0) {
     return CanvasAgentMessageRender.canvasAgentRefFromImage.apply(null, arguments);
 }
-function collectCanvasAgentSelectedResources(){
-    const refs = [];
-    const addNodeImages = node => {
-        if(!node) return;
-        const ownImages = (node.images || []).map((img, index) => canvasAgentRefFromImage(img, node, index)).filter(Boolean);
-        refs.push(...ownImages);
-        if(!ownImages.length && ['smart-prompt','smart-loop'].includes(node.type)){
-            refs.push(...visibleReferenceImagesFor(node).map((img, index) => canvasAgentRefFromImage(img, node, index)).filter(Boolean));
-        }
-    };
-    if(selectedImage.nodeId && Number.isFinite(Number(selectedImage.index))){
-        const node = nodes.find(n => n.id === selectedImage.nodeId);
-        const img = node?.images?.[Number(selectedImage.index)];
-        const ref = canvasAgentRefFromImage(img, node, Number(selectedImage.index));
-        if(ref) refs.push(ref);
-    }
-    selectedNodeIds().forEach(id => addNodeImages(nodes.find(n => n.id === id)));
-    if(!refs.length) addNodeImages(selectedNode());
-    const seen = new Set();
-    return refs.filter(ref => ref?.url && !seen.has(ref.url) && seen.add(ref.url));
-}
-function addCanvasAgentRefs(refs=[]){
-    const seen = new Set(canvasAgentRefsState.map(ref => ref.url));
-    (refs || []).forEach(ref => {
-        if(!ref?.url || seen.has(ref.url)) return;
-        seen.add(ref.url);
-        canvasAgentRefsState.push(ref);
-    });
-    renderCanvasAgentRefs();
-}
-const CANVAS_AGENT_FILE_TEXT_LIMIT = 24000;
-const CANVAS_AGENT_TEXT_FILE_RE = /\.(txt|md|markdown|json|csv|tsv|srt|vtt|log|py|js|ts|jsx|tsx|html?|css|xml|yaml|yml|ini|cfg|conf|bat|cmd|ps1|sh|java|kt|c|h|cpp|cs|rs|go|rb|php|sql|gitignore)$/i;
-const CANVAS_AGENT_BINARY_FILE_RE = /\.(png|jpe?g|webp|gif|bmp|mp4|webm|mov|m4v|avi|mkv|mp3|wav|m4a|aac|ogg|flac|pdf|docx?|xlsx?|pptx?|zip|rar|7z|exe|dll|apk|iso)$/i;
-function isAgentTextFile(file){
-    const type = String(file?.type || '').toLowerCase();
-    const name = String(file?.name || '').toLowerCase();
-    if(CANVAS_AGENT_BINARY_FILE_RE.test(name)) return false;
-    return type.startsWith('text/') || type.includes('json') || type.includes('xml') || type.includes('javascript') || CANVAS_AGENT_TEXT_FILE_RE.test(name);
-}
-async function uploadCanvasAgentFiles(fileList){
-    const files = Array.from(fileList || []);
-    if(!files.length || !canvasAgentPanel) return;
-    setCanvasAgentOpen(true);
-    for(const file of files){
-        try{
-            toast(`正在上传：${file.name}`);
-            const form = new FormData();
-            form.append('files', file, file.name);
-            const response = await fetch(`${RH_OFFICIAL_PROXY_BASE}${canvasScopedUploadUrl()}`, {method:'POST', body:form});
-            if(!response.ok) throw new Error(await smartResponseErrorMessage(response, '文件上传失败'));
-            const data = await response.json();
-            const info = (data?.files || [])[0];
-            if(!info?.url) throw new Error('上传结果缺少文件地址');
-            const serverKind = String(info.kind || '');
-            let kind = ['image', 'video', 'audio', 'text', 'file'].includes(serverKind) ? serverKind : mediaKindForFile(file);
-            const ref = {
-                url:info.url,
-                name:file.name,
-                kind,
-                content_type:info.content_type || file.type || ''
-            };
-            if(kind === 'file' && isAgentTextFile(file)) kind = ref.kind = 'text';
-            if(ref.kind === 'text'){
-                try{
-                    const raw = await file.text();
-                    const text = String(raw || '').replace(/\r\n/g, '\n').trim();
-                    if(text){
-                        ref.textContent = text.length > CANVAS_AGENT_FILE_TEXT_LIMIT
-                            ? `${text.slice(0, CANVAS_AGENT_FILE_TEXT_LIMIT)}\n...(内容过长已截断)`
-                            : text;
-                        ref.textPreview = textPreviewSnippet(ref.textContent);
-                    }
-                }catch(_) {}
-            }
-            addCanvasAgentRefs([ref]);
-            toast(ref.kind === 'text' ? `已加入文件：${file.name}（内容可被 Agent 学习）` : `已加入文件：${file.name}`);
-        }catch(error){
-            toast(`上传失败：${file.name} — ${error?.message || error}`);
-        }
-    }
-    if(canvasAgentFileInput) canvasAgentFileInput.value = '';
-}
-function canvasAgentFileTranscript(refs){
-    const sections = [];
-    (refs || []).forEach(ref => {
-        const kind = mediaKindForItem(ref);
-        if(kind !== 'text' && kind !== 'file') return;
-        const name = canvasAgentMediaLabel(ref);
-        const content = textContentValue(ref);
-        if(content) sections.push(`【引用文件：${name}】\n${content}`);
-        else sections.push(`【引用文件：${name}】（${kind === 'file' ? '二进制文件，只能参考文件名' : '空文件或内容未读取'}）`);
-    });
-    return sections.join('\n\n');
-}
+// Agent 引用收集/上传域外移 canvas-agent-reference-intake.js（第十刀）。canvasAgentRefsState 块内只 push 不重赋，getter 足够。
+if(globalThis.CanvasAgentReferenceIntake){CanvasAgentReferenceIntake.configure({
+        canvasAgentMediaLabel: (...a) => canvasAgentMediaLabel(...a),
+        canvasAgentRefFromImage: (...a) => canvasAgentRefFromImage(...a),
+        canvasScopedUploadUrl: (...a) => canvasScopedUploadUrl(...a),
+        mediaKindForFile: (...a) => mediaKindForFile(...a),
+        mediaKindForItem: (...a) => mediaKindForItem(...a),
+        renderCanvasAgentRefs: (...a) => renderCanvasAgentRefs(...a),
+        selectedNode: (...a) => selectedNode(...a),
+        selectedNodeIds: (...a) => selectedNodeIds(...a),
+        setCanvasAgentOpen: (...a) => setCanvasAgentOpen(...a),
+        smartResponseErrorMessage: (...a) => smartResponseErrorMessage(...a),
+        textContentValue: (...a) => textContentValue(...a),
+        textPreviewSnippet: (...a) => textPreviewSnippet(...a),
+        toast: (...a) => toast(...a),
+        RH_OFFICIAL_PROXY_BASE: () => RH_OFFICIAL_PROXY_BASE,
+        canvasAgentFileInput: () => canvasAgentFileInput,
+        canvasAgentPanel: () => canvasAgentPanel,
+        canvasAgentRefsState: () => canvasAgentRefsState,
+        nodes: () => nodes,
+        selectedImage: () => selectedImage,
+        visibleReferenceImagesFor: () => visibleReferenceImagesFor
+});}
+function collectCanvasAgentSelectedResources(){return CanvasAgentReferenceIntake.collectCanvasAgentSelectedResources.apply(null, arguments);}
+function addCanvasAgentRefs(){return CanvasAgentReferenceIntake.addCanvasAgentRefs.apply(null, arguments);}
+function isAgentTextFile(){return CanvasAgentReferenceIntake.isAgentTextFile.apply(null, arguments);}
+function uploadCanvasAgentFiles(){return CanvasAgentReferenceIntake.uploadCanvasAgentFiles.apply(null, arguments);}
+function canvasAgentFileTranscript(){return CanvasAgentReferenceIntake.canvasAgentFileTranscript.apply(null, arguments);}
 function ensureSmartImageContextMenu(){
     return CanvasImageContextMenuController.ensure();
 }
