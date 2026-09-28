@@ -8377,6 +8377,7 @@ const title = isScript ? '剧本' : isTable ? '镜头表' : node.type === 'smart
         const isPending = ((node.pending || node.status === 'pending' || isQueued || isJimengPending || comfyBusy) && imgs.length === 0);
         const isBlenderPreview = node.runSettings?.engine === 'blender' || node.runSettings?.provider_id === 'blender' || node.title === '3D预演';
         const body = nodeBodyHtml(node, layout);
+        const hasOut = (canvas?.connections || []).some(c => c.from === node.id);
         const deleteBtn = `<button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button>`;
         const hint = isPending ? escapeHtml(tr('smart.hintPending')) : (imgs.length > 1 ? escapeHtml(tr('smart.hintMulti')) : imgs.length ? escapeHtml(tr('smart.hintSingle')) : escapeHtml(tr('smart.hintEmpty')));
         const comfyNodeNote = node.comfyError
@@ -8385,7 +8386,7 @@ const title = isScript ? '剧本' : isTable ? '镜头表' : node.type === 'smart
 const html = `<div class="image-node ${isEmpty ? 'empty-node' : ''} ${isGroup ? 'group-node' : ''} ${node.groupLayout?.mode === 'preserve' ? 'preserved-group-node' : ''} ${isCanvasGroupNode(node) ? 'canvas-group-node' : ''} ${isHistory ? 'history-group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isScript ? 'script-smart-node' : ''} ${isTable ? 'table-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isBlenderPreview ? 'blender-preview-node' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''} ${node.comfyStatus === 'running' ? 'comfy-running' : ''} ${node.comfyStatus === 'queued' ? 'comfy-queued' : ''} node-status-${escapeHtml(node.status || 'ready')} node-role-${escapeHtml(node.role || 'media')}" data-id="${escapeHtml(node.id)}" data-status="${escapeHtml(node.status || 'ready')}" data-role="${escapeHtml(node.role || 'media')}" data-comfy-status="${escapeHtml(node.comfyStatus || '')}" ${(node.comfyStatus === 'queued' && Number(node.comfyQueuePosition ?? -1) > 0) ? `data-comfy-queue="${Number(node.comfyQueuePosition)}"` : ''} style="left:${node.x || 0}px;top:${node.y || 0}px;width:${layout.width}px;height:${layout.height}px;z-index:${isCanvasGroupNode(node) ? 1 : nodeLayerZ(node)}">
             <div class="node-head"><div class="node-title">${node.canvasSetEnabled === true ? `<span class="node-set-badge" title="${escapeAttr(tr('smart.setBadgeTip'))}">SET</span>` : ''}${title}</div><div class="node-actions">${deleteBtn}</div></div>
             ${isCanvasGroupNode(node) ? `<div class="canvas-group-header"><span class="canvas-group-title-display" title="双击重命名">${escapeHtml(node.title || '未命名组')}</span><button class="canvas-group-delete node-delete" type="button" title="删除组"><i data-lucide="trash-2"></i></button></div>` : ''}
-            ${!isCanvasGroupNode(node) ? (!isEmpty ? `<div class="floating-node-set">${canvasNodeSetToggleHtml(node)}</div>${(node.type === 'smart-image' || node.type === 'smart-video' || node.type === 'smart-audio' || !node.type) ? '<button class="node-move-lines" type="button" title="把线移到新素材（点此节点，再点目标素材，旧素材所有连线整体平移，图片与节点均不动）"><i data-lucide="link"></i></button>' : ''}${(node.type === 'smart-image' || node.type === 'smart-video' || node.type === 'smart-audio' || !node.type) ? '<button class="upload-node-btn" type="button" data-upload-action="files"><i data-lucide="upload"></i><span>上传</span></button>' : ''}<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>` : `<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>`) : ''}
+            ${!isCanvasGroupNode(node) ? (!isEmpty ? `<div class="floating-node-set">${canvasNodeSetToggleHtml(node)}</div>${((node.type === 'smart-image' || node.type === 'smart-video' || node.type === 'smart-audio' || !node.type) && hasOut) ? '<button class="node-move-lines" type="button" title="把线移到新素材（点此节点，再点目标素材，旧素材所有连线整体平移，图片与节点均不动）"><i data-lucide="link"></i></button>' : ''}${(node.type === 'smart-image' || node.type === 'smart-video' || node.type === 'smart-audio' || !node.type) ? '<button class="upload-node-btn" type="button" data-upload-action="files"><i data-lucide="upload"></i><span>上传</span></button>' : ''}<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>` : `<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>`) : ''}
             ${runTimePillHtml(node)}
             ${comfyNodeNote}
             <div class="node-body">${body}</div>
@@ -12703,234 +12704,55 @@ function runSmartCascadeFromLoop(loopId){
     selectedImage = {nodeId:'', index:-1};
     runSmartCascade(tail);
 }
-async function runGeneration(){
-    const node = selectedNode();
-    if(!node) return;
-    const previousSettings = cloneSmartSettings(settings);
-    const runSettings = smartSettingsForNode(node);
-    await ensureCustomComfyWorkflowReady(runSettings);
-    settings = {...settings, ...cloneSmartSettings(runSettings || {})};
-    const request = buildPromptRequest(node, null, true, smartLoopContext);
-    const prompt = request.prompt.trim();
-    if(!prompt && !allowsPromptlessCustomComfy(settings)){ toast(tr('smart.toastNeedPrompt')); settings = previousSettings; return; }
-    let refs = request.refs;
-    const outpaintSize = node?.outpaintSize && Number(node.outpaintSize.width) > 0 && Number(node.outpaintSize.height) > 0
-        ? {width:Math.round(Number(node.outpaintSize.width)), height:Math.round(Number(node.outpaintSize.height))}
-        : null;
- if(outpaintSize && isApiLikeEngine(settings.engine) && settings.apiKind !== 'video'){
- settings = {
- ...settings,
- resolution:'custom',
-            ratio:'',
-            customWidth:outpaintSize.width,
-            customHeight:outpaintSize.height,
- customSize:`${outpaintSize.width}x${outpaintSize.height}`
- };
- }
-    const nodeHasImages = (node.images || []).some(img => img?.url);
-    const workflowModeRun = smartImageUsesWorkflowInput(node, smartLoopContext);
-    // History is scoped to the node itself. Input links and neighboring nodes never
-    // affect whether this is the node's first generation.
-    const overwriteExistingOutput = nodeHasImages && nodeHasCompletedGeneration(node) && !workflowModeRun;
-    // 覆盖重跑：新图沿用第一次生图的名称（显示名 + 磁盘文件名），不再按日期重新命名
-    const retainedOutputNames = overwriteExistingOutput
-        ? (node.images || []).map(img => String(img?.name || '').trim()).filter(Boolean)
-        : [];
-    const movedOutputAssetUrls = overwriteExistingOutput ? await moveOutputImagesToHistoryForRun(node.images || []) : new Map();
-    if(movedOutputAssetUrls.size){
-        refs = remapRefsForMovedAssets(refs, movedOutputAssetUrls);
-        updatePromptMentionUrlsForMovedAssets(movedOutputAssetUrls);
-    }
-    const meta = snapshotRunMeta(prompt, node.id, request.displayPrompt, refs);
-    const logKind = runKindForSettings(settings);
-    const runLog = smartRunSnapshot(node, prompt, refs, logKind);
-    rememberRecentSmartSettings(settings, node);
-    const runLogStart = nowMs();
-    const expectedCount = settings.engine === 'runninghub'
-        ? 1
-        : settings.engine === 'comfy'
-            ? (settings.comfyMode === 'text' || settings.comfyMode === 'enhance' || settings.comfyMode === 'edit' || settings.comfyMode === 'custom' ? 1 : 1)
-            : Math.max(1, Math.min(8, Number(settings.count || 1)));
-    const apiConcurrentRun = isApiLikeEngine(settings.engine) || settings.engine === 'runninghub';
-    const sourceVisualState = null;
-    pushUndo();
-    let extracted = null;
-    let branchNode = null;
-    const pendingMeta = overwriteExistingOutput ? stripRunInputMeta(meta) : meta;
-    undoSuppressed = true;
-    // Only this node's completed output is replaced on a subsequent run.
-    if(overwriteExistingOutput){
-        node.images = [];
-        selectedImage = {nodeId:'', index:-1};
-    }
-    undoSuppressed = false;
-    const pendingNode = branchNode || node;
-    const comfyRunToken = settings.engine === 'comfy' ? uid('comfy_run') : '';
-    if(comfyRunToken) pendingNode.comfyRunToken = comfyRunToken;
-    // 保留名持久化到节点：覆盖重跑=沿用第一次生图名；非覆盖（首跑/追加）=清掉
-    if(retainedOutputNames.length) pendingNode.retainOutputNames = retainedOutputNames;
-    else delete pendingNode.retainOutputNames;
-    if(extracted) pendingNode._runMetaTargetId = extracted.id;
-    if(!branchNode){
-        pendingNode.pending = Math.max(1, Number(expectedCount) || 1);
-        pendingNode.runStartedAt = nowMs();
-        delete pendingNode.runFinishedAt;
-        delete pendingNode.runElapsedMs;
-        pendingNode.runTimerHidden = false;
-        const pendingBox = pendingBoxSize(pendingNode.pending, {sourceNode:node, refs});
-        pendingNode.w = pendingBox.w;
-        pendingNode.h = pendingBox.h;
-        attachRunMeta(pendingNode, pendingMeta);
-    }
-    if(apiConcurrentRun){
-        // API tasks expose their own pending state and may run alongside other nodes.
-        // Do not lock the shared composer button while the request is in flight.
-        pendingNode.running = false;
-        // 2026-09-17：API 并发任务不锁按钮，但要让按钮进入「生成中」动效，
-        // 用独立标记 node.apiRunning 驱动 is-ap-running（不依赖 node.running）。
-        pendingNode.apiRunning = true;
-        syncRunButtonAvailability(pendingNode);
-    } else {
-        pendingNode.running = true;
-        syncRunButtonAvailability(pendingNode);
-    }
-    render();
-    try {
-        if(settings.engine === 'comfy'){
-            await runComfyGeneration(pendingNode, prompt, refs, pendingNode, pendingMeta);
-            if(sourceVisualState) restoreSourceVisualState(node, sourceVisualState);
-            addSmartGenerationLog({run:runLog, outputs:(pendingNode.images || []).map(img => img.url).filter(Boolean), runMs:nowMs() - runLogStart});
-            settings = previousSettings;
-            return;
-        }
-        if((isApiLikeEngine(settings.engine) && settings.apiKind === 'video') || settings.engine === 'blender'){
-            const videoResult = settings.engine === 'blender'
-                ? await runApiGeneration(prompt, refs, settings, node)
-                : await runApiVideoGeneration(prompt, refs);
-            const taskIds = taskIdsFromResult(videoResult);
-            const outVideos = videoResult?.urls || resultMediaUrls(videoResult);
-            if(taskIds.length && !outVideos.length){
-                pendingNode.pendingTasks = taskIds.map(taskId => ({taskId, kind:'video'}));
-                rememberSmartTaskIds(pendingNode, taskIds);
-                pendingNode.pending = Math.max(taskIds.length, Number(pendingNode.pending || 0) || taskIds.length);
-                pendingNode.runStartedAt = nowMs();
-                pendingNode.runTimerHidden = false;
-                pendingNode.running = false;
-                render();
-                scheduleSave();
-                await saveCanvas();
-                await resumeSmartPendingNode(pendingNode);
-                if(!(pendingNode.images || []).length) throw new Error(tr('smart.errNoOutVideos'));
-                if(sourceVisualState) restoreSourceVisualState(node, sourceVisualState);
-                addSmartGenerationLog({run:runLog, outputs:(pendingNode.images || []).map(img => img.url).filter(Boolean), runMs:nowMs() - runLogStart});
-                clearPromptInput({preserveDraft:true});
-                settings = previousSettings;
-                scheduleSave();
-                return;
-            }
-            if(!outVideos.length) throw new Error(tr('smart.errNoOutVideos'));
-            await finalizePendingNode(pendingNode, outVideos, pendingMeta, 'video');
-            if(sourceVisualState) restoreSourceVisualState(node, sourceVisualState);
-            addSmartGenerationLog({run:runLog, outputs:outVideos, runMs:nowMs() - runLogStart});
-            clearPromptInput({preserveDraft:true});
-            settings = previousSettings;
-            scheduleSave();
-            return;
-        }
-        // 2026-09-18：云端 RH-api 工作流没有实时进度百分比，但要让节点保持「运行中」视觉
-        // （边框进度环 + comfy-running 蓝色边框），否则点一下运行态就消失。
-        // 用 comfyStatus='running' 触发现有进度环，comfyIndeterminate 标记走「整圈流光」渲染。
-        if(settings.engine === 'runninghub'){
-            pendingNode.comfyStatus = 'running';
-            pendingNode.comfyIndeterminate = true;
-            syncRunButtonAvailability(pendingNode);
-            updateComfyNodeLiveState(pendingNode);
-        }
-        const outImages = settings.engine === 'runninghub'
-            ? await runRunningHubGeneration(prompt, refs): await runApiGeneration(prompt, refs, settings, node);
-        if(isApiLikeEngine(settings.engine)){
-            const taskIds = Array.isArray(outImages?.taskIds) ? outImages.taskIds : [];
-            if(!taskIds.length) throw new Error(tr('smart.errRunFailed'));
-            pendingNode.pendingTasks = taskIds.map(taskId => ({taskId, kind:'image'}));
-            rememberSmartTaskIds(pendingNode, taskIds);
-            pendingNode.pending = Math.max(taskIds.length, Number(pendingNode.pending || 0) || taskIds.length);
-            pendingNode.runStartedAt = nowMs();
-            pendingNode.runTimerHidden = false;
-            pendingNode.running = false;
-            render();
-            scheduleSave();
-            await saveCanvas();
-            await resumeSmartPendingNode(pendingNode);
-            if(pendingNode.jimengPending){
-                if(sourceVisualState) restoreSourceVisualState(node, sourceVisualState);
-                clearPromptInput({preserveDraft:true});
-                settings = previousSettings;
-                scheduleSave();
-                return;
-            }
-            if(!(pendingNode.images || []).length) throw new Error(tr('smart.errNoOutImages'));
-            if(outpaintSize) delete node.outpaintSize;
-            if(sourceVisualState) restoreSourceVisualState(node, sourceVisualState);
-            addSmartGenerationLog({run:runLog, outputs:(pendingNode.images || []).map(img => img.url).filter(Boolean), runMs:nowMs() - runLogStart});
-            clearPromptInput({preserveDraft:true});
-            settings = previousSettings;
-            scheduleSave();
-            return;
-        }
-        if(!outImages.length) throw new Error(tr('smart.errNoOutImages'));
-        if(outpaintSize) delete node.outpaintSize;
-        await finalizePendingNode(pendingNode, outImages, pendingMeta);
-        if(sourceVisualState) restoreSourceVisualState(node, sourceVisualState);
-        addSmartGenerationLog({run:runLog, outputs:outImages, runMs:nowMs() - runLogStart});
-        clearPromptInput({preserveDraft:true});
-        settings = previousSettings;
-        scheduleSave();
-    } catch(e) {
-        if(comfyRunToken && pendingNode.comfyRunToken !== comfyRunToken) return;
-        settings = previousSettings;
-        if(handleJimengPendingSignal(pendingNode, e)){
-            if(sourceVisualState) restoreSourceVisualState(node, sourceVisualState);
-            delete pendingNode._runMetaTargetId;
-            clearPromptInput({preserveDraft:true});
-            return;
-        }
-        pendingNode.pending = 0;
-        // ComfyUI 失败/记录丢失/超时：连 comfy 运行态一起清，别留节点卡在「正在生成…」
-        if(pendingNode.comfyJobId || pendingNode.comfyStatus) clearComfyRunStateKeepPromptId(pendingNode);
-        if(branchNode){
-            nodeStore.removeNode(branchNode.id);
-            canvas.connections = (canvas.connections || []).filter(c => c.from !== branchNode.id && c.to !== branchNode.id);
-            selectedId = node.id;
-        } else {
-            pendingNode.pending = 0;
-            pendingNode.running = false;
-            if(!(pendingNode.images || []).length){
-                delete pendingNode.w;
-                delete pendingNode.h;
-            }
-        }
-        if(extracted) restoreFromExtraction(node, extracted);
-        delete pendingNode._runMetaTargetId;
-        addSmartGenerationLog({run:runLog, outputs:[], runMs:nowMs() - runLogStart, error:e.message || String(e)});
-        toast((e.message || tr('smart.errRunFailed')).slice(0, 160));
-    } finally {
-        if(comfyRunToken && pendingNode.comfyRunToken !== comfyRunToken) return;
-        if(!apiConcurrentRun){
-            clearNodeRunningState(pendingNode);
-            syncRunButtonAvailability();
-        } else {
-            // 2026-09-17：清掉 API 运行动效标记，让按钮回到待机态
-            delete pendingNode.apiRunning;
-            syncRunButtonAvailability();
-        }
-        // 2026-09-18：清掉云端 RH-api 运行时挂的 indeterminate 进度环标记。
-        // 非 ComfyUI 模式（无 comfyJobId）设的 comfyStatus 也一并清，避免节点卡在 running 视觉。
-        delete pendingNode.comfyIndeterminate;
-        if(!pendingNode.comfyJobId) delete pendingNode.comfyStatus;
-        if(comfyRunToken) delete pendingNode.comfyRunToken;
-        render();
-    }
-}
+// 生图执行域外移 canvas-generation-runner.js（第十五刀）。settings/selected 写入走 setter 回主文件真变量。
+if(globalThis.CanvasGenerationRunner){CanvasGenerationRunner.configure({
+        addSmartGenerationLog: (...a) => addSmartGenerationLog(...a),
+        allowsPromptlessCustomComfy: (...a) => allowsPromptlessCustomComfy(...a),
+        attachRunMeta: (...a) => attachRunMeta(...a),
+        buildPromptRequest: (...a) => buildPromptRequest(...a),
+        clearComfyRunStateKeepPromptId: (...a) => clearComfyRunStateKeepPromptId(...a),
+        clearNodeRunningState: (...a) => clearNodeRunningState(...a),
+        clearPromptInput: (...a) => clearPromptInput(...a),
+        cloneSmartSettings: (...a) => cloneSmartSettings(...a),
+        ensureCustomComfyWorkflowReady: (...a) => ensureCustomComfyWorkflowReady(...a),
+        finalizePendingNode: (...a) => finalizePendingNode(...a),
+        handleJimengPendingSignal: (...a) => handleJimengPendingSignal(...a),
+        isApiLikeEngine: (...a) => isApiLikeEngine(...a),
+        nowMs: (...a) => nowMs(...a),
+        pendingBoxSize: (...a) => pendingBoxSize(...a),
+        rememberSmartTaskIds: (...a) => rememberSmartTaskIds(...a),
+        render: (...a) => render(...a),
+        restoreFromExtraction: (...a) => restoreFromExtraction(...a),
+        restoreSourceVisualState: (...a) => restoreSourceVisualState(...a),
+        resultMediaUrls: (...a) => resultMediaUrls(...a),
+        resumeSmartPendingNode: (...a) => resumeSmartPendingNode(...a),
+        runApiGeneration: (...a) => runApiGeneration(...a),
+        runApiVideoGeneration: (...a) => runApiVideoGeneration(...a),
+        runComfyGeneration: (...a) => runComfyGeneration(...a),
+        runRunningHubGeneration: (...a) => runRunningHubGeneration(...a),
+        saveCanvas: (...a) => saveCanvas(...a),
+        scheduleSave: (...a) => scheduleSave(...a),
+        selectedNode: (...a) => selectedNode(...a),
+        smartImageUsesWorkflowInput: (...a) => smartImageUsesWorkflowInput(...a),
+        smartSettingsForNode: (...a) => smartSettingsForNode(...a),
+        syncRunButtonAvailability: (...a) => syncRunButtonAvailability(...a),
+        taskIdsFromResult: (...a) => taskIdsFromResult(...a),
+        toast: (...a) => toast(...a),
+        uid: (...a) => uid(...a),
+        updateComfyNodeLiveState: (...a) => updateComfyNodeLiveState(...a),
+        selectedId: () => selectedId,
+        selectedImage: () => selectedImage,
+        settings: () => settings,
+        undoSuppressed: () => undoSuppressed,
+        canvas: () => canvas,
+        nodeStore: () => nodeStore,
+        smartLoopContext: () => smartLoopContext,
+        setSelectedId: v => { selectedId = v; },
+        setSelectedImage: v => { selectedImage = v; },
+        setSettings: v => { settings = v; },
+        setUndoSuppressed: v => { undoSuppressed = v; }
+});}
+function runGeneration(){return CanvasGenerationRunner.runGeneration.apply(null, arguments);}
 async function runPromptLLMNode(nodeId){
     const node = nodes.find(n => n.id === nodeId);
     if(!node || node.type !== 'smart-prompt') return;
