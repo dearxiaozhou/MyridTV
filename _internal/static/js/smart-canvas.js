@@ -1352,134 +1352,22 @@ function setCanvasAgentOpen(open){
  }
  if(window.lucide) lucide.createIcons();
 }
-function clampCanvasAgentTogglePosition(pos={}){
- const rect = canvasAgentToggle?.getBoundingClientRect?.();
- const w = rect?.width || 40;
- const h = rect?.height || 40;
- const pad = 16;
- const maxLeft = Math.max(pad, window.innerWidth - w - pad);
- const maxTop = Math.max(pad, window.innerHeight - h - pad);
- const fallbackLeft = maxLeft;
- const fallbackTop = Math.min(Math.max((window.innerHeight - h) / 2, pad), maxTop);
- return {
-  left: Math.min(Math.max(Number(pos.left ?? fallbackLeft), pad), maxLeft),
-  top: Math.min(Math.max(Number(pos.top ?? fallbackTop), pad), maxTop)
- };
-}
-function canvasAgentTogglePositionFromStored(pos={}){
- const rect = canvasAgentToggle?.getBoundingClientRect?.();
- const w = rect?.width || 40;
- const h = rect?.height || 40;
- if(pos && (pos.edge === 'left' || pos.edge === 'right')){
-  const offset = Math.max(0, Number(pos.edgeOffset ?? 16));
-  const topSpan = Math.max(1, window.innerHeight - h);
-  return clampCanvasAgentTogglePosition({
-   left: pos.edge === 'left' ? offset : window.innerWidth - w - offset,
-   top: Number(pos.topRatio ?? .5) * topSpan
-  });
- }
- return clampCanvasAgentTogglePosition(pos);
-}
-function storedCanvasAgentTogglePosition(pos={}){
- const rect = canvasAgentToggle?.getBoundingClientRect?.();
- const w = rect?.width || 40;
- const h = rect?.height || 40;
- const next = clampCanvasAgentTogglePosition(pos);
- const edge = next.left + w / 2 < window.innerWidth / 2 ? 'left' : 'right';
- const edgeOffset = edge === 'left' ? next.left : Math.max(0, window.innerWidth - next.left - w);
- const topRatio = Math.min(Math.max(next.top / Math.max(1, window.innerHeight - h), 0), 1);
- return {
-  edge,
-  edgeOffset: Math.round(edgeOffset),
-  topRatio:Number(topRatio.toFixed(4)),
-  left:Math.round(next.left),
-  top:Math.round(next.top)
- };
-}
-function applyCanvasAgentTogglePosition(pos={}, persist=false){
- if(!canvasAgentToggle) return;
- const next = canvasAgentTogglePositionFromStored(pos);
- canvasAgentToggle.style.left = `${Math.round(next.left)}px`;
- canvasAgentToggle.style.top = `${Math.round(next.top)}px`;
- canvasAgentToggle.style.right = 'auto';
- canvasAgentToggle.style.bottom = 'auto';
- canvasAgentToggle.style.transform = '';
- if(persist){
-  try { localStorage.setItem(CANVAS_AGENT_TOGGLE_POS_KEY, JSON.stringify(storedCanvasAgentTogglePosition(next))); } catch(_) {}
- }
-}
-function loadCanvasAgentTogglePosition(){
- try {
-  const raw = localStorage.getItem(CANVAS_AGENT_TOGGLE_POS_KEY);
-  const parsed = raw ? JSON.parse(raw) : null;
-  return parsed && (parsed.edge === 'left' || parsed.edge === 'right') ? parsed : null;
- } catch(_) {
-  return null;
- }
-}
-function currentCanvasAgentTogglePosition(){
- const rect = canvasAgentToggle?.getBoundingClientRect?.();
- return rect ? {left:rect.left, top:rect.top} : loadCanvasAgentTogglePosition();
-}
-function installCanvasAgentToggleDrag(){
- if(!canvasAgentToggle) return;
- canvasAgentToggle.draggable = false;
- canvasAgentToggle.querySelectorAll?.('img').forEach(img => { img.draggable = false; });
- canvasAgentToggle.addEventListener('dragstart', e => {
-  e.preventDefault();
-  e.stopPropagation();
- });
- canvasAgentToggle.addEventListener('dragover', e => {
-  e.preventDefault();
-  e.stopPropagation();
- });
- canvasAgentToggle.addEventListener('drop', e => {
-  e.preventDefault();
-  e.stopPropagation();
- });
- canvasAgentToggle.addEventListener('pointerdown', e => {
-  if(e.button !== 0) return;
-  e.preventDefault();
-  e.stopPropagation();
-  const rect = canvasAgentToggle.getBoundingClientRect();
-  canvasAgentToggleDragState = {
-   pointerId:e.pointerId,
-   startX:e.clientX,
-   startY:e.clientY,
-   left:rect.left,
-   top:rect.top,
-   moved:false
-  };
-  canvasAgentToggle.classList.add('is-dragging');
-  try { canvasAgentToggle.setPointerCapture(e.pointerId); } catch(_) {}
- });
- canvasAgentToggle.addEventListener('pointermove', e => {
-  const state = canvasAgentToggleDragState;
-  if(!state || state.pointerId !== e.pointerId) return;
-  e.preventDefault();
-  e.stopPropagation();
-  const dx = e.clientX - state.startX;
-  const dy = e.clientY - state.startY;
-  if(Math.abs(dx) > 3 || Math.abs(dy) > 3) state.moved = true;
-  applyCanvasAgentTogglePosition({left:state.left + dx, top:state.top + dy}, false);
- });
- function finish(e){
-  const state = canvasAgentToggleDragState;
- if(!state || state.pointerId !== e.pointerId) return;
- e.preventDefault();
- e.stopPropagation();
- canvasAgentToggleDragState = null;
- canvasAgentToggle.classList.remove('is-dragging');
- try { canvasAgentToggle.releasePointerCapture(e.pointerId); } catch(_) {}
-  applyCanvasAgentTogglePosition(currentCanvasAgentTogglePosition(), true);
-  if(state.moved) canvasAgentToggleSuppressClickUntil = Date.now() + 250;
-  else if(e.type === 'pointerup'){ setCanvasAgentOpen(true); setTimeout(() => canvasAgentInput?.focus(), 80); }
- }
- canvasAgentToggle.addEventListener('pointerup', finish);
- canvasAgentToggle.addEventListener('pointercancel', finish);
- window.addEventListener('resize', () => applyCanvasAgentTogglePosition(loadCanvasAgentTogglePosition() || {}, false));
- applyCanvasAgentTogglePosition(loadCanvasAgentTogglePosition() || {}, false);
-}
+// Agent 开关拖拽定位域外移 canvas-agent-toggle-drag.js（第十一刀/B2）。dragState/suppressClickUntil 双通道，主文件仍为真变量。
+if(globalThis.CanvasAgentToggleDrag){CanvasAgentToggleDrag.configure({
+        canvasAgentToggle: () => canvasAgentToggle,
+        CANVAS_AGENT_TOGGLE_POS_KEY: () => CANVAS_AGENT_TOGGLE_POS_KEY,
+        canvasAgentToggleDragState: () => canvasAgentToggleDragState,
+        canvasAgentToggleSuppressClickUntil: () => canvasAgentToggleSuppressClickUntil,
+        setCanvasAgentToggleDragState: v => { canvasAgentToggleDragState = v; },
+        setCanvasAgentToggleSuppressClickUntil: v => { canvasAgentToggleSuppressClickUntil = v; }
+});}
+function clampCanvasAgentTogglePosition(){return CanvasAgentToggleDrag.clampCanvasAgentTogglePosition.apply(null, arguments);}
+function canvasAgentTogglePositionFromStored(){return CanvasAgentToggleDrag.canvasAgentTogglePositionFromStored.apply(null, arguments);}
+function storedCanvasAgentTogglePosition(){return CanvasAgentToggleDrag.storedCanvasAgentTogglePosition.apply(null, arguments);}
+function applyCanvasAgentTogglePosition(){return CanvasAgentToggleDrag.applyCanvasAgentTogglePosition.apply(null, arguments);}
+function loadCanvasAgentTogglePosition(){return CanvasAgentToggleDrag.loadCanvasAgentTogglePosition.apply(null, arguments);}
+function currentCanvasAgentTogglePosition(){return CanvasAgentToggleDrag.currentCanvasAgentTogglePosition.apply(null, arguments);}
+function installCanvasAgentToggleDrag(){return CanvasAgentToggleDrag.installCanvasAgentToggleDrag.apply(null, arguments);}
 function canvasAgentMediaLabel(item, index=0) {
     return CanvasAgentMessageRender.canvasAgentMediaLabel.apply(null, arguments);
 }
