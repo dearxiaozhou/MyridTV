@@ -5710,208 +5710,57 @@ const smartClientId = `canvas_smart_${Math.random().toString(36).slice(2, 10)}${
 let canvasSyncInFlight = false;
 let canvasSyncTimer = null;
 let canvasMetaPollTimer = null;
-function mergeSmartImageLists(localImgs, remoteImgs){
-    const out = [];
-    const seen = new Set();
-    (localImgs || []).forEach(img => {
-        const u = img && img.url;
-        if(u && seen.has(u)) return;
-        if(u) seen.add(u);
-        out.push(img);
-    });
-    (remoteImgs || []).forEach(img => {
-        const u = img && img.url;
-        if(!u || seen.has(u)) return;
-        seen.add(u);
-        out.push(img);
-    });
-    return out;
-}
-function mergeSmartLogLists(localLogs, remoteLogs){
-    const byId = new Map();
-    [...(localLogs || []), ...(remoteLogs || [])].forEach(log => {
-        if(!log || typeof log !== 'object') return;
-        const key = String(log.taskId || log.id || '').trim();
-        if(key) byId.set(key, log);
-    });
-    return [...byId.values()].sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0)).slice(0, 500);
-}
-function smartNodeInFlight(node){
-    return Boolean(node && (node.running || node.pending || node.queued || node.jimengPending || smartPendingTasks(node).length));
-}
-function mergeSmartNode(local, remote){
-    // 本地正在生成/排队的节点完全以本地为准，只把对方可能多出来的图并进来，绝不被对方旧状态冲掉
-    if(smartNodeInFlight(local)){
-        if((remote?.images || []).length && !smartNodeInFlight(remote)){
-            return {...remote, images:mergeSmartImageLists(local.images, remote.images)};
-        }
-        return {...local, images:mergeSmartImageLists(local.images, remote.images)};
-    }
-    // 否则以对方（最新保存方）的布局/标题/设置为基底，但图片取并集——双方生成结果都不丢
-    return {...remote, images:mergeSmartImageLists(local.images, remote.images)};
-}
-function mergeSmartNodeLists(localNodes, remoteNodes, tombstoned){
-    const dead = (tombstoned instanceof Set) ? tombstoned : new Set(tombstoned || []);
-    const localById = new Map((localNodes || []).map(n => [n.id, n]));
-    const remoteById = new Map((remoteNodes || []).map(n => [n.id, n]));
-    const order = [];
-    const seen = new Set();
-    (localNodes || []).forEach(n => { if(!seen.has(n.id)){ seen.add(n.id); order.push(n.id); } });
-    (remoteNodes || []).forEach(n => { if(!seen.has(n.id)){ seen.add(n.id); order.push(n.id); } });
-    return order.map(id => {
-        if(dead.has(id)) return null;           // Phase 4：有墓碑 = 任一端已显式删除，双向剔除（修 never delete 复活 bug）
-        const local = localById.get(id);
-        const remote = remoteById.get(id);
-        if(local && !remote) return local;     // 仅本地存在且无墓碑：保留（我新建的节点，不丢结果）
-        if(remote && !local) return remote;     // 仅对方存在且无墓碑：加入对方新建的节点
-        return mergeSmartNode(local, remote);
-    }).filter(Boolean);
-}
-function mergeSmartConnections(localConns, remoteConns, nodeIds){
-    const out = [];
-    const seen = new Set();
-    [...(localConns || []), ...(remoteConns || [])].forEach(c => {
-        if(!c || !nodeIds.has(c.from) || !nodeIds.has(c.to)) return;
-        const key = `${c.from}->${c.to}:${c.kind || 'flow'}`;
-        if(seen.has(key)) return;
-        seen.add(key);
-        out.push(c);
-    });
-    return out;
-}
-function pruneLegacyDirectorNodes(nodeList, connectionList){
-    const filteredNodes = (Array.isArray(nodeList) ? nodeList : []).filter(node => node?.type !== 'director');
-    const validIds = new Set(filteredNodes.map(node => node.id));
-    const filteredConnections = (Array.isArray(connectionList) ? connectionList : []).filter(conn => conn && validIds.has(conn.from) && validIds.has(conn.to));
-    return { nodes: filteredNodes, connections: filteredConnections };
-}
-function applyMergedServerCanvas(serverCanvas){
-    if(!serverCanvas || !canvas) return false;
-    const cleanedRemote = pruneLegacyDirectorNodes(
-        (Array.isArray(serverCanvas.nodes) ? serverCanvas.nodes : []).map(normalizeLegacySmartNode).filter(Boolean),
-        serverCanvas.connections
-    );
-    const remoteNodes = cleanedRemote.nodes;
-    // Phase 4：墓碑并集——本地删的 + 对方删的都不复活；并把对方墓碑并入本地，随下次保存回写。
-    const localDead = nodeStore.deletedIds(canvas);
-    const remoteTombs = Array.isArray(serverCanvas.deleted) ? serverCanvas.deleted : [];
-    if(remoteTombs.length){
-        if(!Array.isArray(canvas.deleted)) canvas.deleted = [];
-        remoteTombs.forEach(t => { if(t && t.id && !localDead.has(t.id)) canvas.deleted.push(t); });
-    }
-    const mergedNodes = mergeSmartNodeLists(nodes, remoteNodes, nodeStore.deletedIds(canvas));
-    const nodeIds = new Set(mergedNodes.map(n => n.id));
-    nodes = mergedNodes;
-    canvas.connections = mergeSmartConnections(canvas.connections, cleanedRemote.connections, nodeIds);
-    canvas.logs = mergeSmartLogLists(canvas.logs, serverCanvas.logs);
-    canvas.updated_at = Number(serverCanvas.updated_at || canvas.updated_at || 0);
-    if(canvas.title !== serverCanvas.title && serverCanvas.title){
-        canvas.title = serverCanvas.title;
-        const titleEl = document.getElementById('smartTitle');
-        if(titleEl) titleEl.textContent = canvas.title;
-        if(typeof updateCanvasTitleDisplay === 'function') updateCanvasTitleDisplay();
-    }
-    render();
-    refreshSmartLogPanel();
-    if(typeof refreshConnectionLayer === 'function') refreshConnectionLayer();
-    resumeSmartPendingTasks();
-    resumeJimengPendingNodes();
-    recoverStuckComfyNodes();
-    return true;
-}
-async function mergeReloadCanvasNow(){
-    if(!canvasId) return;
-    if(dragState || selectionState){
-        // 用户正在拖拽/框选，稍后再合并，别打断操作
-        scheduleCanvasMergeReload(600);
-        return;
-    }
-    try {
-        const res = await fetch(`/api/canvases/${encodeURIComponent(canvasId)}`);
-        if(!res.ok) return;
-        const data = await res.json();
-        if(data && data.canvas) applyMergedServerCanvas(data.canvas);
-    } catch(e) {}
-}
-function scheduleCanvasMergeReload(delay=200){
-    clearTimeout(canvasSyncTimer);
-    canvasSyncTimer = setTimeout(() => { mergeReloadCanvasNow(); }, delay);
-}
-function handleCanvasUpdatedMessage(data={}){
-    if(!data || data.type !== 'canvas_updated') return;
-    if(!canvasId || data.canvas_id !== canvasId) return;
-    if(data.client_id && data.client_id === smartClientId) return; // 自己发的，忽略
-    if(canvasSyncInFlight) return; // 我正在保存，保存完成/409 合并会处理
-    const remoteUpdatedAt = Number(data.updated_at || 0);
-    if(remoteUpdatedAt && remoteUpdatedAt <= Number(canvas?.updated_at || 0)) return;
-    scheduleCanvasMergeReload(200);
-}
-function startCanvasMetaPoll(){
-    // WS / iframe 转发不可靠时的兜底：定期看服务器 updated_at 是否变新，变新就合并拉取
-    if(canvasMetaPollTimer) return;
-    canvasMetaPollTimer = setInterval(async () => {
-        if(!canvasId || !canvas) return;
-        if(canvasSyncInFlight || dragState || selectionState) return;
-        try {
-            const res = await fetch(`/api/canvases/${encodeURIComponent(canvasId)}/meta`);
-            if(!res.ok) return;
-            const meta = await res.json();
-            if(Number(meta.updated_at || 0) > Number(canvas.updated_at || 0)) mergeReloadCanvasNow();
-        } catch(e) {}
-    }, 8000);
-}
-function connectAssetLibrarySyncSocket(){
-    if(window.parent && window.parent !== window) return;
-    const host = window.location.host;
-    if(!host) return;
-    const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-    const clientId = smartClientId;
-    let socket;
-    let retryTimer = null;
-    const connect = () => {
-        try {
-            socket = new WebSocket(`${protocol}://${host}/ws/stats?client_id=${clientId}`);
-        } catch(e) {
-            retryTimer = setTimeout(connect, 3000);
-            return;
-        }
-        socket.onmessage = event => {
-            try {
-                const data = JSON.parse(event.data);
-                if(data?.type === 'asset_library_updated') handleAssetLibraryUpdatedMessage(data);
-                if(data?.type === 'prompt_library_updated') handlePromptLibraryUpdatedMessage(data);
-                if(data?.type === 'canvas_updated') handleCanvasUpdatedMessage(data);
-            } catch(e) {}
-        };
-        socket.onclose = () => {
-            retryTimer = setTimeout(connect, 3000);
-        };
-        socket.onerror = () => {
-            try { socket.close(); } catch(e) {}
-        };
-    };
-    window.addEventListener('beforeunload', () => {
-        clearTimeout(retryTimer);
-        try { socket?.close(); } catch(e) {}
-    });
-    connect();
-}
-function setAssetLibraryFromResponse(data, options={}){
-    assetLibrary = data.library || assetLibrary;
-    assetLibraryUpdatedAt = Number(assetLibrary.updated_at || assetLibraryUpdatedAt || 0);
-    const libs = assetLibraries();
-    if(!activeAssetLibraryId) activeAssetLibraryId = assetLibrary.active_library_id || libs[0]?.id || '';
-    if(activeAssetLibraryId && !libs.some(lib => lib.id === activeAssetLibraryId)) activeAssetLibraryId = libs[0]?.id || '';
-    const cats = assetCategories('image');
-    if(activeAssetCategoryId && !cats.some(cat => cat.id === activeAssetCategoryId)) activeAssetCategoryId = '';
-    if(!activeAssetCategoryId) activeAssetCategoryId = activeAssetCategory()?.id || '';
-    if(mentionAssetCategoryId && !cats.some(cat => cat.id === mentionAssetCategoryId)) mentionAssetCategoryId = '';
-    if(!mentionAssetCategoryId) mentionAssetCategoryId = activeAssetCategoryId;
-    if(options.render !== false) {
-        renderAssetLibrary();
-        if(mentionPicker?.classList?.contains('open') && mentionSource === 'asset') renderMentionPicker('asset');
-    }
-}
+// 画布多端合并/资产库同步带外移 canvas-merge-sync.js（第二十一刀）。8 写入态走 setter，节点数组写源仍在主文件。
+if(globalThis.CanvasMergeSync){CanvasMergeSync.configure({
+        activeAssetCategory: (...a) => activeAssetCategory(...a),
+        assetCategories: (...a) => assetCategories(...a),
+        assetLibraries: (...a) => assetLibraries(...a),
+        handleAssetLibraryUpdatedMessage: (...a) => handleAssetLibraryUpdatedMessage(...a),
+        handlePromptLibraryUpdatedMessage: (...a) => handlePromptLibraryUpdatedMessage(...a),
+        recoverStuckComfyNodes: (...a) => recoverStuckComfyNodes(...a),
+        refreshConnectionLayer: (...a) => refreshConnectionLayer(...a),
+        refreshSmartLogPanel: (...a) => refreshSmartLogPanel(...a),
+        render: (...a) => render(...a),
+        renderAssetLibrary: (...a) => renderAssetLibrary(...a),
+        renderMentionPicker: (...a) => renderMentionPicker(...a),
+        resumeJimengPendingNodes: (...a) => resumeJimengPendingNodes(...a),
+        resumeSmartPendingTasks: (...a) => resumeSmartPendingTasks(...a),
+        smartPendingTasks: (...a) => smartPendingTasks(...a),
+        updateCanvasTitleDisplay: (...a) => updateCanvasTitleDisplay(...a),
+        activeAssetCategoryId: () => activeAssetCategoryId,
+        activeAssetLibraryId: () => activeAssetLibraryId,
+        assetLibrary: () => assetLibrary,
+        assetLibraryUpdatedAt: () => assetLibraryUpdatedAt,
+        canvasMetaPollTimer: () => canvasMetaPollTimer,
+        canvasSyncTimer: () => canvasSyncTimer,
+        mentionAssetCategoryId: () => mentionAssetCategoryId,
+        nodes: () => nodes,
+        canvas: () => canvas,
+        canvasId: () => canvasId,
+        canvasSyncInFlight: () => canvasSyncInFlight,
+        dragState: () => dragState,
+        mentionPicker: () => mentionPicker,
+        mentionSource: () => mentionSource,
+        nodeStore: () => nodeStore,
+        normalizeLegacySmartNode: () => normalizeLegacySmartNode,
+        selectionState: () => selectionState,
+        smartClientId: () => smartClientId,
+        setActiveAssetCategoryId: v => { activeAssetCategoryId = v; },
+        setActiveAssetLibraryId: v => { activeAssetLibraryId = v; },
+        setAssetLibrary: v => { assetLibrary = v; },
+        setAssetLibraryUpdatedAt: v => { assetLibraryUpdatedAt = v; },
+        setCanvasMetaPollTimer: v => { canvasMetaPollTimer = v; },
+        setCanvasSyncTimer: v => { canvasSyncTimer = v; },
+        setMentionAssetCategoryId: v => { mentionAssetCategoryId = v; },
+        setNodes: v => { nodes = v; }
+});}
+function mergeSmartNodeLists(){return CanvasMergeSync.mergeSmartNodeLists.apply(null, arguments);}
+function pruneLegacyDirectorNodes(){return CanvasMergeSync.pruneLegacyDirectorNodes.apply(null, arguments);}
+function applyMergedServerCanvas(){return CanvasMergeSync.applyMergedServerCanvas.apply(null, arguments);}
+function handleCanvasUpdatedMessage(){return CanvasMergeSync.handleCanvasUpdatedMessage.apply(null, arguments);}
+function startCanvasMetaPoll(){return CanvasMergeSync.startCanvasMetaPoll.apply(null, arguments);}
+function connectAssetLibrarySyncSocket(){return CanvasMergeSync.connectAssetLibrarySyncSocket.apply(null, arguments);}
+function setAssetLibraryFromResponse(){return CanvasMergeSync.setAssetLibraryFromResponse.apply(null, arguments);}
 /* ================= 风格库（composer 标签版） =================
    风格 = 提示词框内的可删除标签（仿截图），选中的风格文本在生成时追加到提示词尾部。
    内置风格只读；用户自建风格存 localStorage，可编辑/删除。 */
