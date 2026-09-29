@@ -9923,218 +9923,46 @@ function smartLoopUpstreamPromptPreviewHeight(node){
     return smartLoopInputPromptItems(node).length ? 78 : 0;
 }
 const smartLoopPromptVisiting = new Set();
-function smartLoopInputPromptItems(node){
-    if(!node?.showPrompt || smartLoopPromptVisiting.has(node.id)) return [];
-    smartLoopPromptVisiting.add(node.id);
-    try {
-        return inputNodesFor(node).flatMap(input => {
-            const text = textForNode(input);
-            return text ? [text] : [];
-        }).filter(Boolean);
-    } finally {
-        smartLoopPromptVisiting.delete(node.id);
-    }
-}
-function smartLoopSelectedInputPrompt(node, ctx=smartLoopContext){
-    const items = smartLoopInputPromptItems(node);
-    if(!items.length) return '';
-    const startBase = Math.max(1, Number(node?.loopStart) || 1);
-    const index = Math.max(1, Number(ctx?.index || startBase) || startBase);
-    return items[(index - 1) % items.length] || '';
-}
-function smartLoopPrompt(node, ctx=smartLoopContext){
-    if(!node?.showPrompt) return '';
-    const count = smartLoopCount(node);
-    const startBase = Math.max(1, Number(node.loopStart) || 1);
-    const index = Math.max(1, Number(ctx?.index || startBase) || startBase);
-    const total = Math.max(1, Number(ctx?.total || count) || count);
-    const selected = smartLoopSelectedInputPrompt(node, ctx);
-    const localPrompt = smartLoopSelectedLocalPrompt(node, ctx);
-    const combined = [selected, localPrompt].map(text => String(text || '').trim()).filter(Boolean).join('\n\n');
-    return String(combined || '')
-        .replaceAll('《计数》', String(index))
-        .replaceAll('[计数]', String(index))
-        .replaceAll(`[${tr('canvas.counterToken')}]`, String(index))
-        .replaceAll('《总数》', String(total))
-        .replaceAll('[总数]', String(total))
-        .replaceAll('《进度》', `${index}/${total}`)
-        .replaceAll('[进度]', `${index}/${total}`)
-        .trim();
-}
-function smartLoopInputImages(node, ctx=smartLoopContext){
-    if(!node?.imageInput) return [];
-    const refs = inputNodesFor(node).flatMap(input => {
-        if(input?.type === 'smart-loop') return smartLoopInputImages(input, ctx);
-        return imagesForNode(input);
-    }).filter(img => img?.url);
-    if(!refs.length) return [];
-    const startBase = Math.max(1, Number(node.loopStart) || 1);
-    const batchSize = Math.max(1, Math.min(100, Number(node.imageBatchSize) || 1));
-    const currentIndex = Math.max(1, Number(ctx?.index || startBase) || startBase);
-    return refs.slice(Math.max(0, currentIndex - 1), Math.max(0, currentIndex - 1) + batchSize)
-        .map((img, i) => ({...img, name:img.name || trf('canvas.loopImageLabel', {n:currentIndex + i})}));
-}
-function smartLoopPreviewImages(node){
-    if(!node?.imageInput) return [];
-    return inputNodesFor(node).flatMap(input => {
-        if(input?.type === 'smart-loop') return smartLoopInputImages(input, {index:Number(node.loopStart) || 1});
-        return imagesForNode(input);
-    }).filter(img => img?.url);
-}
-function outputImagesForNode(node, consume=false, ctx=smartLoopContext){
-    if(node?.type === 'smart-loop') return smartLoopInputImages(node, ctx);
-    return imagesForNode(node).filter(img => img?.url);
-}
-function selfReferenceImagesForNode(node, consume=false, ctx=smartLoopContext){
-    return outputImagesForNode(node, consume, ctx).filter(img => img?.url);
-}
-function textForNode(node, ctx=smartLoopContext){
-    if(!node) return '';
-    if(node.type === 'smart-prompt') return node.text || '';
-    if(node.type === 'smart-loop') return smartLoopPrompt(node, ctx);
-    if(node.type === 'smart-image' || !node.type) return nodeTextOutput(node);
-    return '';
-}
-function promptInputNodesFor(node){
-    return inputNodesFor(node).filter(input => Boolean(textForNode(input)));
-}
-function inputPromptTextFor(node, ctx=smartLoopContext){
-    // 无线引用里的文本节点与连线文本节点一样并入提示词正文
-    const directText = [...canvasObjectReferenceTextNodes(node), ...promptInputNodesFor(node).map(input => textForNode(input, ctx))].filter(Boolean);
-    const relayText = Array.isArray(ctx?.relayPromptNodeIds)
-        ? ctx.relayPromptNodeIds.map(id => nodes.find(n => n.id === id)).map(input => textForNode(input, ctx)).filter(Boolean)
-        : [];
-    const seen = new Set();
-    return [...directText, ...relayText].filter(text => {
-        const key = String(text || '').trim();
-        if(!key || seen.has(key)) return false;
-        seen.add(key);
-        return true;
-    }).join('\n\n');
-}
-function upstreamLoopPromptNodesFor(node){
-    return promptInputNodesFor(node).filter(input => input?.type === 'smart-loop' && input.showPrompt);
-}
-function inputImagesFor(node, consume=false, ctx=smartLoopContext){
-    return inputNodesFor(node).flatMap(input => outputImagesForNode(input, consume, ctx));
-}
-function workflowInputImagesFor(node, consume=false, ctx=smartLoopContext){
-    return workflowInputNodesFor(node).flatMap(input => outputImagesForNode(input, consume, ctx));
-}
-function inputRefKey(img){
-    if(!img?.url) return '';
-    const nodeId = img.nodeId || '';
-    const imageIndex = Number.isFinite(Number(img.imageIndex)) ? String(Number(img.imageIndex)) : '';
-    if(nodeId && imageIndex !== '') return `${nodeId}|${imageIndex}`;
-    return `url|${img.url}`;
-}
-function blockedInputRefKeys(node){
-    return new Set(Array.isArray(node?.blockedInputRefs) ? node.blockedInputRefs.filter(Boolean) : []);
-}
-function isInputRefBlocked(node, img){
-    if(!node || !img?.url) return false;
-    return blockedInputRefKeys(node).has(inputRefKey(img));
-}
-function activeInputImagesFor(node, consume=false, ctx=smartLoopContext){
-    return inputImagesFor(node, consume, ctx).filter(img => img?.url && !isInputRefBlocked(node, img));
-}
-function toggleInputRefBlocked(node, img){
-    if(!node || !img?.url) return;
-    const key = inputRefKey(img);
-    if(!key) return;
-    pushUndo();
-    const blocked = blockedInputRefKeys(node);
-    if(blocked.has(key)) blocked.delete(key);
-    else blocked.add(key);
-    node.blockedInputRefs = [...blocked];
-    if(!node.blockedInputRefs.length) delete node.blockedInputRefs;
-    renderInputThumbsRow(node);
-    scheduleSave();
-}
-function defaultReferenceImagesFor(node, consume=false, ctx=smartLoopContext){
-    if(!node) return [];
-    // 节点自身输出图不参与输入引用（用户要求 2026-08-16）
-    const upstream = defaultInputImagesFor(node, consume, ctx);
-    if(smartImageUsesWorkflowInput(node, ctx)) return uniqueReferenceImages(upstream);
-    return uniqueReferenceImages(upstream);
-}
-function lineConnectionsFor(node){
-    if(!node) return [];
-    return (canvas?.connections || []).filter(conn => {
-        if(!conn?.from || !conn?.to || conn.from === conn.to) return false;
-        return ['input', 'flow'].includes(conn.kind || 'flow');
-    });
-}
-function connectedLineNodeIds(node){
-    if(!node) return [];
-    const conns = lineConnectionsFor(node);
-    const upstream = [];
-    const downstream = [];
-    const seenUp = new Set([node.id]);
-    const seenDown = new Set([node.id]);
-    const walkUp = id => {
-        conns.filter(conn => conn.to === id).forEach(conn => {
-            if(seenUp.has(conn.from)) return;
-            seenUp.add(conn.from);
-            walkUp(conn.from);
-            upstream.push(conn.from);
-        });
-    };
-    const walkDown = id => {
-        conns.filter(conn => conn.from === id).forEach(conn => {
-            if(seenDown.has(conn.to)) return;
-            seenDown.add(conn.to);
-            downstream.push(conn.to);
-            walkDown(conn.to);
-        });
-    };
-    walkUp(node.id);
-    walkDown(node.id);
-    return [...upstream, node.id, ...downstream];
-}
-function upstreamLineNodeIds(node){
-    if(!node) return [];
-    // 只取直接上游（上一组输入），不递归整条链，也不含当前节点自身（用户要求 2026-08-16）
-    const conns = lineConnectionsFor(node);
-    const direct = [];
-    conns.filter(conn => conn.to === node.id).forEach(conn => {
-        if(conn.from && conn.from !== node.id && !direct.includes(conn.from)) direct.push(conn.from);
-    });
-    return direct;
-}
-function lineImagesFor(node){
-    const ids = upstreamLineNodeIds(node);
-    return ids.flatMap(id => {
-        const source = nodes.find(n => n.id === id);
-        return imagesForNode(source);
-    }).filter(img => img?.url);
-}
-function collectMentionedImagesFromPrompt(){
-    const images = [];
-    collectPromptParts().forEach(part => {
-        if(part.type === 'image' && part.url) images.push(part);
-    });
-    return images;
-}
-function uniqueReferenceImages(images){
-    const refs = [];
-    const seen = new Set();
-    (images || []).forEach((img, index) => {
-        if(!img?.url || seen.has(img.url)) return;
-        seen.add(img.url);
-        refs.push({
-            ...img,
-            name:img.name || `图${refs.length + 1}`,
-            role:img.role || `image_${refs.length + 1}`,
-            imageIndex:Number.isFinite(Number(img.imageIndex)) ? Number(img.imageIndex) : index
-        });
-    });
-    return refs;
-}
-function visibleReferenceImagesFor(node){
-    const base = defaultReferenceImagesFor(node);
-    return uniqueReferenceImages([...base, ...collectMentionedImagesFromPrompt()]);
-}
+// smartLoop 输入图/引用数据带外移 canvas-smartloop-data.js（第二十二刀）。零整写带：4 只读 getter + 13 函数 deps。
+if(globalThis.CanvasSmartLoopData){CanvasSmartLoopData.configure({
+        collectPromptParts: (...a) => collectPromptParts(...a),
+        defaultInputImagesFor: (...a) => defaultInputImagesFor(...a),
+        imagesForNode: (...a) => imagesForNode(...a),
+        inputNodesFor: (...a) => inputNodesFor(...a),
+        nodeTextOutput: (...a) => nodeTextOutput(...a),
+        pushUndo: (...a) => pushUndo(...a),
+        renderInputThumbsRow: (...a) => renderInputThumbsRow(...a),
+        scheduleSave: (...a) => scheduleSave(...a),
+        smartImageUsesWorkflowInput: (...a) => smartImageUsesWorkflowInput(...a),
+        smartLoopCount: (...a) => smartLoopCount(...a),
+        smartLoopSelectedLocalPrompt: (...a) => smartLoopSelectedLocalPrompt(...a),
+        trf: (...a) => trf(...a),
+        workflowInputNodesFor: (...a) => workflowInputNodesFor(...a),
+        canvas: () => canvas,
+        canvasObjectReferenceTextNodes: () => canvasObjectReferenceTextNodes,
+        nodes: () => nodes,
+        smartLoopContext: () => smartLoopContext,
+        smartLoopPromptVisiting: () => smartLoopPromptVisiting
+});}
+function smartLoopInputPromptItems(){return CanvasSmartLoopData.smartLoopInputPromptItems.apply(null, arguments);}
+function smartLoopSelectedInputPrompt(){return CanvasSmartLoopData.smartLoopSelectedInputPrompt.apply(null, arguments);}
+function smartLoopInputImages(){return CanvasSmartLoopData.smartLoopInputImages.apply(null, arguments);}
+function smartLoopPreviewImages(){return CanvasSmartLoopData.smartLoopPreviewImages.apply(null, arguments);}
+function outputImagesForNode(){return CanvasSmartLoopData.outputImagesForNode.apply(null, arguments);}
+function selfReferenceImagesForNode(){return CanvasSmartLoopData.selfReferenceImagesForNode.apply(null, arguments);}
+function textForNode(){return CanvasSmartLoopData.textForNode.apply(null, arguments);}
+function promptInputNodesFor(){return CanvasSmartLoopData.promptInputNodesFor.apply(null, arguments);}
+function inputPromptTextFor(){return CanvasSmartLoopData.inputPromptTextFor.apply(null, arguments);}
+function upstreamLoopPromptNodesFor(){return CanvasSmartLoopData.upstreamLoopPromptNodesFor.apply(null, arguments);}
+function inputImagesFor(){return CanvasSmartLoopData.inputImagesFor.apply(null, arguments);}
+function workflowInputImagesFor(){return CanvasSmartLoopData.workflowInputImagesFor.apply(null, arguments);}
+function inputRefKey(){return CanvasSmartLoopData.inputRefKey.apply(null, arguments);}
+function blockedInputRefKeys(){return CanvasSmartLoopData.blockedInputRefKeys.apply(null, arguments);}
+function defaultReferenceImagesFor(){return CanvasSmartLoopData.defaultReferenceImagesFor.apply(null, arguments);}
+function lineImagesFor(){return CanvasSmartLoopData.lineImagesFor.apply(null, arguments);}
+function collectMentionedImagesFromPrompt(){return CanvasSmartLoopData.collectMentionedImagesFromPrompt.apply(null, arguments);}
+function uniqueReferenceImages(){return CanvasSmartLoopData.uniqueReferenceImages.apply(null, arguments);}
+function visibleReferenceImagesFor(){return CanvasSmartLoopData.visibleReferenceImagesFor.apply(null, arguments);}
 // @编号铁律（用户 2026-09-11 定稿）：编号=缩略图行从左到右第 N 张（图片/视频分计），
 // 与点击先后无关，第 N 次 @ 它仍是图片N；拖缩略图换序后编号随新序。
 function mentionThumbnailCandidates(node){
