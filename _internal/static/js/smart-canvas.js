@@ -920,6 +920,18 @@ function setCanvasInputMode(mode, opts={}){
     const next = mode === 'objects' ? 'objects' : 'connections';
     if(!canvas || canvasInputMode() === next) return;
     canvas.inputMode = next;
+    // 切到无线模式：连线里的所有“被引用源节点”（connections[].from）自动设为 Set 并选中，
+    // 使它们成为可被其它节点无线引用（引用结果）的发布源，并高亮方便二次操作。
+    if(next === 'objects'){
+        const referencedIds = Array.from(new Set((canvas.connections || []).map(c => c.from).filter(Boolean)));
+        const targets = referencedIds.map(id => nodes.find(n => n.id === id)).filter(Boolean);
+        if(targets.length){
+            targets.forEach(n => { n.canvasSetEnabled = true; });
+            const merged = Array.from(new Set([...(selectedIds || []), ...targets.map(n => n.id)]));
+            CanvasNodeSelectionController.setSelectedIds(merged);
+            syncSelectionUi();
+        }
+    }
     closeCanvasObjectRefPicker();
     syncCanvasInputModeUi();
     render();
@@ -9649,246 +9661,43 @@ function canvasObjectRefDocumentClose(event){
     closeCanvasObjectRefPicker();
 }
 document.addEventListener('pointerdown', canvasObjectRefDocumentClose, true);
-function openCanvasObjectRefPicker(consumerId){
-    const consumer = nodes.find(n => n.id === (consumerId || canvasObjectRefConsumerId));
-    if(!consumer) return;
-    canvasObjectRefConsumerId = consumer.id;
-    canvasObjectRefQuery = '';
-    canvasObjectRefKind = 'all';
-    canvasObjectRefPickerOpen = true;
-    renderCanvasObjectRefPicker();
-    canvasObjectRefPickerEl()?.classList.add('open');
-}
-function closeCanvasObjectRefPicker(){
-    canvasObjectRefPickerOpen = false;
-    canvasObjectRefPickerEl()?.classList.remove('open');
-}
-function toggleCanvasObjectRefPicker(consumerId){
-    const el = canvasObjectRefPickerEl();
-    if(canvasObjectRefPickerOpen && el?.classList.contains('open')) closeCanvasObjectRefPicker();
-    else openCanvasObjectRefPicker(consumerId);
-}
-function canvasSetCandidatesFor(consumerId){
-    return canvasSetSourceNodes()
-        .filter(n => n.id !== consumerId)
-        .map(node => ({node, kind:canvasNodeResultKind(node), thumb:imagesForNode(node)[0] || null}))
-        .filter(item => item.kind);
-}
-function canvasObjectRefCandidateHtml(item, selected){
-    const kindKey = item.kind === 'image' ? 'smart.kindImage'
-        : item.kind === 'video' ? 'smart.kindVideo'
-        : item.kind === 'audio' ? 'smart.kindAudio'
-        : item.kind === 'text' ? 'smart.kindText' : 'smart.kindFile';
-    const thumb = item.thumb
-        ? `<img src="${escapeHtml(canvasThumbnailUrl(item.thumb, 96))}" data-original-src="${escapeAttr(item.thumb.url || '')}" alt="" draggable="false" loading="lazy">`
-        : `<span class="object-ref-icon"><i data-lucide="${item.kind === 'text' ? 'file-text' : 'file'}"></i></span>`;
-    return `<button class="object-ref-item ${selected ? 'is-selected' : ''}" type="button" data-object-ref-pick="${escapeAttr(item.node.id)}"><span class="object-ref-thumb">${thumb}</span><span class="object-ref-meta"><span class="object-ref-title">${escapeHtml(item.node.title || tr('smart.title'))}</span><span class="object-ref-kind">${escapeHtml(tr(kindKey))}</span></span><span class="object-ref-check">${selected ? '<i data-lucide="check"></i>' : ''}</span></button>`;
-}
-function renderCanvasObjectRefPicker(){
-    const el = canvasObjectRefPickerEl();
-    if(!el) return;
-    const consumer = nodes.find(n => n.id === canvasObjectRefConsumerId);
-    if(!consumer){ closeCanvasObjectRefPicker(); return; }
-    const refs = canvasObjectReferencesFor(consumer);
-    const kindKeys = ['all','image','video','audio','text'];
-    const allCandidates = canvasSetCandidatesFor(consumer.id);
-    const items = allCandidates
-        .filter(item => canvasObjectRefKind === 'all' || item.kind === canvasObjectRefKind)
-        .filter(item => !canvasObjectRefQuery || String(item.node.title || '').toLowerCase().includes(canvasObjectRefQuery));
-    const listHtml = items.length
-        ? items.map(item => canvasObjectRefCandidateHtml(item, refs.some(ref => ref.sourceNodeId === item.node.id))).join('')
-        : `<div class="object-ref-empty">${escapeHtml(allCandidates.length ? tr('smart.objectRefNoMatch') : tr('smart.objectRefEmpty'))}</div>`;
-    const kindLabel = key => tr(key === 'all' ? 'smart.tplAll' : key === 'image' ? 'smart.kindImage' : key === 'video' ? 'smart.kindVideo' : key === 'audio' ? 'smart.kindAudio' : 'smart.kindText');
-    el.innerHTML = `
-        <div class="object-ref-head"><span>${escapeHtml(tr('smart.objectRef'))}</span><button class="object-ref-close" type="button" title="${escapeAttr(tr('smart.close'))}"><i data-lucide="x"></i></button></div>
-        <div class="object-ref-search"><i data-lucide="search"></i><input type="search" placeholder="${escapeAttr(tr('smart.objectRefSearch'))}" value="${escapeAttr(canvasObjectRefQuery)}"></div>
-        <div class="object-ref-kinds">${kindKeys.map(key => `<button class="object-ref-kind-chip ${canvasObjectRefKind === key ? 'active' : ''}" type="button" data-object-ref-kind="${key}">${escapeHtml(kindLabel(key))}</button>`).join('')}</div>
-        <div class="object-ref-list">${listHtml}</div>`;
-    el.querySelector('.object-ref-close')?.addEventListener('click', e => { e.preventDefault(); closeCanvasObjectRefPicker(); });
-    const search = el.querySelector('.object-ref-search input');
-    if(search){
-        search.addEventListener('input', () => {
-            canvasObjectRefQuery = String(search.value || '').trim().toLowerCase();
-            renderCanvasObjectRefPicker();
-            const next = canvasObjectRefPickerEl()?.querySelector('.object-ref-search input');
-            if(next){ next.focus(); next.setSelectionRange(next.value.length, next.value.length); }
-        });
-    }
-    el.querySelectorAll('[data-object-ref-kind]').forEach(btn => btn.addEventListener('click', e => {
-        e.preventDefault();
-        canvasObjectRefKind = btn.dataset.objectRefKind || 'all';
-        renderCanvasObjectRefPicker();
-    }));
-    el.querySelectorAll('[data-object-ref-pick]').forEach(btn => btn.addEventListener('click', e => {
-        e.preventDefault();
-        toggleCanvasObjectReference(canvasObjectRefConsumerId, btn.dataset.objectRefPick);
-    }));
-    if(window.lucide) lucide.createIcons();
-}
-function toggleCanvasObjectReference(consumerId, sourceNodeId){
-    const consumer = nodes.find(n => n.id === consumerId);
-    const source = nodes.find(n => n.id === sourceNodeId);
-    if(!consumer || !source || consumer.id === source.id) return;
-    if(source.canvasSetEnabled !== true){ toast(tr('smart.objectRefNeedSet')); return; }
-    pushUndo();
-    const refs = canvasObjectReferencesFor(consumer).slice();
-    const index = refs.findIndex(ref => ref.sourceNodeId === sourceNodeId);
-    if(index >= 0) refs.splice(index, 1);
-    else refs.push({id:uid('canvasobjref'), sourceNodeId, versionMode:'latest', createdAt:Date.now()});
-    if(refs.length) consumer.objectReferences = refs;
-    else delete consumer.objectReferences;
-    renderInputThumbsRow(consumer);
-    renderCanvasObjectRefPicker();
-    scheduleSave();
-}
-function removeCanvasObjectReference(consumerId, referenceId){
-    const consumer = nodes.find(n => n.id === consumerId);
-    if(!consumer || !referenceId) return;
-    pushUndo();
-    const refs = canvasObjectReferencesFor(consumer).filter(ref => ref.id !== referenceId);
-    if(refs.length) consumer.objectReferences = refs;
-    else delete consumer.objectReferences;
-    renderInputThumbsRow(consumer);
-    if(canvasObjectRefPickerOpen) renderCanvasObjectRefPicker();
-    scheduleSave();
-}
-function bindCanvasObjectRefActions(node){
-    if(node) canvasObjectRefConsumerId = node.id;
-    inputThumbsRow?.querySelectorAll('[data-object-ref-open]').forEach(btn => {
-        btn.onclick = event => {
-            event.preventDefault();
-            event.stopPropagation();
-            toggleCanvasObjectRefPicker(node?.id);
-        };
-    });
-    inputThumbsRow?.querySelectorAll('[data-object-ref-remove]').forEach(btn => {
-        btn.onclick = event => {
-            event.preventDefault();
-            event.stopPropagation();
-            removeCanvasObjectReference(node?.id, btn.dataset.objectRefRemove);
-        };
-    });
-}
-function bindInputThumbsDrag(node, items){
-    if(!inputThumbsRow) return;
-    inputThumbsRow.querySelectorAll('.input-thumb').forEach(el => {
-        const index = Number(el.dataset.thumbIndex || 0);
-        el.setAttribute('draggable', 'false');
-        el.addEventListener('mousedown', e => {
-            if(e.button !== 0 || !node || !items?.length) return;
-            if(el.classList.contains('input-self')) return;
-            e.preventDefault();
-            e.stopPropagation();
-            inputThumbDragState = {
-                nodeId:node.id,
-                from:index,
-                target:index,
-                before:true,
-                startX:e.clientX,
-                startY:e.clientY,
-                active:false,
-                items
-            };
-            if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.begin('input-thumb-drag');
-        });
-        el.addEventListener('click', e => {
-            e.preventDefault();
-            e.stopPropagation();
-        });
-    });
-}
-function bindInputThumbVideoActions(){
-    inputThumbsRow?.querySelectorAll('[data-manual-video-url]').forEach(btn => {
-        btn.onclick = async event => {
-            event.preventDefault();
-            event.stopPropagation();
-            try {
-                await setCurrentSmartManualVideoUrl();
-            } catch(e) {
-                toast((e.message || '设置视频网址失败').slice(0, 180));
-            }
-        };
-    });
-    inputThumbsRow?.querySelectorAll('[data-temp-sh-upload-video]').forEach(btn => {
-        btn.onclick = async event => {
-            event.preventDefault();
-            event.stopPropagation();
-            try {
-                await uploadCurrentSmartVideosToCloud();
-            } catch(e) {
-                toast((e.message || '云端上传失败').slice(0, 180));
-            }
-        };
-    });
-}
-function applyInputOrderFromImageList(currentNode, items){
-    // 按缩略图视觉顺序推导节点顺序（每个节点取其首张图的位置），回写 inputNodeIds 并返回该顺序
-    const order = [];
-    (items || []).forEach(img => {
-        const id = img?.nodeId;
-        if(id && !order.includes(id)) order.push(id);
-    });
-    if(!order.length || !currentNode) return null;
-    currentNode.inputNodeIds = order;
-    return order;
-}
-function reorderInputThumb(currentNode, items, from, to){
-    // items are already sourced from inputImagesFor → multiple source nodes possible.
-    // Same source node: reorder images inside that node.
-    // Different source nodes: reorder current node's upstream input order.
-    if(from < 0 || to < 0 || from >= items.length || to >= items.length) return;
-    const fromImg = items[from];
-    const toImg = items[to];
-    if(!fromImg || !toImg) return;
-    // 与函数内 splice+insert 的移动语义一致：把第 from 张移到第 to 位（拖动落点传的就是插入位）
-    const applied = items.slice();
-    const [movedImg] = applied.splice(from, 1);
-    applied.splice(to, 0, movedImg);
-    if(fromImg.nodeId === toImg.nodeId){
-        const src = nodes.find(n => n.id === fromImg.nodeId);
-        if(!src) return;
-        pushUndo();
-        const fi = Number(fromImg.imageIndex);
-        const ti = Number(toImg.imageIndex);
-        if(Number.isFinite(fi) && Number.isFinite(ti) && (src.images || [])[fi]){
-            const arr = src.images;
-            const item = arr.splice(fi, 1)[0];
-            arr.splice(ti, 0, item);
-        }
-        // 同节点内换序也要让连线顺序跟上缩略图视觉顺序（用户要求 2026-09-11）
-        applyInputOrderFromImageList(currentNode, applied);
-        render();
-        scheduleSave();
-        return;
-    }
-    if(!currentNode?.id || !fromImg.nodeId || !toImg.nodeId) return;
-    pushUndo();
-    // 以交换后的缩略图视觉顺序为准推导节点顺序（旧实现把图片下标当节点下标用，跨节点拖动必错位）
-    const order = applyInputOrderFromImageList(currentNode, applied);
-    if(!order){
-        discardPendingUndo?.();
-        return;
-    }
-    if(canvas?.connections){
-        const ranked = new Map(order.map((id, index) => [id, index]));
-        const indexed = canvas.connections.map((conn, index) => ({conn, index}));
-        indexed.sort((a, b) => {
-            const ar = a.conn?.to === currentNode.id ? (ranked.get(a.conn.from) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER;
-            const br = b.conn?.to === currentNode.id ? (ranked.get(b.conn.from) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER;
-            if(ar !== br) return ar - br;
-            return a.index - b.index;
-        });
-        canvas.connections = indexed.map(item => item.conn);
-    }
-    render();
-    scheduleSave();
-}
-function isSupportedUploadFile(file){
-    const type = String(file?.type || '').toLowerCase();
-    const name = String(file?.name || '').toLowerCase();
-    return type.startsWith('image/') || type.startsWith('video/') || type.startsWith('audio/')
-        || /\.(png|jpe?g|webp|gif|mp4|webm|mov|m4v|mp3|wav|m4a|aac|ogg|flac)(\?|$)/.test(name);
-}
+// 对象引用选择器+缩略图拖拽带外移 canvas-object-ref-picker.js（第二十刀）。picker 四态+拖拽态写入走 setter。
+if(globalThis.CanvasObjectRefPicker){CanvasObjectRefPicker.configure({
+        canvasNodeResultKind: (...a) => canvasNodeResultKind(...a),
+        canvasObjectRefPickerEl: (...a) => canvasObjectRefPickerEl(...a),
+        canvasObjectReferencesFor: (...a) => canvasObjectReferencesFor(...a),
+        canvasSetSourceNodes: (...a) => canvasSetSourceNodes(...a),
+        canvasThumbnailUrl: (...a) => canvasThumbnailUrl(...a),
+        escapeHtml: (...a) => escapeHtml(...a),
+        imagesForNode: (...a) => imagesForNode(...a),
+        pushUndo: (...a) => pushUndo(...a),
+        renderInputThumbsRow: (...a) => renderInputThumbsRow(...a),
+        scheduleSave: (...a) => scheduleSave(...a),
+        setCurrentSmartManualVideoUrl: (...a) => setCurrentSmartManualVideoUrl(...a),
+        toast: (...a) => toast(...a),
+        uid: (...a) => uid(...a),
+        uploadCurrentSmartVideosToCloud: (...a) => uploadCurrentSmartVideosToCloud(...a),
+        canvasObjectRefConsumerId: () => canvasObjectRefConsumerId,
+        canvasObjectRefKind: () => canvasObjectRefKind,
+        canvasObjectRefPickerOpen: () => canvasObjectRefPickerOpen,
+        canvasObjectRefQuery: () => canvasObjectRefQuery,
+        inputThumbDragState: () => inputThumbDragState,
+        escapeAttr: () => escapeAttr,
+        inputThumbsRow: () => inputThumbsRow,
+        nodes: () => nodes,
+        setCanvasObjectRefConsumerId: v => { canvasObjectRefConsumerId = v; },
+        setCanvasObjectRefKind: v => { canvasObjectRefKind = v; },
+        setCanvasObjectRefPickerOpen: v => { canvasObjectRefPickerOpen = v; },
+        setCanvasObjectRefQuery: v => { canvasObjectRefQuery = v; },
+        setInputThumbDragState: v => { inputThumbDragState = v; }
+});}
+function closeCanvasObjectRefPicker(){return CanvasObjectRefPicker.closeCanvasObjectRefPicker.apply(null, arguments);}
+function renderCanvasObjectRefPicker(){return CanvasObjectRefPicker.renderCanvasObjectRefPicker.apply(null, arguments);}
+function bindCanvasObjectRefActions(){return CanvasObjectRefPicker.bindCanvasObjectRefActions.apply(null, arguments);}
+function bindInputThumbsDrag(){return CanvasObjectRefPicker.bindInputThumbsDrag.apply(null, arguments);}
+function bindInputThumbVideoActions(){return CanvasObjectRefPicker.bindInputThumbVideoActions.apply(null, arguments);}
+function reorderInputThumb(){return CanvasObjectRefPicker.reorderInputThumb.apply(null, arguments);}
+function isSupportedUploadFile(){return CanvasObjectRefPicker.isSupportedUploadFile.apply(null, arguments);}
 CanvasImageDropPayload.configure({isSupportedUploadFile});
 CanvasImageNodeMediaController.configure({
     getNodes: () => nodes,
@@ -10218,11 +10027,13 @@ function candidateInputImagesFor(node, consume=false, ctx=smartLoopContext){
     return inputs;
 }
 function defaultInputImagesFor(node, consume=false, ctx=smartLoopContext){
-    // 无线引用与连线输入在这一层合流（@编号 = 缩略图行从左到右第 N 张）
+    // 无线引用与连线输入在这一层合流（@编号 = 缩略图行从左到右第 N 张）。
+    // 顺序：有线图片在前、无线引用追加到末尾 —— 这样在无线模式下再新增引用图片会“往后排”，
+    // 不会插到第一张把既有有线图片的 @编号 往后挤（老王 2026-09-29 反馈引用错乱）。
     const objectRefs = canvasObjectReferenceImages(node, ctx);
     const connected = candidateInputImagesFor(node, consume, ctx);
     if(!objectRefs.length) return connected;
-    return uniqueReferenceImages([...objectRefs, ...connected]);
+    return uniqueReferenceImages([...connected, ...objectRefs]);
 }
 function splitSmartPromptItems(text){
     const trimmed = String(text || '').trim();
