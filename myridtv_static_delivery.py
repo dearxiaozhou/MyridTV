@@ -71,6 +71,16 @@ def patch_static_versions_once():
                 # 兼容两种 URL 形态：/x.css?v= 与 /x.css?cb=xxx&v= （后者曾导致版本号永远刷不到）
                 pattern = re.compile(rf"({re.escape(url)}\?(?:[^\"'<>\s]*&)?v=)[^\"'<>\s]+")
                 updated = pattern.sub(lambda match: f"{match.group(1)}{_static_version_getter()}", updated)
+                # 纯 /x.js?cb=xxx（整串查询里没有 v= 段）：补挂 &v=VERSION，纳入刷版。
+                # 双形态 ?cb=a&v=b 上面 v 分支已刷，这里回调见 &v= 原样返回，不重复追加；
+                # 二次运行本分支不再命中（已有 &v=）→ 幂等收敛。
+                q_pat = re.compile("(" + re.escape(url) + r"\?[A-Za-z0-9._~%=?/&+-]+)")
+                def _fix_cb(match):
+                    q = match.group(1)
+                    if '&v=' in q or '?v=' in q or '?cb=' not in q:
+                        return q
+                    return f"{q}&v={_static_version_getter()}"
+                updated = q_pat.sub(_fix_cb, updated)
             if updated != text:
                 path.write_text(updated, encoding="utf-8")
         except Exception:
