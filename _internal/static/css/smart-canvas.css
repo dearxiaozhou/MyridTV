@@ -584,7 +584,9 @@ audio { display:none !important; width:0 !important; height:0 !important; min-wi
 .connection-layer .conn-hit { pointer-events:stroke; cursor:pointer; }
 /* 剪刀按钮：鼠标停在连线上时吸附到光标最近的线上位置 */
 .connection-layer .conn-scissor { opacity:0; pointer-events:none; transition:opacity .12s ease; cursor:pointer; }
+.connection-layer .conn-scissor:not(.show) * { pointer-events:none !important; }
 .connection-layer .conn-scissor.show { opacity:1; pointer-events:auto; }
+.connection-tools-layer { z-index:6; }
 .connection-layer .conn-scissor:hover circle:nth-of-type(2) { stroke-width:2; }
 .connection-layer .conn-pending { stroke-dasharray:5 4; animation:dash 1.5s linear infinite; }
 /* 运行中连线（A 彗星拖尾）：底线常亮实线，两颗光点沿管道滑行 */

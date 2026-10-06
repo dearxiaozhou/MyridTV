@@ -100,18 +100,41 @@ git diff --cached --name-only | Select-String -Pattern '\.key|\.pem|\.pfx|_verif
 
 ## 第 4 步：打安装包
 
+### 4.0 先跑隐私预检（能省 20 分钟）
+
+打包炸过两次，都是隐私门控。**先跑这个预检，1 分钟出结果**：
+
+```powershell
+python "C:\Users\77972\WorkBuddy\无限画布\outputs\_preflight_privacy.py"
+```
+
+它逐字节读（含 UTF-16）模拟 `Assert-ReleasePrivacy`，扫所有会被打进包的文件：
+
+- `[PASS] 无机器路径泄漏` → 直接往下打
+- `[FAIL] 发现 N 处泄漏` → 会列出具体文件 + 命中的路径串，按 4.1 的说明处理
+
+> ⚠️ **为什么必须用 Python 扫**：workflow 的 `.config.json` 是 **UTF-16** 编码，系统 `grep` 当二进制跳过 → **假阴性**（漏检）。而且 JSON 转义是**双反斜杠** `C:\\Users\\`，单反斜杠 grep 匹配不到。10-05 两次门控失败都是这么漏掉的。
+
+### 4.1 正式打包
+
 ```powershell
 .\installer\build-installer.ps1
 ```
 
-**17-20 分钟。** 期间会有几次"隐私门控"检查（扫 `C:\Users\` 绝对路径）。
+**17-20 分钟。**
 
 **如果报 `Release privacy check failed`**：说明有文件含你机器的绝对路径。按名字找到它，两种处理：
 
 - 是 dev 产物（截图/调试 JSON）→ 加进 `installer\prepare-release.ps1` 的排除清单
 - 是要发布的正经文件 → 改成相对路径
 
-已排除的（别重复加）：`style-preview-*.json`、`style-preview-records/`、`_internal\workflows\custom\`。
+已排除的（别重复加）：`style-preview-*.json`、`style-preview-records/`、`_internal\workflows\custom\`、根级下划线开头文件（`_patch_*.json` 等）、全树 `.cmd/.bat/.vbs/.wsf`、根级 `.txt`。
+
+> 📌 **排除规则的三个坑**（10-05~10-06 实测）：
+> - **`.bat`/`.cmd` 是不限层级排除**（`prepare-release.ps1:163-166` 只判扩展名），但 `.txt` **只排根级**（`:149`）。写预检脚本时容易搞混。
+> - **根级下划线规则只在 `-AppRoot` 判定时生效**（`:126`），且 `_internal` 目录本身要豁免。
+> - **`style-` 与 `style_` 是两条规则**：`:161` 排 `style_`（下划线），根目录那批 `style-preview-*.json` 是连字符，靠 `:132` 单独一条。别以为一条就够。
+
 
 **产物**：`installer\build\installer\MyridTV-Setup.exe`
 **确认**：

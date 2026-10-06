@@ -129,11 +129,18 @@ if ($e2eFiles.Count -gt 0) {
         } else {
             $pass.Add("画布 e2e: 测试实例 3217 就绪")
             $e2eBad = 0
-            foreach ($e in $e2eFiles) {
+            $previousTestBase = $env:MYRIDTV_TEST_BASE
+            $env:MYRIDTV_TEST_BASE = 'http://127.0.0.1:3217'
+            try {
+              foreach ($e in $e2eFiles) {
+                Write-Host "[RUN] $($e.Name)"
                 $out = & $python $e.FullName 2>&1
                 # e2e 脚本自己输出 PASS/FAIL 并返回 exit 1（failures>0 时）
                 if ($LASTEXITCODE -ne 0) { $e2eBad++; $fail.Add("画布 e2e 失败: $($e.Name)`n    $($out | Select-Object -Last 12 | Out-String)") }
                 else { $pass.Add("画布 e2e 通过: $($e.Name)") }
+              }
+            } finally {
+                $env:MYRIDTV_TEST_BASE = $previousTestBase
             }
             if ($e2eBad -eq 0) { $pass.Add("画布 e2e: $($e2eFiles.Count) 个全部通过") }
         }

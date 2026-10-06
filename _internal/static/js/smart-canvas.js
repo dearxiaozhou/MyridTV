@@ -8604,7 +8604,11 @@ function updateConnScissorFromEvent(event){
     const g = world.querySelector('g.conn-scissor');
     if(!g) return;
     // 光标压在节点上时不弹（剪刀会被节点盖住）
-    if(event.target?.closest?.('.image-node,.composer')){ requestHideConnScissor(); return; }
+    const hoveredNode = event.target?.closest?.('.image-node');
+    const nodeBox = hoveredNode?.getBoundingClientRect();
+    const overNodeBody = nodeBox && event.clientX >= nodeBox.left && event.clientX <= nodeBox.right
+        && event.clientY >= nodeBox.top && event.clientY <= nodeBox.bottom;
+    if(overNodeBody || event.target?.closest?.('.composer')){ requestHideConnScissor(); return; }
     const wp = screenToWorld(event);
     const paths = [...world.querySelectorAll('svg.connection-layer path.conn-hit')];
     let best = null;
@@ -8637,6 +8641,18 @@ function updateConnScissorFromEvent(event){
     }
 }
 function bindConnectionEvents(){
+    // Keep the cut button above external port hit areas, while wires stay behind cards.
+    const scissor = world.querySelector('svg.connection-layer:not(.connection-tools-layer) g.conn-scissor');
+    if(scissor){
+        world.querySelector('svg.connection-tools-layer')?.remove();
+        const tools = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        tools.setAttribute('class', 'connection-layer connection-tools-layer');
+        tools.setAttribute('width', '6000');
+        tools.setAttribute('height', '4000');
+        tools.setAttribute('viewBox', '0 0 6000 4000');
+        tools.appendChild(scissor);
+        world.appendChild(tools);
+    }
     if(!world.__connScissorMoveBound){
         world.__connScissorMoveBound = true;
         world.addEventListener('pointermove', updateConnScissorFromEvent);

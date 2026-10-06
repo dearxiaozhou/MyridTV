@@ -66,6 +66,8 @@
         node.title = ctx.emptyNodeTitle();
         delete node.w;
         delete node.h;
+        delete node.cardSize;
+        delete node.cardSizing;
         const history = ctx.historyGroupForNode(node);
         if(history){
             ctx.nodeStore.removeNode(history.id, {render:false, save:false});

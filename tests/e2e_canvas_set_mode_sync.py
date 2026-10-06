@@ -10,7 +10,7 @@ import urllib.request
 
 from playwright.sync_api import sync_playwright
 
-BASE = os.environ.get('MYRIDTV_TEST_BASE', 'http://127.0.0.1:3107')
+BASE = os.environ.get('MYRIDTV_TEST_BASE', 'http://127.0.0.1:3217')
 ROOT = Path(__file__).resolve().parents[1]
 CHROME = r'C:\Users\77972\AppData\Local\ms-playwright\chromium-1228\chrome-win64\chrome.exe'
 

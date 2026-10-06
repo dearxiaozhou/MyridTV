@@ -43,9 +43,10 @@ with sync_playwright() as pw:
 
     created = page.evaluate("""() => {
       const a=createNode(80,180,[],{skipUndo:true});
-      const b=createNode(520,180,[],{skipUndo:true});
-      const c=createNode(960,180,[],{skipUndo:true});
-      const d=createNode(1400,180,[],{skipUndo:true});
+      const spacing=nodeRect(a).width+96;
+      const b=createNode(80+spacing,180,[],{skipUndo:true});
+      const c=createNode(80+spacing*2,180,[],{skipUndo:true});
+      const d=createNode(80+spacing*3,180,[],{skipUndo:true});
       const history={id:'history-a',type:'smart-image',x:80,y:520,title:'History',images:[{url:'https://example.test/history.png'}],historyFor:a.id,isHistoryGroup:true};
       nodes.push(history);
       c.inputNodeIds=[a.id,d.id];
@@ -126,31 +127,35 @@ with sync_playwright() as pw:
       const node=nodes.find(item=>item.id===id);
       node.images=[{url:'https://example.test/image.png'}];
       node.w=360;node.h=240;
+      node.cardSize={width:360,height:240};node.cardSizing='spec';
       selectedId=id;selectedIds=[];selectedImage={nodeId:id,index:0};
       render();
     }""", created["ids"][0])
     image_node = page.locator(f'.image-node[data-id="{created["ids"][0]}"]')
     image_node.hover()
-    image_node.locator(".floating-node-actions .node-delete").click(force=True)
+    image_node.locator(".floating-node-actions .node-delete").click()
     page.wait_for_timeout(200)
     cleared = page.evaluate("""(id) => {
       const node=nodes.find(item=>item.id===id);
       return {exists:!!node,images:node?.images?.length,title:node?.title,hasSize:'w' in (node||{}) || 'h' in (node||{}),
+        hasCardSize:'cardSize' in (node||{}) || 'cardSizing' in (node||{}),
         historyExists:nodes.some(item=>item.id==='history-a'),undoDepth:CanvasUndoController.getUndoDepth()};
     }""", created["ids"][0])
     check("素材节点删除按钮先清空素材，保留节点并只记录一次撤销",
-          cleared["exists"] and cleared["images"] == 0 and not cleared["hasSize"]
+          cleared["exists"] and cleared["images"] == 0 and not cleared["hasSize"] and not cleared["hasCardSize"]
           and not cleared["historyExists"] and cleared["undoDepth"] == 1, cleared)
 
     page.keyboard.press("Control+z")
     page.wait_for_function("id => nodes.some(node=>node.id===id && node.images?.length===1) && nodes.some(node=>node.id==='history-a')", arg=created["ids"][0])
     media_restored = page.evaluate("""(id) => ({
       imageCount:nodes.find(node=>node.id===id)?.images?.length,
+      cardSize:nodes.find(node=>node.id===id)?.cardSize,cardSizing:nodes.find(node=>node.id===id)?.cardSizing,
       historyExists:nodes.some(node=>node.id==='history-a'),
       historyLink:canvas.connections.some(conn=>conn.from===id && conn.to==='history-a'),
       tombstoned:canvas.deleted.some(item=>item.id==='history-a')
     })""", created["ids"][0])
     check("撤销清空素材可恢复素材节点、历史分组和连线", media_restored["imageCount"] == 1
+          and media_restored["cardSize"] == {"width":360,"height":240} and media_restored["cardSizing"] == "spec"
           and media_restored["historyExists"] and media_restored["historyLink"]
           and not media_restored["tombstoned"], media_restored)
 
