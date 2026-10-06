@@ -15,7 +15,7 @@ for record in records:
     path=Path(record['path'])
     if not path.is_file():
         raise FileNotFoundError(path)
-    destination=target/(record['id']+'.png')
+    destination=target/(record['id']+'.webp')
     shutil.copyfile(path,destination)
     assets[record['id']]='/static/images/styles/generated/'+destination.name
 assignments=json.loads((ROOT/'style-preview-assignments.json').read_text(encoding='utf-8'))

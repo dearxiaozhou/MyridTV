@@ -203,6 +203,9 @@ TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
 STATIC_VERSION = "2026.10.01.speech7"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+# Windows 版 Python 的 mimetypes 不带 webp，猜不出来会回落成
+# application/octet-stream，浏览器按未知类型拒绝渲染（风格缩略图会全变空白）。
+mimetypes.add_type("image/webp", ".webp")
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
 RUNNINGHUB_POLL_TIMEOUT_SECONDS = 1800

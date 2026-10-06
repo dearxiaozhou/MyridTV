@@ -49,7 +49,7 @@ def main():
         assert len({p['image'] for p in presets})==153, 'Duplicate preview URLs'
         digests={}
         for preset in presets:
-            assert preset['image'].endswith('/'+preset['id']+'.png'),preset['id']
+            assert preset['image'].endswith('/'+preset['id']+'.webp'),preset['id']
             response=page.request.get(base+preset['image'])
             assert response.ok,preset['id']
             digest=hashlib.sha256(response.body()).hexdigest()
