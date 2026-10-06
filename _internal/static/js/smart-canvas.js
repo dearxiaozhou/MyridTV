@@ -1124,6 +1124,15 @@ function normalizeLegacySmartNode(node){
         if(!node.h) node.h = 194;
     }
     if(node.type === 'smart-image'){
+        if(node.cardSize && !node.cardSizing){
+            delete node.cardSize;
+            delete node.w;
+            delete node.h;
+            if(!(node.images || []).length){
+                node.cardSize = {width:EMPTY_UPLOAD_NODE_WIDTH,height:EMPTY_UPLOAD_NODE_HEIGHT};
+                node.cardSizing = 'default';
+            }
+        }
         delete node.imageMode;
         const previous = node.images || [];
         node.images = CanvasGenerationResultModel.uniqueMediaItems(previous);
@@ -1240,7 +1249,9 @@ function persistActiveSmartSettings(){
         settings.provider_id = 'blender';
         settings.model = 'blender-previz';
     }
+    const previousSpec = nodeCardSpecKey(subject.runSettings || {});
     subject.runSettings = settingsForStorage(settings);
+    if(previousSpec !== nodeCardSpecKey(subject.runSettings) && syncNodeCardToSpec(subject)) render();
     rememberRecentSmartSettings(settings, subject);
 }
 function backToCanvasList(){ return CanvasHeaderNavigation.backToCanvasList(); }
@@ -3814,8 +3825,8 @@ const MEDIA_NODE_DEFAULT_SCALE = 2;
 const MEDIA_GROUP_PREVIOUS_DEFAULT_SCALE = 1.6;
 const MEDIA_GROUP_DEFAULT_SCALE = 0.8;
 const MEDIA_GROUP_THUMB_BASE = 224;
-const EMPTY_UPLOAD_NODE_WIDTH = 316;
-const EMPTY_UPLOAD_NODE_HEIGHT = 194;
+const EMPTY_UPLOAD_NODE_WIDTH = 512;
+const EMPTY_UPLOAD_NODE_HEIGHT = 288;
 function mediaNodeDefaultScale(node){
     if((node?.images || []).length > 1 && !Number.isFinite(Number(node?.scale))) return MEDIA_GROUP_DEFAULT_SCALE;
     return Number.isFinite(Number(node?.scale)) && Number(node.scale) > 0 ? Number(node.scale) : MEDIA_NODE_DEFAULT_SCALE;
@@ -4087,7 +4098,47 @@ function promptNodeLayoutSize(node){
         : Math.max(explicitH, fallbackH);
     return {width:Math.round(width), height:Math.round(height)};
 }
+function nodeCardSpecKey(s){
+    return JSON.stringify([s.engine,s.apiKind,s.ratio,s.videoAspect,s.resolution,s.customRatio,s.customSize]);
+}
+function preserveNodeCardForRun(node, s=node?.runSettings || {}){
+    if(!isSmartImageNode(node) || s.engine === 'comfy' || s.engine === 'blender') return;
+    if(!node.cardSize){
+        const layout = imageLayout(node.images || [], nodeScale(node), node);
+        node.cardSize = {width:layout.width,height:layout.height};
+        node.cardSizing = 'media';
+    }
+}
+function syncNodeCardToSpec(node){
+    const s = node?.runSettings || {};
+    if(!isSmartImageNode(node) || node.running || node.pending || s.engine === 'comfy' || s.engine === 'blender') return false;
+    let size;
+    if(s.apiKind === 'video'){
+        const match = String(s.videoAspect || '16:9').match(/^(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)$/);
+        if(match) size = {width:Number(match[1]),height:Number(match[2])};
+        else {
+            const source = reducedRatioForImage(sourceRatioImageForNode(node));
+            if(source) size = {width:source.w,height:source.h};
+        }
+    } else size = parseSizeValue(sizeForRun(s));
+    if(!(size?.width > 0 && size?.height > 0)) return false;
+    const ratio = size.width / size.height;
+    const longSide = Math.max(Number(node.cardSize?.width) || EMPTY_UPLOAD_NODE_WIDTH, Number(node.cardSize?.height) || EMPTY_UPLOAD_NODE_HEIGHT);
+    node.cardSize = {width:Math.round(ratio >= 1 ? longSide : longSide * ratio),height:Math.round(ratio >= 1 ? longSide / ratio : longSide)};
+    node.cardSizing = 'spec';
+    node.w = node.cardSize.width;
+    node.h = node.cardSize.height;
+    return true;
+}
 function imageLayout(images, scale=1, node=null){
+    const size = node?.cardSize;
+    const workflow = node?.runSettings?.engine === 'comfy';
+    if(node?.type === 'smart-image' && (!workflow || (!images?.length && !node.pending)) && Number(size?.width) > 24 && Number(size?.height) > 24){
+        return intrinsicImageLayout(images, scale, {...node, w:size.width, h:size.height});
+    }
+    return intrinsicImageLayout(images, scale, node);
+}
+function intrinsicImageLayout(images, scale=1, node=null){
     if(node?.type === 'smart-speech'){
         if((node.speechLayout || 0) < 3){node.w=Math.max(1000,Number(node.w)||0); node.h=540; node.speechLayout=3;}
         return {cols:1, rows:1, width:Math.max(900, Number(node.w) || 1000), height:Math.max(520, Number(node.h) || 540), thumb:96, single:true};
@@ -7225,8 +7276,13 @@ function createNode(x, y, images=[], options={}){
     const singleTitle = firstKind === 'video' ? 'Video' : firstKind === 'audio' ? 'Audio' : firstKind === 'text' ? 'Text' : firstKind === 'file' ? 'File' : 'Image';
     const node = {id:uid('smart'), type:'smart-image', x, y, title:nodeImages.length > 1 ? 'Group' : nodeImages.length ? singleTitle : tr('smart.createImportNode'), images:nodeImages, created_at:Date.now(), __origin:'user_manual', status:'ready', role:'media'};
     node.scale = nodeImages.length > 1 ? MEDIA_GROUP_DEFAULT_SCALE : mediaNodeDefaultScale(node);
+    if(!nodeImages.length){
+        node.cardSize = {width:EMPTY_UPLOAD_NODE_WIDTH, height:EMPTY_UPLOAD_NODE_HEIGHT};
+        node.cardSizing = 'default';
+    }
     inheritNodeMetaFromImage(node);
     node.runSettings = settingsForStorage({...smartSettingsForNode(node), promptH:93});
+    if(!nodeImages.length){ node.runSettings.ratio = 'wide'; node.runSettings.videoAspect = '16:9'; }
     nodeStore.addNode(node, 'user_manual');
     if(options.select !== false) selectedId = node.id;
     render();
@@ -7284,6 +7340,8 @@ function createSmartGeneratorNode(point, config={}){
         promptH:93,
         engine:config.engine || 'api',
         apiKind:config.apiKind || 'image',
+        ratio:'wide',
+        videoAspect:'16:9',
  comfyMode:config.comfyMode || settings.comfyMode || 'custom'
     });
     // 3D预演 节点：强制 blender 平台（独立节点，不经引擎下拉）
@@ -8344,7 +8402,7 @@ const title = isScript ? '剧本' : isTable ? '镜头表' : node.type === 'smart
         const comfyNodeNote = node.comfyError
             ? `<div class="comfy-node-note error">${escapeHtml(`失败：${node.comfyError}`)}</div>`
             : node.comfyNotice ? `<div class="comfy-node-note">${escapeHtml(node.comfyNotice)}</div>` : '';
-const html = `<div class="image-node ${isEmpty ? 'empty-node' : ''} ${node.type === 'smart-speech' ? 'speech-smart-node' : ''} ${isGroup ? 'group-node' : ''} ${node.groupLayout?.mode === 'preserve' ? 'preserved-group-node' : ''} ${isCanvasGroupNode(node) ? 'canvas-group-node' : ''} ${isHistory ? 'history-group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isScript ? 'script-smart-node' : ''} ${isTable ? 'table-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isBlenderPreview ? 'blender-preview-node' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''} ${node.comfyStatus === 'running' ? 'comfy-running' : ''} ${node.comfyStatus === 'queued' ? 'comfy-queued' : ''} node-status-${escapeHtml(node.status || 'ready')} node-role-${escapeHtml(node.role || 'media')}" data-id="${escapeHtml(node.id)}" data-status="${escapeHtml(node.status || 'ready')}" data-role="${escapeHtml(node.role || 'media')}" data-comfy-status="${escapeHtml(node.comfyStatus || '')}" ${(node.comfyStatus === 'queued' && Number(node.comfyQueuePosition ?? -1) > 0) ? `data-comfy-queue="${Number(node.comfyQueuePosition)}"` : ''} style="left:${node.x || 0}px;top:${node.y || 0}px;width:${layout.width}px;height:${layout.height}px;z-index:${isCanvasGroupNode(node) ? 1 : nodeLayerZ(node)}">
+const html = `<div class="image-node ${node.cardSize ? 'fixed-media-card' : ''} ${isEmpty ? 'empty-node' : ''} ${node.type === 'smart-speech' ? 'speech-smart-node' : ''} ${isGroup ? 'group-node' : ''} ${node.groupLayout?.mode === 'preserve' ? 'preserved-group-node' : ''} ${isCanvasGroupNode(node) ? 'canvas-group-node' : ''} ${isHistory ? 'history-group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isScript ? 'script-smart-node' : ''} ${isTable ? 'table-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isBlenderPreview ? 'blender-preview-node' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''} ${node.comfyStatus === 'running' ? 'comfy-running' : ''} ${node.comfyStatus === 'queued' ? 'comfy-queued' : ''} node-status-${escapeHtml(node.status || 'ready')} node-role-${escapeHtml(node.role || 'media')}" data-id="${escapeHtml(node.id)}" data-status="${escapeHtml(node.status || 'ready')}" data-role="${escapeHtml(node.role || 'media')}" data-comfy-status="${escapeHtml(node.comfyStatus || '')}" ${(node.comfyStatus === 'queued' && Number(node.comfyQueuePosition ?? -1) > 0) ? `data-comfy-queue="${Number(node.comfyQueuePosition)}"` : ''} style="left:${node.x || 0}px;top:${node.y || 0}px;width:${layout.width}px;height:${layout.height}px;z-index:${isCanvasGroupNode(node) ? 1 : nodeLayerZ(node)}">
             <div class="node-head"><div class="node-title">${node.canvasSetEnabled === true ? `<span class="node-set-badge" title="${escapeAttr(tr('smart.setBadgeTip'))}">SET</span>` : ''}${title}</div><div class="node-actions">${deleteBtn}</div></div>
             ${isCanvasGroupNode(node) ? `<div class="canvas-group-header"><span class="canvas-group-title-display" title="双击重命名">${escapeHtml(node.title || '未命名组')}</span><button class="canvas-group-delete node-delete" type="button" title="删除组"><i data-lucide="trash-2"></i></button></div>` : ''}
             ${!isCanvasGroupNode(node) ? (!isEmpty ? `<div class="floating-node-set">${canvasNodeSetToggleHtml(node)}</div>${((node.type === 'smart-image' || node.type === 'smart-video' || node.type === 'smart-audio' || !node.type) && hasOut) ? '<button class="node-move-lines" type="button" title="把线移到新素材（点此节点，再点目标素材，旧素材所有连线整体平移，图片与节点均不动）"><i data-lucide="link"></i></button>' : ''}${(node.type === 'smart-image' || node.type === 'smart-video' || node.type === 'smart-audio' || !node.type) ? '<button class="upload-node-btn" type="button" data-upload-action="files"><i data-lucide="upload"></i><span>上传</span></button>' : ''}<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>` : `<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>`) : ''}
@@ -8353,7 +8411,7 @@ const html = `<div class="image-node ${isEmpty ? 'empty-node' : ''} ${node.type 
             <div class="node-body">${body}</div>
             ${!isImageNode ? smartNodeToolbarHtml() : ''}
             <div class="node-hint">${hint}</div>
-            ${isCanvasGroupNode(node) || imgs.length || node.pending || isQueued || isJimengPending || isPrompt || isLoop || isTable || node.type === 'smart-speech' ? '<div class="node-resize-handle" data-resize="1"></div>' : ''}
+            ${isSmartImageNode(node) || isCanvasGroupNode(node) || imgs.length || node.pending || isQueued || isJimengPending || isPrompt || isLoop || isTable || node.type === 'smart-speech' ? '<div class="node-resize-handle" data-resize="1"></div>' : ''}
             ${canvasPortDotsHtml(node, 'input')}
             ${canvasPortDotsHtml(node, 'output')}
         </div>`;
@@ -8434,13 +8492,13 @@ const html = `<div class="image-node ${isEmpty ? 'empty-node' : ''} ${node.type 
         const isPending = (node.pending || isQueued) && imgs.length === 0;
         const body = nodeBodyHtml(node, layout);
         const deleteBtn = `<button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button>`;
-        return `<div class="image-node ${isEmpty ? 'empty-node' : ''} ${isGroup ? 'group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''}" data-id="${escapeHtml(node.id)}" style="left:${node.x || 0}px;top:${node.y || 0}px;width:${layout.width}px;height:${layout.height}px;z-index:${nodeLayerZ(node)}">
+        return `<div class="image-node ${node.cardSize ? 'fixed-media-card' : ''} ${isEmpty ? 'empty-node' : ''} ${isGroup ? 'group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''}" data-id="${escapeHtml(node.id)}" style="left:${node.x || 0}px;top:${node.y || 0}px;width:${layout.width}px;height:${layout.height}px;z-index:${nodeLayerZ(node)}">
             <div class="node-head"><div class="node-title">${title}</div><div class="node-actions">${deleteBtn}</div></div>
             ${!isEmpty ? `<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>` : ''}
             ${runTimePillHtml(node)}
             <div class="node-body">${body}</div>
             <div class="node-hint">${isPending ? escapeHtml(tr('smart.hintPending')) : (imgs.length > 1 ? escapeHtml(tr('smart.hintMulti')) : imgs.length ? escapeHtml(tr('smart.hintSingle')) : escapeHtml(tr('smart.hintEmpty')))}</div>
-            ${imgs.length || node.pending || isQueued || isPrompt || isLoop ? '<div class="node-resize-handle" data-resize="1"></div>' : ''}
+            ${node.type === 'smart-image' || imgs.length || node.pending || isQueued || isPrompt || isLoop ? '<div class="node-resize-handle" data-resize="1"></div>' : ''}
             ${canvasPortDotsHtml(node, 'input')}
             ${canvasPortDotsHtml(node, 'output')}
         </div>`;
@@ -12333,6 +12391,7 @@ async function runCascadeStepIntoNode(sourceNode, targetNode, inputRefs, ctx=sma
         sourceNodeId:targetNode.sourceNodeId,
         runAt:targetNode.runAt
     };
+    preserveNodeCardForRun(outputNode, runSettings);
     outputNode.running = true;
     outputNode.runStartedAt = nowMs();
     delete outputNode.runFinishedAt;
@@ -12622,6 +12681,7 @@ function runSmartCascadeFromLoop(loopId){
 }
 // 生图执行域外移 canvas-generation-runner.js（第十五刀）。settings/selected 写入走 setter 回主文件真变量。
 if(globalThis.CanvasGenerationRunner){CanvasGenerationRunner.configure({
+        preserveNodeCardForRun: (...a) => preserveNodeCardForRun(...a),
         addSmartGenerationLog: (...a) => addSmartGenerationLog(...a),
         allowsPromptlessCustomComfy: (...a) => allowsPromptlessCustomComfy(...a),
         attachRunMeta: (...a) => attachRunMeta(...a),
@@ -13167,6 +13227,7 @@ if (typeof CanvasInteractionMachine !== 'undefined') {
             const node = nodes.find(n => n.id === resizeState.id);
             if(node){
                 node.w = resizeState.startW; node.h = resizeState.startH; node.scale = 1;
+                if(node.cardSize) node.cardSize = {width:node.w, height:node.h};
                 discardPendingUndo();
                 render();
             }
@@ -13506,6 +13567,10 @@ lastMouseWorld = screenToWorld(e);
             node.h = Math.max(minH, Math.round(resizeState.startH + dy));
         }
         node.scale = 1;
+        if(node.type === 'smart-image'){
+            node.cardSize = {width:node.w, height:node.h};
+            node.cardSizing = node.cardSizing || 'media';
+        }
         updateNodeElementDuringResize(node);
         return;
     }

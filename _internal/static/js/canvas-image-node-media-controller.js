@@ -31,6 +31,9 @@
         }
         if(!node) return null;
         const previousCount = (node.images || []).length;
+        // Imported media uses its own aspect; generation frame sizes are only for runs.
+        delete node.cardSize;
+        delete node.cardSizing;
         // 覆盖模式（replaceIfExists）：节点已有素材时，新上传直接替换旧素材，
         // 不再打组保留多张（上传按钮场景下，用户期望「换一张」而非「再叠一张」）。
         if(options.replaceIfExists && previousCount > 0){

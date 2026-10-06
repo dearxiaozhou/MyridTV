@@ -451,6 +451,7 @@ body.smart-free-cropping .free-crop-target { overflow:hidden !important; }
 .image-node.dragging .mini-x { opacity:0 !important; pointer-events:none; }
 .node-img { display:block; width:var(--node-img-w, 260px); height:var(--node-img-h, 180px); object-fit:cover; border-radius:12px; background:var(--card, #1f1f1f); }
 video.node-img { object-fit:cover; background:#1f1f1f; }
+.image-node.fixed-media-card .node-img, .image-node.fixed-media-card .media-video-card video { object-fit:contain; }
 audio { display:none !important; width:0 !important; height:0 !important; min-width:0 !important; min-height:0 !important; opacity:0 !important; pointer-events:none !important; }
 .audio-thumb-base,.audio-thumb-base-pill,.audio-thumb-base-cut { display:none !important; width:0 !important; height:0 !important; opacity:0 !important; pointer-events:none !important; }
 .media-video-card { align-items:stretch; justify-content:stretch; overflow:hidden; border:1px solid rgba(200,200,200,.38); border-radius:12px; background:#1f1f1f; box-sizing:border-box; }

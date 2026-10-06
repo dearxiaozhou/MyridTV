@@ -59,6 +59,7 @@ async function runGeneration(){
     const apiConcurrentRun = isApiLikeEngine(settings.engine) || settings.engine === 'runninghub';
     const sourceVisualState = null;
     pushUndo();
+    deps.preserveNodeCardForRun(node, D("settings"));
     let extracted = null;
     let branchNode = null;
     const pendingMeta = overwriteExistingOutput ? stripRunInputMeta(meta) : meta;
