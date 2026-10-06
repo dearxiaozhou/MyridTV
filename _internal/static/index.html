@@ -159,9 +159,8 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
       transition: background .15s ease, border-color .15s ease, color .15s ease, transform .15s ease;
     }
 
-    /* 2026-09-15：版本号为纯展示，不做禁用灰化。
-       注意：Chromium 对 disabled 按钮的 UA 样式会同时写 -webkit-text-fill-color，
-       只改 color 压不住，必须一起覆盖。 */
+    /* 2026-10-06：版本号改为可点，点了立刻检查一次更新。
+       保留纯展示的观感，只把cursor 改成 pointer 并去掉 disabled 灰化。 */
     .dock-pill.dock-version:disabled,
     .dock-pill.dock-version[disabled] {
       opacity: 1;
@@ -172,6 +171,10 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
       cursor: default;
     }
+
+    .dock-pill.dock-version:not([disabled]) { cursor: pointer; }
+    .dock-pill.dock-version[data-checking="1"] { cursor: progress; }
+    .dock-pill.dock-version[data-checking="1"] .dock-pill-label::after { content: "…"; }
 
     html.theme-light .dock-pill.dock-version:disabled {
       color: var(--text);
@@ -531,7 +534,7 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
       <button class="dock-logo" type="button" onclick="goHomeCanvas()" title="返回主页"><img src="/static/images/myrid-icon-dock.png?v=20260629" alt="MyridTV"></button>
       <button class="dock-pill" type="button" onclick="toggleTheme()" id="dock-theme-btn" title="深色模式"><span class="dock-icon">TH</span><span class="dock-pill-label">深色模式</span></button>
       <button class="dock-pill" type="button" onclick="toggleTaskConsole()" id="dock-console-btn" title="任务控制台"><span class="dock-icon">TC</span><span class="dock-pill-label">控制台</span></button>
-        <button class="dock-pill dock-version" type="button" disabled title="版本"><span class="dock-icon">V</span><span class="dock-pill-label app-version">版本：V0.9.19</span></button>
+        <button class="dock-pill dock-version" type="button" id="app-version-pill" title="点击检查更新"><span class="dock-icon">V</span><span class="dock-pill-label app-version">版本：V0.10.0</span></button>
     </nav>
 
     <button class="dock-toggle right" type="button" onclick="toggleBottomDock()" title="向下收起/显示底部菜单">
@@ -1415,6 +1418,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var displayed = (document.querySelector('.app-version') || {}).textContent || '';
     var current = (displayed.match(/V\d+\.\d+\.\d+/) || [])[0] || '';
     var dismissed = '';
+    var pill = document.getElementById('app-version-pill');
     document.getElementById('update-refresh').addEventListener('click', function () {
         if (window.confirm('请先保存正在编辑的内容。现在刷新界面吗？')) window.location.reload();
     });
@@ -1433,6 +1437,50 @@ document.addEventListener('DOMContentLoaded', function () {
             notice.classList.add('visible');
         }).catch(function () {});
     }
+
+    // 2026-10-06：点版本号立刻检查一次。后端同步下载并落盘，只下载内容不同的
+    // 文件；检查期间禁用按钮防连点，完成后按结果给提示。界面不自动刷新，
+    // 仍由用户在保存后手动点「刷新界面」。
+    function runUpdateCheck() {
+        if (pill.dataset.checking === '1') return;
+        pill.dataset.checking = '1';
+        pill.title = '正在检查更新…';
+        fetch('/api/update-check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+            cache: 'no-store'
+        }).then(function (response) {
+            return response.json();
+        }).then(function (result) {
+            var version = result && result.static_version;
+            if (result && result.ok && version && version !== current) {
+                notice.dataset.version = version;
+                var n = result.downloaded_files || 0;
+                message.textContent = '界面已更新到 ' + version +
+                    (n > 0 ? '（' + n + ' 个文件）' : '') + '，可在保存后刷新';
+                notice.classList.add('visible');
+                dismissed = '';
+            } else if (result && !result.ok) {
+                message.textContent = '检查更新失败：' + (result.detail || result.status || '未知错误');
+                notice.dataset.version = '';
+                notice.classList.add('visible');
+            } else {
+                message.textContent = '当前已是最新版本' + (current ? '（' + current + '）' : '');
+                notice.dataset.version = '';
+                notice.classList.add('visible');
+            }
+        }).catch(function (err) {
+            message.textContent = '检查更新失败：' + (err && err.message ? err.message : '网络错误');
+            notice.classList.add('visible');
+        }).then(function () {
+            pill.dataset.checking = '0';
+            pill.title = '点击检查更新';
+            checkUpdateStatus();
+        });
+    }
+
+    pill.addEventListener('click', runUpdateCheck);
     checkUpdateStatus();
     window.setInterval(checkUpdateStatus, 60000);
 });

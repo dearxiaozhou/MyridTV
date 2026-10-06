@@ -1744,6 +1744,22 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, {"ok": True, "static_version": state.get("static_version", ""), "status": state.get("status", "current")})
         return
 
+    def _post_api_update_check(self, payload):
+        """版本号按钮触发：同步跑一次更新检查，完成后回写状态文件。"""
+        import myridtv_updater
+        public_key = Path(APP_DIR) / "update-public-key.pub"
+        if not public_key.is_file():
+            self._send(200, {"ok": False, "status": "unsupported", "detail": "missing update public key"})
+            return
+        try:
+            result = myridtv_updater.check_now(Path(APP_DIR), public_key)
+        except Exception as exc:
+            append_log(LOG_FILE, f"update check failed: {exc}\n")
+            self._send(200, {"ok": False, "status": "error", "detail": str(exc)})
+            return
+        self._send(200, {"ok": True, **result})
+        return
+
     def _get_api_task_console(self):
         self._send(200, task_console_snapshot())
         return
@@ -2122,6 +2138,7 @@ class Handler(BaseHTTPRequestHandler):
         return
 
     _POST_ROUTES_B1 = {
+        "/api/update-check": "_post_api_update_check",
         "/api/asset-library/libraries": "_post_api_asset_library_libraries",
         "/api/asset-library/categories": "_post_api_asset_library_categories",
         "/api/asset-library/items/versions": "_post_api_asset_library_items_versions",

@@ -119,11 +119,21 @@ def get_bytes(url: str, limit: int, allow_local: bool = False) -> bytes:
     if parsed.scheme != "https" and not (allow_local and parsed.scheme in {"http", "file"}):
         raise ValueError("update source must use HTTPS")
     request = urllib.request.Request(url, headers={"User-Agent": "MyridTV-Updater/1"})
-    with urllib.request.urlopen(request, timeout=30) as response:
-        data = response.read(limit + 1)
-    if len(data) > limit:
-        raise ValueError("update download exceeds size limit")
-    return data
+    last: Exception | None = None
+    # CDN and release downloads drop connections fairly often; a few retries with
+    # backoff keep a transient network blip from failing the whole update.
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                data = response.read(limit + 1)
+            if len(data) > limit:
+                raise ValueError("update download exceeds size limit")
+            return data
+        except Exception as exc:  # noqa: BLE001 - retried below, re-raised if all fail
+            last = exc
+            if attempt < 3:
+                time.sleep(1.5 * (attempt + 1))
+    raise last if last else ValueError("update download failed")
 
 
 def safe_static_path(app_dir: Path, relative: str) -> Path:
@@ -252,6 +262,23 @@ def check_once(app_dir: Path, feed: str, public_key_file: Path, allow_local: boo
         raise ValueError("invalid update manifest")
     verify_manifest(manifest, public_key_file)
     return apply_manifest(app_dir, manifest, allow_local=allow_local)
+
+
+def check_now(app_dir: Path, public_key_file: Path, allow_local: bool = False) -> dict:
+    """One-shot check honouring MYRIDTV_UPDATE_FEED_URL.
+
+    Used by the in-app "check for updates" button. Returns the last known state
+    when no feed is configured, so the caller never has to special-case a
+    disabled channel.
+    """
+    feed = os.environ.get("MYRIDTV_UPDATE_FEED_URL", "").strip() or DEFAULT_FEED
+    try:
+        return check_once(app_dir, feed, public_key_file, allow_local=allow_local)
+    except Exception as exc:
+        state = read_state(app_dir)
+        state.update({"status": "error", "error": str(exc), "checked_at": int(time.time())})
+        write_state(app_dir, state)
+        raise
 
 
 def acquire_watcher_lock(app_dir: Path):

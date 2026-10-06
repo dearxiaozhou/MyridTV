@@ -439,9 +439,14 @@ if (!$NoDesktop -and -not $DesktopStarted) {
 # The release updater runs separately from the proxy. A file lock prevents
 # duplicate watchers when the launcher is opened more than once. Source checkouts
 # are never updated automatically, so local development edits stay intact.
+# 2026-10-06：发布版的默认更新通道。原先要求用户自己设 MYRIDTV_UPDATE_FEED_URL
+# 才启动，导致条件永假、更新器永不运行；现在给出默认值，需要时仍可用环境变量覆盖
+# （置空字符串可显式关闭自动更新）。
+$DefaultUpdateFeed = 'https://github.com/dearxiaozhou/MyridTV-updates/releases/latest/download/update-manifest.json'
 $UpdaterScript = Join-Path $AppDir 'myridtv_updater.py'
 $UpdateKey = Join-Path $AppDir 'update-public-key.pub'
-if (!$NoDesktop -and $PythonExe -and $env:MYRIDTV_UPDATE_FEED_URL -and (Test-Path -LiteralPath $UpdaterScript) -and (Test-Path -LiteralPath $UpdateKey) -and -not (Test-Path -LiteralPath (Join-Path $AppDir '.git'))) {
+if (!$env:MYRIDTV_UPDATE_FEED_URL) { $env:MYRIDTV_UPDATE_FEED_URL = $DefaultUpdateFeed }
+if (!$NoDesktop -and $env:MYRIDTV_UPDATE_FEED_URL -and $PythonExe -and (Test-Path -LiteralPath $UpdaterScript) -and (Test-Path -LiteralPath $UpdateKey) -and -not (Test-Path -LiteralPath (Join-Path $AppDir '.git'))) {
     try {
         $updateLogDir = Join-Path $UserDataRoot 'data\logs'
         New-Item -ItemType Directory -Force -Path $updateLogDir | Out-Null
