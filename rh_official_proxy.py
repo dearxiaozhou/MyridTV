@@ -92,7 +92,7 @@ _migrate_legacy_assets()
 BLENDER_IMPORT_DIR = ASSETS_DIR / "blender_imports"
 # —— Blender 预演（画布 → Blender → 画布）——
 PREVIZ_DIR = ASSETS_DIR / "blender" / "previz"
-BLENDER_BIN = os.environ.get("MYRIDTV_BLENDER_BIN") or r"D:\blender\blender-5.0.0-windows-x64\blender.exe"
+BLENDER_BIN = os.environ.get("MYRIDTV_BLENDER_BIN") or "blender"
 PREVIZ_FPS = int(os.environ.get("MYRIDTV_PREVIZ_FPS") or "24")
 PREVIZ_BLACK_SEC = 0.4
 CANVAS_AGENT_HISTORY_DIR = USER_DATA_DIR / "data" / "canvas_agent_history"
@@ -119,7 +119,7 @@ DEFAULT_CONFIG = {
         "active_id": "codex",
         "agents": DEFAULT_AGENTS,
     },
-    "runninghub": {"api_key_envs": ["API_PROVIDER_CUSTOM_API_3_KEY", "RUNNINGHUB_API_KEY"]},
+    "runninghub": {"api_key_envs": ["RUNNINGHUB_COIN_API_KEY", "RUNNINGHUB_API_KEY"]},
     "paths": {
         "env_file": "API/.env",
         "logs_dir": "data/logs",
@@ -201,7 +201,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.09.26.rhfinaloutput88"
+STATIC_VERSION = "2026.10.01.speech7"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 OUTPUT_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 RUNNINGHUB_ALLOWED_RESOLUTIONS = ("1k", "2k", "4k")
@@ -359,14 +359,17 @@ _RH_TLS_CTX_CACHE = {}
 
 import myridtv_http
 import myridtv_provider
+import myridtv_provider_audio
 import myridtv_agent
 import myridtv_canvas_store
 import myridtv_task_state
 import myridtv_media_localize
+import myridtv_video_codec
 import myridtv_libraries
 import myridtv_codex
 import myridtv_chat
 import myridtv_rh_taskflow
+import myridtv_provider_image
 import myridtv_workflow_assets
 import myridtv_window_fix
 import myridtv_agent_receipt
@@ -419,6 +422,10 @@ myridtv_task_state.configure(
     TASKS, TASKS_LOCK, TASK_STORE, _agent_task_log,
 )
 
+myridtv_video_codec.configure({
+    "LOG_FILE": lambda: LOG_FILE,
+})
+
 myridtv_media_localize.configure(
     USER_DATA_DIR, ROOT, ASSETS_DIR, lambda: LOG_FILE,
     lambda: comfy_instance_base(),
@@ -439,6 +446,7 @@ myridtv_comfy.configure(
     lambda local_name, kind='image', history=False, canvas_folder='': asset_output_url(local_name, kind, history, canvas_folder),
     lambda canvas_title='', canvas_id='': canvas_output_folder_name(canvas_title, canvas_id),
     lambda name: read_workflow_record(name),
+    lambda name, config: myridtv_workflow_assets.save_workflow_config(name, config),
 )
 
 myridtv_runninghub.configure(
@@ -742,6 +750,10 @@ def delete_workflow_record(name):
     return myridtv_workflow_assets.delete_workflow_record(name)
 
 
+def rename_workflow_record(name, new_name):
+    return myridtv_workflow_assets.rename_workflow_record(name, new_name)
+
+
 def parse_workflow_route(request_path):
     return myridtv_workflow_assets.parse_workflow_route(request_path)
 
@@ -901,8 +913,8 @@ def _agent_find_empty_position(canvas, x, y, w, h, step=36, category=None, node_
 def _agent_tool_create_text_node(args, session_id=""):
     return myridtv_agent_state._agent_tool_create_text_node(args, session_id)
 
-def _agent_default_run_settings(args, preset=None):
-    return myridtv_agent_state._agent_default_run_settings(args, preset)
+def _agent_default_run_settings(args, preset=None, canvas=None, cid=""):
+    return myridtv_agent_state._agent_default_run_settings(args, preset, canvas=canvas, cid=cid)
 
 def _agent_normalize_reference_items(refs):
     return myridtv_agent_state._agent_normalize_reference_items(refs)
@@ -1068,6 +1080,17 @@ myridtv_workflow_assets.configure(
         'LOG_FILE': lambda: LOG_FILE,
         'ROOT': lambda: ROOT,
         'ASSETS_DIR': lambda: ASSETS_DIR,
+        # 重命名工作流时需连带改写画布里的引用
+        'CANVAS_DIR': lambda: USER_DATA_DIR / "data" / "canvases",
+    },
+)
+
+myridtv_provider_image.configure(
+    lambda: LOG_FILE,
+    lambda: RUNNINGHUB_POLL_TIMEOUT_SECONDS,
+    {
+        'prepare_reference': lambda source_url: upload_cloud_media_direct(source_url).get("downloadUrl") or "",
+        'is_cancelled': lambda local_task_id: _task_console_is_cancelled(local_task_id),
     },
 )
 
@@ -1075,6 +1098,9 @@ myridtv_rh_taskflow.configure(
     lambda: LOG_FILE,
     {
         'runninghub_api_base': lambda *a, **k: runninghub_api_base(*a, **k),
+        'submit_generic_image': lambda *a, **k: myridtv_provider_image.submit_generic_image(*a, **k),
+        'poll_generic_result': lambda *a, **k: myridtv_provider_image.poll_generic_result(*a, **k),
+        'query_generic_image': lambda *a, **k: myridtv_provider_image.query_generic_image(*a, **k),
     },
     lambda: RUNNINGHUB_POLL_TIMEOUT_SECONDS,
 )
@@ -1510,6 +1536,10 @@ def submit_official(payload):
     return myridtv_rh_taskflow.submit_official(payload)
 
 
+def submit_and_poll_official(payload):
+    return myridtv_rh_taskflow.submit_and_poll_official(payload)
+
+
 def poll_result(task_id):
     return myridtv_rh_taskflow.poll_result(task_id)
 
@@ -1700,6 +1730,18 @@ class Handler(BaseHTTPRequestHandler):
                 "upstream_base_url": AGENT_CONFIG.get("upstream_base_url"),
             },
         })
+        return
+
+    def _get_update_status(self):
+        import myridtv_updater
+        state_file = myridtv_updater.state_path(APP_DIR)
+        try:
+            state = json.loads(state_file.read_text(encoding="utf-8"))
+            if not isinstance(state, dict):
+                state = {}
+        except (OSError, ValueError):
+            state = {}
+        self._send(200, {"ok": True, "static_version": state.get("static_version", ""), "status": state.get("status", "current")})
         return
 
     def _get_api_task_console(self):
@@ -1931,6 +1973,7 @@ class Handler(BaseHTTPRequestHandler):
             workflow_route, workflow_name = parse_workflow_route(request_path)
             _GET_ROUTES = {
                 '/health': '_get_health',
+                '/api/update-status': '_get_update_status',
                 '/api/task-console': '_get_api_task_console',
                 '/app-config': '_get_app_config',
                 '/api/canvas-agent-history': '_get_api_canvas_agent_history',
@@ -2067,7 +2110,9 @@ class Handler(BaseHTTPRequestHandler):
         return
 
     def _post_api_canvas_llm(self, payload):
-        """do_POST 路由表 handler：原精确分支 /api/canvas-llm 机械表化（体逐字）"""
+        """提示词节点 LLM 运行 / 连通性测试专用：强制纯聊天，不注入任何画布变更工具。"""
+        payload = dict(payload) if isinstance(payload, dict) else {}
+        payload["pure_chat"] = True
         self._send(200, submit_chat(payload))
         return
 
@@ -2092,18 +2137,18 @@ class Handler(BaseHTTPRequestHandler):
         "/api/task-console-stop": "_post_api_task_console_stop",
         "/api/canvas-llm": "_post_api_canvas_llm",
         "/api/agent-models": "_post_api_agent_models",
+        "/api/comfyui/auto-expose-media": "_post2_api_comfyui_auto_expose_media",
     }
 
     def _post2_api_online_image(self, payload):
         """do_POST 路由表 handler：原精确分支 /api/online-image 机械表化（体逐字）"""
-        rh_task_id, _ = submit_official(payload)
-        result = poll_result(rh_task_id)
+        result = submit_and_poll_official(payload)
         self._send(200, {
             "images": result["images"],
             "timestamp": int(time.time() * 1000),
             "prompt": payload.get("prompt") or "",
             "params": payload,
-            "task_id": rh_task_id,
+            "task_id": result["task_id"],
         })
         return
 
@@ -2157,6 +2202,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def _post2_api_providers_fetch_models(self, payload):
         """do_POST 路由表 handler：原精确分支 /api/providers/fetch-models 机械表化（体逐字）"""
+        if myridtv_provider_audio.is_mimo(payload):
+            self._send(200, myridtv_provider_audio.probe(payload))
+            return
         if is_runninghub_request(payload):
             # 用户点「拉取模型」= 显式要最新清单，强制重爬文档（约 25 秒）
             self._send(200, runninghub_model_catalog(payload.get("provider_id"), payload.get("base_url"), force=True))
@@ -2351,6 +2399,16 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, {"ok": True, "instances": saved_instances})
         return
 
+    def _post2_api_comfyui_auto_expose_media(self, payload):
+        """导入/加载工作流时自动暴露素材槽：把未暴露的 LoadImage/LoadAudio 追加进 config。"""
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            self._send(200, {"ok": False, "added": 0, "error": "name 为空"})
+            return
+        result = myridtv_comfy.auto_expose_media_fields(name)
+        self._send(200, result)
+        return
+
     def _post2_api_open_folder(self, payload):
         """do_POST 路由表 handler：原精确分支 /api/open-folder 机械表化（体逐字）"""
         url = str(payload.get("url") or "").strip()
@@ -2373,7 +2431,41 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, {"ok": True, "opened": opened, "path": str(target)})
         return
 
+    def _post2_api_canvas_audio(self, payload):
+        client_id = str(payload.get("client_task_id") or "")
+        task_id = client_id if re.fullmatch(r"speech_[0-9a-f]{32}", client_id) else "speech_" + uuid.uuid4().hex
+        now = time.time()
+        state = {"backend":"provider-audio", "status":"running", "created_at":now,
+                 "checked_at":now, "can_stop":False, "provider_id":str(payload.get("provider_id") or ""),
+                 "model":str(payload.get("model") or myridtv_provider_audio.MODELS[0]), "mode":dict(zip(myridtv_provider_audio.MODELS,("音色设计","预置音色","音色复刻"))).get(payload.get("model") or myridtv_provider_audio.MODELS[0],"语音"),
+                 "canvas_id":str(payload.get("canvas_id") or ""), "canvas_title":str(payload.get("canvas_title") or ""),
+                 "node_id":str(payload.get("node_id") or ""), "node_title":str(payload.get("node_title") or "语音生成"),
+                 "audio_format":str(payload.get("format") or "wav"), "source":"画布节点执行", "persistent":True}
+        with TASKS_LOCK:
+            if task_id in TASKS:
+                self._send(409, {"ok":False,"detail":"这次语音任务已经提交，请等待完成或重新点击生成"})
+                return
+            TASKS[task_id] = state
+            myridtv_task_state.persist_tasks_locked(task_id)
+        append_log(LOG_FILE, "speech started task=" + task_id + " node=" + state["node_id"] + " model=" + state["model"])
+        try:
+            result = myridtv_provider_audio.generate(payload)
+            update_task_state(task_id,status="succeeded",completed_at=time.time(),checked_at=time.time(),
+                              result={"audios":result.get("items") or []},localized_at=time.time())
+            append_log(LOG_FILE, "speech generated task=" + task_id + " node=" + state["node_id"] + " model=" + state["model"])
+            self._send(200, {**result,"task_id":task_id})
+        except myridtv_provider_audio.AudioError as exc:
+            update_task_state(task_id,status="failed",completed_at=time.time(),checked_at=time.time(),error=exc.detail)
+            append_log(LOG_FILE, "speech failed task=" + task_id + " node=" + state["node_id"] + " model=" + state["model"] + " status=" + str(exc.status) + " detail=" + exc.detail)
+            self._send(exc.status, {"ok":False,"detail":exc.detail,"task_id":task_id})
+        except Exception:
+            detail = "语音生成发生异常，请稍后重新生成"
+            update_task_state(task_id,status="failed",completed_at=time.time(),checked_at=time.time(),error=detail)
+            append_log(LOG_FILE, "speech failed task=" + task_id + " node=" + state["node_id"] + " detail=" + detail)
+            self._send(500,{"ok":False,"detail":detail,"task_id":task_id})
+
     _POST_ROUTES_B2 = {
+        "/api/canvas-audio": "_post2_api_canvas_audio",
         "/api/online-image": "_post2_api_online_image",
         "/api/generate": "_post2_api_generate",
         "/api/runninghub/upload-asset": "_post2_api_runninghub_upload_asset",
@@ -2433,6 +2525,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def _postc_04(self, request_path, payload, canvas_route, canvas_id, workflow_route, workflow_name):
         """do_POST 谓词链 #4：原分支条件逐字（request_path == "/api/providers/test-connection" and str(...）"""
+        if request_path == "/api/providers/test-connection" and myridtv_provider_audio.is_mimo(payload):
+            self._send(200, myridtv_provider_audio.probe(payload))
+            return True
         if request_path == "/api/providers/test-connection" and str(payload.get("protocol") or "").strip().lower() == "openai":
             self._send(200, openai_probe_payload(payload, "test"))
             return True
@@ -2440,6 +2535,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def _postc_05(self, request_path, payload, canvas_route, canvas_id, workflow_route, workflow_name):
         """do_POST 谓词链 #5：原分支条件逐字（request_path == "/api/providers/probe-async" and str(payl...）"""
+        if request_path == "/api/providers/probe-async" and myridtv_provider_audio.is_mimo(payload):
+            self._send(200, myridtv_provider_audio.probe(payload))
+            return True
         if request_path == "/api/providers/probe-async" and str(payload.get("protocol") or "").strip().lower() == "openai":
             self._send(200, openai_probe_payload(payload, "probe"))
             return True
@@ -2447,6 +2545,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def _postc_06(self, request_path, payload, canvas_route, canvas_id, workflow_route, workflow_name):
         """do_POST 谓词链 #6：原分支条件逐字（request_path == "/api/providers/verify-base" and str(payl...）"""
+        if request_path == "/api/providers/verify-base" and myridtv_provider_audio.is_mimo(payload):
+            self._send(200, myridtv_provider_audio.probe(payload))
+            return True
         if request_path == "/api/providers/verify-base" and str(payload.get("protocol") or "").strip().lower() == "openai":
             self._send(200, openai_probe_payload(payload, "verify"))
             return True
@@ -2557,6 +2658,18 @@ class Handler(BaseHTTPRequestHandler):
             return True
         return False
 
+    def _postc_20(self, request_path, payload, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_POST 谓词链 #20：工作流重命名（workflow_route == "rename"）。
+
+        把 .json 与 .config.json 一起改名，并连带改写所有画布里对该文件名的引用，
+        使「前端显示名」与「后端文件名」统一为同一个名字。
+        """
+        if workflow_route == "rename":
+            result = rename_workflow_record(workflow_name, (payload or {}).get("name"))
+            self._send(200, result)
+            return True
+        return False
+
     _POST_CONDS = [
         "_postc_00",
         "_postc_01",
@@ -2578,6 +2691,7 @@ class Handler(BaseHTTPRequestHandler):
         "_postc_17",
         "_postc_18",
         "_postc_19",
+        "_postc_20",
     ]
 
     def do_POST(self):

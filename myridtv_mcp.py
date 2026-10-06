@@ -34,16 +34,17 @@ def configure(mcp_base):
 # ====== Canvas MCP Tools (嵌入式) ======
 MCP_TOOLS = {
     "canvas_list_canvases": {"description": "列出所有画布", "inputSchema": {"type":"object","properties":{}}},
+    "canvas_create": {"description": "新建画布（与界面人工新建走同一条 POST /api/canvases 链路，title 可空自动命名），返回 canvas_id 并自动成为当前画布", "inputSchema": {"type":"object","properties":{"title":{"type":"string"},"kind":{"type":"string"},"icon":{"type":"string"},"color":{"type":"string"},"owner":{"type":"string"}}}},
     "canvas_get_state": {"description": "获取画布状态", "inputSchema": {"type":"object","properties":{"canvas_id":{"type":"string"}}}},
     "canvas_get_selection": {"description": "获取选中节点", "inputSchema": {"type":"object","properties":{"canvas_id":{"type":"string"}}}},
     "canvas_search": {"description": "搜索节点", "inputSchema":{"type":"object","properties":{"query":{"type":"string"},"canvas_id":{"type":"string"}},"required":["query"]}},
-    "canvas_create_node": {"description": "创建节点", "inputSchema":{"type":"object","properties":{"type":{"type":"string"},"x":{"type":"number"},"y":{"type":"number"},"width":{"type":"number"},"height":{"type":"number"},"content":{"type":"string"},"label":{"type":"string"},"canvas_id":{"type":"string"}},"required":["type","x","y"]}},
+    "canvas_create_node": {"description": "创建节点（与画布 Agent/人工同一落库链路）。type 取 text(文本/剧本，内容字段 text 或 content) | generation(图片生成节点，内容字段 prompt 或 content)；x/y 可不传=自动空位排列（按类别分列不重叠）", "inputSchema":{"type":"object","properties":{"type":{"type":"string","enum":["text","generation"]},"text":{"type":"string"},"prompt":{"type":"string"},"content":{"type":"string"},"title":{"type":"string"},"label":{"type":"string"},"x":{"type":"number"},"y":{"type":"number"},"width":{"type":"number"},"height":{"type":"number"},"provider_id":{"type":"string"},"model":{"type":"string"},"size":{"type":"string"},"canvas_id":{"type":"string"}},"required":["type"]}},
     "canvas_delete_node": {"description": "删除节点", "inputSchema":{"type":"object","properties":{"node_id":{"type":"string"},"canvas_id":{"type":"string"}},"required":["node_id"]}},
-    "canvas_update_node": {"description": "更新节点", "inputSchema":{"type":"object","properties":{"node_id":{"type":"string"},"content":{"type":"string"},"x":{"type":"number"},"y":{"type":"number"},"width":{"type":"number"},"height":{"type":"number"},"label":{"type":"string"},"canvas_id":{"type":"string"}},"required":["node_id"]}},
+    "canvas_update_node": {"description": "更新节点（与人工编辑同字段族：text/content/prompt 任一即改正文，同步 promptDraft/runPrompt；尺寸 w/h）", "inputSchema":{"type":"object","properties":{"node_id":{"type":"string"},"text":{"type":"string"},"content":{"type":"string"},"prompt":{"type":"string"},"title":{"type":"string"},"label":{"type":"string"},"x":{"type":"number"},"y":{"type":"number"},"w":{"type":"number"},"h":{"type":"number"},"canvas_id":{"type":"string"}},"required":["node_id"]}},
     "canvas_connect_nodes": {"description": "连接节点", "inputSchema":{"type":"object","properties":{"from_id":{"type":"string"},"to_id":{"type":"string"},"label":{"type":"string"},"canvas_id":{"type":"string"}},"required":["from_id","to_id"]}},
     "canvas_snapshot": {"description": "保存快照", "inputSchema":{"type":"object","properties":{"canvas_id":{"type":"string"}}}},
-    "canvas_create_text_node": {"description": "创建智能画布原生文本节点(剧本/脚本/方案,type=smart-prompt,内容可见可编辑)", "inputSchema":{"type":"object","properties":{"text":{"type":"string"},"title":{"type":"string"},"x":{"type":"number"},"y":{"type":"number"},"canvas_id":{"type":"string"}},"required":["text"]}},
-    "canvas_create_generation_node": {"description": "创建图片生成节点(把提示词同步到画布,type=smart-image,待生成)", "inputSchema":{"type":"object","properties":{"prompt":{"type":"string"},"title":{"type":"string"},"model":{"type":"string"},"size":{"type":"string"},"canvas_id":{"type":"string"}},"required":["prompt"]}},
+    "canvas_create_text_node": {"description": "创建智能画布原生文本节点(剧本/脚本/方案,type=smart-prompt,内容可见可编辑)。x/y 可省=自动空位", "inputSchema":{"type":"object","properties":{"text":{"type":"string"},"title":{"type":"string"},"x":{"type":"number"},"y":{"type":"number"},"canvas_id":{"type":"string"}},"required":["text"]}},
+    "canvas_create_generation_node": {"description": "创建图片生成节点(把提示词同步到画布,type=smart-image,待生成)。x/y 可省=自动空位", "inputSchema":{"type":"object","properties":{"prompt":{"type":"string"},"title":{"type":"string"},"model":{"type":"string"},"size":{"type":"string"},"x":{"type":"number"},"y":{"type":"number"},"canvas_id":{"type":"string"}},"required":["prompt"]}},
     "canvas_generate_images": {"description": "提交图片生成任务并回填画布节点(异步)。调用后立即返回 task_id 即提交成功,不要等待、不要轮询;生成完成后图片会自动回填到画布节点,之后用 canvas_get_state 或 canvas_check_generation 查看结果。未给 node_id 会自动建生成节点", "inputSchema":{"type":"object","properties":{"prompt":{"type":"string"},"node_id":{"type":"string"},"model":{"type":"string"},"size":{"type":"string"},"reference_image_urls":{"type":"array","items":{"type":"string"}},"canvas_id":{"type":"string"}},"required":["prompt"]}},
     "canvas_analyze_image": {"description": "分析画布图片内容(看图):OCR文字/版面/语义,返回结构化JSON证据(经 ModLens 视觉引擎)", "inputSchema":{"type":"object","properties":{"image_url":{"type":"string"},"node_id":{"type":"string"},"prompt":{"type":"string"},"canvas_id":{"type":"string"}}}},
     "canvas_list_skills": {"description": "列出已保存的技能", "inputSchema":{"type":"object","properties":{}}},
@@ -95,6 +96,27 @@ def _mcp_handle(name, args):
             cs = d if isinstance(d, list) else d.get("canvases",[])
             return {"result":[{"id":c.get("id"),"title":c.get("title",c.get("name","未命名")),"nodes":c.get("node_count",0)} for c in cs]}
         except Exception as e: return {"error":str(e)}
+    if name == "canvas_create":
+        # 与界面人工新建同链路：POST /api/canvases -> create_canvas_record（字段规范化、id 生成、kind 默认全部后端把关）
+        body = json.dumps({
+            "title": str(args.get("title") or "").strip(),
+            "kind": str(args.get("kind") or "").strip() or "smart",
+            "icon": str(args.get("icon") or "").strip(),
+            "color": str(args.get("color") or "").strip(),
+            "owner": str(args.get("owner") or "").strip(),
+        }).encode()
+        try:
+            r = urllib.request.Request(f"{MCP_BASE}/api/canvases", data=body, method="POST", headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(r, timeout=10) as f:
+                d = json.loads(f.read())
+            canvas = d.get("canvas") or {}
+            new_id = str(canvas.get("id") or "").strip()
+            if new_id:
+                MCP_CACHE["id"] = new_id
+                MCP_CACHE["data"] = canvas
+            return {"result": {"canvas_id": new_id, "title": canvas.get("title", ""), "kind": canvas.get("kind", "")}}
+        except Exception as e:
+            return {"error": str(e)}
     cv, ok = _mcp_fetch(cid)
     if not ok: return {"error":"画布获取失败"}
     nodes = cv.get("nodes", cv.get("data",{}).get("nodes",[]))
@@ -113,20 +135,27 @@ def _mcp_handle(name, args):
     if name == "canvas_create_node":
         # Phase 3：统一走 _agent_batch_build_* + Artifact Gate，废除 hm_ schema（与 Agent 通道共用单写点）
         node_type = str(args.get("type", "text")).strip().lower()
+        # 内容字段互为别名：content/text/prompt 任一即可（与人工逻辑同字段族）
+        body_text = str(args.get("text") or args.get("content") or args.get("prompt") or "").strip()
         params = {
             "canvas_id": cid,
             "type": node_type,
             "title": str(args.get("label") or args.get("title") or "MCP 节点").strip(),
-            "text": str(args.get("content") or "").strip(),
-            "prompt": str(args.get("content") or "").strip(),
+            "text": body_text,
+            "prompt": body_text,
             "x": args.get("x"),
             "y": args.get("y"),
+            "provider_id": str(args.get("provider_id") or "").strip(),
+            "model": str(args.get("model") or "").strip(),
+            "size": str(args.get("size") or "").strip(),
         }
         try:
             if node_type in ("generation", "image", "smart-image", "gen"):
                 node, ref_ids = myridtv_agent_batch._agent_batch_build_generation_node(cv, params, None)
-            else:
+            elif node_type in ("text", "smart-prompt", "prompt", "script"):
                 node = myridtv_agent_batch._agent_batch_build_text_node(cv, params)
+            else:
+                return {"error": "type 仅支持 text 或 generation（收到: {}）".format(node_type)}
         except ValueError as ve:
             return {"error": "参数不完整: {}".format(ve)}
         if args.get("width"):
@@ -151,13 +180,34 @@ def _mcp_handle(name, args):
         _mcp_save(cid, d)
         return {"result": {"deleted": nid, "tombstoned": True}}
     if name == "canvas_update_node":
-        nid = args.get("node_id",""); d = cv.get("data",cv)
-        for n in d.get("nodes",[]):
-            if n.get("id")==nid:
-                for k in ("content","x","y","width","height","label"):
-                    if k in args: n[k]=args[k]
-                break
-        _mcp_save(cid,d); return {"result":{"node_id":nid}}
+        nid = str(args.get("node_id","")).strip(); d = cv.get("data",cv)
+        hit = next((n for n in d.get("nodes",[]) if isinstance(n,dict) and n.get("id")==nid), None)
+        if not hit: return {"error":"节点不存在: {}".format(nid)}
+        # 与人工编辑同一字段族：文本节点前端读 text/promptDraftText/promptDraftHtml，
+        # 生成节点读 runPrompt/promptDraftText；尺寸键是 w/h（不是 width/height）。
+        body = args.get("text") or args.get("content") or args.get("prompt")
+        if body is not None:
+            body = str(body)
+            hit["text"]=body; hit["content"]=body
+            hit["promptDraftText"]=body
+            hit["promptDraftHtml"]=myridtv_agent_state._agent_html_escape(body)
+            hit["promptDraftTouched"]=True
+            if str(hit.get("type") or "")=="smart-image": hit["runPrompt"]=body
+        title = args.get("title") or args.get("label")
+        if title: hit["title"]=str(title).strip()
+        if "x" in args: hit["x"]=args["x"]
+        if "y" in args: hit["y"]=args["y"]
+        wv = args.get("w") if "w" in args else args.get("width")
+        hv = args.get("h") if "h" in args else args.get("height")
+        if wv is not None:
+            try: hit["w"]=int(wv)
+            except Exception: pass
+        if hv is not None:
+            try: hit["h"]=int(hv)
+            except Exception: pass
+        ok, _nid, save_ok, _dd = myridtv_agent_artifact._agent_canvas_repo_upsert_node(cid, cv, hit, "mcp_update", args)
+        if not ok: return {"error": _nid}
+        return {"result":{"node_id":nid,"updated":True,"save_ok":save_ok}}
     if name == "canvas_connect_nodes":
         eid = f"e_{uuid.uuid4().hex[:8]}"; d = cv.get("data",cv)
         el = d.get("edges",[]); el.append({"id":eid,"from":args["from_id"],"to":args["to_id"],"label":args.get("label","")})

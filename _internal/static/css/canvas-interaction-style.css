@@ -87,10 +87,214 @@ button:not(:disabled):not(.tc-btn-danger):hover,
 
 button:focus-visible,
 [role="button"]:focus-visible,
-[role="tab"]:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible {
+[role="tab"]:focus-visible {
   outline: 2px solid var(--x-selected-line);
   outline-offset: 2px;
+}
+
+/* Form fields already have a component border or a focus-within frame. Keep focus on
+   that single edge instead of stacking a shared outline and box-shadow around it. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]):focus,
+select:focus,
+textarea:focus {
+  outline: none !important;
+  outline-offset: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Canvas list header actions use the active theme instead of legacy fixed palettes. */
+html body.prism-canvas-page #canvasGate .gate-head-actions .gate-icon-btn,
+html body.prism-canvas-page #canvasGate .gate-head-actions .smart-create-btn {
+  color: var(--x-text) !important;
+  background: transparent !important;
+  background-image: none !important;
+  border: 1px solid var(--x-line) !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  transform: none !important;
+  transition: color var(--x-dur) var(--x-ease),
+              background-color var(--x-dur) var(--x-ease),
+              border-color var(--x-dur) var(--x-ease),
+              box-shadow var(--x-dur) var(--x-ease) !important;
+}
+
+html body.prism-canvas-page #canvasGate .gate-head-actions .gate-icon-btn:hover:not(:disabled),
+html body.prism-canvas-page #canvasGate .gate-head-actions .smart-create-btn:hover:not(:disabled) {
+  color: var(--x-text) !important;
+  background:var(--x-hover-bg) !important;
+  border-color: var(--x-selected-line) !important;
+  box-shadow: inset 0 0 0 1px var(--x-selected-ring) !important;
+}
+
+html body.prism-canvas-page #canvasGate .gate-head-actions .gate-icon-btn:active:not(:disabled),
+html body.prism-canvas-page #canvasGate .gate-head-actions .smart-create-btn:active:not(:disabled) {
+  color: var(--x-selected-text) !important;
+  background: var(--x-selected-fill) !important;
+  border-color: var(--x-selected-line) !important;
+  box-shadow: inset 0 0 0 1px var(--x-selected-ring) !important;
+}
+
+/* Recycle-bin controls and empty states follow the same theme tokens. */
+html body.prism-canvas-page #canvasGate .gate-back-link {
+  color: var(--x-text) !important;
+  background: transparent !important;
+  background-image: none !important;
+  border: 1px solid var(--x-line) !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  transition: color var(--x-dur) var(--x-ease),
+              background-color var(--x-dur) var(--x-ease),
+              border-color var(--x-dur) var(--x-ease),
+              box-shadow var(--x-dur) var(--x-ease) !important;
+}
+
+html body.prism-canvas-page #canvasGate .gate-back-link:hover:not(:disabled) {
+  color: var(--x-text) !important;
+  background:var(--x-hover-bg) !important;
+  border-color: var(--x-selected-line) !important;
+  box-shadow: inset 0 0 0 1px var(--x-selected-ring) !important;
+}
+
+html body.prism-canvas-page #canvasGate .gate-back-link:active:not(:disabled) {
+  color: var(--x-selected-text) !important;
+  background: var(--x-selected-fill) !important;
+  border-color: var(--x-selected-line) !important;
+  box-shadow: inset 0 0 0 1px var(--x-selected-ring) !important;
+}
+
+html body.prism-canvas-page #canvasGate .gate-list-empty {
+  color: var(--x-muted) !important;
+}
+
+html body.prism-canvas-page #canvasGate .gate-list-empty-icon {
+  color: var(--x-muted) !important;
+  background: var(--x-soft) !important;
+  border-color: var(--x-line) !important;
+  box-shadow: none !important;
+}
+
+html body.prism-canvas-page #canvasGate.trash-mode .trash-note {
+  color: var(--x-warn) !important;
+  background: var(--x-warn-soft) !important;
+  border-color: var(--x-warn-soft) !important;
+}
+
+html body.prism-canvas-page #canvasGate.trash-mode .gate-head-actions .gate-purge-all-btn {
+  color: var(--x-danger) !important;
+  background: transparent !important;
+  border: 1px solid var(--x-line) !important;
+  box-shadow: none !important;
+}
+
+html body.prism-canvas-page #canvasGate.trash-mode .gate-head-actions .gate-purge-all-btn:hover:not(:disabled),
+html body.prism-canvas-page #canvasGate.trash-mode .gate-head-actions .gate-purge-all-btn:active:not(:disabled) {
+  color: var(--x-danger) !important;
+  background: var(--x-danger-soft) !important;
+  border-color: var(--x-danger) !important;
+  box-shadow: inset 0 0 0 1px var(--x-danger-soft) !important;
+}
+
+html body.prism-canvas-page #canvasGate.trash-mode .gate-list .canvas-delete {
+  color: var(--x-text) !important;
+  background: transparent !important;
+  border: 1px solid var(--x-line) !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  transition: color var(--x-dur) var(--x-ease),
+              background-color var(--x-dur) var(--x-ease),
+              border-color var(--x-dur) var(--x-ease),
+              box-shadow var(--x-dur) var(--x-ease) !important;
+}
+
+html body.prism-canvas-page #canvasGate.trash-mode .gate-list .canvas-restore:hover:not(:disabled) {
+  color: var(--x-selected-text) !important;
+  background: var(--x-selected-fill) !important;
+  border-color: var(--x-selected-line) !important;
+  box-shadow: inset 0 0 0 1px var(--x-selected-ring) !important;
+}
+
+html body.prism-canvas-page #canvasGate.trash-mode .gate-list .canvas-purge:hover:not(:disabled) {
+  color: var(--x-danger) !important;
+  background: var(--x-danger-soft) !important;
+  border-color: var(--x-danger) !important;
+  box-shadow: inset 0 0 0 1px var(--x-danger-soft) !important;
+}
+
+html body.prism-canvas-page #canvasGate.trash-mode .canvas-delete-box {
+  background: var(--x-panel-solid) !important;
+  border: 1px solid var(--x-line) !important;
+  box-shadow: var(--x-sh-2) !important;
+}
+
+html body.prism-canvas-page #canvasGate.trash-mode .canvas-delete-title {
+  color: var(--x-text) !important;
+}
+
+html body.prism-canvas-page #canvasGate.trash-mode .canvas-delete-sub {
+  color: var(--x-muted) !important;
+}
+
+html body.prism-canvas-page #canvasGate.trash-mode .canvas-confirm-btn {
+  color: var(--x-danger) !important;
+  background: var(--x-danger-soft) !important;
+  border: 1px solid var(--x-danger) !important;
+}
+
+html body.prism-canvas-page #canvasGate.trash-mode .canvas-confirm-btn:hover:not(:disabled) {
+  color: var(--x-danger) !important;
+  background: var(--x-danger-soft) !important;
+  box-shadow: inset 0 0 0 1px var(--x-danger-soft) !important;
+}
+
+html body.prism-canvas-page #canvasGate.trash-mode .canvas-cancel-btn {
+  color: var(--x-text) !important;
+  background: transparent !important;
+  border: 1px solid var(--x-line) !important;
+}
+
+html body.prism-canvas-page #canvasGate.trash-mode .canvas-cancel-btn:hover:not(:disabled) {
+  background:var(--x-hover-bg) !important;
+  border-color: var(--x-selected-line) !important;
+  box-shadow: inset 0 0 0 1px var(--x-selected-ring) !important;
+}
+
+/* Workflow parameter pills already provide the field boundary. Keep keyboard focus on
+   that outer pill instead of drawing a second green outline around its value input. */
+html body .rh-params-popover .num-compact:focus-within,
+html body .rh-params-popover .num-with-dice:focus-within,
+html body .comfy-params-popover .num-compact:focus-within,
+html body .comfy-params-popover .num-with-dice:focus-within {
+  border-color: var(--x-selected-line) !important;
+}
+
+html body .rh-params-popover .num-compact input:focus-visible,
+html body .rh-params-popover .num-with-dice input:focus-visible,
+html body .comfy-params-popover .num-compact input:focus-visible,
+html body .comfy-params-popover .num-with-dice input:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Prompt editors already draw their own field border. Suppress the shared focus halo
+   so focused prompt windows do not appear to have a second border. */
+html body .prompt-input:focus,
+html body .prompt-input:focus-visible,
+html body .prompt-node-text:focus,
+html body .prompt-node-text:focus-visible,
+html body .prompt-node-llm textarea:focus,
+html body .prompt-node-llm textarea:focus-visible {
+  outline: none !important;
+  outline-offset: 0 !important;
+  box-shadow: none !important;
+}
+
+/* The comfy composer restores a keyboard outline later in smart-canvas.css.
+   Keep its single border, but remove the additional outline and halo. */
+html body .comfy-layout .composer-card .prompt-input:focus,
+html body .comfy-layout .composer-card .prompt-input:focus-visible,
+html body .comfy-layout .composer-card .prompt-input:focus-within,
+html body .comfy-layout .composer-card .prompt-input:active {
+  outline: none !important;
+  outline-offset: 0 !important;
+  box-shadow: none !important;
 }

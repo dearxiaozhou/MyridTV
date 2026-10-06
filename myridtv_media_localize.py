@@ -17,8 +17,10 @@ import mimetypes
 import os
 import re
 import shutil
+import ssl
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
@@ -28,6 +30,7 @@ import base64
 
 import myridtv_http
 import myridtv_env
+import myridtv_video_codec
 from myridtv_core import ApiError, append_log
 
 _ASSETS_DIR = None
@@ -98,6 +101,7 @@ def output_lookup_dirs():
     return (
         root / "images",
         root / "videos",
+        root / "audios",
         root / "images" / "history",
         root / "history",
         root,
@@ -246,6 +250,31 @@ def unique_saved_name(target_dir, saved_name):
     return f"{stem}-{uuid.uuid4().hex[:6]}{suffix}"
 
 
+_WIN_RESERVED_NAMES = {"con", "prn", "aux", "nul"} | {f"com{i}" for i in range(1, 10)} | {f"lpt{i}" for i in range(1, 10)}
+
+
+def upload_saved_name(original_name="", ext=".bin"):
+    """上传落盘名：保留用户原始文件名（仅清洗文件系统非法字符），不再随机重命名。
+
+    旧行为是一律 ``ai_ref_<随机12位>``，导致画布里显示的素材名（返回体 name，
+    即原始文件名）与磁盘上的文件永远对不上，且同一个画布输出目录里还混着生成
+    产物那套 ``09-30-01.png`` 命名。现改为保留原名；只有拿不到原名时才退回
+    ai_ref_ 随机名。真正的重名避让交给 unique_saved_name（xxx.png → xxx-2.png）。
+    """
+    # 只取文件名部分：个别浏览器/客户端会把完整路径塞进 filename。
+    raw = Path(str(original_name or "")).name
+    stem = Path(raw).stem
+    safe = re.sub(r'[\\/:*?"<>|]', "_", stem).strip().strip(".")
+    if not safe:
+        return f"ai_ref_{uuid.uuid4().hex[:12]}{ext}"
+    if len(safe) > 80:
+        safe = safe[:80].strip().strip(".")
+    # Windows 保留设备名（CON/PRN/COM1…）不能直接作为文件名写盘
+    if safe.lower() in _WIN_RESERVED_NAMES:
+        safe = safe + "_"
+    return f"{safe}{ext}"
+
+
 def save_uploaded_file(file_info, target_dir=None, url_prefix=None, kind_subdir=None):
     """通用上传落盘：写进 target_dir，返回以 url_prefix 打头的 URL。
 
@@ -277,14 +306,30 @@ def save_uploaded_file(file_info, target_dir=None, url_prefix=None, kind_subdir=
         directory = directory / subdir
         prefix = f"{prefix}/{urllib.parse.quote(subdir)}"
     directory.mkdir(parents=True, exist_ok=True)
-    saved_name = unique_saved_name(directory, f"ai_ref_{uuid.uuid4().hex[:12]}{ext}")
+    saved_name = unique_saved_name(directory, upload_saved_name(original_name, ext))
     (directory / saved_name).write_bytes(data)
+    transcode_note = ""
+    if kind == "video":
+        # 就地确保可被 WebView2 播放：探测到 HEVC 等解不了的编码就用 ffmpeg 转 H.264。
+        # 文件名不变（就地替换），因此对外 URL 无需改写；任何失败都保留原文件。
+        try:
+            _final, _changed, _note = myridtv_video_codec.ensure_playable_video(
+                str(directory / saved_name))
+            if _changed:
+                transcode_note = str(_note or "")
+        except Exception as exc:  # 探测/转码绝不能阻断上传主流程
+            try:
+                append_log(_log_file(), f"video playability pass failed: {exc}")
+            except Exception:
+                pass
     return {
         "url": f"{prefix}/{urllib.parse.quote(saved_name)}",
         "name": original_name,
         "filename": saved_name,
         "kind": kind,
         "content_type": content_type,
+        "transcoded": bool(transcode_note),
+        "transcode_note": transcode_note,
     }
 
 
@@ -655,9 +700,29 @@ def local_media_source_bytes(source_url):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36"
         },
     )
-    with urllib.request.urlopen(request, timeout=300) as response:
-        raw = response.read()
-        content_type = response.headers.get("Content-Type", "application/octet-stream").split(";", 1)[0].strip()
+    raw = b""
+    content_type = ""
+    ssl_ctx = myridtv_http._rh_forced_tls_context(text)
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(request, timeout=300, context=ssl_ctx) as response:
+                raw = response.read()
+                content_type = response.headers.get("Content-Type", "application/octet-stream").split(";", 1)[0].strip()
+            break
+        except urllib.error.HTTPError:
+            raise
+        except Exception:
+            if attempt >= 3 or ssl_ctx is not None:
+                raise
+            # 部分 CDN（如 getapib.org）与本机 OpenSSL 3.x TLS1.3 记录层不兼容
+            # （SSLV3_ALERT_BAD_RECORD_MAC，同 RH 网关已知缺陷），降级 TLS1.2 重试
+            try:
+                ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+                ssl_ctx.maximum_version = ssl.TLSVersion.TLSv1_2
+                ssl_ctx.load_default_certs()
+            except Exception:
+                raise
+            time.sleep(1)
     return raw, guess_upload_filename(text, content_type), content_type
 
 

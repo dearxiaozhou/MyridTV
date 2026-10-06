@@ -350,15 +350,32 @@ def main():
         }""")
         check("影子机器存在", not m0.get("missing"), json.dumps(m0)[:120])
         # 专门做一次干净中键平移再观察：begin+end 各至少一次，结束后必须 idle
-        page.mouse.move(900, 600)
+        pan_point = page.evaluate("""() => {
+            const world = document.getElementById('world');
+            for (const [x,y] of [[900,600],[1500,700],[120,760],[1540,900],[900,900],[500,700]]) {
+                const target = document.elementFromPoint(x,y);
+                if(world && target && world.contains(target) && !target.closest('.image-node')
+                    && !CanvasOverlayRegistry.isOverlay(target, 'pan-exclude')) return {x,y};
+            }
+            return null;
+        }""")
+        if not pan_point:
+            raise AssertionError("could not find unobstructed canvas point for middle pan")
+        page.mouse.move(pan_point["x"], pan_point["y"])
         page.mouse.down(button="middle")
-        page.mouse.move(1000, 650, steps=5)
+        pan_started = page.evaluate("""() => ({
+            active: Boolean(panState), mode: CanvasInteractionMachine.current(),
+            point: {x: window.event?.clientX || 0, y: window.event?.clientY || 0}
+        })""")
+        page.mouse.move(pan_point["x"] + 100, pan_point["y"] + 50, steps=5)
         page.mouse.up(button="middle")
         page.wait_for_timeout(400)
         m1 = page.evaluate("""() => {
             const M = window.CanvasInteractionMachine;
             return {transitions: M.dbg.transitions, violations: M.dbg.violations, sticky: M.dbg.stickyEndCount, mode: M.current()};
         }""")
+        check("[影子机] 空白画布中键按下进入平移态",
+              pan_started["active"] and pan_started["mode"] == "panning", json.dumps(pan_started))
         check("[影子机] 干净平移后 transitions 增长", m1["transitions"] >= m0.get("transitions", 0) + 2,
               f"{m0.get('transitions')}->{m1['transitions']}")
         check("[影子机] 平移结束 mode 归 idle", m1["mode"] == "idle", m1["mode"])
@@ -674,9 +691,46 @@ def main():
         deleg = page.evaluate("""() => {
             const R = window.CanvasOverlayRegistry;
             const snapshot = R.snapshot();
-            return Object.keys(snapshot.dynamic).length === 0 && Object.values(snapshot.base).every(n => n >= 12);
+            const expected = {
+                'overlay': [
+                    '.style-popover,.filter-popover', '#stylePanel,.style-panel',
+                    '.smart-node-context-menu,#smartNodeContextMenu',
+                    '.smart-editable-context-menu,#smartEditableContextMenu',
+                    '.smart-image-mirror-menu,#smartImageMirrorMenu'
+                ],
+                'pan-exclude': [
+                    '.style-popover,.filter-popover', '#stylePanel,.style-panel',
+                    '.smart-node-context-menu,#smartNodeContextMenu',
+                    '.smart-editable-context-menu,#smartEditableContextMenu',
+                    '.smart-image-mirror-menu,#smartImageMirrorMenu'
+                ],
+                'wheel-exclude': [
+                    '.style-popover,.filter-popover', '#stylePanel,.style-panel',
+                    '.smart-editable-context-menu,#smartEditableContextMenu',
+                    '.smart-image-mirror-menu,#smartImageMirrorMenu'
+                ],
+                'wheel-scrollable': ['.style-popover,.filter-popover'],
+                'zoom-preview': ['.style-popover,.filter-popover'],
+                'click-empty': [
+                    '.style-popover,.filter-popover', '#stylePanel,.style-panel',
+                    '.smart-node-context-menu,#smartNodeContextMenu',
+                    '.smart-editable-context-menu,#smartEditableContextMenu',
+                    '.smart-image-mirror-menu,#smartImageMirrorMenu'
+                ]
+            };
+            const dynamicOk = Object.keys(expected).every(kind => {
+                const actual = new Set(snapshot.dynamic[kind] || []);
+                const wanted = new Set(expected[kind]);
+                return actual.size === wanted.size && [...wanted].every(selector => actual.has(selector));
+            });
+            return {
+                baseOk: Object.values(snapshot.base).every(count => count >= 12),
+                dynamicOk,
+                dynamic: snapshot.dynamic
+            };
         }""")
-        check("[第8步] base 链完整迁移（每 kind ≥12 选择器、动态表初始为空）", deleg is True, str(deleg))
+        check("[第8步] base 链完整迁移且已声明的动态浮层均接入",
+              deleg.get("baseOk") is True and deleg.get("dynamicOk") is True, json.dumps(deleg))
 
         # ==================================================================
         # 13. 审计器（第5步量化）：全链交互跑完后，记账漏网必须为 0

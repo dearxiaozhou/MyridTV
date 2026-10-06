@@ -1,0 +1,162 @@
+{
+  "2": {
+    "inputs": {
+      "clip_name": "qwen3vl_8b_bf16.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "加载CLIP"
+    }
+  },
+  "4": {
+    "inputs": {
+      "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "8": {
+    "inputs": {
+      "prompt": [
+        "30",
+        0
+      ],
+      "negative_prompt": "",
+      "resolution": 1024,
+      "clip": [
+        "2",
+        0
+      ],
+      "vae": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "TextEncodeQwenImage21",
+    "_meta": {
+      "title": "Text Encode Qwen Image 2.1"
+    }
+  },
+  "19": {
+    "inputs": {
+      "width": [
+        "29",
+        0
+      ],
+      "height": [
+        "29",
+        1
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "空Latent图像"
+    }
+  },
+  "22": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "25",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "23": {
+    "inputs": {
+      "seed": 388514069861837,
+      "steps": 40,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "28",
+        0
+      ],
+      "positive": [
+        "8",
+        0
+      ],
+      "negative": [
+        "8",
+        1
+      ],
+      "latent_image": [
+        "19",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "K采样器"
+    }
+  },
+  "25": {
+    "inputs": {
+      "samples": [
+        "23",
+        0
+      ],
+      "vae": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "26": {
+    "inputs": {
+      "anything": [
+        "25",
+        0
+      ]
+    },
+    "class_type": "easy cleanGpuUsed",
+    "_meta": {
+      "title": "清理显存占用"
+    }
+  },
+  "28": {
+    "inputs": {
+      "unet_name": "qwen_image_2.1_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNet加载器"
+    }
+  },
+  "29": {
+    "inputs": {
+      "aspect_ratio": "3:4 (Portrait Standard)",
+      "megapixels": 2,
+      "multiple": 8
+    },
+    "class_type": "ResolutionSelector",
+    "_meta": {
+      "title": "分辨率选择器"
+    }
+  },
+  "30": {
+    "inputs": {
+      "text": "电影级写实CG角色定妆参考。\n\n一名42岁左右的东亚男性，普通城市中年父亲，真实可信的普通人气质。\n\n不是明星脸，不是商业模特，不是精英企业家，也不是刻意塑造成贫困或苦难形象。\n\n偏瘦但健康的普通身材，真实中年男性面部结构，短黑发，发型自然略有凌乱，轻微眼袋和疲惫痕迹，皮肤存在自然毛孔、细纹和年龄质感。\n\n五官具有足够辨识度，尤其保持清晰稳定的眼型、鼻型、颧骨和下颌轮廓，方便后续生成同一人物的老年版本。\n\n神态安静、克制、略显疲惫，没有哭泣，没有戏剧化悲伤，没有英雄式坚定。\n\n穿深灰褐色轻薄日常夹克，内搭低饱和普通针织或棉质上衣，现实主义现代城市男性服装，有真实缝线、布料纹理和自然褶皱，不带未来科技装饰。\n\n半身角色定妆照，正面略三分之二角度，双手自然，不摆时尚造型。\n\n简洁中性灰背景，自然柔和平光，真实肤色，85mm电影人像镜头感，清晰表现面部身份特征。\n\n重点：这是一个非常普通的父亲，而不是科幻作品的主角造型。"
+    },
+    "class_type": "Text Multiline",
+    "_meta": {
+      "title": "提示词"
+    }
+  }
+}

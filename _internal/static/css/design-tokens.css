@@ -44,6 +44,13 @@
   --x-fs-xl: 15px;  /* 区块标题 */
   --x-fs-2xl: 20px; /* 页面大标题 */
 
+  /* Canvas prompt editors share the RunningHub reading size. */
+  --x-speech-accent: #f59e0b;
+  --x-speech-tint: rgba(245,158,11,.13);
+  --x-speech-border: rgba(245,158,11,.35);
+  --x-canvas-prompt-fs: 15px;
+  --x-canvas-prompt-line-height: 1.55;
+
   /* ---------- 间距阶梯 ---------- */
   --x-sp-1: 4px;
   --x-sp-2: 6px;
@@ -85,10 +92,30 @@ html:not(.studio-theme-dark) body {
   --x-panel-solid: #ffffff;              /* 面板实色 */
   --x-card: #ffffff;                     /* 卡片 / 节点 */
   --x-soft: #f1f5f9;                     /* 次级填充：hover / 输入框 */
+  --x-hover-bg: #e8edf3;                /* Neutral interactive hover / expanded fill */
   --x-soft-2: #e8edf3;                   /* 更深一级填充 */
   --x-line: #e2e8f0;                     /* 常规描边 */
   --x-line-strong: #cbd5e1;              /* 强调描边 / 分隔线 */
   --x-grid: #d9e1ea;                     /* 画布网格点 */
+
+  /* 2026-10-05：组（打组容器）背景。此前是写死的 #2e2e2e/#2a2a2a，只适配深色，
+     浅色主题下组一直显示成深灰块（老王反馈）。改为按主题走：浅色下组比画布底色
+     #f8fafc 深一档、深色下比底色 #1c1c1c 亮一档，方向相反但目的一致——让组和
+     画布底色有色差、看得出边界，同时组里的白/深节点卡片仍能再分层。 */
+  --x-group: #e2e8f0;                    /* 组容器背景（打出的组 / 保留组） */
+  --x-group-alt: #e6ebf3;                /* 次级组背景（多图缩略图组） */
+  /* 取色依据：让组与画布底色的亮度差和深色族对齐——底色之上，深色 group/alt 分别
+     亮 18/14 级（#1c1c1c → #2e2e2e / #2a2a2a），浅色这里就是比 #f8fafc 深 18/14 级
+     （→ #e2e8f0 / #e6ebf3），两套主题的层次观感一致。 */
+
+  /* canvas 型组（带绿色标题栏）的强调色与标题栏，2026-10-05 接主题：
+     此前标题栏 background:rgba(31,31,31,.8)、标题字 #dcfce7、外框/底边框 rgba(74,222,128,.x)
+     全是写死深色，浅色主题下也是黑底绿字。绿色作为 canvas 组的身份色保留，
+     但底色/字色/边框随主题走：浅色=浅绿底+深绿字、深色=深底+浅绿字。 */
+  --x-group-accent: #16a34a;             /* canvas 组外框 / 底边框（实色强调） */
+  --x-group-accent-soft: rgba(22, 163, 74, .42);  /* 同色半透明，用于标题栏底边框 */
+  --x-group-header-bg: rgba(22, 163, 74, .10);    /* 标题栏背景（浅绿 tint） */
+  --x-group-header-text: #15803d;        /* 标题字（深绿，浅底可读） */
 
   --x-text: #111827;                     /* 主文字 */
   --x-muted: #64748b;                    /* 次要文字 */
@@ -108,6 +135,13 @@ html:not(.studio-theme-dark) body {
   --x-warn-soft: rgba(180, 83, 9, .12);
   --x-danger-soft: rgba(220, 38, 38, .12);
   --x-info-soft: rgba(37, 99, 235, .12);
+
+  --x-selected-line: #16a34a;
+  --x-selected-fill: rgba(22, 163, 74, .10);
+  --x-selected-text: #15803d;
+  --x-snap-guide: #15803d;
+  --x-snap-guide-halo: rgba(255, 255, 255, .9);
+  --x-selected-ring: rgba(22, 163, 74, .22);
 
   /* 让原生表单控件 / <select> 展开弹层走亮色系统绘制，与 UI 主题一致 */
   color-scheme: light;
@@ -143,15 +177,27 @@ body.theme-dark {
      而 smart-canvas.html 不加载 theme.css，那里的原生下拉弹层会弹白底。 */
   color-scheme: dark;
 
-  --x-page: #000000;
-  --x-panel: rgba(31, 31, 31, .94);
-  --x-panel-solid: #1f1f1f;
-  --x-card: #1f1f1f;
-  --x-soft: #2f2f2f;
-  --x-soft-2: #313131;
-  --x-line: #404040;
+  /* 2026-10-05：画布底色由纯黑 #000000 改为一档深灰 #1c1c1c（老王：参考图观感，
+     纯黑太死）。节点卡片 --x-card 同步抬到 #242424，保证卡片比底色亮一档、
+     再靠描边和阴影分层；否则卡片(原 #1f1f1f)会沉进底色里糊成一片。 */
+  --x-page: #1c1c1c;
+  --x-panel: rgba(38, 38, 38, .94);
+  --x-panel-solid: #262626;
+  --x-card: #242424;
+  --x-soft: #343434;
+  --x-hover-bg: #343434;
+  --x-soft-2: #383838;
+  --x-line: #454545;
   --x-line-strong: #7a7a7a;
-  --x-grid: rgba(255, 255, 255, .11);
+  --x-grid: rgba(255, 255, 255, .13);
+  /* 组背景（深色）：比画布底色 #1c1c1c 亮一档，对应浅色族的同名变量。 */
+  --x-group: #2e2e2e;
+  --x-group-alt: #2a2a2a;
+  /* canvas 型组（带绿色标题栏）强调色与标题栏，对应浅色族同名变量。 */
+  --x-group-accent: #4ade80;            /* 浅绿，深底可见 */
+  --x-group-accent-soft: rgba(74, 222, 128, .42);
+  --x-group-header-bg: rgba(31, 31, 31, .8);       /* 深底，保留原观感 */
+  --x-group-header-text: #dcfce7;        /* 浅绿字 */
 
   --x-text: #ffffff;
   --x-muted: #c8c8c8;
@@ -171,6 +217,13 @@ body.theme-dark {
   --x-warn-soft: rgba(251, 191, 36, .14);
   --x-danger-soft: rgba(248, 113, 113, .14);
   --x-info-soft: rgba(96, 165, 250, .14);
+
+  --x-selected-line: #4ade80;
+  --x-selected-fill: rgba(74, 222, 128, .12);
+  --x-selected-text: #4ade80;
+  --x-snap-guide: #4ade80;
+  --x-snap-guide-halo: rgba(0, 0, 0, .65);
+  --x-selected-ring: rgba(74, 222, 128, .24);
 
   --x-shadow: rgba(0, 0, 0, .28);
   --x-sh-1: 0 2px 6px rgba(0, 0, 0, .22);

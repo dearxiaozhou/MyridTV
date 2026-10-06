@@ -1,0 +1,7 @@
+{
+  "id": "rh-live-black-white",
+  "name": "黑白电影",
+  "prompt": "[BASE_STYLE] 真人实拍影像，真实人体比例、自然皮肤纹理与摄影镜头的空间透视，现实材质响应。黑白电影摄影，纯黑白灰阶，饱满中间调与细腻银盐颗粒，方向光塑形，亮部平滑、黑位扎实，依明暗而非色相建立层次。仅调整美术表现，主体、动作、服装与场景以用户正文为准。\n[CONTENT] 一位成年女侦探穿风衣站在百叶窗旁，半张脸被斜向光影照亮，半身近景。\n[COMPOSITION] 正方形画面，单幅完整作品。无文字、无水印、无边框。",
+  "path": "C:\\Users\\77972\\.codex\\generated_images\\01a0f65d-17ff-7bd3-a757-2ed90b2429c9\\exec-56e6fddf-d6c8-451d-b46e-7b2b91748cec.png",
+  "accepted": true
+}

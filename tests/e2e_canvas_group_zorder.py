@@ -82,7 +82,7 @@ def main():
             return {memberZ: z('gz_n1'), groupZ: z('gz_group'), unselectedZ: z('gz_n2')};
         }""")
         failures += not check("点选成员后：成员抬到 4", step1["memberZ"] == "4", str(step1))
-        failures += not check("点选成员后：组仍压在底下 =1（修复前=2 与成员旧值同层）", step1["groupZ"] == "1", str(step1))
+        failures += not check("点选成员后：组压在连线层之下 =0（不能与成员/连线同层）", step1["groupZ"] == "0", str(step1))
 
         # 2) bringNodesToFront 全量刷新路径
         step2 = page.evaluate("""() => {
@@ -90,7 +90,7 @@ def main():
             const z = id => document.querySelector(`.image-node[data-id="${id}"]`).style.zIndex;
             return {groupZ: z('gz_group'), memberZ: z('gz_n1')};
         }""")
-        failures += not check("bringNodesToFront 全量刷后组仍=1", step2["groupZ"] == "1", str(step2))
+        failures += not check("bringNodesToFront 全量刷后组仍压在连线层之下 =0", step2["groupZ"] == "0", str(step2))
 
         # 3) 真实命中：成员中心的 elementsFromPoint 第一个 .image-node 必须是成员
         hit = page.evaluate("""() => {

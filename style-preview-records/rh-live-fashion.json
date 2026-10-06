@@ -1,0 +1,7 @@
+{
+  "id": "rh-live-fashion",
+  "name": "时尚大片",
+  "prompt": "[BASE_STYLE] 真人实拍影像，真实人体比例、自然皮肤纹理与摄影镜头的空间透视，现实材质响应。时尚编辑摄影，精准塑形的棚灯与清楚的明暗边界，细腻而保留纹理的肤质，色彩简练，材质高光受控，视觉重心明确。仅调整美术表现，主体、动作、服装与场景以用户正文为准。\n[CONTENT] 一位成年女性身穿黑色简洁西装和白衬衫，站在灰色摄影棚，手扶椅背，半身。\n[COMPOSITION] 正方形画面，单幅完整作品。无文字、无水印、无边框。",
+  "path": "C:\\Users\\77972\\.codex\\generated_images\\01a0f65d-17ff-7bd3-a757-2ed90b2429c9\\exec-8ca630ca-dcc8-464c-83b9-6caeef4ee18e.png",
+  "accepted": true
+}

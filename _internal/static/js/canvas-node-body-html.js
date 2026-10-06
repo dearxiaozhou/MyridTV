@@ -130,13 +130,40 @@ function smartLoopBodyHtml(node){
         </div>
     </div>`;
 }
-function smartCropButtonHtml(img, index){
-    if(deps.mediaKindForItem(img) !== 'image') return '';
+function smartCropButtonHtml(img, index, nodeType){
+    // 2026-10-05（老王：视频素材类节点多选时要能看到对齐工具）：
+    // 这里原本对「非图片媒体」整段 return ''，于是含视频的媒体节点
+    // （type 仍是 smart-image、只是 images[].kind==='video'）连对齐工具一起没了。
+    // 现在：视频只跳过图片专属的裁剪/遮罩/画笔/宫格，对齐工具照常渲染，
+    // 与图片节点多选时的行为完全一致。
+    if(deps.mediaKindForItem(img) !== 'image'){
+        // smart-video 这类非图像节点已在节点级 .smart-node-toolbar 里有对齐按钮（见
+        // smart-canvas.js 的 `${!isImageNode ? smartNodeToolbarHtml() : ''}`），
+        // 这里再渲染一份会重复，故只对「图像节点里的视频」补渲染。
+        if(nodeType && nodeType !== 'smart-image') return '';
+        const vMultiDisabled = deps.selectedLayoutNodes().length >= 2 ? '' : ' disabled';
+        const vGroupDisabled = deps.canGroupSelectedNodes() ? '' : ' disabled';
+        const vLayoutButtons = [
+            ['group', 'group', '打组', vGroupDisabled],
+            ['align-left', 'align-left', '左对齐', vMultiDisabled],
+            ['align-top', 'align-start-horizontal', '顶对齐', vMultiDisabled],
+            ['same-size', 'maximize-2', '统一尺寸', vMultiDisabled],
+            ['distribute-horizontal', 'columns-3', '左右等距', vMultiDisabled],
+            ['distribute-vertical', 'rows-3', '上下等距', vMultiDisabled]
+        ];
+        return `<div class="smart-image-tools">
+            <span class="smart-layout-tools${vMultiDisabled ? ' is-inactive' : ''}">
+                ${vLayoutButtons.map(([action, icon, title, disabled]) => `<button class="smart-node-action${disabled ? ' disabled' : ''}" type="button" data-smart-node-action="${action}" title="${title}" aria-label="${title}"${disabled}><i data-lucide="${icon}"></i></button>`).join('')}
+            </span>
+        </div>`;
+    }
     const buttons = [
- ['crop', 'crop', '编辑裁剪'],
+    ['crop', 'crop', '编辑裁剪'],
         ['mask', 'brush', '遮罩'],
         ['brush', 'paintbrush', '画笔'],
-        ['grid', 'grid-3x3', '宫格切分']
+        ['grid', 'grid-3x3', '宫格切分'],
+        // 镜像：一次性动作，不进编辑器（由 openSmartImageTool 拦截后弹方向菜单）
+        ['mirror', 'flip-horizontal', '镜像']
     ];
     const multiDisabled = deps.selectedLayoutNodes().length >= 2 ? '' : ' disabled';
     const groupDisabled = deps.canGroupSelectedNodes() ? '' : ' disabled';
@@ -174,6 +201,14 @@ function smartNodeToolbarHtml(){
 }
 function openSmartImageTool(nodeId, imageIndex, mode, event){
     if(mode === 'free-crop') return CanvasImageCrop.begin(nodeId, imageIndex, event);
+    // 2026-10-05 镜像：一次性动作，不进图片编辑器（裁剪/遮罩/画笔才进），
+    // 直接弹方向小菜单（水平/垂直/180°），选完立刻执行像素级镜像。
+    if(mode === 'mirror'){
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        event?.stopImmediatePropagation?.();
+        return deps.openImageMirrorMenu?.(nodeId, imageIndex, event?.currentTarget || null);
+    }
     event?.preventDefault?.();
     event?.stopPropagation?.();
     event?.stopImmediatePropagation?.();
@@ -200,6 +235,7 @@ function smartImageMetaBodyHtml(node){
     </div>`;
 }
 function nodeBodyHtml(node, layout){
+    if(node.type === 'smart-speech') return global.CanvasSpeech.body(node);
     if(node.type === 'smart-table') return tableNodeBodyHtml(node);
     if(deps.isCanvasGroupNode(node)) return '';
     // A generation clears its output list before the result arrives. Keep that state
@@ -231,11 +267,12 @@ function nodeBodyHtml(node, layout){
         let audioCount = 0;
         const items = imgs.map((img, i) => {
             const audioIndex = deps.isAudioMediaItem(img) ? ++audioCount : 0;
-            return `<div class="thumb-item ${D("selectedImage").nodeId === node.id && D("selectedImage").index === i ? 'image-selected' : ''}" data-image-index="${i}" data-media-signature="${D("escapeAttr")(`${deps.mediaKindForItem(img)}:${img?.url || ''}`)}">${deps.thumbMediaHtml(img, audioIndex)}${deps.smartImageNameLabelHtml(img, i)}${deps.imageResolutionBadgeHtml(img)}${smartCropButtonHtml(img, i)}<button class="mini-x image-delete" type="button" data-image-index="${i}" title="${deps.escapeHtml(tr('smart.deleteImage'))}"><i data-lucide="trash-2"></i></button></div>`;
+            const size = deps.aspectGroupImageSize(img, layout.thumb);
+            return `<div class="thumb-item ${D("selectedImage").nodeId === node.id && D("selectedImage").index === i ? 'image-selected' : ''}" data-image-index="${i}" data-media-signature="${D("escapeAttr")(`${deps.mediaKindForItem(img)}:${img?.url || ''}`)}" style="--thumb-w:${size.width}px;--thumb-h:${size.height}px">${deps.thumbMediaHtml(img, audioIndex)}${deps.smartImageNameLabelHtml(img, i)}${deps.imageResolutionBadgeHtml(img)}${smartCropButtonHtml(img, i, node.type)}<button class="mini-x image-delete" type="button" data-image-index="${i}" title="${deps.escapeHtml(tr('smart.deleteImage'))}"><i data-lucide="trash-2"></i></button></div>`;
         }).join('');
-        return `<div class="thumb-grid" style="--thumb-cols:${layout.cols}; --thumb-size:${layout.thumb}px">${items}</div>`;
+        return `<div class="ratio-thumb-grid" style="--thumb-cols:${layout.cols};--thumb-size:${layout.thumb}px">${items}</div>`;
     }
-    if(imgs[0]) return `<div class="image-wrap ${D("selectedImage").nodeId === node.id && D("selectedImage").index === 0 ? 'image-selected' : ''}" data-image-index="0" data-media-signature="${D("escapeAttr")(`${deps.mediaKindForItem(imgs[0])}:${imgs[0]?.url || ''}`)}" style="--node-img-w:${layout.width}px;--node-img-h:${layout.height}px">${deps.singleMediaHtml(imgs[0], layout.width, layout.height)}${deps.smartImageNameLabelHtml(imgs[0], 0)}${deps.imageResolutionBadgeHtml(imgs[0])}${smartCropButtonHtml(imgs[0], 0)}${deps.comfyNodeProgressBarHtml(node)}<button class="mini-x image-delete" type="button" data-image-index="0" title="${deps.escapeHtml(tr('smart.deleteImage'))}"><i data-lucide="trash-2"></i></button></div>`;
+    if(imgs[0]) return `<div class="image-wrap ${D("selectedImage").nodeId === node.id && D("selectedImage").index === 0 ? 'image-selected' : ''}" data-image-index="0" data-media-signature="${D("escapeAttr")(`${deps.mediaKindForItem(imgs[0])}:${imgs[0]?.url || ''}`)}" style="--node-img-w:${layout.width}px;--node-img-h:${layout.height}px">${deps.singleMediaHtml(imgs[0], layout.width, layout.height)}${deps.smartImageNameLabelHtml(imgs[0], 0)}${deps.imageResolutionBadgeHtml(imgs[0])}${smartCropButtonHtml(imgs[0], 0, node.type)}${deps.comfyNodeProgressBarHtml(node)}<button class="mini-x image-delete" type="button" data-image-index="0" title="${deps.escapeHtml(tr('smart.deleteImage'))}"><i data-lucide="trash-2"></i></button></div>`;
     return `<div class="node-drop" data-upload-action="files">
         <span class="node-media-hint"><i data-lucide="image"></i><i data-lucide="square-play"></i><i data-lucide="music"></i></span>
         <div class="node-drop-hint">${deps.escapeHtml(tr('smart.createImportNodeSub'))}</div>
@@ -249,7 +286,7 @@ function preservedGroupBodyHtml(node, imgs){
         const h = Math.max(28, Math.round(Number(box.h) || 96));
         const x = Math.max(0, Math.round(Number(box.x) || 0));
         const y = Math.max(0, Math.round(Number(box.y) || 0));
-        return `<div class="preserved-group-item image-wrap ${selectedImage.nodeId === node.id && selectedImage.index === index ? 'image-selected' : ''}" data-image-index="${index}" data-media-signature="${escapeAttr(`${mediaKindForItem(img)}:${img?.url || ''}`)}" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;--node-img-w:${w}px;--node-img-h:${h}px">${deps.singleMediaHtml(img, w, h)}${deps.smartImageNameLabelHtml(img, index)}${deps.imageResolutionBadgeHtml(img)}${smartCropButtonHtml(img, index)}<button class="mini-x image-delete" type="button" data-image-index="${index}" title="${escapeHtml(tr('smart.deleteImage'))}"><i data-lucide="trash-2"></i></button></div>`;
+        return `<div class="preserved-group-item image-wrap ${selectedImage.nodeId === node.id && selectedImage.index === index ? 'image-selected' : ''}" data-image-index="${index}" data-media-signature="${escapeAttr(`${mediaKindForItem(img)}:${img?.url || ''}`)}" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;--node-img-w:${w}px;--node-img-h:${h}px">${deps.singleMediaHtml(img, w, h)}${deps.smartImageNameLabelHtml(img, index)}${deps.imageResolutionBadgeHtml(img)}${smartCropButtonHtml(img, index, node.type)}<button class="mini-x image-delete" type="button" data-image-index="${index}" title="${escapeHtml(tr('smart.deleteImage'))}"><i data-lucide="trash-2"></i></button></div>`;
     }).join('')}</div>`;
 }
 function jimengPendingBodyHtml(node, layout){

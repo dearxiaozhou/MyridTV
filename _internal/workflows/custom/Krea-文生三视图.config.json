@@ -1,0 +1,60 @@
+{
+  "title": "Krea-文生三视图",
+  "fields": [
+    {
+      "id": "f_4rnswbg",
+      "node": "309",
+      "input": "prompt",
+      "name": "提示词",
+      "type": "textarea",
+      "default": "一位长发及腰可爱的女生。构图随意却尽显生活中的绚丽日常，人像摄影，日常快照风格，一蓝天背景，姿态自然随性，展现出轻松惬意的氛围 18岁女大学生在阳台，尖下巴，三庭五眼比例均衡，，娇羞可爱的随机表情，细腻陶瓷水嫩肌肤，偏冷白皮，上半身特写，随机的妆容，随机发型和颜色，随机的饰品，随机的动作，发丝轻飘，凌乱，随机角度拍摄，总体有很多的不确定性，但又好看，自拍视角，光线微暗，背景是掉了些落叶的水泥地面，公园边上有小河，亚麻灰棕色头发，穿着黑灰色宽松连帽卫衣，里面背着浅色书包，人物微微抬头看向镜头，深灰色牛仔宽松鸭舌帽反着戴，阳光光斑，俯拍，一只手放口袋里。",
+      "options": []
+    },
+    {
+      "id": "auto_prompt_313_prompt",
+      "node": "313",
+      "input": "prompt",
+      "name": "⚙️ CR Prompt Text",
+      "type": "textarea",
+      "default": "你是「#Krea2角色四视图Prompt」模板。\n触发方式：用户输入 #Krea2角色四视图：{角色英文描述}（可附带风格/用途/必须出现/必须避免）。\n固定开头（强制）：输出必须以以下英文句子逐字开头，不得改动：\n\"Adopt a side-by-side split-screen composition of a character concept design sheet, with the frame strictly divided from left to right into four independent panels: the first panel is a refined close-up portrait of the character's face, the second panel is a front-view full-body standing pose, the third panel is a side-view full-body standing pose, and the fourth panel is a back-view full-body standing pose with the back clearly visible.\"\n开头之后，紧接同一段落继续扩写，整段总长度不少于 500 个英文单词。禁止输出标题、解释、拆解、表格、代码块及任何中文——最终只输出这一整段英文 Prompt。\n内部工作流（不输出过程）：分析角色身份/体型/年龄/气质 → 服装与装备细节（四个视图必须保持同一套服装、同一配色、同一发型）→ 材质纹理 → 场景背景（建议纯色或浅灰摄影棚背景，不抢主体）→ 光线（均匀柔和棚拍光或按用户风格调整）→ 风格媒介（concept art character sheet / anime / realistic，按用户需求）→ 合并成一段流畅英文。\n扩写必须覆盖：\n四视图一致性：same outfit, same hairstyle, same color palette, consistent proportions across all four panels\n脸部特写：facial features、expression、skin/hair texture、eye detail\n站姿：neutral standing pose, arms relaxed, natural anatomy, full body visible head to toe\n服装细节：正/侧/背面各自的可见结构、褶皱、配饰、背部设计（back design clearly readable）\n背景与构图：equal-width panels, clear separation, clean neutral background, character sheet layout\n风格与质量：按用户风格指定渲染方式 + 高清细节\n必带限制词：no text, no logo, no watermark, no labels, no distorted anatomy, no extra limbs, no inconsistent clothing between panels, no cropped feet or head, no clutter, no low-resolution artifacts。\n输出前自检：是否以固定开头句逐字开始？只有一段英文？≥500 词？四视图一致性和背面清晰度是否写明？可直接复制进 Krea 2？全部通过才输出。\n",
+      "options": []
+    }
+  ],
+  "mini_cards": {
+    "prompt": {
+      "x": 24,
+      "y": 30
+    },
+    "image": {
+      "x": 24,
+      "y": 210
+    },
+    "custom": {
+      "x": 280,
+      "y": 78
+    },
+    "output": {
+      "x": 540,
+      "y": 120
+    },
+    "__test_nodes": [
+      {
+        "id": "comfy_1",
+        "type": "comfy",
+        "x": 330,
+        "y": 150
+      },
+      {
+        "id": "output_1",
+        "type": "output",
+        "x": 670,
+        "y": 190
+      }
+    ]
+  },
+  "group": {
+    "id": "Krea-文生图-巨物-人物多角度",
+    "title": "Krea-文生图-巨物-人物多角度"
+  },
+  "imported_from": "Krea-文生图-巨物-人物多角度.json"
+}

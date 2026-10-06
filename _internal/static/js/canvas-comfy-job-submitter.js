@@ -78,6 +78,10 @@ async function submitComfyWorkflowJob(node, payload, meta=null){
             }
             return data;
         });
+        // 后端兜底：状态被迟到的 WS 消息翻回 running，但 error + finished_at 已经落地 → 按失败收尾
+        if(job.status === 'running' && Number(job.finished_at || 0) > 0 && job.error){
+            job.status = 'error';
+        }
         if(target){
             if(target.comfyRunToken !== runToken){
                 const superseded = new Error('ComfyUI 任务已被替换');

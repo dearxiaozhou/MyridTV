@@ -37,11 +37,16 @@ def create_canvas(title):
 
 
 def add_comfy_node(page):
+    before_ids = set(page.locator(".image-node").evaluate_all("els => els.map(el => el.dataset.id)"))
     page.locator("#canvasAddToggle").click()
     page.locator('[data-create-type="comfy"]').wait_for(state="visible", timeout=5000)
     page.locator('[data-create-type="comfy"]').click()
-    page.locator(".image-node").first.wait_for(state="visible", timeout=8000)
-    return page.locator(".image-node").first.get_attribute("data-id")
+    page.wait_for_function(
+        "before => [...document.querySelectorAll('.image-node')].some(el => !before.includes(el.dataset.id))",
+        arg=list(before_ids),
+        timeout=8000,
+    )
+    return page.locator(".image-node").last.get_attribute("data-id")
 
 
 def configure_canvas_page(page, canvas_id, errors):
@@ -147,6 +152,7 @@ def main():
         persistence_page = context.new_page()
         persistence_errors = []
         configure_canvas_page(persistence_page, persistence_canvas["id"], persistence_errors)
+        persistence_page.bring_to_front()
         persistence_requests = []
         persistence_responses = []
         persistence_page.on("request", lambda request: persistence_requests.append({"method": request.method, "url": request.url})
@@ -155,8 +161,25 @@ def main():
                             if response.request.method == "PUT" and f"/api/canvases/{persistence_canvas['id']}" in response.url else None)
         source_node_id = add_comfy_node(persistence_page)
         target_node_id = add_comfy_node(persistence_page)
-        before_save = persistence_page.evaluate(
-            """({sourceId,targetId}) => {
+        assert source_node_id != target_node_id, "persistence test must connect two distinct nodes"
+        # Node creation schedules its own debounced save. Drain that work, then observe the
+        # exact PUT caused by the composite state save so local-draft recovery cannot mask it.
+        persistence_page.evaluate("""async () => {
+            const deadline = Date.now() + 10000;
+            while(canvasSyncInFlight && Date.now() < deadline) {
+                await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            if(canvasSyncInFlight) throw new Error('previous canvas save did not finish');
+            clearTimeout(saveTimer);
+            saveTimer = null;
+        }""")
+        with persistence_page.expect_response(
+            lambda response: response.request.method == "PUT"
+            and urlparse(response.url).path == f"/api/canvases/{persistence_canvas['id']}",
+            timeout=15000,
+        ) as saved_response:
+            before_save = persistence_page.evaluate(
+                """({sourceId,targetId}) => {
               canvas.connections = [{from:sourceId,to:targetId,kind:'input'}];
               const settingsState = {engine:'api',apiKind:'image',provider_id:'e2e-provider',model:'persisted-model',ratio:'square',resolution:'2k'};
               settings = {...settings,...settingsState};
@@ -164,26 +187,26 @@ def main():
               canvasAgentArtifactsState = [{id:'e2e-persisted-artifact',kind:'image',url:'/assets/input/persisted.png'}];
               scheduleSave();
               return {canvasId:canvasId, canvasObjectId:canvas?.id, nodes:(nodes||[]).map(n=>n.id), updatedAt:canvas?.updated_at};
-            }""",
-            {"sourceId": source_node_id, "targetId": target_node_id},
-        )
-        persisted = None
-        deadline = time.monotonic() + 12
-        while time.monotonic() < deadline:
-            persisted = api("GET", f"/api/canvases/{persistence_canvas['id']}")["canvas"]
-            persisted_ids = [node.get("id") for node in persisted.get("nodes", [])]
-            if (source_node_id in persisted_ids and target_node_id in persisted_ids
-                    and any(conn.get("from") == source_node_id and conn.get("to") == target_node_id for conn in persisted.get("connections", []))
-                    and persisted.get("settings", {}).get("model") == "persisted-model"
-                    and any(item.get("id") == "e2e-persisted-artifact" for item in persisted.get("artifacts", []))):
-                break
-            time.sleep(0.15)
+                }""",
+                {"sourceId": source_node_id, "targetId": target_node_id},
+            )
+        composite_save_response = saved_response.value
+        persisted = api("GET", f"/api/canvases/{persistence_canvas['id']}")["canvas"]
         persisted_ids = [node.get("id") for node in (persisted or {}).get("nodes", [])]
         persisted_ok = (source_node_id in persisted_ids and target_node_id in persisted_ids
                         and any(conn.get("from") == source_node_id and conn.get("to") == target_node_id for conn in (persisted or {}).get("connections", []))
                         and (persisted or {}).get("settings", {}).get("model") == "persisted-model"
-                        and any(item.get("id") == "e2e-persisted-artifact" for item in (persisted or {}).get("artifacts", [])))
-        check("连线、生成设置和产物均写入服务端", persisted_ok, {"before": before_save, "requests": persistence_requests, "responses": persistence_responses, "server": persisted})
+                        and any(item.get("id") == "e2e-persisted-artifact" for item in (persisted or {}).get("artifacts", []))
+                        and composite_save_response.status == 200)
+        check("连线、生成设置和产物经 PUT 写入服务端", persisted_ok, {
+            "before": before_save,
+            "putStatus": composite_save_response.status,
+            "requests": persistence_requests,
+            "responses": persistence_responses,
+            "server": {"nodes": persisted_ids, "connections": persisted.get("connections"),
+                       "settingsModel": persisted.get("settings", {}).get("model"),
+                       "artifacts": [item.get("id") for item in persisted.get("artifacts", [])]},
+        })
         persistence_page.reload(wait_until="domcontentloaded")
         persistence_page.wait_for_function(
             "({id,sourceId,targetId}) => canvas?.id === id && (nodes||[]).some(n=>n.id===sourceId) && (nodes||[]).some(n=>n.id===targetId) && canvas.connections?.some(c=>c.from===sourceId && c.to===targetId) && canvas.settings?.model==='persisted-model' && (canvasAgentArtifactsState||[]).some(a=>a.id==='e2e-persisted-artifact')",

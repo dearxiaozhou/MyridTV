@@ -1,0 +1,9 @@
+{
+  "runtime": "http://127.0.0.1:3107",
+  "version": "V0.8.18",
+  "style_count": 24,
+  "filter_count": 12,
+  "wheel_down_and_up": true,
+  "canvas_unchanged": true,
+  "errors": []
+}

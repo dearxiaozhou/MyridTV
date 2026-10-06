@@ -163,12 +163,12 @@ function nodeTextOutput(node){
 function localDisplayUrlForMediaItem(img){
     if(!img) return '';
     const candidates = [
+        img.url,
         img.originalLocalUrl,
         img.localUrl,
         img.sourceUrl,
         img.local_url,
-        img.source_url,
-        img.url
+        img.source_url
     ];
     const local = candidates.find(url => url && !/^https?:\/\//i.test(String(url)));
     return local || img.url || '';
@@ -223,21 +223,69 @@ function formatAudioTime(seconds){
     const value = Math.max(0, Math.floor(Number(seconds) || 0));
     return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
 }
+const audioPeakCache = new Map();
+function audioWaveBuckets(w){
+    return Math.max(32, Math.min(96, Math.round((Number(w) || 280) / 3.6)));
+}
+function audioWaveFallbackLevel(index, buckets){
+    const count = Math.max(2, Number(buckets) || 64);
+    const t = index / (count - 1);
+    const env = .34 + .46 * Math.abs(Math.sin(t * 6.1) + .5 * Math.sin(t * 13.3 + .7) + .25 * Math.sin(t * 3.3)) / 1.75;
+    return Math.max(8, Math.min(96, Math.round(env * 100)));
+}
+function audioPeaksFor(url, buckets){
+    const key = `${String(url || '')}#${buckets}`;
+    if(audioPeakCache.has(key)) return audioPeakCache.get(key);
+    const job = (async () => {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if(!Ctx || !url) return null;
+        const res = await fetch(url);
+        const buf = await res.arrayBuffer();
+        const ctx = new Ctx();
+        try{
+            const decoded = await ctx.decodeAudioData(buf);
+            const data = decoded.getChannelData(0);
+            const step = Math.max(1, Math.floor(data.length / buckets));
+            const peaks = [];
+            for(let i = 0; i < buckets; i++){
+                let max = 0;
+                const start = i * step;
+                for(let j = 0; j < step; j++){
+                    const value = Math.abs(data[start + j] || 0);
+                    if(value > max) max = value;
+                }
+                peaks.push(max);
+            }
+            const top = peaks.reduce((acc, value) => Math.max(acc, value), 0);
+            if(!top) return null;
+            return peaks.map(value => Math.max(6, Math.min(100, Math.round(value / top * 100))));
+        } finally {
+            try{ ctx.close(); }catch(_){}
+        }
+    })().catch(() => null);
+    audioPeakCache.set(key, job);
+    return job;
+}
 function audioPlayerHtml(img, w, h){
     const url = deps.displayMediaUrl(img, img?.name || 'audio');
-    const levels = [18, 28, 42, 58, 76, 92, 64, 48, 72, 88, 56, 38, 68, 96, 82, 52, 34, 62, 84, 70, 44, 30, 54, 78, 90, 66, 46, 26, 40, 60, 36, 22];
-    const bars = levels.map((level, index) => `<span style="--audio-level:${level}%;--audio-bar-index:${index}" aria-hidden="true"></span>`).join('');
-    return `<div class="node-img media-audio-card media-audio-player" data-audio-player style="width:${w}px;height:${h}px">
-        <div class="audio-player-waveform" data-audio-waveform title="点击波形定位" role="slider" aria-label="音频进度" tabindex="0">${bars}</div>
+    const width = Number(w) || 280;
+    const height = Number(h) || 150;
+    const compact = height < 110 || width < 220;
+    const buckets = audioWaveBuckets(width);
+    const bars = Array.from({length: buckets}, (_, index) => `<span class="audio-bar" style="--audio-level:${audioWaveFallbackLevel(index, buckets)}%;--audio-bar-index:${index}" aria-hidden="true"></span>`).join('');
+    const name = audioThumbLabel(img);
+    return `<div class="node-img media-audio-card media-audio-player${compact ? ' is-compact' : ''}" data-audio-player data-audio-buckets="${buckets}" style="width:${width}px;height:${height}px">
+        <div class="audio-player-name" title="${D("escapeAttr")(name)}">${deps.escapeHtml(name)}</div>
+        <div class="audio-player-waveform" data-audio-waveform title="拖动时间线定位" role="slider" aria-label="音频进度" tabindex="0">${bars}<span class="audio-playhead" data-audio-playhead aria-hidden="true"></span><span class="audio-scrub-bubble" data-audio-bubble aria-hidden="true">0:00</span></div>
         <div class="audio-player-controls">
-            <button class="audio-play-button" type="button" data-audio-toggle title="播放音频" aria-label="播放音频"><i data-lucide="play"></i></button>
             <span class="audio-time" data-audio-time>0:00 / 0:00</span>
+            <button class="audio-play-button" type="button" data-audio-toggle title="播放音频" aria-label="播放音频"><i data-lucide="play" class="audio-icon-play"></i><i data-lucide="pause" class="audio-icon-pause"></i></button>
         </div>
         <audio class="audio-player-media" src="${D("escapeAttr")(url)}" data-url="${D("escapeAttr")(img?.url || url)}" preload="metadata"></audio>
     </div>`;
 }
-function bindSmartAudioPlayers(){
-    D("world")?.querySelectorAll?.('[data-audio-player]').forEach(card => {
+function bindSmartAudioPlayers(root=D("world")){
+    root?.querySelectorAll?.('[data-audio-player]').forEach(card => {
         if(card.dataset.audioBound === '1') return;
         const media = card.querySelector('.audio-player-media');
         const toggle = card.querySelector('[data-audio-toggle]');
@@ -245,31 +293,86 @@ function bindSmartAudioPlayers(){
         const time = card.querySelector('[data-audio-time]');
         if(!media || !toggle || !waveform) return;
         card.dataset.audioBound = '1';
+        const playhead = card.querySelector('[data-audio-playhead]');
+        const bubble = card.querySelector('[data-audio-bubble]');
+        const bars = () => Array.from(waveform.querySelectorAll('.audio-bar'));
+        let scrubbing = false;
+        let hovering = false;
+        const setProgress = progress => {
+            waveform.style.setProperty('--audio-progress', `${progress * 100}%`);
+            if(playhead) playhead.style.left = `${progress * 100}%`;
+            const list = bars();
+            if(list.length) list.forEach((bar, index) => bar.classList.toggle('is-played', index / list.length < progress));
+        };
         const update = () => {
             const duration = Number.isFinite(media.duration) ? media.duration : 0;
             const current = Number.isFinite(media.currentTime) ? media.currentTime : 0;
             const progress = duration > 0 ? Math.min(1, Math.max(0, current / duration)) : 0;
-            waveform.style.setProperty('--audio-progress', `${progress * 100}%`);
-            waveform.querySelectorAll('span').forEach((bar, index) => bar.classList.toggle('is-played', duration > 0 && index / waveform.children.length < progress));
+            setProgress(progress);
             if(time) time.textContent = `${formatAudioTime(current)} / ${formatAudioTime(duration)}`;
-            toggle.innerHTML = `<i data-lucide="${media.paused ? 'play' : 'pause'}"></i>`;
-            toggle.title = media.paused ? '播放音频' : '暂停音频';
+            const playing = !media.paused;
+            toggle.title = playing ? '暂停音频' : '播放音频';
             toggle.setAttribute('aria-label', toggle.title);
-            if(window.lucide) lucide.createIcons();
+            // 仅切换 class，图标显隐交给 CSS；不再每帧重建按钮子树 / 全文档 createIcons
+            card.classList.toggle('is-playing', playing);
         };
-        const seek = clientX => {
+        const timeAt = clientX => {
             const rect = waveform.getBoundingClientRect();
-            if(!rect.width || !Number.isFinite(media.duration)) return;
-            media.currentTime = Math.min(media.duration, Math.max(0, (clientX - rect.left) / rect.width * media.duration));
+            if(!rect.width) return null;
+            const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+            const duration = Number.isFinite(media.duration) ? media.duration : 0;
+            return {ratio, seconds: ratio * duration};
+        };
+        const showBubble = (ratio, seconds) => {
+            if(!bubble) return;
+            bubble.style.left = `${ratio * 100}%`;
+            bubble.textContent = formatAudioTime(seconds);
+            bubble.style.display = 'block';
+        };
+        const hideBubble = () => { if(bubble) bubble.style.display = 'none'; };
+        const seek = clientX => {
+            const at = timeAt(clientX);
+            if(!at || !Number.isFinite(media.duration)) return;
+            media.currentTime = Math.min(media.duration, Math.max(0, at.seconds));
             update();
         };
         toggle.addEventListener('click', event => {
             event.preventDefault();
             event.stopPropagation();
-            if(media.paused) media.play().catch(() => {});
+            if(media.paused){
+                document.querySelectorAll('[data-audio-player] .audio-player-media').forEach(other => {
+                    if(other !== media && !other.paused) other.pause();
+                });
+                media.play().catch(() => {});
+            }
             else media.pause();
         });
-        waveform.addEventListener('click', event => { event.stopPropagation(); seek(event.clientX); });
+        waveform.addEventListener('pointerdown', event => {
+            event.stopPropagation();
+            if(Number(event.button || 0) !== 0) return;
+            scrubbing = true;
+            try{ waveform.setPointerCapture(event.pointerId); }catch(_){}
+            const at = timeAt(event.clientX);
+            if(at) showBubble(at.ratio, at.seconds);
+            seek(event.clientX);
+        });
+        waveform.addEventListener('pointermove', event => {
+            const at = timeAt(event.clientX);
+            if(!at) return;
+            if(scrubbing){ showBubble(at.ratio, at.seconds); seek(event.clientX); return; }
+            if(!hovering) return;
+            showBubble(at.ratio, at.seconds);
+            if(playhead) playhead.style.left = `${at.ratio * 100}%`;
+        });
+        const endScrub = () => { scrubbing = false; };
+        waveform.addEventListener('pointerup', endScrub);
+        waveform.addEventListener('pointercancel', endScrub);
+        waveform.addEventListener('pointerenter', () => { hovering = true; });
+        waveform.addEventListener('pointerleave', () => {
+            hovering = false;
+            hideBubble();
+            update();
+        });
         waveform.addEventListener('keydown', event => {
             if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
             event.preventDefault();
@@ -284,6 +387,19 @@ function bindSmartAudioPlayers(){
         });
         ['loadedmetadata','durationchange','timeupdate','play','pause','ended'].forEach(type => media.addEventListener(type, update));
         update();
+        // 仅在此处（绑定时）渲染一次本批次新增图标，播放期间的 update 不再扫描全文档
+        if(window.lucide) lucide.createIcons();
+        const src = media.dataset.url || media.getAttribute('src') || '';
+        const buckets = Number(card.dataset.audioBuckets) || 64;
+        if(src){
+            audioPeaksFor(src, buckets).then(peaks => {
+                if(!peaks || !card.isConnected) return;
+                const list = bars();
+                if(list.length !== peaks.length) return;
+                list.forEach((bar, index) => bar.style.setProperty('--audio-level', `${peaks[index]}%`));
+                card.dataset.audioPeaks = '1';
+            });
+        }
     });
 }
 function thumbMediaHtml(img, audioIndex=0){

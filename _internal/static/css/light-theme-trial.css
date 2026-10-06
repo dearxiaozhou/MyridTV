@@ -69,12 +69,18 @@ html.theme-light body #saveBtn:disabled {
   color: var(--x-muted) !important;
 }
 
-/* The empty canvas upload control previously kept its dark-theme hover colors. */
-html.theme-light .image-node.empty-node .upload-node-btn {
-  color: var(--x-muted);
+/* Keep upload controls consistent on both empty and populated canvas nodes. */
+html.theme-light .image-node .upload-node-btn {
+  color: #111827 !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
 }
-html.theme-light .image-node.empty-node .upload-node-btn:hover {
-  background: var(--x-soft);
+html.theme-light .image-node .upload-node-btn:hover {
+  color: #111827 !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
 }
 
 /* LLM options popover on the smart canvas had a fixed charcoal surface. */
@@ -95,10 +101,10 @@ body.theme-light {
   --x-strong-text: #1e3a5f;
   --light-primary: #35699f;
   --light-primary-hover: #285886;
-  --light-selected: #dceafb;
-  --light-selected-strong: #c5ddf6;
-  --light-selected-line: #83add6;
-  --light-selected-text: #214b77;
+  --light-selected: var(--x-selected-fill);
+  --light-selected-strong: var(--x-selected-fill);
+  --light-selected-line: var(--x-selected-line);
+  --light-selected-text: var(--x-selected-text);
 }
 
 html.theme-light body.prism-api-page .action-btn.primary-btn:not(.is-saved):not(:disabled),
@@ -137,7 +143,7 @@ html.theme-light body .asset-page :is(.tree-row, .nav-row, .asset-card, .prompt-
 html.theme-light body .workflow-card.active {
   background: var(--light-selected) !important;
   color: var(--light-selected-text) !important;
-  box-shadow: inset 3px 0 0 var(--light-primary) !important;
+  box-shadow: inset 3px 0 0 var(--x-selected-line) !important;
 }
 html.theme-light body.prism-api-page .api-model-tab.active {
   border-color: var(--light-selected-line) !important;
@@ -174,7 +180,7 @@ html.theme-light .smart-node-action {
 }
 html.theme-light .smart-crop-action:hover,
 html.theme-light .smart-node-action:hover {
-  background: #e8f0fb;
+  background: var(--x-hover-bg);
   color: #1e3a5f;
 }
 html.theme-light .smart-node-action:disabled:hover,
@@ -190,13 +196,16 @@ html.theme-light .composer .kind-toggle button.active {
   box-shadow: none;
 }
 html.theme-light .canvas-add-toggle .canvas-dock-icon {
-  background: var(--light-primary);
-  border-color: var(--light-primary);
-  color: #fff;
+  color: #111827;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 html.theme-light .canvas-add-toggle:hover .canvas-dock-icon {
-  background: var(--light-primary-hover);
-  border-color: var(--light-primary-hover);
+  color: #111827;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 html.theme-light .image-wrap .mini-x,
 html.theme-light .thumb-item .mini-x {
@@ -225,7 +234,7 @@ html.theme-dark body.prism-canvas-page .gate-list .canvas-item:not(.active) .can
   border-color: rgba(196, 181, 253, .28) !important;
 }
 html.theme-light body.prism-canvas-page .gate-list .canvas-item:hover:not(.active) {
-  background: #f8fbff !important;
+  background: var(--x-hover-bg) !important;
   background-image: none !important;
   border-color: #83add6 !important;
   box-shadow: 0 12px 26px rgba(15, 23, 42, .14) !important;

@@ -8,21 +8,7 @@
     function D(name){return typeof deps[name] === 'function' ? deps[name]() : deps[name];}
 
 function mergeSmartImageLists(localImgs, remoteImgs){
-    const out = [];
-    const seen = new Set();
-    (localImgs || []).forEach(img => {
-        const u = img && img.url;
-        if(u && seen.has(u)) return;
-        if(u) seen.add(u);
-        out.push(img);
-    });
-    (remoteImgs || []).forEach(img => {
-        const u = img && img.url;
-        if(!u || seen.has(u)) return;
-        seen.add(u);
-        out.push(img);
-    });
-    return out;
+    return global.CanvasGenerationResultModel.uniqueMediaItems([...(localImgs || []), ...(remoteImgs || [])]);
 }
 function mergeSmartLogLists(localLogs, remoteLogs){
     const byId = new Map();
@@ -34,18 +20,43 @@ function mergeSmartLogLists(localLogs, remoteLogs){
     return [...byId.values()].sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0)).slice(0, 500);
 }
 function smartNodeInFlight(node){
-    return Boolean(node && (node.running || node.pending || node.queued || node.jimengPending || deps.smartPendingTasks(node).length));
+    return Boolean(node && (global.CanvasSpeech?.isActive(node.id) || node.running || node.pending || node.queued || node.jimengPending || deps.smartPendingTasks(node).length));
 }
 function mergeSmartNode(local, remote){
+    // 统一文本兜底：本地 text 非空而对方为空，说明对方还没见过本地这次（可能未落盘的）写入。
+    // 典型：LLM 刚把结果写回 node.text、防抖保存还在途，服务端已被 Agent 工具/别的端先写，
+    // 合并按 {...remote} 会把刚生成的文本瞬间冲掉。此场景保留本地文本（含草稿字段）。
+    const localText = String(local?.text || '');
+    const remoteText = String(remote?.text || '');
+    const keepLocalText = Boolean(localText.trim() && !remoteText.trim());
+    const keepLocalDraft = keepLocalText
+        && String(local?.promptDraftText || '').trim() && !String(remote?.promptDraftText || '').trim();
+    // A rerun replaces its previous output. A stale client must not restore the
+    // old generation through the image union when it saves or receives sync.
+    const localRun = Number(local?.runAt || local?.runStartedAt || 0);
+    const remoteRun = Number(remote?.runAt || remote?.runStartedAt || 0);
+    let merged;
+    if(localRun > 0 && remoteRun > 0 && localRun !== remoteRun){
+        const newer = localRun > remoteRun ? local : remote;
+        merged = {...remote, ...newer, images:mergeSmartImageLists(newer.images, [])};
     // 本地正在生成/排队的节点完全以本地为准，只把对方可能多出来的图并进来，绝不被对方旧状态冲掉
-    if(smartNodeInFlight(local)){
+    } else if(smartNodeInFlight(local)){
         if((remote?.images || []).length && !smartNodeInFlight(remote)){
-            return {...remote, images:mergeSmartImageLists(local.images, remote.images)};
+            merged = {...remote, images:mergeSmartImageLists(local.images, remote.images)};
+        } else {
+            merged = {...local, images:mergeSmartImageLists(local.images, remote.images)};
         }
-        return {...local, images:mergeSmartImageLists(local.images, remote.images)};
+    } else {
+        // 否则以对方（最新保存方）的布局/标题/设置为基底，但图片取并集——双方生成结果都不丢
+        merged = {...remote, images:mergeSmartImageLists(local.images, remote.images)};
     }
-    // 否则以对方（最新保存方）的布局/标题/设置为基底，但图片取并集——双方生成结果都不丢
-    return {...remote, images:mergeSmartImageLists(local.images, remote.images)};
+    if(keepLocalText) merged.text = localText;
+    if(keepLocalDraft){
+        merged.promptDraftText = local.promptDraftText;
+        merged.promptDraftHtml = local.promptDraftHtml;
+        merged.promptDraftTouched = local.promptDraftTouched;
+    }
+    return merged;
 }
 function mergeSmartNodeLists(localNodes, remoteNodes, tombstoned){
     const dead = (tombstoned instanceof Set) ? tombstoned : new Set(tombstoned || []);
@@ -114,6 +125,7 @@ function applyMergedServerCanvas(serverCanvas){
     deps.resumeSmartPendingTasks();
     deps.resumeJimengPendingNodes();
     deps.recoverStuckComfyNodes();
+    if(deps.pruneStaleComfyErrorsOnLoad) deps.pruneStaleComfyErrorsOnLoad();
     return true;
 }
 async function mergeReloadCanvasNow(){

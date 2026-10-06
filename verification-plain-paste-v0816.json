@@ -1,0 +1,13 @@
+{
+  "runtime": "http://127.0.0.1:3230",
+  "passed": [
+    "old background and fonts removed while internal reference survives",
+    "real rich clipboard pastes plain text at selection, keeps lines/caret and supports undo/redo",
+    "RH, ComfyUI and API prompt editors use the same plain paste behavior",
+    "pasted text persists after save/reload without imported formatting",
+    "pasting after an internal reference keeps its metadata",
+    "dynamic loop editor and HTML-only clipboard preserve text/lines without styles",
+    "file clipboard is left to existing media handling"
+  ],
+  "errors": []
+}

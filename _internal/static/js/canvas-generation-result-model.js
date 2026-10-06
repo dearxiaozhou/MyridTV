@@ -5,6 +5,41 @@
     const deps = {};
     function configure(options){Object.assign(deps, options || {});}
 
+    function mediaIdentityKeys(item){
+        const values = typeof item === 'string' ? [item] : [item?.url, item?.path, item?.src, item?.uri, item?.source_url, item?.sourceUrl];
+        const keys = [];
+        for(const value of values){
+            if(typeof value !== 'string' || !value.trim()) continue;
+            const raw = value.trim();
+            let key = raw;
+            try {
+                const url = new URL(raw, global.location?.origin || 'http://localhost');
+                const local = raw.startsWith('/') || url.origin === global.location?.origin;
+                if(local && url.pathname.startsWith('/assets/')){
+                    const path = decodeURIComponent(url.pathname);
+                    key = path;
+                    // Normal and recovery results used to archive the same Comfy file
+                    // in different folders. The prompt UUID identifies that output.
+                    const filename = path.split('/').pop();
+                    if(path.startsWith('/assets/output/') && /^comfy_[0-9a-f]{8}-[0-9a-f-]{27}_/i.test(filename)) key = 'comfy-output:' + filename;
+                }
+            } catch(_) {}
+            keys.push(key);
+        }
+        return keys;
+    }
+
+    function uniqueMediaItems(items){
+        const seen = new Set();
+        return (items || []).filter(item => {
+            const keys = mediaIdentityKeys(item);
+            if(!keys.length) return false;
+            const duplicate = keys.some(key => seen.has(key));
+            keys.forEach(key => seen.add(key));
+            return !duplicate;
+        });
+    }
+
     function resultMediaUrls(result){
         const urls = [];
         const add = value => {
@@ -27,15 +62,11 @@
             }
         };
         ['items','outputs','videos','audios','texts','files','images','urls','data','result','output','url'].forEach(key => add(result?.[key]));
-        const seen = new Set();
-        return urls.map(item => {
+        return uniqueMediaItems(urls.map(item => {
             const url = typeof item === 'string' ? item : item?.url || item?.path || '';
             if(!url) return null;
             return typeof item === 'object' ? {...item, url} : url;
-        }).filter(item => {
-            const url = typeof item === 'string' ? item : item?.url || '';
-            return url && !seen.has(url) && seen.add(url);
-        });
+        }).filter(Boolean));
     }
 
     function taskIdsFromResult(result){
@@ -65,5 +96,5 @@
         return fallback;
     }
 
-    global.CanvasGenerationResultModel = {configure, resultMediaUrls, taskIdsFromResult, mediaKindForUrls};
+    global.CanvasGenerationResultModel = {configure, mediaIdentityKeys, uniqueMediaItems, resultMediaUrls, taskIdsFromResult, mediaKindForUrls};
 })(typeof window !== 'undefined' ? window : globalThis);

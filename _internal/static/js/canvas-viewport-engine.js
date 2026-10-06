@@ -46,7 +46,10 @@
     // ===== 视口应用与坐标换算 =====
     function applyViewport() {
         if (!deps.world || !deps.shell) return;
+        // Prompt controls stay at a stable screen size while the canvas world zooms.
+        deps.world.style.setProperty('--canvas-prompt-fixed-zoom', String(1 / safeScale(viewport.scale)));
         deps.world.style.transform = `translate3d(${viewport.x}px, ${viewport.y}px, 0) scale(${viewport.scale})`;
+        if (deps.positionComposer) deps.positionComposer();
         deps.shell.classList.add('viewport-motion');
         deps.world.classList.add('is-viewport-motion');
         clearTimeout(viewportMotionTimer);

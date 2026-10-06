@@ -109,6 +109,8 @@
             });
         }
         container.querySelectorAll('.smart-control > .smart-pill').forEach(function (pill) {
+            // The style library binds its own positioning and search controls.
+            if (pill.closest('.style-mode-control,.filter-mode-control')) return;
             pill.onclick = function (event) {
                 event.preventDefault(); event.stopPropagation();
                 var control = pill.parentElement;

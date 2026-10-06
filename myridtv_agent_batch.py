@@ -68,7 +68,7 @@ def _agent_batch_build_generation_node(canvas, params, preset):
     prompt = str(params.get("prompt") or params.get("text") or "").strip()
     if not prompt:
         raise ValueError("add_node(generation) 缺少 prompt")
-    settings = myridtv_agent_state._agent_default_run_settings(params, preset)
+    settings = myridtv_agent_state._agent_default_run_settings(params, preset, canvas=canvas)
     node_x, node_y = myridtv_agent_state._agent_find_empty_position(canvas, params.get("x"), params.get("y"), 320, 420, category=myridtv_agent_state._agent_category_from_title(params.get("title")), node_type="smart-image")
     refs = myridtv_agent_state._agent_normalize_reference_items(params.get("reference_image_urls") or params.get("reference_images") or [])
     ref_node_ids, run_refs = [], []

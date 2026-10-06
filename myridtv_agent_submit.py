@@ -331,6 +331,10 @@ def submit_codex_chat(payload):
 # ===== 块B：submit_chat =====
 def submit_chat(payload):
     payload = payload if isinstance(payload, dict) else {}
+    # 纯聊天模式（提示词节点 LLM 运行 / 连通性测试）：不注入画布变更工具，
+    # 不复用 agent task/turn 体系，模型只能返回文本，从根本上杜绝 Agent 工具改画布。
+    if payload.get("pure_chat"):
+        return _submit_chat_pure(payload)
     # 本请求的会话 id：显式从 payload 取，沿调用链传递，
     # 不再依赖全局 myridtv_agent_tools.CANVAS_AGENT_CURRENT_SESSION（并发会话会互相覆盖）。
     agent_session_id = str(payload.get("agent_session_id") or payload.get("session_id") or "").strip()
@@ -556,5 +560,41 @@ def submit_chat(payload):
             session_id=agent_session_id,
         ),
     }, "工具调用达到轮次上限,任务可能未完成。", tool_log)
+
+
+def _submit_chat_pure(payload):
+    """纯聊天分支：仅 provider 解析 + 消息归一化 + 单次上游请求，
+    不注入任何画布变更工具（canvas_create_text_node / canvas_save_skill 等）、
+    不写 agent task/turn、不进交互卡/流程卡逻辑。
+
+    供 /api/canvas-llm（提示词节点 LLM 运行、连通性测试）使用——这些场景只需要
+    模型返回文本，绝不该让模型拿到改画布的权限（曾因此导致 LLM 结果被 409 合并冲掉、
+    以及模型中途建节点污染画布）。"""
+    try:
+        provider_id, model, upstream_base, key = _r_resolve_chat_target(payload)
+    except Exception as _exc:
+        append_log(_log_file(), "pure chat resolve target failed: {}".format(_exc))
+        raise
+    messages = _r_normalize_chat_messages(payload)
+    messages = myridtv_agent_guidance._agent_sanitize_messages(messages)
+    # 仅基础回复格式规则，不注入工具引导 / 候选交互卡引导 / 流程卡
+    messages = myridtv_agent_guidance._agent_append_system(messages, myridtv_agent_guidance._agent_reply_rules())
+    body = {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+    }
+    data = _r_request_chat_json_with_retry(
+        f"{upstream_base}/chat/completions",
+        body,
+        {"Authorization": f"Bearer {key}"},
+        attempts=3,
+        timeout=300,
+    )
+    choices = data.get("choices") or []
+    message = (choices[0].get("message") if choices and isinstance(choices[0], dict) else {}) or {}
+    text = message.get("content") or ""
+    append_log(_log_file(), "pure chat ok provider={} model={} len={}".format(provider_id, model, len(text)))
+    return {"text": text, "raw": data}
 
 

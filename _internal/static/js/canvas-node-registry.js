@@ -19,7 +19,7 @@
         isGenerator: false, // 生成类节点（会跑引擎出图/出视频）
         carriesImages: false, // 节点里能装图片（但不等于"老 isSmartImageNode 认定的图片节点"）
         dropByPointOverlap: false, // 拖拽落点按"指针矩形重叠"判定（提示词/循环节点用的老规则）
-        isContainer: false  // 容器类（组、历史组），不参与连线
+        isContainer: false  // 容器节点；是否可连线由该类型自己的端口定义决定
     };
 
     function normalizeFlags(flags) {
@@ -169,11 +169,13 @@
         flags: { hasImages: true, hasPrompt: true, isGenerator: true },
         inputs: [
             { id: 'in-image', label: '输入图', dataType: 'image', multiple: true },
-            { id: 'in-text', label: '提示词', dataType: 'text', multiple: false }
+            { id: 'in-text', label: '提示词', dataType: 'text', multiple: false },
+            { id: 'in-audio', label: '音频', dataType: 'audio', multiple: true }
         ],
         outputs: [
             { id: 'out-image', label: '图片', dataType: 'image', multiple: true },
-            { id: 'out-video', label: '视频', dataType: 'video', multiple: true }
+            { id: 'out-video', label: '视频', dataType: 'video', multiple: true },
+            { id: 'out-audio', label: '音频', dataType: 'audio', multiple: true }
         ],
         defaults: { w: 320, h: 320 }
     });
@@ -202,12 +204,19 @@
     });
     registerNodeType({
         type: 'smart-group', label: '组', category: 'container',
-        flags: { isContainer: true },
-        inputs: [],
-        outputs: [],
+        flags: { isContainer: true, carriesImages: true },
+        inputs: [{ id: 'in-image', label: '图片', dataType: 'image', multiple: true }],
+        outputs: [{ id: 'out-image', label: '图片', dataType: 'image', multiple: true }],
         defaults: {}
     });
 
+    registerNodeType({
+        type:'smart-speech', label:'语音生成', category:'generate',
+        flags:{hasImages:true, hasPrompt:false, isGenerator:true},
+        inputs:[{id:'in-text', label:'声音描述 / 朗读文本', dataType:'text', multiple:true}],
+        outputs:[{id:'out-audio', label:'音频', dataType:'audio', multiple:true}],
+        defaults:{w:1000, h:540}
+    });
     global.CanvasNodeRegistry = {
         registerNodeType: registerNodeType,
         getNodeType: getNodeType,
@@ -222,6 +231,6 @@
         nodeTypePorts: nodeTypePorts,
         describeNode: describeNode,
         IMAGE_TYPE: IMAGE_TYPE,
-        DATA_TYPES: ['image', 'video', 'text', 'any']
+        DATA_TYPES: ['image', 'video', 'audio', 'text', 'any']
     };
 })(typeof window !== 'undefined' ? window : globalThis);

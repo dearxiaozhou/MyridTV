@@ -1,0 +1,24 @@
+{
+  "base": "http://127.0.0.1:3107",
+  "canvas_id": "2589131",
+  "passed": [
+    "wired source automatically checked",
+    "source automatically SET",
+    "existing thumbnail retained exactly once",
+    "flow input checked in second consumer",
+    "wireless source appended to thumbnails",
+    "wireless source becomes input connection",
+    "wired thumbnails preserve order",
+    "wired edge rendered",
+    "undo restores mode and wireless references together",
+    "round trips do not duplicate connections",
+    "saved wired reference survives reload",
+    "saved references remain checked",
+    "uncheck removes hidden input and thumbnail",
+    "uncheck survives return to wired mode",
+    "wired disconnect does not revive stale wireless check",
+    "thumbnail remove clears wireless reference",
+    "no application script errors"
+  ],
+  "errors": []
+}

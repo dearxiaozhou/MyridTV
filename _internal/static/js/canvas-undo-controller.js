@@ -15,6 +15,7 @@
         return {
             nodes: JSON.parse(JSON.stringify(ctx.getNodes() || [])),
             connections: JSON.parse(JSON.stringify(ctx.getCanvas()?.connections || [])),
+            inputMode: ctx.getCanvas()?.inputMode,
             selectedId: ctx.getSelectedId(),
             selectedIds: (ctx.getSelectedIds() || []).slice(),
             selectedImage: {...(ctx.getSelectedImage() || {nodeId:'', index:-1})}
@@ -50,7 +51,10 @@
             // would filter the restored nodes out again.
             ctx.nodeStore.untombstone(value.nodes.map(node => node.id));
             const canvas = ctx.getCanvas();
-            if(canvas) canvas.connections = value.connections;
+            if(canvas){
+                canvas.connections = value.connections;
+                canvas.inputMode = value.inputMode;
+            }
             ctx.setSelectedId(value.selectedId);
             ctx.setSelectedIds(value.selectedIds);
             ctx.setSelectedImage(value.selectedImage);

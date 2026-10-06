@@ -54,8 +54,6 @@ def _agent_default_image_model():
 
 def _agent_configured_image_models(provider_id):
     provider_id = str(provider_id or "").strip()
-    if provider_id == "custom-api-3":
-        provider_id = "runninghub"
     if not provider_id:
         return []
     try:
@@ -89,7 +87,7 @@ def _agent_select_configured_image_model(provider_id, requested_model="", refs=N
                 if model.endswith(suffix):
                     return _r_normalize_model(model, refs)
         return _r_normalize_model(normalized_models[0], refs)
-    if provider_id in {_DEFAULT_PROVIDER, "custom-api-3"}:
+    if provider_id == _DEFAULT_PROVIDER:
         raise RuntimeError("未找到默认生图模型：请在 API 设置的 RunningHub 下配置生图模型")
     if requested:
         return _r_normalize_model(requested, refs)
@@ -338,19 +336,109 @@ def _agent_tool_create_text_node(args, session_id=""):
             "destination": "both", "reason": _route.get("reason")}
 
 
-def _agent_default_run_settings(args, preset=None):
+_GENERATION_RATIO_TO_ASPECT = {
+    "square": "1:1", "landscape": "3:2", "portrait": "2:3",
+    "landscape43": "4:3", "portrait43": "3:4", "wide": "16:9",
+    "story": "9:16", "ultrawide": "21:9", "ultratall": "9:21",
+}
+
+
+def _agent_pick_last_generation_settings(nodes):
+    """当前画布内最近创建的、带 runSettings 的生成节点。"""
+    best = None
+    for n in nodes or []:
+        if not isinstance(n, dict) or str(n.get("type") or "") != "smart-image":
+            continue
+        rs = n.get("runSettings")
+        if not isinstance(rs, dict) or not (rs.get("provider_id") or rs.get("model")):
+            continue
+        ts = parse_number(n.get("created_at"), 0) or 0
+        if best is None or ts >= best[0]:
+            best = (ts, rs)
+    return best[1] if best else None
+
+
+def _agent_last_generation_run_settings(canvas=None, cid=""):
+    """新建节点参数继承源：当前画布最近生成节点 -> 最近更新的画布 -> None。"""
+    if isinstance(canvas, dict):
+        rs = _agent_pick_last_generation_settings(canvas.get("nodes"))
+        if rs:
+            return rs
+    if cid and canvas is None:
+        try:
+            detail = _agent_http("GET", "/api/canvases/{}".format(urllib.parse.quote(str(cid))), timeout=10)
+            cvd = detail.get("canvas") if isinstance(detail, dict) else None
+            rs = _agent_pick_last_generation_settings((cvd or {}).get("nodes") if isinstance(cvd, dict) else None)
+            if rs:
+                return rs
+        except Exception:
+            pass
+    try:
+        resp = _agent_http("GET", "/api/canvases")
+        items = resp if isinstance(resp, list) else (resp.get("canvases") if isinstance(resp, dict) else [])
+        items = [c for c in items if isinstance(c, dict) and str(c.get("id") or "").strip()]
+        items.sort(key=lambda c: parse_number(c.get("updated_at"), 0) or 0, reverse=True)
+        checked = 0
+        for c in items:
+            if cid and str(c.get("id")) == str(cid):
+                continue
+            if checked >= 8:
+                break
+            checked += 1
+            detail = _agent_http("GET", "/api/canvases/{}".format(urllib.parse.quote(str(c.get("id")))), timeout=10)
+            cvd = detail.get("canvas") if isinstance(detail, dict) else None
+            rs = _agent_pick_last_generation_settings((cvd or {}).get("nodes") if isinstance(cvd, dict) else None)
+            if rs:
+                return rs
+    except Exception:
+        pass
+    return None
+
+
+def _agent_first_configured_image_provider():
+    """无任何继承源时的兜底：第一个启用了生图模型的平台（不绑定 runninghub）。"""
+    try:
+        for provider in myridtv_provider.read_api_providers() or []:
+            if not isinstance(provider, dict) or provider.get("enabled") is False:
+                continue
+            if (provider.get("image_models") or []):
+                return str(provider.get("id") or "").strip()
+    except Exception:
+        pass
+    return _DEFAULT_PROVIDER
+
+
+def _agent_default_run_settings(args, preset=None, canvas=None, cid=""):
     preset = preset if isinstance(preset, dict) else {}
-    provider_id = str(args.get("provider_id") or preset.get("provider_id") or _DEFAULT_PROVIDER)
+    explicit_provider = str(args.get("provider_id") or preset.get("provider_id") or "").strip()
+    explicit_model = str(args.get("model") or preset.get("model") or "").strip()
+    # 参数继承：没显式指定平台/模型时，复制最近一个生成节点的 runSettings；
+    # 新开软件/没有任何生成节点 -> 走全默认（第一个已配模型的平台 + 默认尺寸）。
+    inherited = {}
+    if not (explicit_provider and explicit_model):
+        rs = _agent_last_generation_run_settings(canvas, cid) or {}
+        ratio = str(rs.get("customRatio") or "").strip() or _GENERATION_RATIO_TO_ASPECT.get(str(rs.get("ratio") or "").strip(), "")
+        inherited = {
+            "provider_id": str(rs.get("provider_id") or "").strip(),
+            "model": str(rs.get("model") or "").strip(),
+            "aspectRatio": ratio,
+            "resolution": str(rs.get("resolution") or "").strip(),
+            "quality": str(rs.get("quality") or "").strip(),
+            "count": rs.get("count"),
+        } if rs else {}
+    provider_id = explicit_provider or inherited.get("provider_id") or _agent_first_configured_image_provider()
     refs = args.get("reference_image_urls") or args.get("reference_images") or []
     if not isinstance(refs, list):
         refs = [refs]
     refs = [r for r in refs if str(r or "").strip()]
-    model = _agent_select_configured_image_model(provider_id, args.get("model") or preset.get("model") or "", refs)
+    model = _agent_select_configured_image_model(provider_id, explicit_model or inherited.get("model") or "", refs)
     size = str(args.get("size") or preset.get("size") or "3840x2160")
     aspect = str(args.get("aspect_ratio") or args.get("aspectRatio")
-                 or preset.get("aspectRatio") or preset.get("aspect_ratio") or "16:9")
-    resolution = str(args.get("resolution") or preset.get("resolution") or "4k")
-    quality = str(args.get("quality") or preset.get("quality") or "high")
+                 or preset.get("aspectRatio") or preset.get("aspect_ratio")
+                 or inherited.get("aspectRatio") or "16:9")
+    resolution = str(args.get("resolution") or preset.get("resolution") or inherited.get("resolution") or "4k")
+    quality = str(args.get("quality") or preset.get("quality") or inherited.get("quality") or "high")
+    count = args.get("count") or preset.get("count") or inherited.get("count") or 1
     return {
         "provider_id": provider_id,
         "model": model,
@@ -358,7 +446,7 @@ def _agent_default_run_settings(args, preset=None):
         "aspectRatio": aspect,
         "resolution": resolution,
         "quality": quality,
-        "n": 1,
+        "n": count,
     }
 
 

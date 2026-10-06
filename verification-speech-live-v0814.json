@@ -1,0 +1,17 @@
+{
+  "base": "http://127.0.0.1:3107",
+  "canvas_id": "3357950",
+  "entries": [
+    "image",
+    "speech",
+    "prompt",
+    "loop",
+    "generator",
+    "video",
+    "rh",
+    "comfy"
+  ],
+  "speech_color": "rgb(245, 158, 11)",
+  "version": "版本：V0.8.15",
+  "errors": []
+}

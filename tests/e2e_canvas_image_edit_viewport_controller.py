@@ -6,6 +6,7 @@ import sys
 import urllib.request
 
 from playwright.sync_api import sync_playwright
+from e2e_support import record_blocked_write
 
 
 BASE = os.environ.get("MYRIDTV_TEST_BASE", "http://127.0.0.1:3217").rstrip("/")
@@ -26,7 +27,7 @@ with sync_playwright() as pw:
     errors = []
     page.on("pageerror", lambda error: errors.append(str(error)))
     page.route("**/*", lambda route: (
-        blocked_writes.append({"method": route.request.method, "url": route.request.url})
+        record_blocked_write(blocked_writes, route.request.method, route.request.url)
         or route.fulfill(status=204, body="")
     ) if route.request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"} else route.continue_())
     page.route("**/static/app_config.json*", lambda route: route.fulfill(

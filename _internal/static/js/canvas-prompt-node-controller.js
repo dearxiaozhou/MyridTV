@@ -14,10 +14,14 @@
             control.addEventListener('click', event => event.stopPropagation());
             control.addEventListener('dblclick', event => event.stopPropagation());
         });
+        // ~ 提示词库 / / 技能：三个输入区都挂快捷插入面板（LLM 打开后主文本是只读输出，不影响）
+        const picker = global.CanvasNodePromptPicker;
+        const attachPicker = target => { if(target && picker) picker.attach(target); };
         const textEl = el.querySelector('.prompt-node-text');
         if(textEl){
             ctx.bindScrollableText(textEl);
             textEl.oninput = event => { node.text = event.target.value; ctx.scheduleSave(); };
+            attachPicker(textEl);
         }
         const presetEdit = el.querySelector('.prompt-preset-edit');
         if(presetEdit) presetEdit.onclick = event => {
@@ -67,11 +71,13 @@
         if(systemEl){
             ctx.bindScrollableText(systemEl);
             systemEl.oninput = event => { node.llmSystemPrompt = event.target.value; ctx.scheduleSave(); };
+            attachPicker(systemEl);
         }
         const instructionEl = el.querySelector('.prompt-llm-instruction');
         if(instructionEl){
             ctx.bindScrollableText(instructionEl);
             instructionEl.oninput = event => { node.llmInstruction = event.target.value; ctx.scheduleSave(); };
+            attachPicker(instructionEl);
         }
         const runEl = el.querySelector('.prompt-node-run');
         if(runEl) runEl.onclick = event => {

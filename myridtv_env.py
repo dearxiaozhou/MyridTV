@@ -198,7 +198,7 @@ def read_env_balance_key():
 
 def read_env_key():
 
-    keys = _rh_config_getter().get("api_key_envs") or ("API_PROVIDER_CUSTOM_API_3_KEY", "RUNNINGHUB_API_KEY")
+    keys = _rh_config_getter().get("api_key_envs") or ("RUNNINGHUB_COIN_API_KEY", "RUNNINGHUB_API_KEY")
 
     values = read_env_values()
 
@@ -221,9 +221,11 @@ def provider_key_env_name(provider_id):
 
         return "ARK_API_KEY"
 
-    if provider_id == "runninghub" or provider_id == "custom-api-3":
+    if provider_id == "runninghub":
 
-        return "API_PROVIDER_CUSTOM_API_3_KEY"
+        # RH币/会员 key 独立槽位：不再与自定义平台 custom-api-3 共用变量（2026-09-28 解耦）
+
+        return "RUNNINGHUB_COIN_API_KEY"
 
     if provider_id == "custom-api":
 

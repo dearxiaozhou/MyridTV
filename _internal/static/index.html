@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-CN" class="studio-route-booting">
 <head>
-    <link rel="stylesheet" href="/static/css/design-tokens.css?v=2026.09.16.skill3col1">
+    <link rel="stylesheet" href="/static/css/design-tokens.css?v=snap-theme-v0912">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="/static/images/myrid-icon.png" type="image/png">
@@ -13,7 +13,7 @@
     })();
   </script>
   <script src="/static/js/theme.js?v=2026.09.25.lighttrial1"></script>
-  <script src="/static/js/i18n.js?v=2026.09.26.rhfinaloutput88"></script>
+  <script src="/static/js/i18n.js?v=2026.10.01.speech7"></script>
   <style>
     :root {
       --line: rgba(255, 255, 255, 0.1);
@@ -47,7 +47,7 @@
       --dock-icon-fg: #404040;
       --dock-bg: rgba(210, 219, 229, 0.94);
       --dock-pill-bg: #eef3f8;
-      --dock-pill-hover-bg: #dfe9f2;
+      --dock-pill-hover-bg: var(--x-hover-bg);
       --dock-pill-line: transparent;
       --dock-active-bg: #9fb8cc;
       --dock-active-line: transparent;
@@ -345,21 +345,18 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
     .tc-panel.open { display: flex; }
     .tc-head {
       display: flex; align-items: center; justify-content: space-between; gap: 8px;
-      padding: 16px 22px; border-bottom: 1px solid var(--line);
+      padding: 9px 22px; border-bottom: 1px solid var(--line);
     }
-    .tc-head-title { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 900; }
-    .tc-badge {
-      width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center;
-      border-radius: 8px; background: var(--dock-icon-bg); color: var(--dock-icon-fg);
-      font-size: 12px; font-weight: 950;
-    }
-    .tc-live-dot { width: 9px; height: 9px; border-radius: 50%; background: #4ade80; margin-left: 4px; }
+    .tc-view-tabs { display: flex; align-items: center; gap: 4px; width: max-content; padding: 4px; border: 1px solid var(--line); border-radius: 5px; background: var(--dock-pill-bg); }
+    .tc-view-tab { height: 44px; padding: 0 20px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--muted); font-size: 15px; font-weight: 850; cursor: pointer; }
+    .tc-view-tab:hover { background: var(--dock-pill-hover-bg); color: var(--text); }
+    .tc-view-tab.active { border-color: #4ade80; background: rgba(74, 222, 128, 0.14); color: #4ade80; }
+    html.theme-light .tc-view-tab.active { border-color: #22c55e; color: #15803d; }
     .tc-time-col { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
     .tc-time-col .tc-time { font-size: 12px; color: var(--muted); }
     .tc-time-col .tc-locate { height: 22px; padding: 0 10px; font-size: 11px; border-radius: 6px; }
     .tc-time-col .tc-locate:hover { color: #4ade80; border-color: #4ade80; }
-    .tc-live-dot.err { background: #f87171; }
-    .tc-head-actions { display: flex; gap: 6px; }
+    .tc-head-actions { display: flex; gap: 6px; margin-left: auto; }
     .tc-btn {
       height: 30px; padding: 0 12px; border-radius: 8px; font-size: 12px; font-weight: 800;
       background: var(--dock-pill-bg); color: var(--text); border: 1px solid var(--line);
@@ -395,11 +392,12 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
     .tc-stat.ok .tc-stat-num { color: #4ade80; }
     .tc-filter { display: flex; gap: 7px; padding: 11px 22px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
     .tc-chip {
-      height: 26px; padding: 0 12px; border-radius: 999px; font-size: 12px; font-weight: 800;
+      height: 26px; padding: 0 12px; border-radius: 6px; font-size: 12px; font-weight: 800;
       background: transparent; color: var(--muted); border: 1px solid var(--line); cursor: pointer;
     }
+    .tc-chip:hover:not(.active) { background:var(--x-hover-bg); color:var(--x-text); }
     .tc-chip.active { background: var(--dock-active-bg); color: var(--text); }
-    .tc-list { flex: 1; overflow-y: auto; padding: 12px 22px; }
+    .tc-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px 22px; }
     .tc-item {
       border: 1px solid var(--line); border-radius: 11px; padding: 12px 14px; margin-bottom: 10px;
       background: rgba(255,255,255,0.02); cursor: pointer;
@@ -446,18 +444,79 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
       display: flex; justify-content: space-between; padding: 10px 22px;
       border-top: 1px solid var(--line); font-size: 12px; color: var(--muted);
     }
+    .tc-panel.stats-view .tc-task-action,
+    .tc-panel.stats-view #tc-stats,
+    .tc-panel.stats-view #tc-filter,
+    .tc-panel.stats-view #tc-list { display: none; }
+    .tc-analytics { display: none; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 18px 22px 24px; }
+    .tc-panel.stats-view .tc-analytics { display: block; }
+    .tc-analytics-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+    .tc-analytics-range { color: var(--muted); font-size: 13px; }
+    .tc-analytics-presets { display: flex; gap: 6px; flex-wrap: wrap; }
+    .tc-analytics-preset { height: 30px; padding: 0 11px; border: 1px solid var(--line); border-radius: 7px; color: var(--text); background: var(--dock-pill-bg); font-size: 12px; font-weight: 800; cursor: pointer; }
+    .tc-analytics-preset:hover:not(.active) { background:var(--x-hover-bg); }
+    .tc-analytics-preset.active { border-color: #4ade80; background: rgba(74, 222, 128, 0.14); }
+    .tc-analytics-custom { display: none; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; }
+    .tc-analytics-custom.open { display: flex; }
+    .tc-analytics-custom label { display: inline-flex; align-items: center; gap: 6px; }
+    .tc-analytics-custom input { height: 30px; padding: 0 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--dock-pill-bg); color: var(--text); font: inherit; }
+    .tc-analytics-error { color: #f87171; }
+    .tc-analytics-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; min-width: 670px; }
+    .tc-analytics-kpi { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,0.035); }
+    html.theme-light .tc-analytics-kpi { background: rgba(255,255,255,0.58); }
+    .tc-analytics-kpi-label { color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .tc-analytics-kpi-value { font-size: 25px; font-weight: 900; line-height: 1.3; margin: 4px 0; font-variant-numeric: tabular-nums; }
+    .tc-analytics-kpi-sub { color: var(--muted); font-size: 11px; white-space: nowrap; }
+    .tc-analytics-scroll-x { overflow-x: auto; }
+    .tc-analytics-graphs { display: grid; grid-template-columns: minmax(0, 2fr) minmax(230px, 1fr); gap: 10px; margin-bottom: 15px; }
+    .tc-analytics-card { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,0.035); }
+    html.theme-light .tc-analytics-card { background: rgba(255,255,255,0.58); }
+    .tc-analytics-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .tc-analytics-card h3, .tc-analytics-daily h3 { margin: 0; font-size: 14px; }
+    .tc-analytics-legend { display: flex; align-items: center; gap: 12px; font-size: 11px; color: var(--muted); }
+    .tc-analytics-legend span { display: inline-flex; align-items: center; gap: 5px; }
+    .tc-analytics-line-key { width: 16px; height: 0; border-top: 2px solid; }
+    .tc-analytics-chart { width: 100%; height: 260px; margin-top: 10px; overflow-x: auto; }
+    .tc-analytics-chart svg { display: block; height: 260px; }
+    .tc-analytics-chart-detail { min-height: 18px; margin-top: 3px; color: var(--muted); font-size: 11px; }
+    .tc-analytics-outcome { display: flex; height: 20px; margin: 31px 0 20px; overflow: hidden; border-radius: 6px; background: var(--dock-pill-bg); }
+    .tc-analytics-outcome span { display: block; height: 100%; }
+    .tc-analytics-outcome .succeeded { background: #4ade80; }
+    .tc-analytics-outcome .failed { background: #f87171; }
+    .tc-analytics-outcome .other { background: #94a3b8; }
+    .tc-analytics-outcome-rows { display: grid; grid-template-columns: 1fr auto; gap: 10px; font-size: 12px; }
+    .tc-analytics-outcome-rows b { font-variant-numeric: tabular-nums; }
+    .tc-analytics-daily-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+    .tc-analytics-daily-head span { color: var(--muted); font-size: 11px; }
+    .tc-analytics-table-wrap { overflow-x: auto; }
+    .tc-analytics-table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 12px; }
+    .tc-analytics-table th, .tc-analytics-table td { border-bottom: 1px solid var(--line); padding: 8px 6px; text-align: right; white-space: nowrap; }
+    .tc-analytics-table th:first-child, .tc-analytics-table td:first-child { text-align: left; }
+    .tc-analytics-table th { color: var(--muted); font-weight: 600; }
+    .tc-analytics-note { margin-top: 12px; color: var(--muted); font-size: 11px; }
+    @media (max-width: 750px) {
+      .tc-analytics-graphs { grid-template-columns: 1fr; }
+      .tc-analytics { padding: 12px; }
+    }
+
+    #update-notice { position: fixed; z-index: 9999; right: 20px; bottom: 92px; display: none; align-items: center; gap: 10px; max-width: min(460px, calc(100vw - 40px)); padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; color: var(--text); background: var(--dock-bg); box-shadow: 0 12px 36px rgba(0,0,0,.28); font-size: 13px; }
+    #update-notice.visible { display: flex; }
+    #update-notice button { flex: none; border: 0; border-radius: 8px; padding: 7px 10px; color: var(--text); background: var(--dock-active-bg); cursor: pointer; }
+    #update-notice button.secondary { background: var(--dock-pill-bg); }
 
   </style>
-<link rel="stylesheet" href="/static/css/light-theme-trial.css?v=2026.09.27.5">
+<link rel="stylesheet" href="/static/css/light-theme-trial.css?v=theme-audit-v0911-final">
+<link rel="stylesheet" href="/static/css/canvas-interaction-style.css?v=theme-audit-v0911-final">
 </head>
 <body>
+  <div id="update-notice" role="status" aria-live="polite"><span id="update-notice-text">界面更新已就绪</span><button type="button" id="update-refresh">刷新界面</button><button type="button" class="secondary" id="update-later">稍后</button></div>
   <main class="app-shell">
     <section class="stage" aria-label="内容区域">
-  <iframe id="frame-canvas" data-page="canvas" data-src="/static/canvas.html?v=2026.09.26.rhfinaloutput88" scrolling="yes"></iframe>
-      <iframe id="frame-asset-manager" data-page="asset-manager" data-src="/static/asset-manager.html?v=2026.09.26.rhfinaloutput88" scrolling="yes"></iframe>
-      <iframe id="frame-api-settings" data-page="api-settings" data-src="/static/api-settings.html?v=2026.09.26.rhfinaloutput88" scrolling="yes"></iframe>
-    <iframe id="frame-comfyui-settings" data-page="comfyui-settings" data-src="/static/comfyui-settings.html?v=2026.09.26.rhfinaloutput88" scrolling="yes"></iframe>
-<iframe id="frame-smart-canvas" data-page="smart-canvas" data-src="/static/smart-canvas.html?v=2026.09.26.rhfinaloutput88" scrolling="no"></iframe>
+  <iframe id="frame-canvas" data-page="canvas" data-src="/static/canvas.html?v=2026.10.01.speech7" scrolling="yes"></iframe>
+      <iframe id="frame-asset-manager" data-page="asset-manager" data-src="/static/asset-manager.html?v=2026.10.01.speech7" scrolling="yes"></iframe>
+      <iframe id="frame-api-settings" data-page="api-settings" data-src="/static/api-settings.html?v=2026.10.01.speech7" scrolling="yes"></iframe>
+    <iframe id="frame-comfyui-settings" data-page="comfyui-settings" data-src="/static/comfyui-settings.html?v=2026.10.01.speech7" scrolling="yes"></iframe>
+<iframe id="frame-smart-canvas" data-page="smart-canvas" data-src="/static/smart-canvas.html?v=2026.10.01.speech7" scrolling="no"></iframe>
     </section>
 
     <div class="bottom-dock-shell">
@@ -472,7 +531,7 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
       <button class="dock-logo" type="button" onclick="goHomeCanvas()" title="返回主页"><img src="/static/images/myrid-icon-dock.png?v=20260629" alt="MyridTV"></button>
       <button class="dock-pill" type="button" onclick="toggleTheme()" id="dock-theme-btn" title="深色模式"><span class="dock-icon">TH</span><span class="dock-pill-label">深色模式</span></button>
       <button class="dock-pill" type="button" onclick="toggleTaskConsole()" id="dock-console-btn" title="任务控制台"><span class="dock-icon">TC</span><span class="dock-pill-label">控制台</span></button>
-        <button class="dock-pill dock-version" type="button" disabled title="版本"><span class="dock-icon">V</span><span class="dock-pill-label app-version">版本：V0.7.1</span></button>
+        <button class="dock-pill dock-version" type="button" disabled title="版本"><span class="dock-icon">V</span><span class="dock-pill-label app-version">版本：V0.9.19</span></button>
     </nav>
 
     <button class="dock-toggle right" type="button" onclick="toggleBottomDock()" title="向下收起/显示底部菜单">
@@ -485,10 +544,13 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
   <div id="task-console-overlay" class="tc-overlay" onclick="if(event.target===this)toggleTaskConsole()"></div>
   <aside id="task-console-panel" class="tc-panel" aria-label="任务控制台">
     <header class="tc-head">
-      <div class="tc-head-title"><span class="tc-badge">TC</span>任务控制台<span id="tc-live-dot" class="tc-live-dot"></span></div>
+      <div class="tc-view-tabs" role="tablist" aria-label="控制台视图">
+        <button type="button" class="tc-view-tab active" role="tab" aria-selected="true" id="tc-tab-tasks" onclick="tcSetStatsView(false)">任务控制台</button>
+        <button type="button" class="tc-view-tab" role="tab" aria-selected="false" id="tc-tab-stats" onclick="tcSetStatsView(true)">数据统计</button>
+      </div>
       <div class="tc-head-actions">
-        <button type="button" class="tc-btn" onclick="tcStopSelected()" id="tc-stop-selected" disabled>停止选中</button>
-        <button type="button" class="tc-btn" onclick="tcStopAllRunning()">全部停止</button>
+        <button type="button" class="tc-btn tc-task-action" onclick="tcStopSelected()" id="tc-stop-selected" disabled>停止选中</button>
+        <button type="button" class="tc-btn tc-task-action" onclick="tcStopAllRunning()">全部停止</button>
         <button type="button" class="tc-btn tc-btn-ghost" onclick="toggleTaskConsole()">关闭</button>
       </div>
     </header>
@@ -501,6 +563,48 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
       <button type="button" class="tc-chip" data-f="succeeded">完成</button>
     </div>
     <div id="tc-list" class="tc-list"><div class="tc-empty">加载中…</div></div>
+    <section id="tc-analytics" class="tc-analytics" aria-label="数据统计">
+      <div class="tc-analytics-toolbar">
+        <span id="tc-analytics-range" class="tc-analytics-range"></span>
+        <div class="tc-analytics-presets" aria-label="统计日期范围">
+          <button type="button" class="tc-analytics-preset" data-days="1" onclick="tcChooseStatsPeriod(this)">当天</button>
+          <button type="button" class="tc-analytics-preset" data-days="3" onclick="tcChooseStatsPeriod(this)">近三天</button>
+          <button type="button" class="tc-analytics-preset active" data-days="7" onclick="tcChooseStatsPeriod(this)">近七天</button>
+          <button type="button" class="tc-analytics-preset" data-days="30" onclick="tcChooseStatsPeriod(this)">近30天</button>
+          <button type="button" class="tc-analytics-preset" data-days="custom" onclick="tcChooseStatsPeriod(this)">自选日期</button>
+        </div>
+      </div>
+      <div class="tc-analytics-custom" id="tc-analytics-custom">
+        <label>开始 <input type="date" id="tc-analytics-start"></label>
+        <label>结束 <input type="date" id="tc-analytics-end"></label>
+        <button type="button" class="tc-btn" onclick="tcApplyStatsRange()">查看</button>
+        <span id="tc-analytics-error" class="tc-analytics-error" role="alert"></span>
+      </div>
+      <div class="tc-analytics-scroll-x"><div class="tc-analytics-kpis" aria-live="polite">
+        <div class="tc-analytics-kpi"><div class="tc-analytics-kpi-label">任务总数</div><div class="tc-analytics-kpi-value" id="tc-a-total">—</div><div class="tc-analytics-kpi-sub">按提交日期统计</div></div>
+        <div class="tc-analytics-kpi"><div class="tc-analytics-kpi-label">成功任务</div><div class="tc-analytics-kpi-value" id="tc-a-success">—</div><div class="tc-analytics-kpi-sub" id="tc-a-success-rate">成功率 —</div></div>
+        <div class="tc-analytics-kpi"><div class="tc-analytics-kpi-label">失败任务</div><div class="tc-analytics-kpi-value" id="tc-a-failed">—</div><div class="tc-analytics-kpi-sub" id="tc-a-failed-rate">失败率 —</div></div>
+        <div class="tc-analytics-kpi"><div class="tc-analytics-kpi-label">总产出</div><div class="tc-analytics-kpi-value" id="tc-a-outputs">—</div><div class="tc-analytics-kpi-sub" id="tc-a-media">图片 — · 视频 — · 音频 —</div></div>
+        <div class="tc-analytics-kpi"><div class="tc-analytics-kpi-label">平均每日产出</div><div class="tc-analytics-kpi-value" id="tc-a-average">—</div><div class="tc-analytics-kpi-sub">图片 + 视频 + 音频</div></div>
+      </div></div>
+      <div class="tc-analytics-graphs">
+        <div class="tc-analytics-card">
+          <div class="tc-analytics-card-head"><h3 id="tc-analytics-chart-title">每日产出趋势</h3><div class="tc-analytics-legend"><span><i class="tc-analytics-line-key" style="border-color:#60a5fa"></i>图片</span><span><i class="tc-analytics-line-key" style="border-color:#c084fc"></i>视频</span><span><i class="tc-analytics-line-key" style="border-color:var(--x-speech-accent)"></i>音频</span></div></div>
+          <div id="tc-analytics-chart" class="tc-analytics-chart" role="img" aria-label="每天图片、视频和音频产出的折线图"></div>
+          <div id="tc-analytics-chart-detail" class="tc-analytics-chart-detail"></div>
+        </div>
+        <div class="tc-analytics-card">
+          <div class="tc-analytics-card-head"><h3>任务结果分布</h3><span class="tc-analytics-range">所选日期</span></div>
+          <div id="tc-analytics-outcome" class="tc-analytics-outcome"><span class="succeeded"></span><span class="failed"></span><span class="other"></span></div>
+          <div class="tc-analytics-outcome-rows"><span>成功</span><b id="tc-a-dist-success">—</b><span>失败</span><b id="tc-a-dist-failed">—</b><span>其他状态</span><b id="tc-a-dist-other">—</b></div>
+        </div>
+      </div>
+      <div class="tc-analytics-daily">
+        <div class="tc-analytics-daily-head"><h3>按日明细</h3><span>无任务日期显示 0</span></div>
+        <div class="tc-analytics-table-wrap"><table class="tc-analytics-table"><thead><tr><th>日期</th><th>任务</th><th>成功</th><th>失败</th><th>失败率</th><th>图片</th><th>视频</th><th>音频</th></tr></thead><tbody id="tc-analytics-rows"></tbody></table></div>
+      </div>
+      <div id="tc-analytics-note" class="tc-analytics-note"></div>
+    </section>
     <footer class="tc-foot"><span id="tc-updated">—</span><span>5s 自动刷新</span></footer>
   </aside>
 
@@ -688,11 +792,8 @@ async function resolveBootTarget() {
     if (!smartId) return { pageId: 'canvas', canvasId: '' };
     var frame = document.getElementById('frame-smart-canvas');
     if (frame) frame.dataset.src = buildSmartCanvasUrl(frame.dataset.src, smartId);
-    try {
-        localStorage.setItem(LAST_CANVAS_KEY, 'smart-canvas');
-        localStorage.setItem(LAST_CANVAS_ID_KEY, smartId);
-    } catch (e) { }
-    return { pageId: 'smart-canvas', canvasId: smartId };
+    // 启动默认停在主页画布列表（canvas），由用户主动点开具体画布；不再自动钻进最近编辑的编辑器
+    return { pageId: 'canvas', canvasId: smartId };
 }
 
 function goHomeCanvas() {
@@ -777,6 +878,8 @@ function lockStudioRootScroll() {
 }
 
 window.addEventListener('wheel', function (event) {
+    var taskConsole = document.getElementById('task-console-panel');
+    if (taskConsole && taskConsole.classList.contains('open') && taskConsole.contains(event.target)) return;
     var active = document.querySelector('iframe.active');
     if (active && active.id === 'frame-smart-canvas') {
         event.preventDefault();
@@ -846,6 +949,11 @@ var tcFilter = 'all';
 var tcSelected = {};
 var tcLastFp = null;
 var tcTimer = null;
+var tcStatsOpen = false;
+var tcStatsPeriod = '7';
+var tcStatsActiveRange = null;
+var tcStatsLastFp = null;
+var tcStatsChartRows = [];
 
 function toggleTaskConsole() {
     tcOpen = !tcOpen;
@@ -861,6 +969,218 @@ function toggleTaskConsole() {
         clearInterval(tcTimer);
         tcTimer = null;
     }
+    if (!tcOpen) tcSetStatsView(false);
+}
+
+function tcStatsDateKey(date) {
+    return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
+}
+
+function tcStatsShiftDate(key, days) {
+    var date = new Date(key + 'T12:00:00');
+    date.setDate(date.getDate() + days);
+    return tcStatsDateKey(date);
+}
+
+function tcStatsPresetRange(days) {
+    var end = tcStatsDateKey(new Date());
+    return { start: tcStatsShiftDate(end, 1 - days), end: end };
+}
+
+function tcSetStatsView(open) {
+    tcStatsOpen = !!open;
+    var panel = document.getElementById('task-console-panel');
+    if (panel) panel.classList.toggle('stats-view', tcStatsOpen);
+    var taskTab = document.getElementById('tc-tab-tasks');
+    var statsTab = document.getElementById('tc-tab-stats');
+    if (taskTab && statsTab) {
+        taskTab.classList.toggle('active', !tcStatsOpen);
+        statsTab.classList.toggle('active', tcStatsOpen);
+        taskTab.setAttribute('aria-selected', String(!tcStatsOpen));
+        statsTab.setAttribute('aria-selected', String(tcStatsOpen));
+    }
+    if (tcStatsOpen) {
+        if (!tcStatsActiveRange) tcStatsActiveRange = tcStatsPresetRange(7);
+        var startInput = document.getElementById('tc-analytics-start');
+        var endInput = document.getElementById('tc-analytics-end');
+        if (startInput && !startInput.value) startInput.value = tcStatsActiveRange.start;
+        if (endInput && !endInput.value) endInput.value = tcStatsActiveRange.end;
+    }
+    tcStatsLastFp = null;
+    tcRender();
+}
+
+function tcChooseStatsPeriod(button) {
+    tcStatsPeriod = button.getAttribute('data-days');
+    document.querySelectorAll('.tc-analytics-preset').forEach(function (item) {
+        item.classList.toggle('active', item === button);
+    });
+    var custom = document.getElementById('tc-analytics-custom');
+    if (custom) custom.classList.toggle('open', tcStatsPeriod === 'custom');
+    if (tcStatsPeriod !== 'custom') {
+        tcStatsActiveRange = tcStatsPresetRange(Number(tcStatsPeriod));
+        tcStatsLastFp = null;
+        tcRenderStatistics();
+    }
+}
+
+function tcApplyStatsRange() {
+    var start = document.getElementById('tc-analytics-start').value;
+    var end = document.getElementById('tc-analytics-end').value;
+    var error = document.getElementById('tc-analytics-error');
+    if (!start || !end || start > end) {
+        error.textContent = '请选择有效的起止日期';
+        return;
+    }
+    var span = (new Date(end + 'T12:00:00') - new Date(start + 'T12:00:00')) / 86400000;
+    if (span > 3660) {
+        error.textContent = '日期范围最多选择 10 年';
+        return;
+    }
+    error.textContent = '';
+    tcStatsActiveRange = { start: start, end: end };
+    tcStatsLastFp = null;
+    tcRenderStatistics();
+}
+
+function tcStatsSetText(id, value) {
+    var node = document.getElementById(id);
+    if (node) node.textContent = value;
+}
+
+function tcRenderStatsChart(rows) {
+    var host = document.getElementById('tc-analytics-chart');
+    if (!host || !rows.length) return;
+    var width = Math.max(320, host.clientWidth || 600, rows.length * 46 + 60);
+    var height = 260, left = 43, right = 18, top = 28, bottom = 42;
+    var plotWidth = width - left - right, plotHeight = height - top - bottom;
+    var maximum = Math.max(1, ...rows.map(function (row) { return Math.max(row.images, row.videos, row.audios || 0); }));
+    var ceiling = Math.max(5, Math.ceil(maximum * 1.1 / 5) * 5);
+    var x = function (index) { return left + (rows.length === 1 ? plotWidth / 2 : index * plotWidth / (rows.length - 1)); };
+    var y = function (value) { return top + plotHeight * (1 - value / ceiling); };
+    var path = function (key) { return rows.map(function (row, index) { return (index ? 'L' : 'M') + x(index).toFixed(1) + ',' + y(row[key]).toFixed(1); }).join(' '); };
+    var grid = [0, ceiling / 2, ceiling].map(function (value) {
+        var yy = y(value).toFixed(1);
+        return '<line x1="' + left + '" x2="' + (width - right) + '" y1="' + yy + '" y2="' + yy + '" stroke="var(--line)" stroke-width="1" />' +
+            '<text x="' + (left - 8) + '" y="' + (Number(yy) + 4) + '" text-anchor="end" fill="var(--muted)" font-size="11">' + Number(value.toFixed(1)) + '</text>';
+    }).join('');
+    var tickStep = Math.max(1, Math.ceil(rows.length / 6));
+    var labels = rows.map(function (row, index) {
+        if (index % tickStep !== 0 && index !== rows.length - 1) return '';
+        var anchor = index === 0 ? 'start' : index === rows.length - 1 ? 'end' : 'middle';
+        return '<text x="' + x(index).toFixed(1) + '" y="' + (height - 10) + '" text-anchor="' + anchor + '" fill="var(--muted)" font-size="11">' + row.date.slice(5).replace('-', '/') + '</text>';
+    }).join('');
+    var points = rows.map(function (row, index) {
+        var xx = x(index).toFixed(1);
+        var imageY = y(row.images), videoY = y(row.videos);
+        var imageLabelY = imageY - 9, videoLabelY = videoY - 9;
+        if (Math.abs(imageY - videoY) < 20) {
+            if (imageY <= videoY) videoLabelY = videoY + 16;
+            else imageLabelY = imageY + 16;
+        }
+        return '<text data-value-label="image" x="' + xx + '" y="' + imageLabelY.toFixed(1) + '" text-anchor="middle" fill="#60a5fa" font-size="11" font-weight="700">' + row.images + '</text>' +
+            '<text data-value-label="video" x="' + xx + '" y="' + videoLabelY.toFixed(1) + '" text-anchor="middle" fill="#c084fc" font-size="11" font-weight="700">' + row.videos + '</text>' +
+            '<circle cx="' + xx + '" cy="' + imageY.toFixed(1) + '" r="3" fill="#60a5fa" />' +
+            '<circle cx="' + xx + '" cy="' + y(row.audios || 0).toFixed(1) + '" r="3" fill="var(--x-speech-accent)" />' +
+            '<circle cx="' + xx + '" cy="' + videoY.toFixed(1) + '" r="3" fill="#c084fc" />' +
+            '<circle data-row="' + index + '" cx="' + xx + '" cy="' + y(Math.max(row.images, row.videos, row.audios || 0)).toFixed(1) + '" r="12" fill="transparent" tabindex="0" />';
+    }).join('');
+    host.innerHTML = '<svg width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="图片、视频和音频产出的折线图">' +
+        grid + labels + '<path d="' + path('images') + '" fill="none" stroke="#60a5fa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />' +
+        '<path d="' + path('audios') + '" fill="none" stroke="var(--x-speech-accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />' +
+        '<path d="' + path('videos') + '" fill="none" stroke="#c084fc" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />' + points + '</svg>';
+    var detail = document.getElementById('tc-analytics-chart-detail');
+    var showDetail = function (index) {
+        var row = rows[index];
+        if (detail && row) detail.textContent = row.date.replace(/-/g, '/') + (row.endDate ? ' — ' + row.endDate.replace(/-/g, '/') : '') + ' · 图片 ' + row.images + ' · 视频 ' + row.videos + ' · 音频 ' + row.audios;
+    };
+    host.querySelectorAll('[data-row]').forEach(function (point) {
+        var index = Number(point.getAttribute('data-row'));
+        point.addEventListener('mouseenter', function () { showDetail(index); });
+        point.addEventListener('focus', function () { showDetail(index); });
+        point.addEventListener('click', function () { showDetail(index); });
+    });
+    showDetail(rows.length - 1);
+    if (width > host.clientWidth) host.scrollLeft = host.scrollWidth - host.clientWidth;
+}
+
+function tcRenderStatistics() {
+    if (!tcData || !tcStatsOpen) return;
+    if (tcStatsPeriod !== 'custom') tcStatsActiveRange = tcStatsPresetRange(Number(tcStatsPeriod));
+    var range = tcStatsActiveRange || tcStatsPresetRange(7);
+    var tasks = tcData.tasks || [];
+    var fingerprint = range.start + '|' + range.end + '|' + JSON.stringify(tasks);
+    if (fingerprint === tcStatsLastFp) return;
+    tcStatsLastFp = fingerprint;
+    var daily = {};
+    var earliest = '';
+    tasks.forEach(function (task) {
+        var stamp = Number(task.created_at);
+        if (!Number.isFinite(stamp) || stamp <= 0) return;
+        var date = tcStatsDateKey(new Date(stamp * 1000));
+        if (!earliest || date < earliest) earliest = date;
+        if (date < range.start || date > range.end) return;
+        var row = daily[date] || (daily[date] = { date: date, total: 0, success: 0, failed: 0, images: 0, videos: 0, audios:0 });
+        row.total++;
+        if (task.status === 'succeeded') {
+            row.success++;
+            row.images += Number(task.output_images) || 0;
+            row.videos += Number(task.output_videos) || 0;
+            row.audios += Number(task.output_audios) || 0;
+        } else if (task.status === 'failed') {
+            row.failed++;
+        }
+    });
+    var rows = [];
+    for (var date = range.start; date <= range.end; date = tcStatsShiftDate(date, 1)) {
+        rows.push(daily[date] || { date: date, total: 0, success: 0, failed: 0, images: 0, videos: 0, audios:0 });
+    }
+    var chartRows = rows;
+    if (rows.length > 45) {
+        var bucketDays = Math.ceil(rows.length / 30);
+        chartRows = [];
+        for (var index = 0; index < rows.length; index += bucketDays) {
+            var bucket = rows.slice(index, index + bucketDays);
+            chartRows.push({
+                date: bucket[0].date,
+                endDate: bucket[bucket.length - 1].date,
+                images: bucket.reduce(function (count, row) { return count + row.images; }, 0),
+                videos: bucket.reduce(function (count, row) { return count + row.videos; }, 0),
+                audios: bucket.reduce(function (count, row) { return count + row.audios; }, 0)
+            });
+        }
+        tcStatsSetText('tc-analytics-chart-title', '每 ' + bucketDays + ' 天产出趋势');
+    } else {
+        tcStatsSetText('tc-analytics-chart-title', '每日产出趋势');
+    }
+    tcStatsChartRows = chartRows;
+    var sum = function (key) { return rows.reduce(function (count, row) { return count + row[key]; }, 0); };
+    var total = sum('total'), success = sum('success'), failed = sum('failed');
+    var images = sum('images'), videos = sum('videos'), audios = sum('audios'), other = total - success - failed;
+    tcStatsSetText('tc-analytics-range', range.start.replace(/-/g, '/') + ' — ' + range.end.replace(/-/g, '/') + ' · ' + (tcStatsPeriod === 'custom' ? '自选日期' : tcStatsPeriod === '1' ? '当天' : tcStatsPeriod === '3' ? '近三天' : tcStatsPeriod === '7' ? '近七天' : '近30天'));
+    tcStatsSetText('tc-a-total', total);
+    tcStatsSetText('tc-a-success', success);
+    tcStatsSetText('tc-a-failed', failed);
+    tcStatsSetText('tc-a-outputs', images + videos + audios);
+    tcStatsSetText('tc-a-average', ((images + videos + audios) / Math.max(1, rows.length)).toFixed(1));
+    tcStatsSetText('tc-a-success-rate', '成功率 ' + (total ? (success * 100 / total).toFixed(1) : '0.0') + '%');
+    tcStatsSetText('tc-a-failed-rate', '失败率 ' + (total ? (failed * 100 / total).toFixed(1) : '0.0') + '%');
+    tcStatsSetText('tc-a-media', '图片 ' + images + ' · 视频 ' + videos + ' · 音频 ' + audios);
+    tcStatsSetText('tc-a-dist-success', success);
+    tcStatsSetText('tc-a-dist-failed', failed);
+    tcStatsSetText('tc-a-dist-other', other);
+    var outcome = document.getElementById('tc-analytics-outcome');
+    if (outcome) {
+        outcome.children[0].style.width = (total ? success * 100 / total : 0) + '%';
+        outcome.children[1].style.width = (total ? failed * 100 / total : 0) + '%';
+        outcome.children[2].style.width = (total ? other * 100 / total : 0) + '%';
+    }
+    tcRenderStatsChart(chartRows);
+    var body = document.getElementById('tc-analytics-rows');
+    if (body) body.innerHTML = rows.slice().reverse().map(function (row) {
+        return '<tr><td>' + row.date.replace(/-/g, '/') + '</td><td>' + row.total + '</td><td>' + row.success + '</td><td>' + row.failed + '</td><td>' + (row.total ? (row.failed * 100 / row.total).toFixed(1) : '0.0') + '%</td><td>' + row.images + '</td><td>' + row.videos + '</td><td>' + row.audios + '</td></tr>';
+    }).join('');
+    tcStatsSetText('tc-analytics-note', '统计日期以任务提交时间为准；产出只计成功任务。' + (earliest ? '当前保存的历史记录始于 ' + earliest.replace(/-/g, '/') + '。' : '暂无历史任务记录。'));
 }
 
 function tcStatusText(s) {
@@ -892,13 +1212,11 @@ function tcRefresh() {
         .then(function (r) { return r.json(); })
         .then(function (data) {
             tcData = data;
-            var dot = document.getElementById('tc-live-dot');
-            if (dot) dot.classList.remove('err');
             tcRender();
         })
         .catch(function () {
-            var dot = document.getElementById('tc-live-dot');
-            if (dot) dot.classList.add('err');
+            var updated = document.getElementById('tc-updated');
+            if (updated) updated.textContent = '更新失败，请检查连接';
         });
 }
 
@@ -923,7 +1241,7 @@ function tcStopSelected() {
 }
 
 function tcStopAllRunning() {
-    var ids = (tcData && tcData.tasks || []).filter(function (t) { return t.status === 'running'; }).map(function (t) { return t.task_id; });
+    var ids = (tcData && tcData.tasks || []).filter(function (t) { return t.status === 'running' && t.can_stop !== false; }).map(function (t) { return t.task_id; });
     if (!ids.length) return;
     tcStop(ids);
 }
@@ -964,6 +1282,11 @@ function tcRender() {
     var statsEl = document.getElementById('tc-stats');
     var updated = document.getElementById('tc-updated');
     if (!list || !tcData) return;
+    if (updated) updated.textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN');
+    if (tcStatsOpen) {
+        tcRenderStatistics();
+        return;
+    }
     var tasks = tcData.tasks || [];
     var stats = tcData.stats || {};
     if (statsEl) {
@@ -971,12 +1294,12 @@ function tcRender() {
         var mediaPair = function (m) {
             if (!m) return '';
             return '<div class="tc-stat-parts"><span class="tc-part"><span class="tc-part-num tc-sub-img">' + (m.image || 0) + '</span><span class="tc-part-label">图片</span></span>' +
-                   '<span class="tc-part"><span class="tc-part-num tc-sub-vid">' + (m.video || 0) + '</span><span class="tc-part-label">视频</span></span></div>';
+                   '<span class="tc-part"><span class="tc-part-num tc-sub-vid">' + (m.video || 0) + '</span><span class="tc-part-label">视频</span></span>' + '<span class="tc-part"><span class="tc-part-num">' + (m.audio || 0) + '</span><span class="tc-part-label">音频</span></span></div>';
         };
         var ratePair = function (m) {
             if (!m) return '';
             return '<div class="tc-stat-parts"><span class="tc-part"><span class="tc-part-num tc-sub-img">' + (m.image || 0) + '%</span><span class="tc-part-label">图片</span></span>' +
-                   '<span class="tc-part"><span class="tc-part-num tc-sub-vid">' + (m.video || 0) + '%</span><span class="tc-part-label">视频</span></span></div>';
+                   '<span class="tc-part"><span class="tc-part-num tc-sub-vid">' + (m.video || 0) + '%</span><span class="tc-part-label">视频</span></span>' + '<span class="tc-part"><span class="tc-part-num">' + (m.audio || 0) + '%</span><span class="tc-part-label">音频</span></span></div>';
         };
         var statCard = function (cls, num, label, partsHtml) {
             return '<div class="tc-stat ' + (cls || '') + '"><div class="tc-stat-main"><div class="tc-stat-num">' + num + '</div><div class="tc-stat-label">' + label + '</div></div>' + (partsHtml || '') + '</div>';
@@ -987,9 +1310,8 @@ function tcRender() {
             statCard('ok', stats.today_success || 0, '成功', mediaPair(stats.today_success_media)) +
             statCard('bad', stats.today_failed || 0, '失败', mediaPair(stats.today_failed_media)) +
             statCard((stats.today_failure_rate || 0) > 30 ? 'bad' : 'warn', (stats.today_failure_rate || 0) + '%', '失败率', ratePair(stats.today_failure_rate_media)) +
-            statCard('', stats.today_outputs || 0, '今日产出', mediaPair({ image: stats.today_output_images || 0, video: stats.today_output_videos || 0 }));
+            statCard('', stats.today_outputs || 0, '今日产出', mediaPair({ image: stats.today_output_images || 0, video: stats.today_output_videos || 0, audio:stats.today_output_audios || 0 }));
     }
-    if (updated) updated.textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN');
     var filtered = tasks.filter(function (t) {
         if (tcFilter === 'all') return true;
         if (tcFilter === 'queued') return t.status === 'queued' || t.status === 'pending';
@@ -1015,7 +1337,7 @@ function tcRender() {
                 '<span>平台 <b>' + t.platform + '</b></span>' +
                 '<span>模型 <b>' + t.model + '</b></span>' +
                 '<span>模式 <b>' + (t.mode || '—') + '</b></span>' +
-                '<span>分辨率 <b>' + t.resolution + '</b></span>' +
+                (t.kind === '语音' ? '<span>格式 <b>' + String(t.audio_format || '').toUpperCase() + '</b></span>' : '<span>分辨率 <b>' + t.resolution + '</b></span>') +
                 (t.ratio ? '<span>比例 <b>' + t.ratio + '</b></span>' : '') +
                 (t.quality ? '<span>质量 <b>' + t.quality + '</b></span>' : '') +
                 '<span>数量 <b>' + t.count + '</b></span>' +
@@ -1041,7 +1363,7 @@ function tcRender() {
                 var tid = String(t.task_id).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
                 paramsHtml = '<details class="tc-params" data-tid="' + tid + '"' + (openSet[t.task_id] ? ' open' : '') + ' onclick="event.stopPropagation()"><summary>提交参数（' + t.params.flat.length + ' 项' + (bypass ? ' · 旁路 ' + bypass + ' 节点' : '') + '）</summary>' + items + '</details>';
             }
-            var canStop = t.status === 'running' || t.status === 'queued';
+            var canStop = t.can_stop !== false && (t.status === 'running' || t.status === 'queued');
             return '<div class="tc-item' + (sel ? ' selected' : '') + '" onclick="tcToggleSel(\'' + t.task_id + '\')">' +
                 '<div class="tc-item-top">' +
                 '<span class="tc-kind">' + t.kind + '</span>' +
@@ -1065,6 +1387,9 @@ document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('#tc-filter .tc-chip').forEach(function (c) {
         c.addEventListener('click', function () { tcSetFilter(c.getAttribute('data-f')); });
     });
+    window.addEventListener('resize', function () {
+        if (tcStatsOpen && tcStatsChartRows.length) tcRenderStatsChart(tcStatsChartRows);
+    });
 });
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -1081,18 +1406,36 @@ document.addEventListener('DOMContentLoaded', function () {
         document.documentElement.classList.remove('studio-route-booting');
     });
 });
+
+// A static update is applied in the background. Refresh only after the user
+// chooses to leave the current canvas, so an active edit is never interrupted.
+document.addEventListener('DOMContentLoaded', function () {
+    var notice = document.getElementById('update-notice');
+    var message = document.getElementById('update-notice-text');
+    var displayed = (document.querySelector('.app-version') || {}).textContent || '';
+    var current = (displayed.match(/V\d+\.\d+\.\d+/) || [])[0] || '';
+    var dismissed = '';
+    document.getElementById('update-refresh').addEventListener('click', function () {
+        if (window.confirm('请先保存正在编辑的内容。现在刷新界面吗？')) window.location.reload();
+    });
+    document.getElementById('update-later').addEventListener('click', function () {
+        dismissed = notice.dataset.version || '';
+        notice.classList.remove('visible');
+    });
+    function checkUpdateStatus() {
+        fetch('/api/update-status', { cache: 'no-store' }).then(function (response) {
+            return response.ok ? response.json() : null;
+        }).then(function (state) {
+            var version = state && state.static_version;
+            if (!version || version === current || version === dismissed) return;
+            notice.dataset.version = version;
+            message.textContent = '界面已更新到 ' + version + '，可在保存后刷新';
+            notice.classList.add('visible');
+        }).catch(function () {});
+    }
+    checkUpdateStatus();
+    window.setInterval(checkUpdateStatus, 60000);
+});
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-

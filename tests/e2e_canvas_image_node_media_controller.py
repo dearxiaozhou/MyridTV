@@ -6,6 +6,7 @@ import sys
 import urllib.request
 
 from playwright.sync_api import sync_playwright
+from e2e_support import record_blocked_write
 
 
 BASE = os.environ.get("MYRIDTV_TEST_BASE", "http://127.0.0.1:3217")
@@ -31,7 +32,7 @@ with sync_playwright() as pw:
         if "/static/app_config.json" in request.url:
             route.fulfill(status=200, content_type="application/json", body=json.dumps({"proxy": {"base_url": BASE}}))
         elif request.method in {"POST", "PUT", "PATCH", "DELETE"}:
-            blocked_writes.append({"method": request.method, "url": request.url})
+            record_blocked_write(blocked_writes, request.method, request.url)
             route.abort()
         else:
             route.continue_()
@@ -53,6 +54,7 @@ with sync_playwright() as pw:
       CanvasImageNodeMediaController.configure({
         getNodes:()=>state.nodes,selectedNode:()=>state.nodes.find(node=>node.id===state.selectedId),
         isImageNode:node=>node?.type==='image',viewportCenter:()=>({x:50,y:60}),
+        createGroupFromImages:undefined,
         createEmptyNodeAt:point=>{const node={id:'created-'+(state.created.length+1),type:'image',x:point.x,y:point.y,images:[],scale:2};state.created.push({point:{...point},node});state.nodes.push(node);return node;},
         isFile:value=>value instanceof File,mediaKindForFile:file=>file.type.startsWith('video/')?'video':'image',
         mediaKindForItem:item=>item.kind||'image',defaultImageNodeScale:2,defaultGroupNodeScale:0.8,previousGroupNodeScale:1.6,

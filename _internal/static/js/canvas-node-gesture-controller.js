@@ -98,6 +98,86 @@
         });
     }
 
+    /* ===== 拖拽对齐吸附（2026-10-05） =====
+     * 拖动节点时与「其它节点」的左/中/右、上/中/下 六条基准线比对，
+     * 阈值内吸附并记录命中线，交给 ctx.renderSnapGuides 画辅助线。
+     * 吸附是"改坐标"而非"只画线"——松手后位置就落在对齐线上，这才是吸附的意义。
+     * 阈值用屏幕像素除以缩放，保证放大后仍好吸、缩小后不至于乱吸。
+     */
+    const SNAP_THRESHOLD_PX = 6;
+
+    function snapAxis(candidates, value, threshold){
+        let best = null;
+        candidates.forEach(candidate => {
+            const delta = candidate.value - value;
+            if(Math.abs(delta) > threshold) return;
+            if(!best || Math.abs(delta) < Math.abs(best.delta)) best = {delta, at:candidate.at};
+        });
+        return best;
+    }
+
+    function collectSnapCandidates(ctx, dragIds, rects){
+        const x = [], y = [], boxes = [];
+        ctx.getNodes().forEach(node => {
+            if(dragIds.includes(node.id)) return;
+            const rect = rects.get(node.id) || ctx.nodeRect(node);
+            if(!rect || !Number.isFinite(rect.x)) return;
+            const left = rect.x, right = rect.x + rect.width, cx = rect.x + rect.width / 2;
+            const top = rect.y, bottom = rect.y + rect.height, cy = rect.y + rect.height / 2;
+            x.push({value:left, at:left}, {value:cx, at:cx}, {value:right, at:right});
+            y.push({value:top, at:top}, {value:cy, at:cy}, {value:bottom, at:bottom});
+            boxes.push({x:left, y:top, width:rect.width, height:rect.height});
+        });
+        return {x, y, rects:boxes};
+    }
+
+    function applySnapToDrag(ctx, drag, moveDx, moveDy){
+        const nodes = ctx.getNodes();
+        const dragIds = (drag.group || [{id:drag.id}]).map(item => item.id);
+        const rects = drag.layoutRects instanceof Map ? drag.layoutRects : new Map();
+        // 以被拖节点自身为基准算六条边；多选时用整体包围盒，避免各自吸附互相打架。
+        let base = null;
+        dragIds.forEach(id => {
+            const item = (drag.group || []).find(entry => entry.id === id);
+            const node = nodes.find(entry => entry.id === id);
+            if(!node) return;
+            const rect = rects.get(id) || ctx.nodeRect(node);
+            if(!rect) return;
+            const x = (Number(item?.ox) || 0) + moveDx;
+            const y = (Number(item?.oy) || 0) + moveDy;
+            if(!base) base = {l:x, t:y, r:x + rect.width, b:y + rect.height};
+            else base = {
+                l:Math.min(base.l, x), t:Math.min(base.t, y),
+                r:Math.max(base.r, x + rect.width), b:Math.max(base.b, y + rect.height)
+            };
+        });
+        if(!base) return null;
+        const threshold = SNAP_THRESHOLD_PX / Math.max(0.01, ctx.getViewportScale() || 1);
+        const pool = collectSnapCandidates(ctx, dragIds, rects);
+        // 辅助线的可视范围：取「被拖节点」与「所有参与比对的节点」的外接框，
+        // 这样线能从参考节点一直拉到被拖节点，一眼看出对齐的是谁（不是光秃秃一小段）。
+        const span = {minX:base.l, maxX:base.r, minY:base.t, maxY:base.b};
+        pool.rects.forEach(rect => {
+            span.minX = Math.min(span.minX, rect.x);
+            span.maxX = Math.max(span.maxX, rect.x + rect.width);
+            span.minY = Math.min(span.minY, rect.y);
+            span.maxY = Math.max(span.maxY, rect.y + rect.height);
+        });
+        const out = {x:0, y:0, guides:[]};
+        const xHit = snapAxis(pool.x, base.l, threshold) || snapAxis(pool.x, (base.l + base.r) / 2, threshold) || snapAxis(pool.x, base.r, threshold);
+        if(xHit){
+            // 整组按同样的位移挪过去，保持组内相对关系
+            out.x = xHit.delta;
+            out.guides.push({axis:'x', at:xHit.at, from:span.minY, to:span.maxY});
+        }
+        const yHit = snapAxis(pool.y, base.t, threshold) || snapAxis(pool.y, (base.t + base.b) / 2, threshold) || snapAxis(pool.y, base.b, threshold);
+        if(yHit){
+            out.y = yHit.delta;
+            out.guides.push({axis:'y', at:yHit.at, from:span.minX, to:span.maxX});
+        }
+        return out;
+    }
+
     function updateDragFrame(event){
         const ctx = context();
         const drag = ctx.getDragState();
@@ -105,8 +185,22 @@
         const nodes = ctx.getNodes();
         const node = nodes.find(item => item.id === drag.id);
         if(!node) return;
-        const moveDx = (event.clientX - drag.startX) / ctx.getViewportScale();
-        const moveDy = (event.clientY - drag.startY) / ctx.getViewportScale();
+        let moveDx = (event.clientX - drag.startX) / ctx.getViewportScale();
+        let moveDy = (event.clientY - drag.startY) / ctx.getViewportScale();
+        // 吸附开关关掉时（ctx.isSnapEnabled 为假）完全跳过，保持原行为零变更。
+        const snapOn = ctx.isSnapEnabled ? !!ctx.isSnapEnabled() : false;
+        if(snapOn){
+            const snapped = applySnapToDrag(ctx, drag, moveDx, moveDy);
+            if(snapped){
+                moveDx += snapped.x;
+                moveDy += snapped.y;
+                ctx.renderSnapGuides?.(snapped.guides);
+            } else {
+                ctx.renderSnapGuides?.([]);
+            }
+        } else {
+            ctx.renderSnapGuides?.([]);
+        }
         (drag.group || [{id:drag.id, ox:drag.ox, oy:drag.oy}]).forEach(item => {
             const moved = nodes.find(candidate => candidate.id === item.id);
             if(!moved) return;
@@ -170,6 +264,7 @@
             ctx.setAssetDragOver(false);
             ctx.discardPendingUndo();
             clearDropHighlight();
+            ctx.renderSnapGuides?.([]);
             ctx.setDragState(null);
             global.CanvasInteractionMachine?.end('dragging-node');
             global.document.body.classList.remove('smart-node-drag');
@@ -195,6 +290,7 @@
         if(stateChanged || drag.thumbDetached) ctx.suppressNodeClick(180);
         clearDropHighlight();
         ctx.setLoopInsertPreview(null);
+        ctx.renderSnapGuides?.([]);
         commitDraggedNodeElementPositions();
         ctx.scheduleMinimapRender();
         ctx.setDragState(null);
@@ -293,6 +389,7 @@
         addNodeToCanvasGroup,
         removeNodeOutsideCanvasGroups,
         clearDropHighlight,
-        setDropHighlight
+        setDropHighlight,
+        applySnapToDrag
     };
 })(typeof window !== 'undefined' ? window : globalThis);

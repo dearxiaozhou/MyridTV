@@ -20,6 +20,7 @@ import comfy_flow_service
 from myridtv_core import append_log, _task_console_ts
 
 import myridtv_agent_tasks
+import myridtv_provider
 import myridtv_task_state
 
 TASKS = {}
@@ -43,6 +44,8 @@ def _task_console_kind(task_id, state):
     tid = str(task_id or "")
     backend = str(state.get("backend") or "")
     submit = state.get("submit") if isinstance(state.get("submit"), dict) else {}
+    if backend == "provider-audio":
+        return "语音"
     if state.get("workflow_type") == "video_creation":
         return "智能体任务"
     if backend == "volcengine-ark":
@@ -72,6 +75,8 @@ def _task_media_type(item):
     """任务级媒体归类：所有任务强制二分 image / video，保证明细加和=总数。
     判定源=kind 优先，工作流/未知类看产出条目；智能体任务(短片流水线)按视频计。"""
     kind = str(item.get("kind") or "")
+    if kind == "语音":
+        return "audio"
     if kind == "视频":
         return "video"
     if kind in ("生图", "图生图"):
@@ -86,6 +91,15 @@ def _task_media_type(item):
 def _task_console_platform(state):
     backend = str(state.get("backend") or "")
     provider = str(state.get("provider_id") or "")
+    if backend in ("provider-openai", "provider-audio"):
+        # 通用 OpenAI 兼容平台：rh_task_id 字段只是通用 task_id，绝不能显示成 RunningHub
+        try:
+            for item in myridtv_provider.read_api_providers() or []:
+                if isinstance(item, dict) and str(item.get("id") or "") == provider:
+                    return str(item.get("name") or "").strip() or provider
+        except Exception:
+            pass
+        return provider or "API平台"
     if backend == "volcengine-ark" or provider == "volcengine":
         return "火山方舟"
     if backend == "blender-previz" or provider == "blender":
@@ -94,10 +108,10 @@ def _task_console_platform(state):
         return "ComfyUI"
     if backend.startswith("runninghub") or provider == "runninghub":
         return "RunningHub"
-    if state.get("rh_task_id"):
-        return "RunningHub"
     if provider:
         return provider
+    if state.get("rh_task_id"):
+        return "RunningHub"
     return backend or "未知"
 
 
@@ -233,7 +247,7 @@ def _task_console_split_outputs(images, videos):
             kind = "video" if re.search(r"\.(mp4|mov|webm|avi|mkv)(\?|$)", item, re.I) else ""
         if kind == "video":
             vid_n += 1
-        else:
+        elif kind != "audio":
             img_n += 1
     return img_n, vid_n
 
@@ -256,6 +270,7 @@ def task_console_snapshot():
         result = st.get("result") if isinstance(st.get("result"), dict) else {}
         out_images = result.get("images") if isinstance(result.get("images"), list) else []
         out_videos = result.get("videos") if isinstance(result.get("videos"), list) else []
+        out_audios = result.get("audios") if isinstance(result.get("audios"), list) else []
         n_img, n_vid = _task_console_split_outputs(out_images, out_videos)
         created_ts = _task_console_ts(st.get("created_at"))
         completed_ts = _task_console_ts(st.get("completed_at"))
@@ -285,7 +300,10 @@ def task_console_snapshot():
             "checked_at": checked_ts,
             "duration": duration,
             "error": str(st.get("error") or st.get("last_error") or "")[:2000],
-            "outputs": len(out_images) + len(out_videos),
+            "can_stop":st.get("can_stop",True),
+            "audio_format":str(st.get("audio_format") or ""),
+            "outputs": len(out_images) + len(out_videos) + len(out_audios),
+            "output_audios":len(out_audios),
             "output_images": n_img,
             "output_videos": n_vid,
             "risks": _task_console_risks(tid, st),
@@ -300,24 +318,25 @@ def task_console_snapshot():
     model_calls = {}
     for it in today:
         key = it["platform"] + " / " + it["model"]
-        entry = model_calls.setdefault(key, {"calls": 0, "failed": 0, "outputs": 0, "out_images": 0, "out_videos": 0})
+        entry = model_calls.setdefault(key, {"calls": 0, "failed": 0, "outputs": 0, "out_images": 0, "out_videos": 0, "out_audios":0})
         entry["calls"] += 1
         if it["status"] == "failed":
             entry["failed"] += 1
         entry["outputs"] += it["outputs"]
         entry["out_images"] += it.get("output_images") or 0
         entry["out_videos"] += it.get("output_videos") or 0
+        entry["out_audios"] += it.get("output_audios") or 0
     running_items = [it for it in items if it["status"] == "running"]
 
     def _media_split(group):
-        out = {"image": 0, "video": 0}
+        out = {"image": 0, "video": 0, "audio":0}
         for it in group:
             out[_task_media_type(it)] += 1
         return out
 
     def _media_failure_rate(group):
         out = {}
-        for media in ("image", "video"):
+        for media in ("image", "video", "audio"):
             sub_total = [it for it in group if _task_media_type(it) == media]
             sub_fail = [it for it in sub_total if it["status"] == "failed"]
             out[media] = round(len(sub_fail) * 100.0 / len(sub_total), 1) if sub_total else 0.0
@@ -335,6 +354,7 @@ def task_console_snapshot():
         "today_outputs": sum(it["outputs"] for it in today_ok),
         "today_output_images": sum(it.get("output_images") or 0 for it in today_ok),
         "today_output_videos": sum(it.get("output_videos") or 0 for it in today_ok),
+        "today_output_audios":sum(it.get("output_audios") or 0 for it in today_ok),
         "running": len(running_items),
         "running_media": _media_split(running_items),
         "models": [
@@ -374,6 +394,9 @@ def task_console_stop(payload):
                 continue
             st = TASKS.get(tid)
             if not isinstance(st, dict):
+                missing.append(tid)
+                continue
+            if st.get("can_stop") is False:
                 missing.append(tid)
                 continue
             if str(st.get("status")) == "running":

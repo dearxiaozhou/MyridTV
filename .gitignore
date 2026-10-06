@@ -75,3 +75,4 @@ tests/screenshot_design_v5c.py
 tests/screenshot_design_v5d.py
 tests/screenshot_design_v5e.py
 outputs/
+_verification/

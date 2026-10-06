@@ -226,9 +226,18 @@ function mergeKnownComfyWorkflows(primary=[], fallback=[]){
     ]);
 }
 function updateKnownComfyWorkflows(primary=[]){
-    const merged = mergeKnownComfyWorkflows(primary, loadLocalComfyWorkflowRegistry());
+    const merged = mergeKnownComfyWorkflows(primary, pruneRegistryAgainstBackend(loadLocalComfyWorkflowRegistry(), primary));
     saveLocalComfyWorkflowRegistry(merged);
     return merged;
+}
+// 后端列表非空时以它为准：本地缓存里后端已不存在（被删除/被改名）的自定义条目不再
+// 合并回注册表，避免已删除的工作流在列表里阴魂不散（旧实现无脑 merge 还会写回缓存）。
+function pruneRegistryAgainstBackend(local=[], primary=[]){
+    const list = Array.isArray(primary) ? primary : [];
+    const backendNames = new Set(list.map(w => String(w?.name || '')).filter(Boolean));
+    if(!backendNames.size) return Array.isArray(local) ? local : [];
+    return (Array.isArray(local) ? local : []).filter(
+        w => w?.builtin === true || backendNames.has(String(w?.name || '')));
 }
 async function filterAccessibleComfyWorkflows(list=[]){
     const normalized = normalizeComfyWorkflowEntries(list);
@@ -927,7 +936,6 @@ function renderCanvasListInto(list){
             <div class="canvas-open${cover && !trashMode ? ' has-cover' : ''}" role="button" tabindex="${trashMode ? '-1' : '0'}">
                 <div class="canvas-card-icon-row">
                     <span class="canvas-preview-mark" role="button" tabindex="0" title="${trashMode ? tr('canvas.deletedCanvas') : (tr('canvas.editMeta') || '编辑图标 / 颜色 / 负责人')}">${renderCanvasIcon(isSmartCanvas && /[^\x00-\x7F]/.test(item.icon || '') ? 'sparkles' : item.icon, 16)}</span>
-                    ${isSmartCanvas ? `<span class="canvas-kind-chip">${tr('canvas.smartCanvasShort')}</span>` : ''}
                 </div>
                 <div class="canvas-card-title">${escapeHtml(item.title)}</div>
                 ${ownerChip}

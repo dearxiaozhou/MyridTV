@@ -91,7 +91,10 @@ function toggleCanvasObjectReference(consumerId, sourceNodeId){
     deps.pushUndo();
     const refs = deps.canvasObjectReferencesFor(consumer).slice();
     const index = refs.findIndex(ref => ref.sourceNodeId === sourceNodeId);
-    if(index >= 0) refs.splice(index, 1);
+    if(index >= 0){
+        refs.splice(index, 1);
+        deps.disconnectCanvasObjectReference(consumerId, sourceNodeId);
+    }
     else refs.push({id:deps.uid('canvasobjref'), sourceNodeId, versionMode:'latest', createdAt:Date.now()});
     if(refs.length) consumer.objectReferences = refs;
     else delete consumer.objectReferences;
@@ -103,6 +106,8 @@ function removeCanvasObjectReference(consumerId, referenceId){
     const consumer = D("nodes").find(n => n.id === consumerId);
     if(!consumer || !referenceId) return;
     deps.pushUndo();
+    const removed = deps.canvasObjectReferencesFor(consumer).find(ref => ref.id === referenceId);
+    if(removed) deps.disconnectCanvasObjectReference(consumerId, removed.sourceNodeId);
     const refs = deps.canvasObjectReferencesFor(consumer).filter(ref => ref.id !== referenceId);
     if(refs.length) consumer.objectReferences = refs;
     else delete consumer.objectReferences;

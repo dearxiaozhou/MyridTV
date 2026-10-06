@@ -18,6 +18,10 @@
     function appendImages(uploaded, targetId='', options={}){
         const images = [...(uploaded || [])].filter(file => file?.url);
         if(!images.length) return null;
+        if(options.forceNew && images.length > 1 && typeof deps.createGroupFromImages === 'function'){
+            const group = deps.createGroupFromImages(images, options);
+            if(group) return group;
+        }
         let node = deps.getNodes().find(item => item.id === targetId) || deps.selectedNode();
         if(node && !deps.isImageNode(node)) node = null;
         if(options.forceNew) node = null;
@@ -27,7 +31,13 @@
         }
         if(!node) return null;
         const previousCount = (node.images || []).length;
-        node.images = [...(node.images || []), ...images.map(file => ({...file, kind:file.kind || deps.mediaKindForItem(file)}))];
+        // 覆盖模式（replaceIfExists）：节点已有素材时，新上传直接替换旧素材，
+        // 不再打组保留多张（上传按钮场景下，用户期望「换一张」而非「再叠一张」）。
+        if(options.replaceIfExists && previousCount > 0){
+            node.images = images.map(file => ({...file, kind:file.kind || deps.mediaKindForItem(file)}));
+        } else {
+            node.images = [...(node.images || []), ...images.map(file => ({...file, kind:file.kind || deps.mediaKindForItem(file)}))];
+        }
         if(node.images.length > 1){
             node.title = uploadTitleForItems(node.images, 'Group');
             const scale = Number(node.scale);

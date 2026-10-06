@@ -28,6 +28,8 @@
     var queryStart = -1;      // promptInput textContent 中 '~' 的位置（打开瞬间记录）
     var loading = false;
     var loadedOnce = false;
+    var repositionHooked = false;
+    var repositionHooks = null;
 
     function ensurePanel() {
         if (panel) return panel;
@@ -140,6 +142,7 @@
         applyFilter();
         if (!filtered.length) {
             panel.innerHTML = '<div class="prompt-lib-empty">没有匹配的提示词<br><span>按 Esc 关闭</span></div>';
+            positionPanel();
             return;
         }
         panel.innerHTML =
@@ -154,17 +157,161 @@
         if (global.lucide) global.lucide.createIcons({ attrs: {}, nameAttr: 'data-lucide' });
         var active = panel.querySelector('.prompt-lib-item.active');
         if (active) active.scrollIntoView({ block: 'nearest' });
+        // 边打字边跟着光标走：~多机位 每多一个字符光标右移，菜单跟着右移。
+        positionPanel();
     }
 
+    // 把 promptInput 的纯文本偏移映射成一个 Range（用来量光标/字符位置）。
+    // promptInput 是 contenteditable，里面可能有多段文本节点，得靠 TreeWalker 累加。
+    // offset 落在某个字符上 → 返回包住该字符的 Range；落在末尾 → 返回折叠在末尾的 Range。
+    function rangeAtTextOffset(input, offset) {
+        try {
+            var walker = document.createTreeWalker(input, NodeFilter.SHOW_TEXT, null);
+            var n, acc = 0, target = Math.max(0, offset | 0);
+            var range = document.createRange();
+            while ((n = walker.nextNode())) {
+                var len = (n.textContent || '').length;
+                if (acc + len > target) { range.setStart(n, target - acc); range.setEnd(n, target - acc + 1); return range; }
+                if (acc + len === target) { range.setStart(n, len); range.collapse(true); return range; }
+                acc += len;
+            }
+            range.selectNodeContents(input);
+            range.collapse(false);
+            return range;
+        } catch (_) { return null; }
+    }
+
+    // 光标所在的纯文本偏移（把 selection 的 DOM 位置翻译成字符下标）。
+    function caretTextOffset(input) {
+        try {
+            var sel = global.getSelection();
+            if (!sel || !sel.rangeCount) return -1;
+            var range = sel.getRangeAt(0);
+            if (!input.contains(range.startContainer)) return -1;
+            var pre = document.createRange();
+            pre.selectNodeContents(input);
+            pre.setEnd(range.startContainer, range.startOffset);
+            return pre.toString().length;
+        } catch (_) { return -1; }
+    }
+
+    // 取光标在视口坐标里的矩形。
+    // ⚠️ 血泪：光标常常落在**元素层**（例如 selectNodeContents 后 collapse 到末尾，
+    // startContainer 是 DIV 而不是文本节点），Chromium/WebView2 对这种折叠 range
+    // **不返回任何 client rect**（getClientRects 为空、boundingRect 全 0）。
+    // 所以主路量不到时必须退化到「量光标前一个字符」——它的右边缘就是光标 x。
+    // 这里不能用 queryStart（~ 的位置）来量：那是个固定坐标，边打字边过滤时
+    // 菜单会停在 ~ 那里不动（实测光标走了 105px 而菜单只跟了 5px）。
+    function caretClientRect(input) {
+        try {
+            var sel = global.getSelection();
+            if (sel && sel.rangeCount) {
+                var range = sel.getRangeAt(0);
+                if (input.contains(range.startContainer)) {
+                    var collapsed = range.cloneRange();
+                    collapsed.collapse(true);
+                    var rects = collapsed.getClientRects();
+                    for (var i = 0; i < rects.length; i++) {
+                        if (rects[i] && rects[i].height) return rects[i];
+                    }
+                    var box = collapsed.getBoundingClientRect();
+                    if (box && box.height) return box;
+                }
+            }
+        } catch (_) {}
+
+        // 退化一：量光标前一个字符（offset-1 .. offset），其右边缘 = 光标位置。
+        var off = caretTextOffset(input);
+        if (off > 0) {
+            var probe = rangeAtTextOffset(input, off - 1);
+            var r = probe && probe.getBoundingClientRect();
+            if (r && r.height) {
+                return { left: r.right, right: r.right, top: r.top, bottom: r.bottom, width: 0, height: r.height };
+            }
+        }
+        // 退化二：光标在首字符之前（offset 0）→ 量第一个字符，取其左边缘。
+        if (off === 0) {
+            var first = rangeAtTextOffset(input, 0);
+            var fr = first && first.getBoundingClientRect();
+            if (fr && fr.height) {
+                return { left: fr.left, right: fr.left, top: fr.top, bottom: fr.bottom, width: 0, height: fr.height };
+            }
+        }
+        // 退化三：连 selection 都读不到（面板刚开、焦点还没落定）→ 退回 ~ 的位置。
+        if (queryStart >= 0) {
+            var q = rangeAtTextOffset(input, queryStart);
+            var qr = q && q.getBoundingClientRect();
+            if (qr && qr.height) {
+                return { left: qr.right, right: qr.right, top: qr.top, bottom: qr.bottom, width: 0, height: qr.height };
+            }
+        }
+        return null;
+    }
+
+    // 面板跟着光标走（2026-10-05：原来固定贴输入框左下角，改成从光标处弹出）。
+    // 先在视口坐标里算好「贴光标、别越出输入框、别出视口」的位置，再换算成
+    // .prompt-row 内的布局坐标（composer 上有 transform:scale，所以要除以 scale）。
     function positionPanel() {
-        var inputRect = deps.promptInput.getBoundingClientRect();
-        var row = deps.promptInput.closest('.prompt-row');
-        var rowRect = (row || deps.promptInput).getBoundingClientRect();
+        if (!panel || !deps.promptInput) return;
+        var input = deps.promptInput;
+        var row = input.closest('.prompt-row');
+        var rowRect = (row || input).getBoundingClientRect();
         var scale = 1;
         try { scale = (global.viewport && Number(global.viewport.scale)) || 1; } catch (_) {}
         if (!(scale > 0)) scale = 1;
-        panel.style.left = ((inputRect.left - rowRect.left) / scale) + 'px';
-        panel.style.top = 'calc(100% + 4px)';
+
+        var caret = caretClientRect(input);
+        if (!caret) {   // 量不到光标 → 沿用旧的「贴左下角」
+            panel.style.left = '8px';
+            panel.style.top = 'calc(100% + 4px)';
+            return;
+        }
+
+        var inputRect = input.getBoundingClientRect();
+        var panelW = (panel.offsetWidth || 300) * scale;
+        var panelH = (panel.offsetHeight || 240) * scale;
+        var vw = global.innerWidth || document.documentElement.clientWidth;
+        var vh = global.innerHeight || document.documentElement.clientHeight;
+        var GAP = 2, PAD = 8;
+
+        // 横向：默认光标 x；顶到输入框右边界就往左让（不越出输入框），最后兜一次视口。
+        var left = caret.left;
+        var maxLeft = Math.max(inputRect.left, inputRect.right - panelW);
+        if (left > maxLeft) left = maxLeft;
+        if (left < inputRect.left) left = inputRect.left;
+        if (left + panelW > vw - PAD) left = Math.max(PAD, vw - PAD - panelW);
+
+        // 纵向：默认光标下一行；下方塞不下就翻到光标上方。
+        var top = caret.bottom + GAP;
+        if (top + panelH > vh - PAD) {
+            var above = caret.top - GAP - panelH;
+            top = above >= PAD ? above : Math.max(PAD, vh - PAD - panelH);
+        }
+        if (top < PAD) top = PAD;
+
+        panel.style.left = ((left - rowRect.left) / scale) + 'px';
+        panel.style.top = ((top - rowRect.top) / scale) + 'px';
+    }
+
+    // 输入框滚动 / 窗口缩放时光标在视口里的位置会变，面板得跟上。
+    // 只在面板打开期间挂监听，close 时摘掉，避免常驻开销。
+    function bindRepositionHooks() {
+        if (repositionHooked || !deps.promptInput) return;
+        repositionHooked = true;
+        var onScroll = function () { if (isOpen()) positionPanel(); };
+        deps.promptInput.addEventListener('scroll', onScroll, { passive: true });
+        global.addEventListener('resize', onScroll);
+        repositionHooks = { input: deps.promptInput, fn: onScroll };
+    }
+
+    function unbindRepositionHooks() {
+        if (!repositionHooks) return;
+        try {
+            repositionHooks.input.removeEventListener('scroll', repositionHooks.fn);
+            global.removeEventListener('resize', repositionHooks.fn);
+        } catch (_) {}
+        repositionHooks = null;
+        repositionHooked = false;
     }
 
     function open() {
@@ -178,12 +325,16 @@
         if (text.slice(queryStart, queryStart + 1) !== '~') { close(); return; }
         activeIndex = 0;
         panel.style.display = 'block';
-        positionPanel();
+        bindRepositionHooks();
         loadLibrary();
+        // loadLibrary 命中缓存时会同步 render（内部已定位）；首次拉库是异步的，
+        // 这儿先按空内容定位一次，render() 拿到真实尺寸后会再校正。
+        positionPanel();
     }
 
     function close(opts) {
         if (!panel) return;
+        unbindRepositionHooks();
         // 把提示词框里 '~查询' 的临时文字保留或擦除：擦除策略=用户没选择就删掉 ~ 及输入的词
         var keepTyped = opts && opts.keepTyped;
         if (!keepTyped && queryStart >= 0) {
@@ -231,6 +382,7 @@
         deps.promptInput.focus();
         placeCaretEnd((deps.promptInput.textContent || '').length);
         deps.promptInput.dispatchEvent(new Event('input', { bubbles: true }));
+        unbindRepositionHooks();
         panel.style.display = 'none';
     }
 

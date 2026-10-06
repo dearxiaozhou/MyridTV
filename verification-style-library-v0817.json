@@ -1,0 +1,15 @@
+{
+  "runtime": "http://127.0.0.1:3231",
+  "passed": [
+    "48 unique presets, six categories of eight, original IDs and custom library retained",
+    "search matches names/prompt keywords, keeps focus, and category/empty states work",
+    "all local preview resources load and library scroll stays inside the viewport",
+    "new style inserts a real token and expands its full prompt once, not just its name",
+    "saved new style and custom styles survive reload; removing token removes its prompt suffix",
+    "style cards support keyboard selection",
+    "custom style create/delete still works without changing existing custom entries",
+    "Escape closes the focused search menu",
+    "smaller windows and canvas zoom keep the style panel within view"
+  ],
+  "errors": []
+}

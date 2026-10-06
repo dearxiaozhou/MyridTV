@@ -45,6 +45,32 @@
         });
     }
 
+    function createCanvasGroupForNodes(memberNodes, options={}){
+        const ctx = context();
+        const members = [...(memberNodes || [])].filter(node => node?.id);
+        if(!members.length) return null;
+        const rects = members.map(node => ctx.nodeRect(node));
+        const x = Math.min(...rects.map(rect => rect.x));
+        const y = Math.min(...rects.map(rect => rect.y));
+        const padX = 18, padTop = 42, padBottom = 18;
+        const right = Math.max(...rects.map(rect => rect.x + rect.width));
+        const bottom = Math.max(...rects.map(rect => rect.y + rect.height));
+        const group = {
+            id:String(options.id || ctx.uid('smart')),
+            type:'smart-group',
+            x:Math.round(x - padX),
+            y:Math.round(y - padTop),
+            w:Math.round(right - x + padX * 2),
+            h:Math.round(bottom - y + padTop + padBottom),
+            title:String(options.title || 'Group'),
+            memberIds:members.map(node => node.id),
+            created_at:Number(options.created_at) || Date.now(),
+            __origin:options.origin || 'user_manual'
+        };
+        if(options.addToStore !== false) ctx.addNodeToStore(group, options.origin || 'user_manual');
+        return group;
+    }
+
     function groupSelectedNodes(){
         const ctx = context();
         const domIds = [...ctx.getWorld().querySelectorAll('.image-node.selected')].map(el => el.dataset.id || '').filter(Boolean);
@@ -58,24 +84,7 @@
         const selected = ids.map(id => ctx.getNodes().find(node => node.id === id)).filter(node => node && (node.images || []).length);
         if(selected.length < 2){ctx.toast(ctx.tr('smart.toastNeedGroup'));return;}
         ctx.pushUndo();
-        const rects = selected.map(node => ctx.nodeRect(node));
-        const x = Math.min(...rects.map(rect => rect.x));
-        const y = Math.min(...rects.map(rect => rect.y));
-        const padX = 18, padTop = 42, padBottom = 18;
-        const right = Math.max(...rects.map(rect => rect.x + rect.width));
-        const bottom = Math.max(...rects.map(rect => rect.y + rect.height));
-        const group = {
-            id:ctx.uid('smart'),
-            type:'smart-group',
-            x:Math.round(x - padX),
-            y:Math.round(y - padTop),
-            w:Math.round(right - x + padX * 2),
-            h:Math.round(bottom - y + padTop + padBottom),
-            title:'Group',
-            memberIds:selected.map(node => node.id),
-            created_at:Date.now()
-        };
-        ctx.addNodeToStore(group, 'user_manual');
+        const group = createCanvasGroupForNodes(selected);
         ctx.setSelectedIds([]);
         ctx.setSelectedId(group.id);
         ctx.setSelectedImage({nodeId:'', index:-1});
@@ -218,6 +227,7 @@
         distributeSelectedNodesHorizontally,
         distributeSelectedNodesVertically,
         handleToolAction,
+        createCanvasGroupForNodes,
         ungroupNode
     };
 })(typeof window !== 'undefined' ? window : globalThis);

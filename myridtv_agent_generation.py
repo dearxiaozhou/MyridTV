@@ -41,7 +41,7 @@ def _agent_tool_create_generation_node(args, preset=None):
     if not prompt:
         return {"ok": False, "error": "prompt 必填"}
     cid, canvas = myridtv_agent_state._agent_get_canvas(str(args.get("canvas_id") or ""))
-    settings = myridtv_agent_state._agent_default_run_settings(args, preset)
+    settings = myridtv_agent_state._agent_default_run_settings(args, preset, canvas=canvas, cid=cid)
     node_x, node_y = myridtv_agent_state._agent_find_empty_position(canvas, args.get("x"), args.get("y"), 320, 420, category=myridtv_agent_state._agent_category_from_title(args.get("title")), node_type="smart-image")
     # 引用图片 → 写入节点引用 + 输入连线
     refs = myridtv_agent_state._agent_normalize_reference_items(args.get("reference_image_urls") or args.get("reference_images") or [])
@@ -303,7 +303,7 @@ def _agent_submit_generation(args, preset=None):
     cid = str(args.get("canvas_id") or "").strip() or myridtv_agent_state._agent_latest_canvas_id()
     nid = str(args.get("node_id") or "").strip()
     node_title = str(args.get("node_title") or "").strip()
-    settings = myridtv_agent_state._agent_default_run_settings(args, preset)
+    settings = myridtv_agent_state._agent_default_run_settings(args, preset, cid=cid)
     refs = myridtv_agent_state._agent_normalize_reference_items(args.get("reference_image_urls") or args.get("reference_images") or [])
     if str(settings["provider_id"] or "").strip() == "comfy":
         # 本地 ComfyUI 工作流生图：model 即工作流名

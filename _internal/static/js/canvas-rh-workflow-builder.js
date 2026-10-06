@@ -84,7 +84,11 @@ async function rhBuildWorkflowRequestExtras(media, nodeInfoList, sourceSettings=
     // 注意 rhActiveFields 已把被关节点的字段过滤掉，所以 nodeInfoList 里通常本就没有它们的参数，
     // 这里再按 nodeId 兜底清一次，防止本地缓存与云端字段不一致时把参数带上去。
     const offNodeIds = deps.rhNodeOffIds(sourceSettings);
-    if(!missingOptional.length && !missingSlotNodeIds.length && !offNodeIds.length) return {};
+    // 2026-09-29：VHS_VideoCombine 等输出节点 save_output=false 时视频只写 temp（预览）目录，
+    // RunningHub 只收集 output 目录文件 → 任务 SUCCESS 但"暂无生成结果"、积分照扣。
+    // 存在此类节点时不能提前返回，必须走到下面强制 save_output=true 的改写。
+    const hasSaveOutputOff = Object.values(config.workflowJson || {}).some(n => n?.inputs && n.inputs.save_output === false);
+    if(!missingOptional.length && !missingSlotNodeIds.length && !offNodeIds.length && !media?.prompt && !hasSaveOutputOff) return {};
     const dropKeys = new Set();
     missingOptional.forEach(field => dropKeys.add(deps.rhParamKey(field.nodeId, field.fieldName)));
     offNodeIds.forEach(id => {
@@ -93,10 +97,34 @@ async function rhBuildWorkflowRequestExtras(media, nodeInfoList, sourceSettings=
     for(let i = nodeInfoList.length - 1; i >= 0; i--){
         if(dropKeys.has(deps.rhParamKey(nodeInfoList[i].nodeId, nodeInfoList[i].fieldName))) nodeInfoList.splice(i, 1);
     }
-    let workflow = config.workflowJson || {};
+    let workflow = config.workflowJson ? JSON.parse(JSON.stringify(config.workflowJson)) : {};
+    // 2026-09-29：强制 save_output=true——RH 云端教程明确「Save Output 关闭时视频不会出现在
+    // 云端任务列表」。画布跑 RH 必须有产物可回填，否则 SUCCESS 但 results 空、积分白扣。
+    Object.values(workflow).forEach(node => {
+        if(node?.inputs && node.inputs.save_output === false) node.inputs.save_output = true;
+    });
     if(missingOptional.length) workflow = rhPruneWorkflowForMissingFields(workflow, missingOptional) || workflow;
     if(offNodeIds.length) workflow = rhPruneWorkflowNodes(workflow, offNodeIds) || workflow;
     if(missingSlotNodeIds.length) workflow = rhPruneWorkflowNodes(workflow, missingSlotNodeIds) || workflow;
+    // 2026-09-29：画布主提示词同时写回 workflow 字符串里「被 prompt 输入引用的文本节点」，
+    // 与 nodeInfoList 的 263 覆盖形成双保险——即使 RH 端忽略 nodeInfoList 覆盖，也能靠 workflow
+    // 字符串本身生效（提交给 RH 的字符串即它实际执行的 workflow）。
+    if(media?.prompt){
+        const promptSourceIds = new Set();
+        for(const [oid, onode] of Object.entries(workflow)){
+            if(!onode || !onode.inputs) continue;
+            for(const [k, v] of Object.entries(onode.inputs)){
+                if(k === 'prompt' && Array.isArray(v) && v.length && String(v[0]) !== String(oid))
+                    promptSourceIds.add(String(v[0]));
+            }
+        }
+        for(const sid of promptSourceIds){
+            const snode = workflow[sid];
+            if(!snode || !snode.inputs) continue;
+            const textKey = Object.keys(snode.inputs).find(k => typeof snode.inputs[k] === 'string' && !Array.isArray(snode.inputs[k]));
+            if(textKey) snode.inputs[textKey] = media.prompt;
+        }
+    }
     // RH 的 /task/openapi/create 只认 JSON 字符串（官方文档：workflow string - Custom full workflow
     // in JSON string format）。传对象会被判为非法 → {"code":404,"msg":"NOT_FOUND"}（2026-09-16 实测复现）。
     return Object.keys(workflow || {}).length ? {workflow: JSON.stringify(workflow)} : {};
@@ -124,11 +152,14 @@ async function rhBuildNodeInfoList(media, sourceSettings=D("settings"), randomVa
         const key = deps.rhParamKey(field.nodeId, field.fieldName);
         // workflow 模式：非媒体字段默认不覆盖云端工作流的默认值（保持原设计），
         // 但用户在节点上显式改过值的必须提交 —— 否则「参数设置好了」等于没设置（2026-09-16）。
+        // 2026-09-29：画布主提示词框内容（media.prompt）视为「上游注入」，即便字段为
+        // sourceFromUpstream=false 也提交；仅当用户显式「保留原生」且未编辑、且无画布提示词时退回原生。
         const userEdited = String(sourceSettings?.rhParams?.[key]?.value ?? '').trim() !== '';
-        if(mode === 'workflow' && field.sourceFromUpstream === false && !['image','video','audio'].includes(kind) && !userEdited) continue;
-        if(mode === 'workflow' && kind === 'image'){
+        const promptFromCanvas = deps.rhFieldRole(field) === 'prompt' && Boolean((media?.prompt || '').trim());
+        if(mode === 'workflow' && field.sourceFromUpstream === false && !['image','video','audio'].includes(kind) && !userEdited && !promptFromCanvas) continue;
+        if(mode === 'workflow' && ['image','video','audio'].includes(kind)){
             const idx = indexes[key] || 0;
-            if(field.required !== true && !media.image?.[idx]?.url) continue;
+            if(field.required !== true && !media?.[kind]?.[idx]?.url) continue;
         }
         let value = deps.rhParamValue(field, media, sourceSettings, fields, randomValues);
         if(deps.rhFieldRole(field) === 'prompt' && !String(value || '').trim()) value = deps.rhDefaultValue(field);
@@ -154,6 +185,33 @@ async function rhBuildNodeInfoList(media, sourceSettings=D("settings"), randomVa
             const value = await rhUploadValueIfNeeded(url, sourceSettings);
             result.push({nodeId:String(slot.nodeId), fieldName:slot.fieldName, fieldValue:value});
         }
+    }
+    // 2026-09-29：workflow 模式下，自动把画布主提示词注入到「被 prompt 输入引用的文本节点」
+    // （如 MiniMax H3 Reference to Video 的提示词 Text 节点），覆盖 workflow 原生写死的提示词。
+    // 仅当画布提示词非空、且该节点尚未被显式字段覆盖时注入。
+    if(mode === 'workflow' && media?.prompt){
+        try {
+            const cfg = await deps.currentRunningHubWorkflowConfig(sourceSettings);
+            const workflow = cfg && cfg.workflowJson;
+            if(workflow && typeof workflow === 'object'){
+                const covered = new Set(result.map(i => String(i.nodeId)));
+                const promptSourceIds = new Set();
+                for(const [oid, onode] of Object.entries(workflow)){
+                    if(!onode || !onode.inputs) continue;
+                    for(const [k, v] of Object.entries(onode.inputs)){
+                        if(k === 'prompt' && Array.isArray(v) && v.length && String(v[0]) !== String(oid))
+                            promptSourceIds.add(String(v[0]));
+                    }
+                }
+                for(const sid of promptSourceIds){
+                    if(covered.has(sid)) continue;
+                    const snode = workflow[sid];
+                    if(!snode || !snode.inputs) continue;
+                    const textKey = Object.keys(snode.inputs).find(k => typeof snode.inputs[k] === 'string' && !Array.isArray(snode.inputs[k]));
+                    if(textKey) result.push({nodeId:String(sid), fieldName:textKey, fieldValue: media.prompt});
+                }
+            }
+        } catch(e){ /* 容错：注入失败不阻断正常提交 */ }
     }
     return result;
 }

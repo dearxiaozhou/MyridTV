@@ -15,6 +15,7 @@ import myridtv_http
 import myridtv_comfy
 import myridtv_media_localize
 import myridtv_provider
+import myridtv_provider_image
 import myridtv_runninghub
 import myridtv_runninghub_build
 import myridtv_task_console
@@ -34,13 +35,17 @@ def configure(log_file_getter, closures, poll_timeout_getter):
 
 
 def submit_official(payload):
+    refs = payload.get("reference_images") or []
+    provider_id = str(payload.get("provider_id") or "runninghub").strip()
+    if myridtv_provider_image.resolve_generic_image_provider(provider_id):
+        # 通用 OpenAI 兼容平台：按平台自身 base_url + 平台 Key 出图，不碰 RunningHub
+        model = myridtv_agent_state._agent_select_configured_image_model(provider_id, payload.get("model"), refs)
+        task_id, data = myridtv_provider_image.submit_generic_image(
+            provider_id, model, payload.get("prompt") or "", refs, payload)
+        return task_id, data
     key = myridtv_env.read_env_balance_key()
     if not key:
         raise RuntimeError("未找到 RunningHub API Key，请在 API 设置填写「账户余额 API Key」（标准模型需企业级 Key）")
-    refs = payload.get("reference_images") or []
-    provider_id = str(payload.get("provider_id") or "runninghub").strip()
-    if provider_id == "custom-api-3":
-        provider_id = "runninghub"
     model = myridtv_agent_state._agent_select_configured_image_model(provider_id, payload.get("model"), refs)
     endpoint = f"{_r_runninghub_api_base()}/openapi/v2/{model}"
     body = myridtv_runninghub_build.build_official_body(payload, model, refs)
@@ -53,6 +58,17 @@ def submit_official(payload):
                 f"（当前错误：{str(data.get('errorMessage') or '')[:80]}）")
         raise RuntimeError(f"RunningHub 未返回 taskId：{data}")
     return task_id, data
+
+
+def submit_and_poll_official(payload):
+    """同步出图路由（online-image 等）：按平台分叉轮询链。"""
+    provider_id = str((payload or {}).get("provider_id") or "").strip()
+    task_id, submit_raw = submit_official(payload)
+    if myridtv_provider_image.resolve_generic_image_provider(provider_id):
+        if isinstance(submit_raw, dict) and submit_raw.get("inline_images"):
+            return {"images": list(submit_raw["inline_images"]), "task_id": task_id, "backend": "provider-openai", "raw": submit_raw.get("raw") or submit_raw}
+        return myridtv_provider_image.poll_generic_result(provider_id, task_id)
+    return poll_result(task_id)
 
 
 def poll_result(task_id):
@@ -192,9 +208,22 @@ def run_task(task_id, payload):
                 result = localize_canvas_task_result(result, payload)
                 myridtv_task_state.update_task_state(task_id, status="succeeded", result=result, completed_at=time.time(), localized_at=time.time())
                 return
+        is_generic = bool(myridtv_provider_image.resolve_generic_image_provider(provider_id))
         rh_task_id, submit_raw = submit_official(payload)
-        myridtv_task_state.update_task_state(task_id, status="running", rh_task_id=rh_task_id, submit=submit_raw, checked_at=time.time())
-        result = poll_result(rh_task_id)
+        myridtv_task_state.update_task_state(
+            task_id, status="running", rh_task_id=rh_task_id, submit=submit_raw, checked_at=time.time(),
+            backend=("provider-openai" if is_generic else "runninghub-official"), provider_id=provider_id)
+        if is_generic:
+            if isinstance(submit_raw, dict) and submit_raw.get("inline_images"):
+                result = {"images": list(submit_raw["inline_images"]), "task_id": rh_task_id, "backend": "provider-openai", "raw": submit_raw.get("raw") or submit_raw}
+            else:
+                result = myridtv_provider_image.poll_generic_result(provider_id, rh_task_id, local_task_id=task_id)
+        else:
+            result = poll_result(rh_task_id)
+        # 用户已点停止：轮询窗口尾部竞态下不得把 cancelled 覆盖回 succeeded
+        if myridtv_task_console._task_console_is_cancelled(task_id):
+            myridtv_core.append_log(_G_LOG_FILE(), f"[ProviderImage] discard late result (cancelled) task={task_id} provider={provider_id}")
+            return
         # If refresh_canvas_task_state already localized the result (race condition), skip.
         with myridtv_media_localize._canvas_task_localize_lock(task_id):
             if myridtv_media_localize._canvas_task_already_localized(task_id):
@@ -203,13 +232,16 @@ def run_task(task_id, payload):
             # Localize before publishing success so the frontend never localizes the same remote files again.
             result = localize_canvas_task_result(result, payload)
             myridtv_task_state.update_task_state(task_id, status="succeeded", result=result, completed_at=time.time(), localized_at=time.time())
+        if is_generic:
+            myridtv_core.append_log(_G_LOG_FILE(), f"[ProviderImage] canvas task done task={task_id} provider={provider_id} model={payload.get('model')}")
     except Exception as exc:
         if myridtv_task_console._task_console_is_cancelled(task_id):
             # 控制台手动停止：保持 cancelled 状态，不被轮询异常覆盖
+            myridtv_core.append_log(_G_LOG_FILE(), "[CanvasTaskCancelled] task={} provider={} model={}".format(task_id, (payload or {}).get("provider_id"), (payload or {}).get("model")))
             return
         error = str(exc)
         myridtv_core.append_log(_G_LOG_FILE(), "[CanvasTaskFailed] task={} provider={} model={} err={}".format(task_id, (payload or {}).get("provider_id"), (payload or {}).get("model"), error[:400]))
-        if "RunningHub 查询超时" in error:
+        if "查询超时" in error:
             myridtv_task_state.update_task_state(task_id, status="running", checked_at=time.time(), last_error=error, poll_window_expired_at=time.time())
         else:
             myridtv_task_state.update_task_state(task_id, status="failed", error=error, completed_at=time.time())
@@ -255,6 +287,45 @@ def refresh_canvas_task_state(task_id):
                 state = myridtv_task_state.update_task_state(task_id, status="failed", error=queried.get("error") or "火山视频任务失败", completed_at=time.time(), raw=queried.get("raw"), raw_status=queried.get("raw_status") or "")
             else:
                 state = myridtv_task_state.update_task_state(task_id, status="running", checked_at=time.time(), raw_status=queried.get("raw_status") or "running")
+        except Exception as exc:
+            state = myridtv_task_state.update_task_state(task_id, status="running", checked_at=time.time(), last_error=str(exc))
+    if state.get("backend") == "provider-openai" and state.get("status") == "running" and state.get("rh_task_id"):
+        if myridtv_task_console._task_console_is_cancelled(task_id):
+            return state
+        try:
+            queried = myridtv_provider_image.query_generic_image(str(state.get("provider_id") or ""), state["rh_task_id"])
+            raw_status = str(queried.get("status") or "").upper().replace("-", "_")
+            urls = queried.get("urls") or []
+            if raw_status in myridtv_provider_image._SUCCESS_STATUSES and not urls:
+                status = "RUNNING"
+            elif raw_status in myridtv_provider_image._SUCCESS_STATUSES:
+                status = "SUCCESS"
+            elif raw_status in myridtv_provider_image._FAILURE_STATUSES:
+                status = "FAILED"
+            else:
+                status = raw_status or "RUNNING"
+            if status == "SUCCESS":
+                if urls:
+                    with myridtv_media_localize._canvas_task_localize_lock(task_id):
+                        if not myridtv_media_localize._canvas_task_already_localized(task_id):
+                            raw_result = {
+                                "images": list(urls),
+                                "task_id": state["rh_task_id"],
+                                "backend": "provider-openai",
+                                "raw": queried.get("raw") or queried,
+                            }
+                            localized_result = localize_canvas_task_result(raw_result, {
+                                "canvas_title": str(state.get("canvas_title") or "").strip(),
+                                "canvas_id": str(state.get("canvas_id") or "").strip(),
+                                "node_title": str(state.get("node_title") or "").strip(),
+                            })
+                            state = myridtv_task_state.update_task_state(task_id, status="succeeded", result=localized_result, completed_at=time.time(), raw_status=raw_status, localized_at=time.time())
+                else:
+                    state = myridtv_task_state.update_task_state(task_id, status="running", checked_at=time.time(), last_error="生图平台已完成但结果尚未返回", raw_status=status)
+            elif status == "FAILED":
+                state = myridtv_task_state.update_task_state(task_id, status="failed", error=queried.get("failReason") or "生图平台任务失败", completed_at=time.time(), raw=queried.get("raw"), raw_status=raw_status)
+            else:
+                state = myridtv_task_state.update_task_state(task_id, status="running", checked_at=time.time(), raw_status=status or "RUNNING")
         except Exception as exc:
             state = myridtv_task_state.update_task_state(task_id, status="running", checked_at=time.time(), last_error=str(exc))
     if state.get("backend") == "runninghub-official" and state.get("status") == "running" and state.get("rh_task_id"):

@@ -85,9 +85,18 @@
         ]);
     }
     function updateKnownComfyWorkflows(primary=[]){
-        const merged = mergeKnownComfyWorkflows(primary, loadLocalComfyWorkflowRegistry());
+        const merged = mergeKnownComfyWorkflows(primary, pruneRegistryAgainstBackend(loadLocalComfyWorkflowRegistry(), primary));
         saveLocalComfyWorkflowRegistry(merged);
         return merged;
+    }
+    // 后端列表非空时以它为准：本地缓存里后端已不存在（被删除/被改名）的自定义条目不再
+    // 合并回注册表，避免已删除的工作流在列表里阴魂不散（旧实现无脑 merge 还会写回缓存）。
+    function pruneRegistryAgainstBackend(local=[], primary=[]){
+        const list = Array.isArray(primary) ? primary : [];
+        const backendNames = new Set(list.map(w => String(w?.name || '')).filter(Boolean));
+        if(!backendNames.size) return Array.isArray(local) ? local : [];
+        return (Array.isArray(local) ? local : []).filter(
+            w => w?.builtin === true || backendNames.has(String(w?.name || '')));
     }
     function replaceKnownComfyWorkflows(primary=[]){
         const normalized = normalizeComfyWorkflowEntries(primary);
@@ -102,8 +111,40 @@
         if(data){
             comfyWorkflowCache[resolved] = data;
             if(name && name !== resolved) comfyWorkflowCache[name] = data;
+            // 防止“导入工作流带异地死文件名 + 素材槽没暴露”的坑：
+            // 加载自定义工作流时，自动把未暴露的 LoadImage/LoadAudio 暴露成素材槽。
+            // 幂等（后端按 node+input 去重），每个工作流只触发一次。
+            if(!data.builtin && !autoExposedWorkflows.has(resolved)){
+                autoExposedWorkflows.add(resolved);
+                autoExposeMediaOnce(resolved, data);
+            }
         }
         return data;
+    }
+    const autoExposedWorkflows = new Set();
+    async function autoExposeMediaOnce(resolved, cached){
+        try {
+            const res = await fetch('/api/comfyui/auto-expose-media', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: resolved}),
+            }).then(r => r.ok ? r.json() : null).catch(() => null);
+            if(res && (res.added > 0 || res.pruned > 0)){
+                cached.config = cached.config || {};
+                if(res.pruned > 0 && Array.isArray(res.fields)){
+                    // 有失效槽位被清理：直接用后端返回的全量字段，避免面板残留已删除的槽位。
+                    cached.config.fields = res.fields;
+                } else if(res.added > 0){
+                    // 把后端返回的完整字段对象合并进缓存，面板立即可见，无需重拉整个工作流。
+                    const existing = new Set((cached?.config?.fields || []).map(f => String(f?.id || '')));
+                    const fresh = (res.added_fields || []).filter(f => f && !existing.has(String(f.id || '')));
+                    cached.config.fields = (cached.config.fields || []).concat(fresh);
+                }
+                if(window.__comfyAutoExposeLog !== false){
+                    console.log(`[comfy] 已为工作流 ${resolved} 自动暴露 ${res.added} 个素材槽`);
+                }
+            }
+        } catch(e){ /* 失败不影响加载，下次确保还会重试（cache 未命中时） */ }
     }
     async function filterAccessibleComfyWorkflows(list=[]){
         const normalized = normalizeComfyWorkflowEntries(list);
@@ -124,6 +165,16 @@
     }
 
     // ===== 任务运行态清理 =====
+    // 进度环 SVG 是轮询期间动态 insertAdjacentHTML 进节点的，render() 的 renderKey 复用
+    // 不会移除它 —— 状态清掉时必须显式摘除，否则节点尺寸变了之后残环缩成竖椭圆留在画面上。
+    function removeComfyProgressDom(node){
+        if(!node || !node.id) return;
+        try {
+            const el = document.querySelector('.image-node[data-id="' + node.id + '"]');
+            const bar = el && el.querySelector(':scope > .comfy-node-progress');
+            if(bar) bar.remove();
+        } catch(_) {}
+    }
     function clearComfyRunStateKeepPromptId(node){
         if(!node) return;
         delete node.comfyJobId;
@@ -134,6 +185,7 @@
         delete node.comfyStartedAt; // 计时起点，跨任务不能复用
         delete node.comfyNotice;    // 运行期提示，结束了就该消失
         // 注意：这里故意保留 comfyError —— 失败原因要继续挂在节点上给用户看
+        removeComfyProgressDom(node);
     }
     function clearComfyProgress(node){
         if(!node) return;
@@ -147,6 +199,7 @@
         delete node.comfyStartedAt;
         delete node.comfyError;   // 成功了就别留着上一轮的失败提示
         delete node.comfyNotice;
+        removeComfyProgressDom(node);
     }
     function clearComfyProgressExceptStatus(node){
         if(!node) return;
@@ -157,6 +210,7 @@
         delete node.comfyCurrentNodeTitle;
         delete node.comfyStartedAt;
         // 保留 comfyStatus = 'cancelled'
+        removeComfyProgressDom(node);
     }
 
     // ===== 取消 =====
@@ -166,6 +220,8 @@
         // Invalidate the in-flight submit/poll promise before clearing visible job state.
         // A fast retry must not let the cancelled run clear the new run's state.
         delete node.comfyRunToken;
+        // 记下被手动取消的 jobId：孤儿重绑时不许把它认领回来（否则"取消了又自己跑起来"）
+        if(jobId) node.comfyLastCancelledJobId = jobId;
         node.comfyStatus = 'cancelled';  // 保留 cancelled 状态供前端显示
         if(jobId){
             try {
@@ -196,6 +252,41 @@
 
     // ===== supervisor：promise 链断掉时的轮询兜底 =====
     let comfyJobSupervisorTimer = null;
+    // 孤儿认领：节点的 comfyStatus 还挂着 running/queued 但 comfyJobId 丢了（刷新/状态被清
+    // 而后端任务还活着）时，按后端 job.meta.node_id 把任务接回来；后端真没这个任务了才清状态。
+    // 不接回来的话任务在后端照常排队/执行，节点却永远没人轮询 —— 表现为"排着排着自己停了"。
+    async function rebindOrphanComfyNodes(orphans){
+        let rows = [];
+        try {
+            const data = await fetch(deps.proxyUrl('/api/comfyui/jobs'), {cache:'no-store'}).then(r => r.json());
+            rows = Array.isArray(data) ? data : (data.jobs || []);
+            if(!Array.isArray(rows)) rows = [];
+        } catch(_) { return; }   // 后端抖动不计 miss，下个 tick 再试
+        rows = rows.slice().sort((a,b) => Number(b.created_at || 0) - Number(a.created_at || 0));
+        let changed = false;
+        for(const node of orphans){
+            const row = rows.find(j => j && ['running','queued'].includes(j.status)
+                && j.meta && String(j.meta.node_id || '') === String(node.id)
+                && String(j.job_id || '') !== String(node.comfyLastCancelledJobId || ''));
+            if(row){
+                delete node.comfyOrphanMiss;
+                node.comfyJobId = String(row.job_id);
+                node.comfyPromptId = String(row.prompt_id || '') || node.comfyPromptId || '';
+                changed = true;
+                continue;
+            }
+            // 任务列表里确实没有它：连续 3 次（约 6s）才认定任务真没了，清掉残留状态
+            node.comfyOrphanMiss = (Number(node.comfyOrphanMiss || 0)) + 1;
+            if(node.comfyOrphanMiss >= 3){
+                delete node.comfyOrphanMiss;
+                clearComfyProgress(node);
+                deps.clearNodeRunningState(node);
+                deps.syncRunButtonAvailability(node);
+                changed = true;
+            }
+        }
+        if(changed){ deps.render(); deps.scheduleSave(); }
+    }
     async function syncComfyJobStatusOnce(node){
         // queued 也要管：否则任务停在排队阶段、promise 链又断了时，没人把它推进到 running/收尾
         if(!node || !node.comfyJobId || !['running', 'queued'].includes(node.comfyStatus)) return false;
@@ -219,7 +310,12 @@
             return true;
         }
         delete node.comfySupervisorMiss;
-        const st = job.status || node.comfyStatus;
+        let st = job.status || node.comfyStatus;
+        // 后端兜底：状态被迟到的 WS 消息翻回 running，但 error + finished_at 已经落地 → 按失败收尾
+        if(st === 'running' && Number(job.finished_at || 0) > 0 && job.error){
+            job.status = 'error';
+            st = 'error';
+        }
         // 状态必须写回：promise 链断了只剩 supervisor 在轮询时，不写回的话节点会永远停在
         // 提交那一刻的 queued，「排队中 · 第 N 位」一直挂着，哪怕它其实已经在跑了。
         if(['running', 'queued'].includes(st)) node.comfyStatus = st;
@@ -236,7 +332,7 @@
             const kind = (job.videos && job.videos.length) ? 'video' : 'image';
             // 仅当节点还没产出时回填（避免和正常轮询的 finalize 重复）
             if(urls.length && !(node.images || []).length){
-                try { await deps.finalizePendingNode(node, urls, {prompt:node.promptDraftText || node.runPrompt || '', displayPrompt:node.promptDraftText || node.runPrompt || ''}, kind); }
+                try { await deps.finalizePendingNode(node, urls, {prompt:node.promptDraftText || node.runPrompt || '', displayPrompt:node.promptDraftText || node.runPrompt || '', settings:node.runSettings, createdAt:node.runAt || node.runStartedAt}, kind); }
                 catch(_) { /* 产出回填失败也不阻塞清态 */ }
             }
             clearComfyProgress(node);
@@ -258,8 +354,11 @@
     function startComfyJobSupervisor(){
         if(comfyJobSupervisorTimer) return;
         comfyJobSupervisorTimer = setInterval(async () => {
-            const active = (deps.getNodes() || []).filter(n => n.comfyJobId && ['running', 'queued'].includes(n.comfyStatus));
-            if(!active.length){ stopComfyJobSupervisor(); return; }
+            const all = deps.getNodes() || [];
+            const active = all.filter(n => n.comfyJobId && ['running', 'queued'].includes(n.comfyStatus));
+            const orphaned = all.filter(n => !n.comfyJobId && ['running', 'queued'].includes(n.comfyStatus));
+            if(!active.length && !orphaned.length){ stopComfyJobSupervisor(); return; }
+            if(orphaned.length){ try { await rebindOrphanComfyNodes(orphaned); } catch(_) {} }
             for(const n of active){
                 try { await syncComfyJobStatusOnce(n); } catch(_) {}
             }
@@ -272,7 +371,7 @@
     // ===== 卡死恢复：后端重启/记录丢失后按 prompt_id 认领产出 =====
     let comfyRecoveryInFlight = false;
     function isRecoverableComfyNode(node){
-        if(!node || (node.images || []).length) return false;
+        if(!node || (node.images || []).length || !node.comfyPromptId) return false;
         const runSettings = node.runSettings || node.settings || {};
         const isComfy = (runSettings.engine || '') === 'comfy' || node.comfyRecovery || node.comfyPromptId || node.comfyJobId;
         if(!isComfy) return false;
@@ -299,15 +398,22 @@
             for(const node of stuck){
                 if((node.images || []).length) continue;
                 // 有 prompt_id 就精确认领对应那一条（避免把「最近一条输出」错挂到别的节点上）
-                const row = node.comfyPromptId
-                    ? outputs.find(item => String(item.prompt_id || '') === String(node.comfyPromptId))
-                    : outputs.find(item => (item.images || []).length || (item.videos || []).length);
+                const row = outputs.find(item => String(item.prompt_id || '') === String(node.comfyPromptId));
                 if(!row) continue;
-                const urls = (row.images || []).length ? row.images : (row.videos || []);
-                const kind = (row.images || []).length ? 'image' : 'video';
-                await deps.finalizePendingNode(node, urls, {prompt:node.runPrompt || '', displayPrompt:node.runPrompt || ''}, kind);
-                node.comfyPromptId = row.prompt_id || '';
-                delete node.comfyRecovery;
+                // 视频优先互斥（与后端 _collect_outputs / runComfyWorkflowJob 同口径）：
+                // 视频工作流常带 PreviewImage 过程预览图，若 images 优先，卡死恢复会把
+                // ComfyUI_temp_*.png 当产出回填视频节点，且删掉后下一轮恢复又填回来。
+                const hasVideos = (row.videos || []).length > 0;
+                const urls = hasVideos ? row.videos : (row.images || []);
+                const kind = hasVideos ? 'video' : 'image';
+                if(!urls.length) continue;  // 该 prompt_id 在 ComfyUI 侧还没有落地产出，别空填
+                await deps.finalizePendingNode(node, urls, {prompt:node.runPrompt || '', displayPrompt:node.runPrompt || '', settings:node.runSettings, createdAt:node.runAt || node.runStartedAt}, kind);
+                // 认领成功即收工（与 supervisor done 分支同口径）：清掉 prompt_id 和运行态。
+                // 旧逻辑这里反而把 prompt_id 重新写回节点，等于恢复窗口永远开着——用户删掉
+                // 产出后，下次窗口 focus / 画布合并重载又会拿同一个旧任务再填一次（"删掉又来"）。
+                clearComfyProgress(node);
+                deps.clearNodeRunningState(node);
+                deps.syncRunButtonAvailability(node);
                 changed = true;
             }
             if(changed){
@@ -320,6 +426,28 @@
             return false;
         } finally {
             comfyRecoveryInFlight = false;
+        }
+    }
+
+    // 载入画布时清理「上一次会话遗留」的失败横幅：
+    // comfyError 原本是故意保留给用户看失败原因的（见 clearComfyRunStateKeepPromptId），
+    // 但跨重启后它只是旧结论、且无法自行消失，导致「重开软件还在」反复出现。
+    // 这里在画布从磁盘/服务端载入后清掉所有「非正在运行」节点的 comfyError
+    // （comfyJobId 不存在即代表不是进行中的任务）——本次会话里刚失败的任务仍会显示，
+    // 重启 / 重新载入画布后才消失。与「点击清除」互为兜底，二选一即可消除。
+    function pruneStaleComfyErrorsOnLoad(){
+        const all = deps.getNodes ? deps.getNodes() : [];
+        if(!Array.isArray(all) || !all.length) return;
+        let changed = false;
+        for(const node of all){
+            if(node && node.comfyError && !node.comfyJobId){
+                delete node.comfyError;
+                changed = true;
+            }
+        }
+        if(changed){
+            deps.render();
+            deps.scheduleSave();
         }
     }
 
@@ -345,6 +473,7 @@
         startComfyJobSupervisor: startComfyJobSupervisor,
         stopComfyJobSupervisor: stopComfyJobSupervisor,
         isRecoverableComfyNode: isRecoverableComfyNode,
-        recoverStuckComfyNodes: recoverStuckComfyNodes
+        recoverStuckComfyNodes: recoverStuckComfyNodes,
+        pruneStaleComfyErrorsOnLoad: pruneStaleComfyErrorsOnLoad
     };
 })(typeof window !== 'undefined' ? window : globalThis);

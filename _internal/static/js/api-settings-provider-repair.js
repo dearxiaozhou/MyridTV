@@ -30,7 +30,7 @@
     if(!provider.image_models.length){
       // 修复显示名时只补「不属于视频/聊天桶」的模型名——纯视频平台（如豆包-SD-2.0）
       // 的别名不得回流进 image_models，否则删掉的视频模型会以"生图模型"身份复活
-      const otherBuckets = new Set([...(provider.video_models || []), ...(provider.chat_models || [])]);
+      const otherBuckets = new Set([...(provider.video_models || []), ...(provider.chat_models || []), ...(provider.audio_models || [])]);
       const candidates = knownKeys.filter(key => !otherBuckets.has(key));
       if(candidates.length){
         provider.image_models = unique([...provider.image_models, ...candidates]);

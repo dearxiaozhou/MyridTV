@@ -7,12 +7,27 @@
 
     function D(name){return typeof deps[name] === 'function' ? deps[name]() : deps[name];}
 
+// 输入框里写的是 @技能名（只显示名称，跟提示词框调用风格 @名 一个语义），
+// 这里在真正送模型之前把技能正文展开回来。没命中技能库的名字原样保留。
+function expandSkillMentions(text, opts){
+    const fn = deps.expandSkillMentions;
+    if(typeof fn !== 'function') return Promise.resolve(String(text || ''));
+    return Promise.resolve(fn(text, opts)).catch(() => String(text || ''));
+}
+
 async function runPromptLLMNode(nodeId){
     const node = D("nodes").find(n => n.id === nodeId);
     if(!node || node.type !== 'smart-prompt') return;
-    const message = (node.llmInstruction || node.text || '').trim();
-    if(!message){ deps.toast(tr('smart.promptLlmNeedText')); return; }
-    const systemPrompt = (node.llmSystemPrompt || '').trim();
+    const rawMessage = (node.llmInstruction || node.text || '').trim();
+    if(!rawMessage){ deps.toast(tr('smart.promptLlmNeedText')); return; }
+    const rawSystemPrompt = (node.llmSystemPrompt || '').trim();
+    const missingSkills = [];
+    const noteMissing = names => names.forEach(name => { if(missingSkills.indexOf(name) < 0) missingSkills.push(name); });
+    const [message, systemPrompt] = await Promise.all([
+        expandSkillMentions(rawMessage, {onMissing: noteMissing}),
+        expandSkillMentions(rawSystemPrompt, {onMissing: noteMissing})
+    ]);
+    if(missingSkills.length) deps.toast('技能未读到内容，已按原文发送：@' + missingSkills.join(' @'));
     node.llmEnabled = true;
     node.running = true;
     deps.render();

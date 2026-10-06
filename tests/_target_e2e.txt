@@ -1,0 +1,66 @@
+﻿INSTANCE_READY
+=== e2e_canvas_image_import_controller.py  exit=0  11.4s
+PASS - 鏂囦欢瀵煎叆涓婁紶鎴愬姛鍚庢墠璁板綍鎾ら攢骞跺啓鍏ョ洰鏍囪妭鐐?| {'images': [{'url': '/uploaded/clip.mp4', 'name': 'clip.mp4', 'kind': 'video'}], 'targetId': 'target', 'options': {'skipUndo': False, 'point': {'x': 7, 'y': 8}}}
+PASS - 绱犳潗寮曠敤淇濈暀鏈€鏂扮増鏈爣璇嗭紝缃戦〉鍥剧墖鍚嶅彲瑙ｇ爜 | {'asset': {'images': [{'url': '/assets/ref.png', 'name': 'ref.png', 'kind': 'image', 'assetId': 'asset-9', 'assetVersionMode': 'latest'}], 'targetId': 'asset-target', 'options': {}}, 'url': {'images': [{'url': 'https://cdn.example.test/%E5%9B%BE.png?size=1', 'name': '鍥?png', 'kind': 'image'}], 'targ
+PASS - skipUndo 鐢熸晥涓斿け璐ヤ笂浼犳樉绀烘湇鍔￠敊璇?| {'undo': 2, 'toasts': ['upload denied']}
+PASS - 濯掍綋瀵煎叆娴佺▼鏃犺剼鏈紓甯告垨鐪熷疄鍐欒姹?| {'errors': [], 'blockedWrites': []}
+
+RESULT: 7/7
+
+=== e2e_canvas_image_drop_payload.py  exit=0  11.1s
+PASS - 鏂囦欢澶归€掑綊璇诲彇骞惰繃婊や笉鏀寔鏂囦欢 | {'type': 'files', 'names': ['nested.jpg']}
+PASS - 璇嗗埆绱犳潗鎷栨斁锛堝惈鎷栧姩涓彈闄愯浇鑽凤級銆佽緭鍏ョ缉鐣ュ浘鍙婄郴缁熸枃浠舵彁绀?| {'asset': True, 'hiddenAsset': True, 'thumb': True, 'hint': True}
+PASS - 鍥剧墖鍚嶇О瑙ｇ爜骞跺拷鐣ユ煡璇㈠弬鏁板拰鐗囨 | 鎴块棿.png
+PASS - 鎷栨斁妯″潡杩愯鏃舵棤鑴氭湰寮傚父鎴栨寮忔暟鎹啓鍏?| {'errors': [], 'blockedWrites': []}
+
+RESULT: 9/9
+
+=== e2e_canvas_asset_insert_persistence.py  exit=0  12s
+PASS - 浠庣礌鏉愬簱鎷栧叆鐢诲竷鍚庤妭鐐瑰紩鐢ㄧ礌鏉?ID 骞惰窡闅忔渶鏂扮増鏈?| {'nodeId': 'smart_lxtyyhor8r7v', 'image': {'url': 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSczMicgaGVpZ2h0PSczMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyBmaWxsPScjNGY0NmU1Jy8+PC9zdmc+', 'name': '鐢诲竷绱犳潗鎸佷箙鍖栭獙鏀?, 'kind': 'image', 'assetId': 'e2e-asset-98f79cf76184', 'assetVersion
+PASS - 鑷姩淇濆瓨鍚庢湇鍔＄淇濈暀绱犳潗 URL 涓庣礌鏉?ID | {'node': {'id': 'smart_lxtyyhor8r7v', 'type': 'smart-image', 'x': 460, 'y': 270, 'title': 'Image', 'images': [{'url': 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSczMicgaGVpZ2h0PSczMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyBmaWxsPScjNGY0NmU1Jy8+PC9zdmc+', 'name': '鐢诲竷绱犳潗鎸佷箙鍖栭獙鏀?,
+PASS - 鍒锋柊閲嶅紑鍚庣礌鏉愬紩鐢ㄤ粛鍏宠仈鍘熺礌鏉愬強鐗堟湰妯″紡 | {'nodeId': 'smart_lxtyyhor8r7v', 'image': {'url': 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSczMicgaGVpZ2h0PSczMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyBmaWxsPScjNGY0NmU1Jy8+PC9zdmc+', 'name': '鐢诲竷绱犳潗鎸佷箙鍖栭獙鏀?, 'kind': 'image', 'assetId': 'e2e-asset-98f79cf76184', 'assetVersion
+PASS - 绱犳潗鎻掑叆淇濆瓨閲嶅紑鏃犻〉闈㈣剼鏈紓甯?
+
+RESULT: 5/5
+
+=== e2e_canvas_asset_panel_drop_controller.py  exit=0  11.5s
+PASS - 鎷栧叆鏈湴璺緞涓嶅啀璧板凡绉婚櫎鐨勬湰鍦板鍏ユ帴鍙ｄ笖涓嶄骇鐢熺礌鏉?| {'added': [{'url': '/canvas/frame.png', 'name': '鐢诲竷甯?}, {'url': '/uploaded/瑙掕壊.png', 'name': '瑙掕壊.png'}, {'url': 'https://cdn.example.test/look.png?size=1', 'name': 'look.png'}], 'uploaded': [['瑙掕壊.png']], 'imported': [], 'toasts': ['绱犳潗瀵煎叆澶辫触']}
+PASS - 鎷栧叆缃戦〉鍥剧墖閾炬帴鏃舵彁鍙栨枃浠跺悕骞跺姞鍏ョ礌鏉愬簱 | [{'url': '/canvas/frame.png', 'name': '鐢诲竷甯?}, {'url': '/uploaded/瑙掕壊.png', 'name': '瑙掕壊.png'}, {'url': 'https://cdn.example.test/look.png?size=1', 'name': 'look.png'}]
+PASS - 鏈煡鎷栨斁涓嶆嫤鎴敾甯冧簨浠朵笖閿欒绱犳潗鏁版嵁浼氭彁绀?| {'unsupportedIgnored': True, 'toasts': ['绱犳潗瀵煎叆澶辫触']}
+PASS - 绱犳潗搴撴嫋鏀捐矾鐢辨棤鑴氭湰寮傚父鎴栫湡瀹炲啓璇锋眰 | {'errors': [], 'blockedWrites': []}
+
+RESULT: 7/7
+
+=== e2e_canvas_image_node_media_controller.py  exit=0  11.1s
+PASS - 鍗曞紶鍥剧墖淇濇寔鍗曞浘鏍囬骞舵竻闄ゆ棫灏哄缂撳瓨 | {'title': 'Image', 'count': 1, 'hasSize': False}
+PASS - 寮哄埗鏂板缓缁勫浘娌跨敤鎸囧畾鐢诲竷鍧愭爣骞舵洿鏂伴€変腑椤?| {'id': 'created-1', 'point': {'x': 120, 'y': 240}, 'count': 2, 'title': 'Group', 'scale': 0.8, 'selectedId': 'created-1'}
+PASS - 绌哄浘鐗囧垪琛ㄤ笉娓叉煋涔熶笉淇濆瓨 | {'selectedId': 'created-1', 'renders': 4, 'saves': 4}
+PASS - 濯掍綋鑺傜偣鏇存柊鏃犺剼鏈紓甯告垨鐪熷疄鍐欒姹?| {'errors': [], 'blockedWrites': []}
+
+RESULT: 7/7
+
+=== e2e_canvas_video_refmode.py  exit=0  13.1s
+PASS - 鍚戝墠寤堕暱鍙ュ紡 | "璇峰嬁澶嶈堪瑙嗛1鍘熷唴瀹广€傚悜鍓嶅欢闀胯棰?锛氱粰鐧借。鐢峰瓙杩囪偐闀滃ご"
+PASS - 缂栬緫鏃犳簮瑙嗛 鈫?鏄庣‘鎶ラ敊鎻愮ず杩炲叆 | {'err': '瑙嗛缂栬緫闇€瑕佸厛杩炲叆 1 娈垫簮瑙嗛锛堟妸瑙嗛鑺傜偣杩炲埌鏈妭鐐硅緭鍏ワ級'}
+PASS - 闈?Seedance 閫夌紪杈?鈫?toast+鎸?mixed 鎻愪氦 | {"payload": {"prompt": "娴嬭瘯", "provider_id": "comfly", "model": "kling-v2", "duration": 5, "aspect_ratio": "16:9", "canvas_id": "", "resolution": "", "images": [
+PASS - 鏃?JS 鎶ラ敊 | []
+
+RESULT: 10/10
+
+=== e2e_canvas_missing_media_feedback.py  exit=0  10.5s
+PASS - 鍗曞紶澶辨晥鍥剧墖鏄剧ず鏄庣‘鐨勫姞杞藉け璐ヨ鏄?
+PASS - 澶氬浘缁勯噷鐨勬瘡寮犲け鏁堝浘鐗囬兘鏈夊崰浣嶅弽棣?
+PASS - 澶辨晥鍥剧墖鐘舵€佸叿鏈夊彲璁块棶鍚嶇О
+PASS - 鎹熷潖鍥剧墖鏈韩琚殣钘忥紝閬垮厤鐮村浘鏍囪閫忓嚭
+PASS - 澶勭悊澶辨晥绱犳潗鏃舵棤鏈崟鑾疯剼鏈紓甯?
+RESULT: 5/5
+
+=== e2e_canvas_node_lifecycle.py  exit=0  23.4s
+PASS - 鍙缉鏀捐妭鐐规樉绀哄昂瀵告墜鏌?| 
+PASS - 鎷栧姩灏哄鎵嬫焺鍚庤妭鐐瑰昂瀵稿彉鍖?| {'width': 632, 'height': 388} -> {'width': 722, 'height': 448}
+PASS - 鎷栨斁澶栭儴绱犳潗鍚庡垱寤哄浘鐗囪妭鐐?| 2 -> 3
+PASS - 鏃?JS 鎶ラ敊 | []
+
+RESULT: 14/14
+
+DONE

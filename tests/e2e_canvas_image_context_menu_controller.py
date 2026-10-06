@@ -5,6 +5,7 @@ import sys
 import urllib.request
 
 from playwright.sync_api import sync_playwright
+from e2e_support import record_blocked_write
 
 
 import os
@@ -31,7 +32,7 @@ with sync_playwright() as pw:
         if "/static/app_config.json" in request.url:
             route.fulfill(status=200, content_type="application/json", body=json.dumps({"proxy":{"base_url":BASE}}))
         elif request.method in {"POST", "PUT", "PATCH", "DELETE"}:
-            blocked_writes.append({"method":request.method,"url":request.url})
+            record_blocked_write(blocked_writes, request.method, request.url)
             route.abort()
         else:
             route.continue_()

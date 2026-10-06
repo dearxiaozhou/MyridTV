@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-CN" data-studio-scale="off">
 <head>
-    <link rel="stylesheet" href="/static/css/design-tokens.css?v=2026.09.16.skill3col1">
+    <link rel="stylesheet" href="/static/css/design-tokens.css?v=snap-theme-v0912">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="/static/images/myrid-icon.png" type="image/png">
@@ -19,12 +19,13 @@
     </script>
     <script src="/static/vendor/js/lucide.js?v=2026.06.21"></script>
     <script src="/static/js/theme.js?v=2026.09.25.lighttrial1"></script>
-    <script src="/static/js/i18n.js?v=2026.09.28.provimg1"></script>
+    <script src="/static/js/i18n.js?v=2026.10.01.speech7"></script>
     <script src="/static/js/i18n/canvas.js?v=2026.07.09.shared1"></script>
     <script src="/static/js/i18n/smart-canvas.js?v=2026.09.25.layout2"></script>
-<link rel="stylesheet" href="/static/css/smart-canvas.css?cb=a11y-focus-visible-v1">
-<link rel="stylesheet" href="/static/css/light-theme-trial.css?v=2026.09.27.6">
-<link rel="stylesheet" href="/static/css/canvas-interaction-style.css?v=2026.09.28.3">
+<link rel="stylesheet" href="/static/css/smart-canvas.css?cb=hover-connect-v0919&v=2026.10.01.speech7">
+<link rel="stylesheet" href="/static/css/light-theme-trial.css?v=theme-audit-v0911-final">
+<link rel="stylesheet" href="/static/css/canvas-interaction-style.css?v=theme-audit-v0911-final">
+<link rel="stylesheet" href="/static/css/canvas-speech.css?v=0.8.14">
 </head>
 <body>
     <div id="shell" class="shell">
@@ -97,6 +98,7 @@
                         <div class="create-card-sub" data-i18n="smart.createImportNodeSub">支持图片/音频/视频/批量上传</div>
                     </span>
                 </button>
+                <button class="create-card" type="button" data-create-type="speech"><span class="create-card-icon"><i data-lucide="mic"></i></span><span><div class="create-card-title">语音生成</div><div class="create-card-sub">设计音色或选择预置音色，生成台词音频</div></span></button>
                 <button class="create-card" type="button" data-create-type="prompt">
                     <span class="create-card-icon"><i data-lucide="text-cursor-input"></i></span>
                     <span>
@@ -111,13 +113,6 @@
                         <div class="create-card-sub">控制一键运行轮数和批次</div>
                     </span>
                 </button>
-        <button class="create-card" type="button" data-create-type="script">
-          <span class="create-card-icon"><i data-lucide="type"></i></span>
-          <span>
-            <div class="create-card-title">剧本</div>
-            <div class="create-card-sub">编写文本，可接入生成链路</div>
-          </span>
-        </button>
                 <button class="create-card" type="button" data-create-type="generator">
                     <span class="create-card-icon"><i data-lucide="box"></i></span>
                     <span>
@@ -193,6 +188,10 @@
                 <span class="canvas-dock-icon"><i data-lucide="archive"></i></span>
                 <span data-i18n="smart.assetLibrary">资产库</span>
             </button>
+            <button id="styleToggle" class="canvas-dock-item style-toggle" type="button" title="风格" aria-label="风格">
+                <span class="canvas-dock-icon"><i data-lucide="palette"></i></span>
+                <span data-i18n="smart.styleLibrary">风格</span>
+            </button>
         </div>
         <div class="canvas-bottom-cluster" aria-label="画布状态工具">
             <div id="minimap" class="smart-minimap" aria-hidden="true">
@@ -204,6 +203,7 @@
                 <button id="minimapToggle" class="canvas-bottom-button minimap-toggle active" type="button" title="小地图" aria-label="小地图"><i data-lucide="map"></i></button>
                 <button id="smartLogToggle" class="canvas-bottom-button smart-log-toggle" type="button" onclick="openSmartCanvasLog()" title="日志" aria-label="日志" data-i18n-title="canvas.logs"><i data-lucide="list-todo"></i><span data-i18n="canvas.logs">日志</span></button>
                 <button id="smartShortcutToggle" class="canvas-bottom-button smart-shortcut-toggle" type="button" onclick="openSmartCanvasShortcuts()" title="快捷键" aria-label="快捷键" data-i18n-title="smart.shortcuts"><i data-lucide="keyboard"></i><span data-i18n="smart.shortcuts">快捷键</span></button>
+                <button id="canvasSnapToggle" class="canvas-bottom-button canvas-snap-toggle active" type="button" onclick="toggleSnap()" title="网格吸附" aria-label="网格吸附" aria-pressed="true"><i data-lucide="magnet"></i><span data-i18n="smart.snap">吸附</span></button>
                 <button id="canvasInputModeToggle" class="canvas-bottom-button canvas-input-mode-toggle" type="button" onclick="toggleCanvasInputMode()" title="画布输入模式" aria-label="画布输入模式"><i data-lucide="link-2"></i><span id="canvasInputModeLabel" data-i18n="smart.modeConnections">连线</span></button>
             </div>
         </div>
@@ -394,6 +394,34 @@
             <div id="assetDropZone" class="asset-drop-zone" data-i18n="smart.assetDropHint">把画布图片拖到这里保存到当前文件夹</div>
             <div id="assetGrid" class="asset-grid"></div>
             <div id="workflowEmpty" class="workflow-empty" style="display:none" data-i18n="smart.assetWorkflowEmpty">工作流资产先预留在这里，后续接入。</div>
+        </aside>
+        <!-- 风格面板（2026-10-05）：左侧工具栏「风格」按钮的落点。风格库 + 滤镜预设两个 tab，
+             内容由 renderStylePanel() 渲染，复用 composer 里同一套 .style-tile 样式与数据源。 -->
+        <aside id="stylePanel" class="style-panel">
+            <!-- 2026-10-05：去掉「🎨 风格」标题行，tab 提到最顶，参考任务控制台的做法——
+                 tab 按文字宽度自适应（不拉满），关闭按钮跟 tab 同一排右侧。 -->
+            <div class="style-panel-top">
+                <div class="asset-tabs" role="tablist" aria-label="风格面板视图">
+                    <button class="asset-tab active" type="button" role="tab" aria-selected="true" data-style-tab="style" data-i18n="smart.styleTabStyle">风格库</button>
+                    <button class="asset-tab" type="button" role="tab" aria-selected="false" data-style-tab="filter" data-i18n="smart.styleTabFilter">滤镜预设</button>
+                </div>
+                <button id="styleCloseBtn" class="asset-mini-btn" type="button" title="收起" data-i18n-title="common.close"><i data-lucide="x"></i></button>
+            </div>
+            <div id="stylePanelStylePane" class="style-panel-pane">
+                <div class="style-panel-head-row">
+                    <label class="style-library-search"><i data-lucide="search"></i><input type="search" data-panel-style-search aria-label="搜索风格" placeholder="搜索风格、媒介或关键词"></label>
+                    <button type="button" class="style-new-btn" data-panel-style-new title="新建自定义风格"><i data-lucide="plus"></i><span>新建</span></button>
+                </div>
+                <div class="style-library-categories" data-panel-style-categories aria-label="风格分类"></div>
+                <div class="style-library-results" data-panel-style-results></div>
+            </div>
+            <div id="stylePanelFilterPane" class="style-panel-pane" style="display:none">
+                <div class="style-panel-head-row">
+                    <label class="style-library-search"><i data-lucide="search"></i><input type="search" data-panel-filter-search aria-label="搜索滤镜" placeholder="搜索滤镜预设"></label>
+                </div>
+                <div class="style-library-results" data-panel-filter-results></div>
+            </div>
+            <div class="style-panel-hint" data-i18n="smart.stylePanelHint">点选后加到下方输入框；已选中的风格和滤镜会在这里高亮。</div>
         </aside>
         <div id="assetDialogBackdrop" class="asset-dialog-backdrop" hidden>
             <div class="asset-dialog">
@@ -595,100 +623,110 @@
     </div>
     <script src="/static/js/provider-model-display.js?v=2026.06.21"></script>
  <script src="/static/js/smart-canvas-actions.js?v=2026.07.09.langsync1"></script>
-<script src="/static/js/canvas-node-registry.js?v=2026.09.28.provimg1"></script>
-<script src="/static/js/canvas-draft-store.js?v=2026.09.28.provimg1"></script>
-<script src="/static/js/canvas-overlay-registry.js?v=2026.09.28.provimg1"></script>
-<script src="/static/js/canvas-viewport-engine.js?v=2026.09.28.provimg1"></script>
-<script src="/static/js/canvas-render-scheduler.js?v=2026.09.28.provimg1"></script>
-<script src="/static/js/canvas-comfy-job-engine.js?v=2026.09.28.provimg1"></script>
-<script src="/static/js/canvas-agent-history-store.js?v=2026.09.28.provimg1"></script>
-<script src="/static/js/canvas-artifact-model.js?v=2026.09.28.provimg1"></script>
-<script src="/static/js/canvas-artifact-view.js?v=2026.09.28.provimg1"></script>
-<script src="/static/js/canvas-agent-message-render.js?v=2026.09.28.provimg1"></script>
-<script src="/static/js/canvas-agent-message-view-controller.js?cb=canvas-agent-message-view-controller1"></script>
-<script src="/static/js/canvas-image-context-menu-controller.js?cb=canvas-image-context-menu-controller1"></script>
-<script src="/static/js/canvas-agent-mention-controller.js?cb=canvas-agent-mention-controller2"></script>
-<script src="/static/js/canvas-cascade-round-scheduler.js?cb=canvas-cascade-round-scheduler1"></script>
-<script src="/static/js/canvas-generation-result-model.js?cb=canvas-generation-result-model1"></script>
-<script src="/static/js/canvas-generation-task-poller.js?cb=canvas-generation-task-poller1"></script>
-<script src="/static/js/canvas-generation-dispatch-controller.js?cb=canvas-generation-dispatch-controller1"></script>
-<script src="/static/js/canvas-rh-controls.js?cb=rh-workflow-model1"></script>
-<script src="/static/js/canvas-rh-workflow-builder.js?cb=rhwb-v1"></script>
-<script src="/static/js/canvas-smart-task-supervisor.js?cb=sts-v1"></script>
-<script src="/static/js/canvas-generated-output-naming.js?cb=gcon-v1"></script>
-<script src="/static/js/canvas-provider-catalog.js?cb=provcatalog-v1"></script>
-<script src="/static/js/canvas-dynamic-param-engine.js?cb=gdpe-v1"></script>
-<script src="/static/js/canvas-agent-session-panel.js?cb=casp-v1"></script>
-<script src="/static/js/canvas-history-archive-group.js?cb=chag-v1"></script>
-<script src="/static/js/canvas-comfy-job-submitter.js?cb=ccjs-v1"></script>
-<script src="/static/js/canvas-redirect-lines.js?cb=crl-v1"></script>
-<script src="/static/js/canvas-agent-reference-intake.js?cb=cari-v1"></script>
-<script src="/static/js/canvas-state-hub.js?cb=csh-v1"></script>
-<script src="/static/js/canvas-agent-toggle-drag.js?cb=catd-v1"></script>
-<script src="/static/js/canvas-agent-model-settings.js?cb=cams-v1"></script>
-<script src="/static/js/canvas-agent-send-chain.js?cb=casc-v1"></script>
-<script src="/static/js/canvas-smart-cascade-runner.js?cb=scr-v1"></script>
-<script src="/static/js/canvas-generation-runner.js?cb=cgr-v1"></script>
-<script src="/static/js/canvas-media-helpers.js?cb=cmh-v1"></script>
-<script src="/static/js/canvas-video-comfy-params.js?cb=cvcp-v1"></script>
-<script src="/static/js/canvas-node-body-html.js?cb=cnbh-v1"></script>
-<script src="/static/js/canvas-engine-dispatch.js?cb=ced-v1"></script>
-<script src="/static/js/canvas-object-ref-picker.js?cb=corp-v1"></script>
-<script src="/static/js/canvas-merge-sync.js?cb=cms-v1"></script>
-<script src="/static/js/canvas-smartloop-data.js?cb=csl-data-v1"></script>
-<script src="/static/js/canvas-comfy-controls.js?cb=remove-legacy-picker1"></script>
-<script src="/static/js/canvas-param-controls.js?v=2026.09.28.provimg1"></script>
-<script src="/static/js/canvas-param-events.js?v=2026.09.26.param-events1"></script>
+<script src="/static/js/canvas-node-registry.js?v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-draft-store.js?v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-overlay-registry.js?v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-viewport-engine.js?cb=prompt-composer-fixed-size-v7&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-render-scheduler.js?v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-comfy-job-engine.js?cb=return-v094&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-agent-history-store.js?v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-artifact-model.js?v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-artifact-view.js?v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-agent-message-render.js?v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-agent-message-view-controller.js?cb=canvas-agent-message-view-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-image-context-menu-controller.js?cb=canvas-image-context-menu-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-node-context-menu-controller.js?cb=canvas-node-context-menu-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-editable-context-menu-controller.js?cb=canvas-editable-context-menu-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-image-mirror-menu-controller.js?cb=canvas-image-mirror-menu-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-agent-mention-controller.js?cb=canvas-agent-mention-controller2&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-cascade-round-scheduler.js?cb=canvas-cascade-round-scheduler1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-generation-result-model.js?cb=return-v094&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-generation-task-poller.js?cb=canvas-generation-task-poller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-generation-dispatch-controller.js?cb=canvas-generation-dispatch-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-rh-controls.js?cb=rh-workflow-model1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-rh-workflow-builder.js?cb=rhwb-v1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-smart-task-supervisor.js?cb=return-v094&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-generated-output-naming.js?cb=return-v094&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-provider-catalog.js?cb=provcatalog-v1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-dynamic-param-engine.js?cb=gdpe-v1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-agent-session-panel.js?cb=casp-v1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-history-archive-group.js?cb=chag-v1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-comfy-job-submitter.js?cb=ccjs-v1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-redirect-lines.js?cb=crl-v1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-agent-reference-intake.js?cb=cari-v1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-state-hub.js?cb=csh-v1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-agent-toggle-drag.js?cb=catd-v1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-agent-model-settings.js?cb=cams-v1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-agent-send-chain.js?cb=casc-v1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-smart-cascade-runner.js?cb=scr-v1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-generation-runner.js?cb=cgr-v1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-media-helpers.js?cb=aspect-v095&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-video-comfy-params.js?cb=cvcp-v1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-node-body-html.js?cb=cnbh-group-aspect-v1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-engine-dispatch.js?cb=ced-v1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-object-ref-picker.js?cb=refs-v0815&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-merge-sync.js?cb=return-v094&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-smartloop-data.js?cb=csl-data-v1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-comfy-controls.js?cb=remove-legacy-picker1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-param-controls.js?v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-param-events.js?v=2026.10.02.filters18"></script>
 <script src="/static/js/canvas-previz-controls.js?v=2026.09.26.previz-controls1"></script>
-<script src="/static/js/canvas-prompt-library-picker.js?v=2026.09.28.provimg1"></script>
-<script src="/static/js/canvas-prompt-template-view.js?cb=prompt-template-view1"></script>
-<script src="/static/js/canvas-prompt-template-controller.js?cb=prompt-template-controller1"></script>
-<script src="/static/js/canvas-prompt-template-repository.js?cb=prompt-template-repository1"></script>
-<script src="/static/js/canvas-prompt-template-model.js?cb=prompt-template-model1"></script>
-<script src="/static/js/canvas-prompt-preset-panel.js?cb=preset-panel1"></script>
-<script src="/static/js/canvas-header-navigation.js?cb=canvas-header-navigation1"></script>
-<script src="/static/js/canvas-undo-controller.js?cb=canvas-undo-controller1"></script>
-<script src="/static/js/canvas-node-deletion-controller.js?cb=canvas-node-deletion-controller1"></script>
-<script src="/static/js/canvas-node-selection-controller.js?cb=canvas-node-selection-controller1"></script>
-<script src="/static/js/canvas-node-clipboard-controller.js?cb=canvas-node-clipboard-controller1"></script>
-<script src="/static/js/canvas-loop-node-controller.js?cb=canvas-loop-node-controller1"></script>
-<script src="/static/js/canvas-prompt-node-controller.js?cb=canvas-prompt-node-controller1"></script>
-<script src="/static/js/canvas-node-media-actions.js?cb=canvas-node-media-actions1"></script>
-<script src="/static/js/canvas-node-action-controller.js?cb=canvas-node-action-controller1"></script>
-<script src="/static/js/canvas-port-gesture-controller.js?cb=canvas-port-gesture-controller1"></script>
-<script src="/static/js/canvas-image-node-interactions.js?cb=canvas-image-node-interactions1"></script>
-<script src="/static/js/canvas-node-gesture-controller.js?cb=canvas-node-gesture-controller4"></script>
-<script src="/static/js/canvas-node-layout-controller.js?cb=canvas-node-layout-controller2"></script>
-<script src="/static/js/canvas-keyboard-shortcut-controller.js?cb=canvas-keyboard-shortcut-controller1"></script>
-<script src="/static/js/canvas-unified-picker.js?v=2026.09.28.provimg1"></script>
-<script src="/static/js/canvas-spec-controls.js?v=2026.09.28.provimg1"></script>
-<script src="/static/js/canvas-interaction-observer.js?v=2026.09.28.provimg1"></script>
-<script src="/static/js/canvas-interaction-machine.js?v=2026.09.28.provimg1"></script>
+<script src="/static/js/canvas-prompt-library-picker.js?v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-prompt-template-view.js?cb=prompt-template-view1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-prompt-template-controller.js?cb=prompt-template-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-prompt-template-repository.js?cb=prompt-template-repository1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-prompt-template-model.js?cb=prompt-template-model1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-prompt-preset-panel.js?cb=preset-panel1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-header-navigation.js?cb=canvas-header-navigation1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-undo-controller.js?cb=refs-v0815&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-node-deletion-controller.js?cb=canvas-node-deletion-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-node-selection-controller.js?cb=canvas-node-selection-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-node-clipboard-controller.js?cb=canvas-node-clipboard-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-loop-node-controller.js?cb=canvas-loop-node-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-node-prompt-picker.js?cb=node-prompt-picker1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-prompt-node-controller.js?cb=canvas-prompt-node-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-node-media-actions.js?cb=canvas-node-media-actions1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-node-action-controller.js?cb=canvas-node-action-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-port-gesture-controller.js?cb=canvas-port-gesture-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-image-node-interactions.js?cb=canvas-image-node-interactions1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-node-gesture-controller.js?cb=canvas-node-gesture-controller4&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-node-layout-controller.js?cb=canvas-node-layout-controller2&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-keyboard-shortcut-controller.js?cb=canvas-keyboard-shortcut-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-unified-picker.js?v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-spec-controls.js?v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-interaction-observer.js?v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-interaction-machine.js?v=2026.10.01.speech7"></script>
 <script src="/static/js/canvas-layout-coordinator.js?v=2026.09.25.layout2"></script>
 <script src="/static/js/canvas-agent-skill-manager.js?v=2026.09.25.skillmanager1"></script>
 <script src="/static/js/canvas-image-crop.js?v=2026.09.26.crop1"></script>
-<script src="/static/js/canvas-image-drop-payload.js?cb=canvas-image-drop-payload1"></script>
-<script src="/static/js/canvas-asset-panel-drop-controller.js?cb=canvas-asset-panel-drop-controller1"></script>
-<script src="/static/js/canvas-image-node-media-controller.js?cb=canvas-image-node-media-controller1"></script>
-<script src="/static/js/canvas-image-import-controller.js?cb=canvas-image-import-controller1"></script>
-<script src="/static/js/canvas-image-editor-mode-controller.js?cb=canvas-image-editor-mode-controller1"></script>
-<script src="/static/js/canvas-image-panorama-renderer.js?cb=canvas-image-panorama-renderer1"></script>
-<script src="/static/js/canvas-image-preview-compare-controller.js?cb=canvas-image-preview-compare-controller1"></script>
-<script src="/static/js/canvas-image-preview-transform-controller.js?cb=canvas-image-preview-transform-controller1"></script>
-<script src="/static/js/canvas-image-preview-download-controller.js?cb=canvas-image-preview-download-controller1"></script>
-<script src="/static/js/canvas-image-preview-media-controller.js?cb=canvas-image-preview-media-controller1"></script>
-<script src="/static/js/canvas-image-preview-interaction-controller.js?cb=canvas-image-preview-interaction-controller1"></script>
-<script src="/static/js/canvas-image-editor-lifecycle-controller.js?cb=canvas-image-editor-lifecycle-controller1"></script>
-<script src="/static/js/canvas-image-edit-drawing-controller.js?cb=canvas-image-edit-drawing-controller1"></script>
-<script src="/static/js/canvas-image-edit-viewport-controller.js?cb=canvas-image-edit-viewport-controller1"></script>
-<script src="/static/js/canvas-image-grid-split-model.js?cb=canvas-image-grid-split-model1"></script>
-<script src="/static/js/canvas-image-grid-split-controller.js?cb=canvas-image-grid-split-controller1"></script>
-<script src="/static/js/canvas-image-edit-drawing-history-controller.js?cb=canvas-image-edit-drawing-history-controller1"></script>
-<script src="/static/js/canvas-image-edit-text-controller.js?cb=canvas-image-edit-text-controller1"></script>
-<script src="/static/js/canvas-image-edit-crop-geometry-model.js?cb=canvas-image-edit-crop-geometry-model1"></script>
-<script src="/static/js/canvas-save-recovery-controller.js?cb=canvas-save-recovery-controller1"></script>
-<script src="/static/js/canvas-media-presentation-controller.js?cb=canvas-media-presentation-controller1"></script>
-<script src="/static/js/smart-canvas.js?cb=smartloop-data-v1"></script>
+<script src="/static/js/canvas-image-drop-payload.js?cb=canvas-image-drop-payload1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-asset-panel-drop-controller.js?cb=canvas-asset-panel-drop-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-image-node-media-controller.js?cb=canvas-image-node-media-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-image-import-controller.js?cb=canvas-image-import-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-image-editor-mode-controller.js?cb=canvas-image-editor-mode-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-image-panorama-renderer.js?cb=canvas-image-panorama-renderer1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-image-preview-compare-controller.js?cb=canvas-image-preview-compare-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-image-preview-transform-controller.js?cb=canvas-image-preview-transform-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-image-preview-download-controller.js?cb=canvas-image-preview-download-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-image-preview-media-controller.js?cb=canvas-image-preview-media-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-image-preview-interaction-controller.js?cb=canvas-image-preview-interaction-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-image-editor-lifecycle-controller.js?cb=canvas-image-editor-lifecycle-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-image-edit-drawing-controller.js?cb=canvas-image-edit-drawing-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-image-edit-viewport-controller.js?cb=canvas-image-edit-viewport-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-image-grid-split-model.js?cb=canvas-image-grid-split-model1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-image-grid-split-controller.js?cb=canvas-image-grid-split-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-image-edit-drawing-history-controller.js?cb=canvas-image-edit-drawing-history-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-image-edit-text-controller.js?cb=canvas-image-edit-text-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-image-edit-crop-geometry-model.js?cb=canvas-image-edit-crop-geometry-model1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-save-recovery-controller.js?cb=canvas-save-recovery-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-media-presentation-controller.js?cb=canvas-media-presentation-controller1&v=2026.10.01.speech7"></script>
+<script src="/static/js/canvas-speech.js?v=0.8.14"></script>
+<script src="/static/js/canvas-plain-text-paste.js?v=0.8.16"></script>
+<script src="/static/js/canvas-style-preview-assets.js?v=0.9.8"></script>
+<script src="/static/js/canvas-style-catalog.js?v=0.9.8"></script>
+<script src="/static/js/canvas-style-presets.js?v=0.8.19"></script>
+<script src="/static/js/canvas-filter-presets.js?v=0.8.18"></script>
+<script src="/static/js/smart-canvas.js?cb=hover-connect-v0919&v=2026.10.01.speech7"></script>
 <script>
 // 强制：输入区容器框 顶线贯穿面板两侧、背景与内容区一致（绕过 WebView2 CSS 缓存）
 document.addEventListener('DOMContentLoaded', function(){

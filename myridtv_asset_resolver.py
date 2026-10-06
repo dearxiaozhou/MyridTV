@@ -27,6 +27,8 @@ def configure(getters):
 
 def output_asset_kind_for_name(name=""):
     ext = str(Path(str(name or "")).suffix or "").lower()
+    if ext in {".mp3", ".wav", ".ogg", ".m4a", ".flac", ".aac"}:
+        return "audio"
     if ext in _G_OUTPUT_VIDEO_EXTS():
         return "video"
     if ext in _G_OUTPUT_IMAGE_EXTS():
@@ -36,6 +38,8 @@ def output_asset_kind_for_name(name=""):
 
 def output_asset_subdir_for_kind(kind="image"):
     text = str(kind or "").strip().lower()
+    if text == "audio":
+        return "audios"
     if text == "video":
         return "videos"
     if text == "image":

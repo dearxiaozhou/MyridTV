@@ -11,7 +11,10 @@ async function runComfyWorkflowJob(node, runSettings, prompt, refs, progressNode
     const payload = await deps.buildComfyWorkflowJobPayload(node, runSettings, prompt, refs);
     const result = await deps.submitComfyWorkflowJob(progressNode, payload, meta);
     if(result.comfyAlreadyFinalized) return {urls:[], kind:'image', raw:result, alreadyFinalized:true};
-    const urls = deps.resultMediaUrls(result);
+    // 视频优先（2026-09-30 打组 bug 兜底）：job 结果同时含 videos+images（预览图）时，
+    // resultMediaUrls 会把两者合并成一个列表并被统一盖上 kind=video，PNG 变"假视频"黑卡。
+    // 与 supervisor 兜底路径 / 后端 _collect_outputs 口径一致：有视频只取视频。
+    const urls = (Array.isArray(result.videos) && result.videos.length) ? result.videos.slice() : deps.resultMediaUrls(result);
     const fallbackKind = result.videos?.length ? 'video' : result.audios?.length ? 'audio' : result.texts?.length ? 'text' : 'image';
     if(progressNode) deps.clearComfyProgress(progressNode);
     return {urls, kind:deps.mediaKindForUrls(urls, fallbackKind), raw:result};
@@ -342,12 +345,12 @@ async function finalizeSmartPendingTask(node, taskId, images, kind='image'){
         additions = fallbackGeneratedOutputItems(rawItems, kind);
     }
     const existing = (node.images || []).map(img => deps.stripImageGenerationMeta(img));
-    const seenUrls = new Set(existing.map(img => String(img?.url || '').trim()).filter(Boolean));
+    const seenUrls = new Set(existing.flatMap(img => global.CanvasGenerationResultModel.mediaIdentityKeys(img)));
     const seenTaskIds = new Set(existing.map(img => String(img?.generationTaskId || '').trim()).filter(Boolean));
     additions = seenTaskIds.has(String(taskId)) ? [] : additions.filter(img => {
-        const url = String(img?.url || '').trim();
-        if(!url || seenUrls.has(url)) return false;
-        seenUrls.add(url);
+        const keys = global.CanvasGenerationResultModel.mediaIdentityKeys(img);
+        if(!keys.length || keys.some(key => seenUrls.has(key))) return false;
+        keys.forEach(key => seenUrls.add(key));
         return true;
     }).map(img => ({...img, generationTaskId:taskId}));
     node.images = [...existing, ...additions];

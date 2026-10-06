@@ -24,9 +24,10 @@
         }
     }
 
-    function clearPlacement(body) {
+    function clearPlacement(body, dockShell) {
         if (body.classList.contains('smart-agent-open')) body.classList.remove('smart-agent-open');
         body.style.removeProperty('--smart-agent-dock-center');
+        if (dockShell) dockShell.style.removeProperty('width');
     }
 
     function syncPlacement(context) {
@@ -37,7 +38,7 @@
         var dockShell = host.document.querySelector('.bottom-dock-shell');
         if (!dockShell) return;
         if (!deps.isOpen()) {
-            clearPlacement(body);
+            clearPlacement(body, dockShell);
             return;
         }
 
@@ -47,7 +48,7 @@
         var shellWidth = dockShell.getBoundingClientRect().width;
         var naturalRight = host.innerWidth / 2 + shellWidth / 2;
         if (naturalRight <= panelLeft - 1) {
-            clearPlacement(body);
+            clearPlacement(body, dockShell);
             return;
         }
 
@@ -55,6 +56,13 @@
         var leftToolsRight = leftTools
             ? frameRect.left + leftTools.getBoundingClientRect().right * scaleX
             : frameRect.left;
+        // On narrow hosts, shifting a fixed-width dock left would make it overlap
+        // the left toolbar. Shrink the dock to the space between both neighbors.
+        var availableWidth = Math.floor(panelLeft - leftToolsRight - 2);
+        if (availableWidth > 0 && shellWidth > availableWidth) {
+            dockShell.style.width = availableWidth + 'px';
+            shellWidth = dockShell.getBoundingClientRect().width;
+        }
         var desiredLeft = panelLeft - 1 - shellWidth;
         var safeLeft = Math.max(desiredLeft, leftToolsRight + 1);
         body.style.setProperty('--smart-agent-dock-center', Math.round(safeLeft + shellWidth / 2) + 'px');

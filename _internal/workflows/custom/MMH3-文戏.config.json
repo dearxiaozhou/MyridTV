@@ -1,0 +1,166 @@
+{
+  "title": "MMH3-文戏",
+  "fields": [
+    {
+      "id": "f_ay3gqji",
+      "node": "163",
+      "input": "value",
+      "name": "时长",
+      "type": "number",
+      "default": 15,
+      "options": [],
+      "min": 0,
+      "max": 30,
+      "step": 1,
+      "random_enabled": false
+    },
+    {
+      "id": "f_foal4hk",
+      "node": "164",
+      "input": "aspect_ratio",
+      "name": "视频比例",
+      "type": "text",
+      "default": "16:9 (Widescreen)",
+      "options": []
+    },
+    {
+      "id": "f_r418l69",
+      "node": "164",
+      "input": "megapixels",
+      "name": "分辨率",
+      "type": "number",
+      "default": 1,
+      "options": [],
+      "min": 0,
+      "max": 2,
+      "step": 0.1,
+      "random_enabled": false
+    },
+    {
+      "id": "f_wg0utvg",
+      "node": "167",
+      "input": "prompt",
+      "name": "提示词",
+      "type": "textarea",
+      "default": "## P01b｜15秒｜二次反杀与破防\n\n<Subject1>Dou Bao是<Picture 1>（双人合照参考图：C:\\Users\\77972\\WorkBuddy\\2026-09-29-21-53-21\\豆包对峙\\09-30-03.png）画面左侧的短发少女：深棕齐颈短发发尾内扣，大眼睛，黑色宽松五分袖T恤、白色阔腿长裤，黄白拼色帆布板鞋；保留参考图中的面部特征、发型、服装、身材比例、关键配饰以及整体外貌。\n<Subject1>，S1 永远是说话人。S1始终使用一种固定的声音：少女，中高音域，清脆明亮带冷感；常态语速中等、音量中等，句尾平稳带轻微上扬的讽刺；被追问时语速略快、尾音收尖；禁止夹子音、幼态撒娇腔、播音腔、甜腻腔。\n\n<Subject2>Male Lead是<Picture 1>同一合照画面右侧的青年男性（面部与服装细节另见<Picture 2>四视图：C:\\Users\\77972\\WorkBuddy\\2026-09-29-21-53-21\\豆包对峙\\1790736592.png）：约25岁，黑色利落短发，黑色连帽夹克内搭深灰圆领T恤、深灰长裤、灰白拼色运动鞋；保留参考图中的面部特征、发型、服装、身材比例、关键配饰以及整体外貌。\n<Subject2>，S2 永远是说话人。S2始终使用一种固定的声音：青年男声，中音域，急切外放带怨气；常态语速快、音量中偏高，句尾下压带委屈；破防时语速骤快、音量拔高、破音；禁止低沉磁性腔、念稿腔。\n\n<Subject 3>是<Picture 3>（参考图：C:\\Users\\77972\\WorkBuddy\\2026-09-29-21-53-21\\豆包对峙\\09-30-02.png）城市屋顶天台场景。\n\n人物站位：接续 P01a 末帧，与<Picture 1>合照站位一致——阴天白昼雨后天台（地面湿反光），Dou Bao位于画面左侧站立微侧对男主，Male Lead位于画面右侧站立前倾朝向Dou Bao，两人相距约一步半，视线相锁，保持左右轴线不越轴。画面无可读文字。\n\n[Shot 1]\n过肩中近景（机位在Dou Bao侧后，Dou Bao左肩入画前景虚化，Male Lead居中偏右为唯一清晰主体，中长焦85mm浅景深，侧45度微仰，微推）。他向前逼了半步，夹克衣摆随动作晃了一下，脸涨红、眉心拧紧，压着委屈逼问：\n<Subject 2> (S2) says:\n<d>[Chinese]你坑我！你不是最懂我的吗？！</d>\n\n[Shot 2]\n特写（中长焦85mm浅景深，单人，Male Lead脸部占满画面，Dou Bao不在画内，正面微仰，固定极微运镜）。他眉心拧紧、鼻翼微张，涨红的血色在脸颊，嘴唇半张像要把委屈倒出来——破防前的积蓄：\n<Subject 2> (S2) says:\n<d>[Chinese]<breath>哈……</d>\n\n[Shot 3]\n双人同框中景（侧45度，标准50mm，极缓慢横移，关系镜头+长句承载）。Dou Bao轻轻偏了下头，像叹气又像无奈，眼神里没有同情只有一丝「果然如此」的凉；Male Lead仍前倾盯着她听。Dou Bao的长句在此说完：\n<Subject 1> (S1) says:\n<d>[Chinese]我懂你的痴心，可不懂你的自我感动。没认清自己，还敢把失败甩给 AI？</d>\n\n[Shot 4]\n大特写（中长焦100mm浅景深，单人，Male Lead眼部占满画面，Dou Bao不在画内，正面平视，固定微运镜）。瞳孔猛地一缩，下颌绷紧，整张脸从涨红瞬间褪成惨白又涨回，喉结滚动、嘴唇发抖——破防的瞬间（重锤反规则：认知崩塌反而固定大特写，让观众无处可逃）：\n<Subject 2> (S2) says:\n<d>[Chinese]你找死！</d>\n\n[Shot 5]\n双人同框远景（广角24mm，侧45度平视，手持微晃，衔接镜头）。Dou Bao与Male Lead同框，湿地反光天台铺满前景。Male Lead吼声未落已弓身扑向Dou Bao，Dou Bao瞳孔微动、脚下后撤半步稳住——对峙距离被打破。末帧保持两人距离被打破、Male Lead扑势启动、Dou Bao后撤戒备的姿态，为 P02 打斗衔接。\n\n【禁止项】\n\n文字/UI/水印/Logo/角标/可读文字/真实UI\n\n【强制声明】\n\n无背景音乐,仅保留环境音与人声和音效;画面禁字幕/文字/水印/Logo;禁止可读文字(指画面字幕文字,不含人声台词)\n",
+      "options": []
+    },
+    {
+      "id": "f_kgle5jb",
+      "node": "268",
+      "input": "value",
+      "name": "数值",
+      "type": "number",
+      "default": 1.5,
+      "options": [],
+      "min": 0,
+      "max": 10,
+      "step": 0.1,
+      "random_enabled": false
+    },
+    {
+      "id": "auto_audio_222",
+      "node": "222",
+      "input": "audio",
+      "name": "加载音频 #222",
+      "type": "audio",
+      "options": []
+    },
+    {
+      "id": "auto_audio_223",
+      "node": "223",
+      "input": "audio",
+      "name": "加载音频 #223",
+      "type": "audio",
+      "options": []
+    },
+    {
+      "id": "auto_audio_225",
+      "node": "225",
+      "input": "audio",
+      "name": "加载音频 #225",
+      "type": "audio",
+      "options": []
+    },
+    {
+      "id": "auto_image_230",
+      "node": "230",
+      "input": "image",
+      "name": "加载图像 #230",
+      "type": "image",
+      "options": []
+    },
+    {
+      "id": "auto_image_237",
+      "node": "237",
+      "input": "image",
+      "name": "加载图像 #237",
+      "type": "image",
+      "options": []
+    },
+    {
+      "id": "auto_image_238",
+      "node": "238",
+      "input": "image",
+      "name": "加载图像 #238",
+      "type": "image",
+      "options": []
+    },
+    {
+      "id": "auto_image_272",
+      "node": "272",
+      "input": "image",
+      "name": "加载图像 #272",
+      "type": "image",
+      "options": []
+    },
+    {
+      "id": "auto_image_273",
+      "node": "273",
+      "input": "image",
+      "name": "加载图像 #273",
+      "type": "image",
+      "options": []
+    },
+    {
+      "id": "auto_image_274",
+      "node": "274",
+      "input": "image",
+      "name": "加载图像 #274",
+      "type": "image",
+      "options": []
+    }
+  ],
+  "mini_cards": {
+    "prompt": {
+      "x": 24,
+      "y": 30
+    },
+    "image": {
+      "x": 24,
+      "y": 210
+    },
+    "custom": {
+      "x": 280,
+      "y": 78
+    },
+    "output": {
+      "x": 540,
+      "y": 120
+    },
+    "__test_nodes": [
+      {
+        "id": "comfy_1",
+        "type": "comfy",
+        "x": 330,
+        "y": 150
+      },
+      {
+        "id": "output_1",
+        "type": "output",
+        "x": 670,
+        "y": 190
+      }
+    ]
+  }
+}

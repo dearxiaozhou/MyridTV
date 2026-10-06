@@ -6,6 +6,23 @@
     function configure(options){Object.assign(deps, options || {});}
     function context(){return deps.getContext ? deps.getContext() : {};}
 
+    function scheduleComposerOpenOnMouseUp(ctx, startEvent){
+        // 2026-10-05：节点提示词框（底部 composer）由「按下即弹」改为「松开才弹」，并区分
+        // 点击与拖动——老王要的是「拖动后不弹、只有纯点击才弹」。
+        // 记录按下起点，松开时若位移超过阈值即视为拖动、不弹（移动节点时不再弹框挡视野）；
+        // 只有基本没移动的纯点击才在松开后弹出。选中(selectNodeFromPointer)仍在 mousedown
+        // 完成，所以拖拽节点完全不受影响。
+        const startX = startEvent.clientX, startY = startEvent.clientY;
+        const DRAG_THRESHOLD_PX = 5;
+        const open = upEvent => {
+            document.removeEventListener('mouseup', open, true);
+            const dx = upEvent.clientX - startX, dy = upEvent.clientY - startY;
+            if(Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) return; // 拖动 → 不弹
+            ctx.updateComposer();
+        };
+        document.addEventListener('mouseup', open, true);
+    }
+
     function bindItems(el, nodeId){
         const ctx = context();
         if(!el || !nodeId) return;
@@ -25,7 +42,7 @@
                     if(!keepMultiSelection) ctx.selectNodeFromPointer(nodeId, {shiftKey:event.shiftKey}, {imageIndex});
                     if(ctx.smartCascadeAnyRunning()) ctx.setSmartCascadeSilentSelection(false);
                     ctx.syncSelectionUi();
-                    ctx.updateComposer();
+                    scheduleComposerOpenOnMouseUp(ctx, event);
                     return;
                 }
                 event.preventDefault();

@@ -1,0 +1,63 @@
+.speech-smart-node {background:var(--x-card); border:1px solid var(--x-line); border-radius:16px;}
+.image-node.speech-smart-node .node-body {height:100%; padding:20px !important; box-sizing:border-box; overflow:auto; display:block;}
+.speech-smart-node .node-head, .speech-smart-node .node-hint, .speech-smart-node .smart-node-toolbar {display:none;}
+.speech-card {display:flex; flex-direction:column; gap:14px; height:100%; color:var(--x-text); font-size:13px; cursor:default;}
+.speech-heading {font-size:16px; font-weight:600; cursor:move;}
+.speech-workspace {display:grid; grid-template-columns:320px minmax(0,1fr); gap:20px; flex:1; min-height:0;}
+.speech-design, .speech-script {display:flex; flex-direction:column; gap:12px; min-width:0; min-height:0;}
+.speech-design {padding-right:20px; border-right:1px solid var(--x-line);}
+.speech-controls {display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+.speech-controls label, .speech-quick-controls label, .speech-field {display:flex; flex-direction:column; gap:7px; min-height:0; min-width:0;}
+.speech-field > span {display:flex; align-items:center; justify-content:space-between; gap:8px;}
+.speech-design > .speech-field:last-child, .speech-script > .speech-field {flex:1;}
+.speech-card textarea {font:inherit; color:inherit; background:var(--x-soft); border:1px solid var(--x-line-strong); border-radius:8px; padding:8px; box-sizing:border-box; min-width:0; pointer-events:auto;}
+
+.speech-design .speech-field > span {flex-wrap:wrap;}
+.speech-card textarea {width:100%; flex:1; min-height:64px; resize:none; line-height:1.6; cursor:text; user-select:text; touch-action:auto;}
+.speech-card textarea[readonly] {opacity:.8;}
+.speech-card textarea:focus {outline:2px solid var(--x-strong); outline-offset:1px;}
+.speech-footer {display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:38px;}
+.speech-actions {display:flex; flex-shrink:0;}
+.speech-actions button {padding:10px 22px; border-radius:8px; border:1px solid var(--x-line-strong); cursor:pointer; font:inherit;}
+.speech-actions .speech-generate {background:var(--x-strong); color:var(--x-strong-text); border-color:transparent; font-weight:600;}
+.speech-actions button:disabled {opacity:.55; cursor:wait;}
+.speech-status {font-size:12px; line-height:1.5; color:var(--x-muted); overflow-wrap:anywhere;}
+.speech-status.error {color:var(--x-danger);}
+.speech-output {display:flex; flex-direction:column; gap:6px; flex-shrink:0;}
+.speech-output .media-audio-card {width:100% !important;}
+.speech-download {align-self:flex-end; color:var(--x-strong); text-decoration:none; font-size:12px; cursor:pointer;}
+
+.speech-quick-controls {display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px;}
+.speech-quick-controls label {font-size:12px;}
+.speech-tags {display:flex; gap:6px; flex-wrap:wrap; flex-shrink:0;}
+.speech-tags button, .speech-reference button {font:inherit; color:var(--x-text); background:var(--x-soft); border:1px solid var(--x-line-strong); border-radius:7px; padding:5px 10px; cursor:pointer;}
+.speech-tags button:disabled {opacity:.45; cursor:default;}
+.speech-preview {font-size:12px; flex-shrink:0;}
+.speech-preview summary {cursor:pointer; color:var(--x-muted);}
+.speech-preview > div {margin-top:6px; max-height:100px; overflow:auto; white-space:pre-wrap; user-select:text;}
+.speech-reference {display:grid; grid-template-columns:minmax(0,150px) minmax(0,1fr); gap:6px 12px; align-items:center; flex-shrink:0;}
+.speech-reference > span {grid-column:1; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.speech-reference .media-audio-card {grid-column:2; grid-row:1 / span 2; width:100% !important;}
+.speech-reference .audio-player-waveform {display:none;}
+.speech-reference .audio-player-controls {margin-top:0;}
+
+.speech-output .media-audio-player {padding:10px 14px; gap:8px; max-height:none;}
+.speech-output .audio-player-waveform {min-height:0; flex:1 1 0;}
+.speech-output .audio-player-controls {min-height:30px;}
+.speech-reference .media-audio-player {padding:12px; gap:0; max-height:none;}
+
+/* Match the canvas parameter buttons; menus stay outside the transformed node. */
+.speech-card select[hidden] {display:none !important;}
+.speech-card .speech-picker {display:flex; align-items:center; justify-content:space-between; gap:6px; max-width:none; width:100%; height:30px; min-height:30px; padding:0 9px; border:1px solid var(--x-line-strong); border-radius:8px; background:var(--x-soft); box-shadow:none; color:var(--x-text); font-family:inherit; font-size:11px; font-weight:500; cursor:pointer;}
+.speech-picker > span {overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;}
+.speech-card .speech-picker svg {width:13px !important; height:13px !important; flex:0 0 13px; opacity:.7;}
+.speech-card .speech-picker:hover, .speech-card .speech-picker[aria-expanded=true] {background:var(--x-soft); border-color:var(--x-strong);}
+.speech-card .speech-picker:focus-visible {outline:2px solid var(--x-strong); outline-offset:1px;}
+.speech-card .speech-picker:disabled {opacity:.45; cursor:default;}
+.speech-field > span .speech-picker {width:auto; max-width:170px;}
+.speech-picker-menu {position:fixed; z-index:var(--x-z-modal,200); box-sizing:border-box; padding:6px; overflow:auto; border:1px solid var(--x-line); border-radius:8px; background:var(--x-panel-solid); color:var(--x-text); box-shadow:0 14px 40px var(--shadow); font-family:inherit;}
+.speech-picker-menu .unified-option {font-family:inherit; min-height:28px; color:var(--x-muted);}
+.speech-picker-menu .unified-option:hover, .speech-picker-menu .unified-option:focus-visible {outline:none; background:var(--x-soft); color:var(--x-text);}
+.speech-picker-menu .unified-option.active {background:var(--x-card); color:var(--x-text); box-shadow:inset 0 0 0 1px var(--x-line);}
+.speech-picker-menu .unified-option:disabled {opacity:.4; cursor:default; background:transparent;}
+.speech-picker-menu .unified-option-check {color:var(--x-accent); width:12px; flex-shrink:0;}

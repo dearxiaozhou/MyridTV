@@ -1,0 +1,116 @@
+{
+  "title": "Qwen-2.1-图生图",
+  "fields": [
+    {
+      "id": "f_pycvga7",
+      "node": "152",
+      "input": "text",
+      "name": "提示词文本",
+      "type": "textarea",
+      "default": "This is an RGBA image with transparency.. The image has alpha channel and the background is transparent",
+      "options": []
+    },
+    {
+      "id": "f_g9xwmpm",
+      "node": "155",
+      "input": "aspect_ratio",
+      "name": "比例",
+      "type": "text",
+      "default": "9:16 (Portrait Widescreen)",
+      "options": []
+    },
+    {
+      "id": "f_3wwwsav",
+      "node": "155",
+      "input": "megapixels",
+      "name": "分辨率倍数",
+      "type": "number",
+      "default": 2,
+      "options": [],
+      "min": 0,
+      "max": 10,
+      "step": 0.1,
+      "random_enabled": false
+    },
+    {
+      "id": "auto_image_86",
+      "node": "86",
+      "input": "image",
+      "name": "加载图像 #86",
+      "type": "image",
+      "options": []
+    },
+    {
+      "id": "auto_image_90",
+      "node": "90",
+      "input": "image",
+      "name": "加载图像 #90",
+      "type": "image",
+      "options": []
+    },
+    {
+      "id": "auto_image_91",
+      "node": "91",
+      "input": "image",
+      "name": "加载图像 #91",
+      "type": "image",
+      "options": []
+    },
+    {
+      "id": "auto_image_128",
+      "node": "128",
+      "input": "image",
+      "name": "加载图像 #128",
+      "type": "image",
+      "options": []
+    },
+    {
+      "id": "auto_image_190",
+      "node": "190",
+      "input": "image",
+      "name": "加载图像 #190",
+      "type": "image",
+      "options": []
+    },
+    {
+      "id": "auto_image_191",
+      "node": "191",
+      "input": "image",
+      "name": "加载图像 #191",
+      "type": "image",
+      "options": []
+    }
+  ],
+  "mini_cards": {
+    "prompt": {
+      "x": 24,
+      "y": 30
+    },
+    "image": {
+      "x": 24,
+      "y": 210
+    },
+    "custom": {
+      "x": 280,
+      "y": 78
+    },
+    "output": {
+      "x": 540,
+      "y": 120
+    },
+    "__test_nodes": [
+      {
+        "id": "comfy_1",
+        "type": "comfy",
+        "x": 330,
+        "y": 150
+      },
+      {
+        "id": "output_1",
+        "type": "output",
+        "x": 670,
+        "y": 190
+      }
+    ]
+  }
+}

@@ -78,6 +78,10 @@
         "smart.uploadHint": { zh: "点击上传 / 拖入素材", en: "Click to upload / drop media" },
         "smart.createImportNode": { zh: "万能节点", en: "Universal Node" },
         "smart.createImportNodeSub": { zh: "支持图片/音频/视频/批量上传", en: "Images, audio, video, batch upload" },
+        "smart.portDropNoInput": { zh: "该节点没有输入口，接不上这条线", en: "This node has no input port" },
+        "smart.portDropNoOutput": { zh: "该节点没有输出口，供不了下游", en: "This node has no output port" },
+        "smart.portDropLoopNeedsImage": { zh: "循环节点只接受图片或提示词节点的输入", en: "Loop node only accepts input from image or prompt nodes" },
+        "smart.portDropConnectFailed": { zh: "节点已创建，但这条线没能接上", en: "Node created, but the link could not be made" },
         "smart.createExportNode": { zh: "导出节点", en: "Export Node" },
         "smart.createExportNodeSub": { zh: "接收多种格式并一键导出", en: "Collect any format and export" },
         "smart.createPromptSub": { zh: "手写或用 LLM 生成文本", en: "Write text or generate it with LLM" },
@@ -335,7 +339,16 @@
         "smart.objectRefNeedSet": { zh: "该结果还没有“设为 Set”", en: "That result is not Set yet" },
         "smart.removeObjectRef": { zh: "移除无线引用", en: "Remove wireless reference" },
         "smart.kindFile": { zh: "文件", en: "File" },
-        "smart.close": { zh: "关闭", en: "Close" }
+        "smart.close": { zh: "关闭", en: "Close" },
+        "smart.styleLibrary": { zh: "风格", en: "Styles" },
+        "smart.styleTabStyle": { zh: "风格库", en: "Style library" },
+        "smart.styleTabFilter": { zh: "滤镜预设", en: "Filter presets" },
+        "smart.stylePanelHint": { zh: "点选后加到下方输入框；已选中的风格和滤镜会在这里高亮。", en: "Click to add to the composer below; active styles and filters stay highlighted." },
+        "smart.snap": { zh: "吸附", en: "Snap" },
+        "smart.snapOn": { zh: "已开启网格吸附", en: "Alignment snap on" },
+        "smart.snapOff": { zh: "已关闭网格吸附", en: "Alignment snap off" },
+        "smart.snapOnTip": { zh: "网格吸附：开启（拖动时对齐附近节点并显示参考线）", en: "Alignment snap: on (aligns to nearby nodes and shows guide lines)" },
+        "smart.snapOffTip": { zh: "网格吸附：关闭", en: "Alignment snap: off" }
     });
 })();
 

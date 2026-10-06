@@ -86,13 +86,27 @@ foreach ($t in $testFiles) {
     else { $pass.Add("单测通过: $($t.Name)") }
 }
 
-# --- 6) 画布交互 e2e（隔离测试实例 3217，Playwright） ---
+# --- 6) 前端模块接线静态门禁 ---
+$wiring = Join-Path $root 'tests\check_frontend_wiring.py'
+if (Test-Path -LiteralPath $wiring) {
+    $out = & $python -B $wiring 2>&1
+    if ($LASTEXITCODE -ne 0) { $fail.Add("前端接线检查失败:`n    $out") }
+    else { $pass.Add("前端接线检查: $out") }
+} else { $fail.Add('找不到 tests\check_frontend_wiring.py（前端接线门禁缺失）') }
+
+# --- 7) 画布交互 e2e（隔离测试实例 3217，Playwright） ---
 # 守护无限画布交互链路（引擎切换/节点生命周期/连线/提示词构建）：
 # 这些测试跑在独立端口 3217 + _test_userdata，不碰用户正式实例 3107。
 # 流程：启动 launch_test_instance.py → 跑 tests/e2e_canvas_*.py → 杀实例。
 # 注意：e2e 用 Python313（装 playwright）；verify 选中的 python 必须是同一个。
 $e2eDir = Join-Path $root 'tests'
-$e2eFiles = @(Get-ChildItem -LiteralPath $e2eDir -Filter 'e2e_canvas_*.py' -File -ErrorAction SilentlyContinue)
+# P95 performance sampling includes browser automation and is host-dependent; keep it
+# opt-in through run_regression.ps1 -IncludePerformanceBenchmarks instead of a release gate.
+$e2eFiles = @(Get-ChildItem -LiteralPath $e2eDir -Filter 'e2e_canvas_*.py' -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -ne 'e2e_canvas_scale_benchmark.py' })
+if (Test-Path -LiteralPath (Join-Path $e2eDir 'e2e_canvas_scale_benchmark.py')) {
+    Write-Host '[INFO] canvas performance benchmark is opt-in: run_regression.ps1 -Only scale_benchmark -IncludePerformanceBenchmarks'
+}
 if ($e2eFiles.Count -gt 0) {
     # 确认 playwright 可用（Python313 装了；其它解释器可能没有）
     $hasPw = & $python -c "import playwright" 2>&1

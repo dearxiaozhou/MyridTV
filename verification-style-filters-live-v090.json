@@ -1,0 +1,41 @@
+{
+  "runtime": "http://127.0.0.1:3107",
+  "version": "V0.9.10",
+  "style_count": 153,
+  "unique_preview_urls": 153,
+  "unique_preview_files": 153,
+  "filter_count": 12,
+  "wheel_down_and_up": true,
+  "canvas_unchanged": true,
+  "original_square_cards": {
+    "width": 148,
+    "height": 148,
+    "nameInside": true,
+    "overlay": "absolute"
+  },
+  "undistorted_thumbnails": [
+    {
+      "shape": "landscape",
+      "rendered_circle": [
+        55,
+        54
+      ]
+    },
+    {
+      "shape": "portrait",
+      "rendered_circle": [
+        54,
+        55
+      ]
+    },
+    {
+      "shape": "square",
+      "rendered_circle": [
+        36,
+        36
+      ]
+    }
+  ],
+  "runninghub_images": false,
+  "errors": []
+}

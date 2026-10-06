@@ -89,6 +89,7 @@ function Should-SkipRelativePath {
         '_internal\assets',
         '_internal\data',
         '_internal\output',
+        '_internal\workflows\custom',
         '_internal\backup-ui-compact-20260904',
         '_internal\_internal',
         '_internal\API',
@@ -103,6 +104,7 @@ function Should-SkipRelativePath {
         '.hermes',
         '.github',
         'MyridTV',
+        'style-preview-records',
         '.git',
         '.githooks',
         '.gitignore',
@@ -127,6 +129,7 @@ function Should-SkipRelativePath {
         if (-not $fileName.Equals('_internal', [System.StringComparison]::OrdinalIgnoreCase) -and $fileName.StartsWith('_')) { return $true }
         if ($fileName -match '(?i)^gate_restart') { return $true }
         if ($fileName -match '(?i)^canvas_.*\.json$') { return $true }
+        if ($fileName -match '(?i)^style-preview-.*\.json$') { return $true }
         if ($fileName -match '(?i)\.png$') { return $true }
     }
 
@@ -583,7 +586,7 @@ function Test-StagedPythonRuntime {
     $previousNoBytecode = $env:PYTHONDONTWRITEBYTECODE
     $env:PYTHONDONTWRITEBYTECODE = '1'
     try {
-        & $pythonExe -B -c "import base64,json,mimetypes,os,re,threading,time,uuid,urllib.request,urllib.parse,urllib.error,http.server,pathlib,websockets; print('ok')"
+        & $pythonExe -B -c "import base64,json,mimetypes,os,re,threading,time,uuid,urllib.request,urllib.parse,urllib.error,http.server,pathlib,websockets,ecdsa; print('ok')"
         if ($LASTEXITCODE -ne 0) {
             throw 'Staged Python runtime smoke test failed.'
         }
@@ -738,7 +741,7 @@ Set-Content -LiteralPath $envExamplePath -Value $envExample -Encoding UTF8
 
 $stagedPythonDir = Join-Path $StageDir 'python'
 Copy-PythonRuntime -RuntimeSource $PythonDir -RuntimeDest $stagedPythonDir
-Install-PythonRuntimePackage -RuntimeSource $PythonDir -RuntimeDest $stagedPythonDir -Packages @('websockets>=13,<17')
+Install-PythonRuntimePackage -RuntimeSource $PythonDir -RuntimeDest $stagedPythonDir -Packages @('websockets>=13,<17', 'ecdsa>=0.19,<1')
 Remove-StageLegacySensitiveFiles -TargetStageDir $StageDir
 Sanitize-RunningHubCatalog -TargetStageDir $StageDir
 Test-StagedPythonRuntime -TargetStageDir $StageDir

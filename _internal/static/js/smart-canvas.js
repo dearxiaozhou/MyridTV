@@ -51,6 +51,7 @@ const smartShortcutModal = document.getElementById('smartShortcutModal');
 const selectionBox = document.getElementById('selectionBox');
 const canvasAddToggle = document.getElementById('canvasAddToggle');
 const assetToggle = document.getElementById('assetToggle');
+const styleToggle = document.getElementById('styleToggle');
 
 // Canvas header bar (back button + title dropdown)
 const canvasTitleDropdown = document.getElementById('canvasTitleDropdown');
@@ -61,6 +62,8 @@ const canvasListDropdownItems = document.getElementById('canvasListDropdownItems
 const canvasDropdownSearch = document.getElementById('canvasDropdownSearch');
 const assetPanel = document.getElementById('assetPanel');
 const assetCloseBtn = document.getElementById('assetCloseBtn');
+const stylePanel = document.getElementById('stylePanel');
+const styleCloseBtn = document.getElementById('styleCloseBtn');
 const assetLibrarySelect = document.getElementById('assetLibrarySelect');
 const assetCategorySelect = document.getElementById('assetCategorySelect');
 const assetGrid = document.getElementById('assetGrid');
@@ -255,6 +258,13 @@ let selectedImage = {nodeId:'', index:-1};
 let frontNodeIds = [];
 let dragState = null;
 let loopInsertPreview = null;
+/* 拖拽吸附开关（左下角「吸附」按钮，2026-10-05）。默认开：对齐是画布高频操作，
+   默认关等于没做。状态存 localStorage，与 minimapToggle 同一族 key 命名。 */
+const SMART_CANVAS_SNAP_KEY = 'smart_canvas_snap_enabled';
+let snapEnabled = true;
+try { snapEnabled = localStorage.getItem(SMART_CANVAS_SNAP_KEY) !== '0'; } catch(_) {}
+/* 当前正在显示的对齐辅助线（[{axis:'x'|'y', at, from, to}]，坐标是世界坐标）。 */
+let snapGuides = [];
 let selectionState = null;
 let isRKeyDown = false;
 let selectionJustFinished = false;
@@ -393,6 +403,9 @@ let promptTemplateEditing = false;
 let promptTemplateGroupEditMode = false;
 let promptTemplateRefreshTimer = null;
 let createMenuPoint = {x:0, y:0};
+// 拖线落空后挂起的"连线意图"：等用户在 createMenu 里选节点类型，再建节点 + 连线。
+// null 表示当前没有挂起的意图（菜单走的是普通"新建节点"路径）。
+let pendingPortDrop = null;
 let imageClickTimer = null;
 let suppressImageClickUntil = 0;
 let lastMouseWorld = null;
@@ -554,7 +567,7 @@ let settings = {
     enhanceUpscaleRes:2048,
     editUpscale:false,
     editUpscaleRes:2048,
-    promptH:124
+    promptH:93
 };
 const APP_RUNTIME_CONFIG_DEFAULTS = {
     proxy:{base_url:(typeof location!=='undefined'&&location.origin?location.origin:'http://127.0.0.1:3107')},
@@ -658,6 +671,19 @@ function settingsForStorage(source=settings){
 }
 function isApiLikeEngine(engine){
     return ['api', 'volcengine'].includes(String(engine || '').toLowerCase());
+}
+// ===== 工作流类引擎（2026-10-05 老王定调）=====
+// 「工作流类」= 本地 ComfyUI + 云端 RunningHub(RH)。两者都是提交一整个工作流去跑，
+// 节点侧走 comfyStatus/comfyProgress 进度环（RH 无精确百分比，用 comfyIndeterminate 走整圈流光），
+// 按钮侧统一红态（is-running/is-stop）。
+// 其余一切（api / volcengine / blender 3D预演）都不是工作流类 → 蓝色波纹 is-ap-running。
+// ⚠️ 口径必须与 canvas-generation-runner.js 的 apiConcurrentRun 对齐：
+//    那边 = isApiLikeEngine(engine) || engine==='runninghub'，即 RH 算「会置 apiRunning 的那类」。
+//    之前按钮侧用布局 class(closest .api-single-row/.api-video-row) 判 API 身份，
+//    而 RH 挂的是互斥的 .rh-single-row → 命中不了，两处口径打架（RH 按钮毫无动效）。
+function isWorkflowEngine(engine){
+    const key = String(engine || '').toLowerCase();
+    return key === 'comfy' || key === 'runninghub';
 }
 // ===== 产出类型（图片/视频）识别与切换（2026-09-24 方案B）=====
 // API/火山：手动切（apiKind）。RH/Comfy：切工作流时按工作流产出自动设默认值，
@@ -856,7 +882,7 @@ function canvasObjectReferencesFor(node){
     return (node && Array.isArray(node.objectReferences)) ? node.objectReferences.filter(ref => ref && ref.sourceNodeId) : [];
 }
 // 运行时解析：引用只指向来源节点，不复制媒体；来源没 Set / 已删 / 暂无结果 → 不产生输入
-// 模式铁律（2026-09-16 老王）：无线引用只在「无线模式」下解析生效；切到有线模式 → 引用隐藏不删、运行时不参与输入。
+// 无线引用仅在无线模式解析；切到有线时同步为输入连线，由连线继续提供输入。
 function canvasObjectReferenceImages(node, ctx=smartLoopContext){
     if(!canvasObjectsMode()) return [];
     return canvasObjectReferencesFor(node).flatMap(ref => {
@@ -893,6 +919,16 @@ function canvasNodeSetToggleHtml(node){
     const isSet = node.canvasSetEnabled === true;
     return `<button class="mini-x node-set-toggle ${isSet ? 'is-set' : ''}" type="button" title="${escapeAttr(tr(isSet ? 'smart.unsetNode' : 'smart.setNode'))}"><i data-lucide="${isSet ? 'radio' : 'circle-dot'}"></i></button>`;
 }
+// 无线取消引用也要移除同一输入的隐藏连线，避免缩略图继续显示或切回有线后复活。
+function disconnectCanvasObjectReference(consumerId, sourceNodeId){
+    if(!canvasObjectsMode()) return;
+    canvas.connections = (canvas.connections || []).filter(conn =>
+        !(conn.from === sourceNodeId && conn.to === consumerId && ['input', 'flow'].includes(conn.kind || 'flow')));
+    const consumer = nodes.find(n => n.id === consumerId);
+    if(Array.isArray(consumer?.inputNodeIds)){
+        consumer.inputNodeIds = consumer.inputNodeIds.filter(id => id !== sourceNodeId);
+    }
+}
 function toggleCanvasNodeSet(nodeId){
     const node = nodes.find(n => n.id === nodeId);
     if(!node) return;
@@ -902,6 +938,7 @@ function toggleCanvasNodeSet(nodeId){
         delete node.canvasSetEnabled;
         let removed = 0;
         nodes.forEach(other => {
+            disconnectCanvasObjectReference(other.id, nodeId);
             const refs = canvasObjectReferencesFor(other);
             const keep = refs.filter(ref => ref.sourceNodeId !== nodeId);
             if(keep.length !== refs.length) removed += refs.length - keep.length;
@@ -919,18 +956,39 @@ function toggleCanvasNodeSet(nodeId){
 function setCanvasInputMode(mode, opts={}){
     const next = mode === 'objects' ? 'objects' : 'connections';
     if(!canvas || canvasInputMode() === next) return;
+    pushUndo();
     canvas.inputMode = next;
     // 切到无线模式：连线里的所有“被引用源节点”（connections[].from）自动设为 Set 并选中，
     // 使它们成为可被其它节点无线引用（引用结果）的发布源，并高亮方便二次操作。
     if(next === 'objects'){
+        // 有线输入是当前引用关系的依据。保留已有引用 ID，清掉有线期间已断开的旧引用。
+        nodes.forEach(consumer => {
+            const previous = canvasObjectReferencesFor(consumer);
+            const sourceIds = Array.from(new Set((canvas.connections || [])
+                .filter(conn => conn.to === consumer.id && conn.from !== consumer.id && ['input', 'flow'].includes(conn.kind || 'flow'))
+                .map(conn => conn.from).filter(id => nodes.some(n => n.id === id))));
+            const refs = sourceIds.map(sourceNodeId => previous.find(ref => ref.sourceNodeId === sourceNodeId)
+                || {id:uid('canvasobjref'), sourceNodeId, versionMode:'latest', createdAt:Date.now()});
+            if(refs.length) consumer.objectReferences = refs;
+            else delete consumer.objectReferences;
+        });
         const referencedIds = Array.from(new Set((canvas.connections || []).map(c => c.from).filter(Boolean)));
         const targets = referencedIds.map(id => nodes.find(n => n.id === id)).filter(Boolean);
         if(targets.length){
             targets.forEach(n => { n.canvasSetEnabled = true; });
-            const merged = Array.from(new Set([...(selectedIds || []), ...targets.map(n => n.id)]));
-            CanvasNodeSelectionController.setSelectedIds(merged);
+            const merged = Array.from(new Set([...selectedNodeIds(), ...targets.map(n => n.id)]));
+            selectedIds = merged;
             syncSelectionUi();
         }
+    } else {
+        // 无线新增的引用补为真实输入连线；已有 input/flow 连线沿用，反复切换不重复添加。
+        nodes.forEach(consumer => canvasObjectReferencesFor(consumer).forEach(ref => {
+            const source = nodes.find(n => n.id === ref.sourceNodeId);
+            if(!source || source.id === consumer.id || source.canvasSetEnabled !== true) return;
+            const connected = (canvas.connections || []).some(conn => conn.from === source.id && conn.to === consumer.id
+                && ['input', 'flow'].includes(conn.kind || 'flow'));
+            if(!connected) connectInputNode(source.id, consumer.id);
+        }));
     }
     closeCanvasObjectRefPicker();
     syncCanvasInputModeUi();
@@ -1065,7 +1123,16 @@ function normalizeLegacySmartNode(node){
         if(!node.w) node.w = 316;
         if(!node.h) node.h = 194;
     }
-    if(node.type === 'smart-image') delete node.imageMode;
+    if(node.type === 'smart-image'){
+        delete node.imageMode;
+        const previous = node.images || [];
+        node.images = CanvasGenerationResultModel.uniqueMediaItems(previous);
+        if(previous.length > node.images.length && node.images.length === 1){
+            if(['Group','Images','Videos','Audios','Texts'].includes(node.title)) node.title = node.outputKind === 'video' ? 'Video' : node.outputKind === 'audio' ? 'Audio' : node.outputKind === 'text' ? 'Text' : 'Image';
+            delete node.w;
+            delete node.h;
+        }
+    }
     if(node.type === 'smart-image' && node.historyFor) node.isHistoryGroup = true;
     const savedEngine = String(node.runSettings?.engine || '').toLowerCase();
     if(node.running && !Number(node.pending) && !node.jimengPending && ['api', 'volcengine', 'runninghub', 'comfy'].includes(savedEngine)){
@@ -1304,7 +1371,11 @@ function nodeLayerZ(nodeOrId){
     // 抬成 2，与未选中成员同层——谁在上面变成 DOM 追加顺序说了算，
     // 组框整面积木随重渲染时前时后 → 「组内节点有时死活点不到、有时一点就中」。
     const node = typeof nodeOrId === 'string' ? (nodes || []).find(n => n.id === nodeOrId) : nodeOrId;
-    if(node && node.type === 'smart-group') return 1;
+    // 组（smart-group）必须压在【连线层之下】：连线层 connection-layer 是 z-index:1，
+    // 普通节点 2/4。组返回 0（<1）才能稳稳躺在连线之下，不会再盖住节点之间的连线。
+    // 不能用 1——同层时谁在上由 DOM 追加顺序决定（节点在连线层之后渲染），
+    // 组内节点重渲染会前时后，连线时而被盖时而不被盖（即"打组后连线被盖住"的元凶）。
+    if(node && node.type === 'smart-group') return 0;
     return (id && (frontNodeIds.includes(id) || isNodeSelected(id))) ? 4 : 2;
 }
 function refreshNodeLayerStyles(){
@@ -3032,6 +3103,15 @@ CanvasLoopNodeController.configure({
     })
 });
 
+// ===== 节点输入框 ~ 提示词库 / / 技能（canvas-node-prompt-picker.js）：主文件侧注入 =====
+if (typeof CanvasNodePromptPicker !== 'undefined') {
+    CanvasNodePromptPicker.configure({
+        escapeHtml: (...a) => escapeHtml(...a),
+        toast: message => toast(message),
+        tr: (...a) => tr(...a)
+    });
+}
+
 // ===== 提示词节点控件（canvas-prompt-node-controller.js）：主文件侧注入 =====
 CanvasPromptNodeController.configure({
     getContext: () => ({
@@ -3099,6 +3179,29 @@ CanvasPortGestureController.configure({
 });
 
 // ===== 图片上下文菜单（canvas-image-context-menu-controller.js）：主文件侧注入 =====
+CanvasNodeContextMenuController.configure({
+    getNodes:() => nodes,
+    getSelectedNodeIds:() => selectedNodeIds(),
+    duplicateNodeWithConnections:nodeId => duplicateSmartNodeWithConnections(nodeId),
+    copyNodesToClipboard:nodeId => {
+        // 菜单项「复制」= 放进内部剪贴板（之后 Ctrl+V 可粘），与「复制节点」= 立刻克隆一份不同
+        const selected = selectedNodeIds();
+        if(!selected.includes(nodeId)){
+            selectedId = nodeId;
+            selectedIds = [];
+            syncSelectionUi();
+        }
+        return copySelectedNodes();
+    },
+    deleteNodes:ids => CanvasNodeDeletionController.deleteNodes(ids),
+    bringNodesToFront:(...args) => bringNodesToFront(...args)
+});
+
+// 提示词框 / 输入框右键的复制/粘贴/全选菜单（WebView2 下系统原生菜单被关，必须自建）
+CanvasEditableContextMenuController.configure({
+    toast:message => toast(message)
+});
+
 CanvasImageContextMenuController.configure({
     getActionIds:() => SMART_CANVAS_ACTIONS?.smartImageContextActionIds?.(),
     translate:key => tr(key),
@@ -3189,6 +3292,8 @@ CanvasNodeGestureController.configure({
         discardPendingUndo: () => discardPendingUndo(),
         suppressNodeClick: (...args) => smSuppressNodeClick(...args),
         setLoopInsertPreview: value => { loopInsertPreview = value; },
+        isSnapEnabled: () => snapEnabled,
+        renderSnapGuides: guides => renderSnapGuides(guides),
         scheduleMinimapRender: () => scheduleMinimapRender(),
         refreshConnectionLayer: () => refreshConnectionLayer(),
         render: () => render(),
@@ -3685,6 +3790,10 @@ CanvasArtifactView.bindEvents();
 const viewport = CanvasViewport.viewport;
 CanvasViewport.configure({
     shell, world,
+    positionComposer: () => {
+        const node = selectedNode();
+        if(node && composer.classList.contains('open')) positionComposerForNode(node);
+    },
     scheduleSave: () => scheduleSave(),
     scheduleCullCheck: () => scheduleCullCheck(),
     scheduleMinimapRender: () => scheduleMinimapRender(),
@@ -3714,6 +3823,140 @@ function mediaNodeDefaultScale(node){
 function createImageNodeAt(point, images=[], options={}){
     const layout = imageLayout(images || [], mediaNodeDefaultScale({type:'smart-image', images:images || []}), {type:'smart-image', images:images || []});
     return createNode((point?.x || 0) - Math.round(layout.width / 2), (point?.y || 0) - Math.round(layout.height / 2), images, options);
+}
+const AUTO_IMPORT_GROUP_CELL = 180;
+const AUTO_IMPORT_GROUP_GAP = 10;
+function imageSizeWithinBox(image, width, height){
+    const naturalW = Number(image?.natural_w || image?.width || 0);
+    const naturalH = Number(image?.natural_h || image?.height || 0);
+    if(!(naturalW > 0 && naturalH > 0)) return {width:Math.round(width), height:Math.round(height), known:false};
+    const fit = Math.min(width / naturalW, height / naturalH);
+    return {
+        width:Math.max(1, Math.round(naturalW * fit)),
+        height:Math.max(1, Math.round(naturalH * fit)),
+        known:true
+    };
+}
+function importedMediaNodeTitle(image){
+    const kind = mediaKindForItem(image);
+    return kind === 'video' ? 'Video' : kind === 'audio' ? 'Audio' : kind === 'text' ? 'Text' : kind === 'file' ? 'File' : 'Image';
+}
+function createCanvasGroupFromImages(images, options={}){
+    const items = [...(images || [])].filter(image => image?.url);
+    if(items.length < 2) return null;
+    const columns = Math.min(4, Math.max(2, Math.ceil(Math.sqrt(items.length))));
+    const rows = Math.ceil(items.length / columns);
+    const width = columns * AUTO_IMPORT_GROUP_CELL + (columns - 1) * AUTO_IMPORT_GROUP_GAP;
+    const height = rows * AUTO_IMPORT_GROUP_CELL + (rows - 1) * AUTO_IMPORT_GROUP_GAP;
+    const center = options.point || viewportCenter();
+    const left = Math.round((Number(center?.x) || 0) - width / 2);
+    const top = Math.round((Number(center?.y) || 0) - height / 2);
+    const members = items.map((image, index) => {
+        const slot = {
+            x:left + (index % columns) * (AUTO_IMPORT_GROUP_CELL + AUTO_IMPORT_GROUP_GAP),
+            y:top + Math.floor(index / columns) * (AUTO_IMPORT_GROUP_CELL + AUTO_IMPORT_GROUP_GAP),
+            w:AUTO_IMPORT_GROUP_CELL,
+            h:AUTO_IMPORT_GROUP_CELL
+        };
+        const size = imageSizeWithinBox(image, slot.w, slot.h);
+        const cleanImage = stripImageGenerationMeta({...image, groupPosition:undefined});
+        return {
+            id:uid('smart'),
+            type:'smart-image',
+            x:Math.round(slot.x + (slot.w - size.width) / 2),
+            y:Math.round(slot.y + (slot.h - size.height) / 2),
+            w:size.width,
+            h:size.height,
+            title:importedMediaNodeTitle(image),
+            images:[cleanImage],
+            scale:1,
+            created_at:Date.now(),
+            status:'ready',
+            role:'media',
+            __origin:'user_manual',
+            ...(size.known ? {} : {autoGroupSlot:slot})
+        };
+    });
+    const group = CanvasNodeLayoutController.createCanvasGroupForNodes(members, {addToStore:false});
+    if(!group) return null;
+    nodeStore.addNodes([...members, group], 'user_manual');
+    selectedIds = [];
+    selectedId = group.id;
+    selectedImage = {nodeId:'', index:-1};
+    render();
+    scheduleSave();
+    return group;
+}
+function fitAutoGroupMemberToSlot(node, image){
+    const slot = node?.autoGroupSlot;
+    if(!slot || !image) return false;
+    const size = imageSizeWithinBox(image, Number(slot.w) || AUTO_IMPORT_GROUP_CELL, Number(slot.h) || AUTO_IMPORT_GROUP_CELL);
+    if(!size.known) return false;
+    node.w = size.width;
+    node.h = size.height;
+    node.x = Math.round((Number(slot.x) || 0) + ((Number(slot.w) || AUTO_IMPORT_GROUP_CELL) - size.width) / 2);
+    node.y = Math.round((Number(slot.y) || 0) + ((Number(slot.h) || AUTO_IMPORT_GROUP_CELL) - size.height) / 2);
+    delete node.autoGroupSlot;
+    return true;
+}
+function migrateLegacyAutoImageGroups(sourceNodes){
+    const migrated = [];
+    for(const node of sourceNodes || []){
+        const title = String(node?.title || '').trim().toLowerCase();
+        const images = node?.images || [];
+        const generated = Boolean(node?.runAt || node?.runFinishedAt || node?.runSettings || node?.sourceNodeId || node?.isHistoryGroup || node?.historyFor)
+            || images.some(image => image?.generatedResult || image?.loopInputPreview || image?.grid?.type === 'grid-split');
+        const importTitle = ['group', 'media', 'images', 'videos', 'audio'].includes(title);
+        if(!isSmartImageNode(node) || images.length < 2 || !importTitle || generated || node.groupLayout || (node.__origin && node.__origin !== 'user_manual')){
+            migrated.push(node);
+            continue;
+        }
+        const layout = imageLayout(images, nodeScale(node), node);
+        const columns = Math.max(1, Math.min(4, Number(layout.cols) || Math.ceil(Math.sqrt(images.length))));
+        const rows = Math.ceil(images.length / columns);
+        const cell = Math.max(96, Math.min(AUTO_IMPORT_GROUP_CELL, Number(layout.thumb) || AUTO_IMPORT_GROUP_CELL));
+        const gap = AUTO_IMPORT_GROUP_GAP;
+        const gridW = columns * cell + (columns - 1) * gap;
+        const gridH = rows * cell + (rows - 1) * gap;
+        const centerX = (Number(node.x) || 0) + layout.width / 2;
+        const centerY = (Number(node.y) || 0) + layout.height / 2;
+        const left = Math.round(centerX - gridW / 2);
+        const top = Math.round(centerY - gridH / 2);
+        const members = images.map((image, index) => {
+            const slot = {
+                x:left + (index % columns) * (cell + gap),
+                y:top + Math.floor(index / columns) * (cell + gap),
+                w:cell,
+                h:cell
+            };
+            const size = imageSizeWithinBox(image, slot.w, slot.h);
+            return {
+                id:uid('smart'),
+                type:'smart-image',
+                x:Math.round(slot.x + (slot.w - size.width) / 2),
+                y:Math.round(slot.y + (slot.h - size.height) / 2),
+                w:size.width,
+                h:size.height,
+                title:importedMediaNodeTitle(image),
+                images:[stripImageGenerationMeta({...image, groupPosition:undefined})],
+                scale:1,
+                created_at:Number(node.created_at) || Date.now(),
+                status:'ready',
+                role:'media',
+                __origin:'user_manual',
+                ...(size.known ? {} : {autoGroupSlot:slot})
+            };
+        });
+        const group = CanvasNodeLayoutController.createCanvasGroupForNodes(members, {
+            id:node.id,
+            title:node.title || 'Group',
+            created_at:node.created_at,
+            origin:node.__origin || 'user_manual',
+            addToStore:false
+        });
+        migrated.push(...members, group);
+    }
+    return migrated;
 }
 function singleImageLayout(image, node, scale){
     const explicitW = Number(node?.w);
@@ -3774,6 +4017,28 @@ function groupImageGridLayout(count, explicitW, explicitH, maxThumb, pad=32, gap
     }
     return best || {cols:Math.min(count, 2), rows:Math.ceil(count / Math.min(count, 2)), thumb:28};
 }
+function aspectGroupImageSize(image, maxSide){
+    const limit = Math.max(1, Math.round(Number(maxSide) || 96));
+    const naturalW = Number(image?.natural_w || image?.naturalWidth || image?.width || image?.w || 0);
+    const naturalH = Number(image?.natural_h || image?.naturalHeight || image?.height || image?.h || 0);
+    if(!(naturalW > 0 && naturalH > 0)) return {width:limit, height:limit};
+    const fit = Math.min(limit / naturalW, limit / naturalH);
+    return {width:Math.max(1, Math.round(naturalW * fit)), height:Math.max(1, Math.round(naturalH * fit))};
+}
+function aspectGroupGridBounds(images, maxSide, cols, gap=8){
+    const safeCols = Math.max(1, Number(cols) || 1);
+    const rowWidths = [], rowHeights = [];
+    (images || []).forEach((image, index) => {
+        const row = Math.floor(index / safeCols);
+        const size = aspectGroupImageSize(image, maxSide);
+        rowWidths[row] = (rowWidths[row] || 0) + size.width + (index % safeCols ? gap : 0);
+        rowHeights[row] = Math.max(rowHeights[row] || 0, size.height);
+    });
+    return {
+        width:Math.max(0, ...rowWidths),
+        height:rowHeights.reduce((sum, height) => sum + height, 0) + Math.max(0, rowHeights.length - 1) * gap
+    };
+}
 function smartNodeInputThumbRows(count){
     return count ? Math.ceil(Math.min(10, count) / 5) : 0;
 }
@@ -3823,6 +4088,10 @@ function promptNodeLayoutSize(node){
     return {width:Math.round(width), height:Math.round(height)};
 }
 function imageLayout(images, scale=1, node=null){
+    if(node?.type === 'smart-speech'){
+        if((node.speechLayout || 0) < 3){node.w=Math.max(1000,Number(node.w)||0); node.h=540; node.speechLayout=3;}
+        return {cols:1, rows:1, width:Math.max(900, Number(node.w) || 1000), height:Math.max(520, Number(node.h) || 540), thumb:96, single:true};
+    }
     if(node?.type === 'smart-prompt') return {cols:1, rows:1, ...promptNodeLayoutSize(node), thumb:96, single:true};
     if(node?.type === 'smart-loop') return {cols:1, rows:1, width:Math.round(Number(node.w) || smartLoopWidth(node)), height:Math.round(Math.max(Number(node.h) || 0, smartLoopHeight(node))), thumb:96, single:true};
     if(isCanvasGroupNode(node)) return {cols:1, rows:1, width:Math.max(80, Math.round(Number(node.w) || 80)), height:Math.max(80, Math.round(Number(node.h) || 80)), thumb:96, single:false};
@@ -3859,8 +4128,8 @@ function imageLayout(images, scale=1, node=null){
     }
     if(count === 1) return singleImageLayout(images[0], node, s);
     const thumb = Math.round(MEDIA_GROUP_THUMB_BASE * s);
-    const cell = thumb + 8;
-    const PAD = 32; // group-node has 16px padding on each side
+    const PAD = 40; // include the group padding and border when sizing the image area
+    const GAP = 8;
     const grid = images.find(img => img?.grid?.type === 'grid-split')?.grid;
     const explicitW = Number(node?.w);
     const explicitH = Number(node?.h);
@@ -3868,10 +4137,11 @@ function imageLayout(images, scale=1, node=null){
         const cols = Math.max(1, Number(grid.cols || 1));
         const rows = Math.max(1, Number(grid.rows || 1));
         if(Number.isFinite(explicitW) && explicitW > 40 && Number.isFinite(explicitH) && explicitH > 40){
-            const fittedThumb = Math.max(28, Math.floor(Math.min((explicitW - PAD - (cols - 1) * 8) / cols, (explicitH - PAD - (rows - 1) * 8) / rows)));
+            const fittedThumb = Math.max(28, Math.floor(Math.min((explicitW - PAD - (cols - 1) * GAP) / cols, (explicitH - PAD - (rows - 1) * GAP) / rows)));
             return {cols, rows, width:Math.round(explicitW), height:Math.round(explicitH), thumb:fittedThumb};
         }
-        return {cols, rows, width:Math.max(Math.round(226*s), cols * cell + PAD), height:rows * cell + PAD, thumb};
+        const bounds = aspectGroupGridBounds(images, thumb, cols, GAP);
+        return {cols, rows, width:Math.max(Math.round(226*s), bounds.width + PAD), height:bounds.height + PAD, thumb};
     }
     const cols = Math.min(4, Math.max(2, Math.ceil(Math.sqrt(count))));
     const rows = Math.ceil(count / cols);
@@ -3879,8 +4149,9 @@ function imageLayout(images, scale=1, node=null){
         const fitted = groupImageGridLayout(count, explicitW, explicitH, thumb, PAD, 8);
         return {cols:fitted.cols, rows:fitted.rows, width:Math.round(explicitW), height:Math.round(explicitH), thumb:fitted.thumb};
     }
-    const width = Math.max(Math.round(226*s), cols * cell + PAD);
-    const height = rows * cell + PAD;
+    const bounds = aspectGroupGridBounds(images, thumb, cols, GAP);
+    const width = Math.max(Math.round(226*s), bounds.width + PAD);
+    const height = bounds.height + PAD;
     return {cols, rows, width, height, thumb};
 }
 function smartLoopCount(node){
@@ -3935,6 +4206,70 @@ function scheduleViewportApply(){
 }
 function screenToWorld(event){
     return CanvasViewport.screenToWorld(event);
+}
+/* ===== 拖拽对齐辅助线（2026-10-05）=====
+ * 独立 SVG 层，不塞进 svg.connection-layer：连接层 z-index:1，而节点是 1/2/4，
+ * 辅助线会被节点盖住（吸附线必须压着节点才看得见对齐位置）。所以新开一层
+ * .snap-guide-layer，z-index 抬到节点之上、pointer-events:none 保证不挡交互。
+ * 坐标系与 #world 一致（绝对定位 left/top 0，viewBox 6000x4000），所以直接用世界坐标。
+ */
+function snapGuidesLayer(){
+    let svg = world?.querySelector('svg.snap-guide-layer');
+    if(!svg && world){
+        svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', 'snap-guide-layer');
+        svg.setAttribute('width', '6000');
+        svg.setAttribute('height', '4000');
+        svg.setAttribute('viewBox', '0 0 6000 4000');
+        svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        world.appendChild(svg);
+    }
+    return svg;
+}
+function renderSnapGuides(guides){
+    const next = Array.isArray(guides) ? guides : [];
+    snapGuides = next;
+    const layer = snapGuidesLayer();
+    if(!layer) return;
+    if(!next.length){
+        if(layer.childNodes.length) layer.replaceChildren();
+        return;
+    }
+    // 线只画到有意义的范围：以命中轴为界，覆盖参与比对的节点，两端各留 40px 余量。
+    const pad = 40;
+    layer.replaceChildren();
+    next.forEach(guide => {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('class', 'snap-guide');
+        if(guide.axis === 'x'){
+            line.setAttribute('x1', String(Math.round(guide.at)));
+            line.setAttribute('x2', String(Math.round(guide.at)));
+            line.setAttribute('y1', String(Math.round((guide.from ?? 0) - pad)));
+            line.setAttribute('y2', String(Math.round((guide.to ?? 0) + pad)));
+        } else {
+            line.setAttribute('y1', String(Math.round(guide.at)));
+            line.setAttribute('y2', String(Math.round(guide.at)));
+            line.setAttribute('x1', String(Math.round((guide.from ?? 0) - pad)));
+            line.setAttribute('x2', String(Math.round((guide.to ?? 0) + pad)));
+        }
+        layer.appendChild(line);
+    });
+}
+function isSnapEnabled(){ return snapEnabled; }
+function setSnapEnabled(value, opts = {}){
+    snapEnabled = !!value;
+    try { localStorage.setItem(SMART_CANVAS_SNAP_KEY, snapEnabled ? '1' : '0'); } catch(_) {}
+    const btn = document.getElementById('canvasSnapToggle');
+    if(btn){
+        btn.classList.toggle('active', snapEnabled);
+        btn.setAttribute('aria-pressed', snapEnabled ? 'true' : 'false');
+        btn.title = snapEnabled ? tr('smart.snapOnTip') : tr('smart.snapOffTip');
+    }
+    if(!snapEnabled) renderSnapGuides([]);
+    if(!opts.silent) toast(snapEnabled ? tr('smart.snapOn') : tr('smart.snapOff'));
+}
+function toggleSnap(){
+    setSnapEnabled(!snapEnabled);
 }
 function viewportCenter(){
     return CanvasViewport.viewportCenter();
@@ -5338,7 +5673,8 @@ async function refreshSmartConfigFromSettings(){
     renderDynamicParams();
     const node = selectedNode();
     if(node?.type === 'smart-prompt') {
-        applySettingsToNode(node);
+        // applySettingsToNode 已在历史重构中遗失，直接调用会抛 ReferenceError 并中断后续 render
+        if(typeof applySettingsToNode === 'function') applySettingsToNode(node);
         render();
     }
 }
@@ -5718,6 +6054,7 @@ if(globalThis.CanvasMergeSync){CanvasMergeSync.configure({
         handleAssetLibraryUpdatedMessage: (...a) => handleAssetLibraryUpdatedMessage(...a),
         handlePromptLibraryUpdatedMessage: (...a) => handlePromptLibraryUpdatedMessage(...a),
         recoverStuckComfyNodes: (...a) => recoverStuckComfyNodes(...a),
+        pruneStaleComfyErrorsOnLoad: (...a) => (globalThis.CanvasComfyJobEngine && CanvasComfyJobEngine.pruneStaleComfyErrorsOnLoad ? CanvasComfyJobEngine.pruneStaleComfyErrorsOnLoad(...a) : undefined),
         refreshConnectionLayer: (...a) => refreshConnectionLayer(...a),
         refreshSmartLogPanel: (...a) => refreshSmartLogPanel(...a),
         render: (...a) => render(...a),
@@ -5765,20 +6102,12 @@ function setAssetLibraryFromResponse(){return CanvasMergeSync.setAssetLibraryFro
    风格 = 提示词框内的可删除标签（仿截图），选中的风格文本在生成时追加到提示词尾部。
    内置风格只读；用户自建风格存 localStorage，可编辑/删除。 */
 const USER_STYLE_PRESETS_KEY = 'smart_canvas_style_presets_v1';
-const BUILTIN_STYLE_PRESETS = [
-    {id:'st-cg-realistic', name:'写实CG国漫', text:'写实人体皮肤质感，毛孔级次表面散射，CG电影感写实，超写实次世代3D，8K，极致细节，UE5渲染风格，国漫角色造型'},
-    {id:'st-cel-anime', name:'日系赛璐璐', text:'日系动画赛璐璐风格，干净利落的描边，平涂上色，明快色块阴影，动画质感'},
-    {id:'st-ghibli', name:'吉卜力手绘', text:'吉卜力工作室手绘动画风格，柔和水彩质感，温暖色调，细腻自然的背景描绘，治愈系氛围'},
-    {id:'st-cinematic', name:'电影感写实', text:'电影感写实风格，柔和胶片调色，浅景深，电影布光，35mm胶片颗粒，高动态范围'},
-    {id:'st-photo-film', name:'胶片摄影', text:'胶片摄影风格，Kodak Portra 400色调，自然光，细腻颗粒感，真实皮肤纹理，人像摄影构图'},
-    {id:'st-impasto', name:'厚涂油画', text:'厚涂油画风格，明显的笔触肌理，丰富的色彩层次，画布质感，古典油画光影'},
-    {id:'st-ink-wash', name:'水墨国风', text:'中国水墨画风格，留白构图，墨色浓淡渐变，宣纸质感，写意笔法，东方意境'},
-    {id:'st-pixel', name:'像素复古', text:'像素艺术风格，16bit复古游戏画面，有限的调色板，清晰的像素网格，怀旧游戏氛围'},
-    {id:'st-clay', name:'黏土定格', text:'黏土定格动画风格，手工黏土质感，柔和工作室布光，微缩场景，stop-motion质感'},
-    {id:'st-cyber-neon', name:'赛博霓虹', text:'赛博朋克风格，霓虹灯光，雨夜街景，蓝紫色调为主，全息投影元素，高对比光效'},
-    {id:'st-flat-minimal', name:'平面极简', text:'扁平极简插画风格，几何化造型，大面积纯色块，无描边，现代平面设计构图'},
-    {id:'st-us-cartoon', name:'美式卡通', text:'美式卡通风格，粗轮廓线，夸张的比例，鲜艳饱和的色彩，Nickelodeon式造型'}
-];
+const BUILTIN_STYLE_PRESETS = CanvasStylePresets.presets;
+let styleLibraryCategory = 'all';
+let styleLibraryQuery = '';
+let filterLibraryQuery = '';
+// Both popovers own wheel scrolling and must never pan/zoom the canvas underneath.
+CanvasOverlayRegistry.register('.style-popover,.filter-popover');
 let userStylePresets = [];
 try {
     const raw = JSON.parse(localStorage.getItem(USER_STYLE_PRESETS_KEY) || '[]');
@@ -5791,10 +6120,10 @@ function allStylePresets(){
     return [...BUILTIN_STYLE_PRESETS, ...userStylePresets];
 }
 function stylePresetById(id){
-    return allStylePresets().find(s => s.id === id) || null;
+    return allStylePresets().find(s => s.id === id) || CanvasStylePresets.archived.find(s => s.id === id) || null;
 }
 function isBuiltinStyleId(id){
-    return BUILTIN_STYLE_PRESETS.some(s => s.id === id);
+    return BUILTIN_STYLE_PRESETS.some(s => s.id === id) || CanvasStylePresets.archived.some(s => s.id === id);
 }
 function saveStylePreset(preset){
     if(!preset || isBuiltinStyleId(preset.id)) return false;
@@ -5809,11 +6138,29 @@ function deleteStylePreset(id){
     persistUserStylePresets();
 }
 function styleTokenHtml(preset){
-    return `<span class="mention-style-token" contenteditable="false" data-style-id="${escapeAttr(preset.id)}" data-style-name="${escapeAttr(preset.name)}" data-style-text="${escapeAttr(preset.text || '')}"><i data-lucide="palette" class="style-token-icon"></i><span>@${escapeHtml(preset.name)}</span><button class="style-token-x" type="button" tabindex="-1" title="移除风格"><i data-lucide="x"></i></button></span>`;
+    const filter = preset.kind === 'filter';
+    return `<span class="mention-style-token${filter ? ' mention-filter-token' : ''}" contenteditable="false" data-preset-kind="${filter ? 'filter' : 'style'}" data-style-id="${escapeAttr(preset.id)}" data-style-name="${escapeAttr(preset.name)}" data-style-text="${escapeAttr(preset.text || '')}"><i data-lucide="${filter ? 'aperture' : 'palette'}" class="style-token-icon"></i><span>@${filter ? '滤镜·' : ''}${escapeHtml(preset.name)}</span><button class="style-token-x" type="button" tabindex="-1" title="移除${filter ? '滤镜' : '风格'}"><i data-lucide="x"></i></button></span>`;
 }
 function insertedStyleIds(){
     if(!promptInput) return [];
-    return [...promptInput.querySelectorAll('.mention-style-token')].map(t => t.dataset.styleId).filter(Boolean);
+    return [...promptInput.querySelectorAll('.mention-style-token:not(.mention-filter-token)')].map(t => t.dataset.styleId).filter(Boolean);
+}
+function selectedFilterPresetId(){
+    return promptInput?.querySelector('.mention-filter-token')?.dataset.styleId || 'ft-none';
+}
+function applyFilterPreset(preset){
+    if(!preset || !promptInput) return;
+    const current = [...promptInput.querySelectorAll('.mention-filter-token')];
+    if(preset.id === 'ft-none'){
+        current.forEach(token => token.remove());
+    } else if(current.length){
+        current[0].outerHTML = styleTokenHtml(preset);
+        current.slice(1).forEach(token => token.remove());
+    } else {insertStyleToken(preset); return;}
+    closeAllSmartPopovers();
+    promptInput.dispatchEvent(new Event('input',{bubbles:true}));
+    renderComposerStyleControl();
+    refreshIcons();
 }
 function insertStyleToken(preset){
     if(!preset || !promptInput) return;
@@ -5853,11 +6200,12 @@ function bindStyleTokenRemoval(){
 }
 function removeStyleToken(token){
     const name = token?.dataset?.styleName || '';
+    const kind = token?.classList.contains('mention-filter-token') ? '滤镜' : '风格';
     token?.remove?.();
     if(promptInput){
         promptInput.dispatchEvent(new Event('input', {bubbles:true}));
         renderComposerStyleControl();
-        toast(`已移除风格「${name}」`);
+        toast(`已移除${kind}「${name}」`);
     }
 }
 function promptStyleSuffix(parts){
@@ -5868,6 +6216,9 @@ function promptStyleSuffix(parts){
 function promptHtmlHasMentionToken(html){
     const s = String(html || '');
     return s.includes('mention-image-token') || s.includes('mention-style-token');
+}
+function promptHtmlHasImageMentionToken(html){
+    return String(html || '').includes('mention-image-token');
 }
 function styleAssetVersionTag(){
     try { return new URLSearchParams(location.search).get('v') || ''; } catch(_) { return ''; }
@@ -5889,18 +6240,21 @@ function styleTileFallbackBg(preset){
 }
 function renderComposerStyleControl(){
     if(!composerStyleModeSlot) return;
+    composerStyleModeSlot.__hideStyleTip?.();
+    bindStyleTokenRemoval();
     const activeIds = insertedStyleIds();
     const label = activeIds.length ? `风格 · ${activeIds.length}` : '风格';
     const tileHtml = preset => {
         const on = activeIds.includes(preset.id);
         const builtin = isBuiltinStyleId(preset.id);
         const url = stylePresetImageUrl(preset);
-        // 背景图渲染（不建独立 img 合成层，GPU 不会用低质量采样缩小纹理 → 不再发糊）
+        // Standalone previews always keep their intrinsic aspect ratio.
         const media = url
-            ? `<div class="style-tile-img" style="background-image:url('${escapeAttr(url)}')"></div>`
+            ? `<img class="style-tile-img" src="${escapeAttr(url)}" alt="" loading="lazy" decoding="async" draggable="false"${preset.previewFilter ? ` style="filter:${escapeAttr(preset.previewFilter)}"` : ''}>`
             : `<div class="style-tile-ph"><i data-lucide="palette"></i></div>`;
-        return `<div class="style-tile${on ? ' active' : ''}" data-style-option="${escapeAttr(preset.id)}" style="--style-fallback:${styleTileFallbackBg(preset)}" title="${escapeAttr(preset.text || '')}">
+        return `<div class="style-tile${on ? ' active' : ''}" data-style-option="${escapeAttr(preset.id)}" role="button" tabindex="0" aria-label="${escapeAttr(preset.name)}" aria-pressed="${on}" style="--style-fallback:${styleTileFallbackBg(preset)}" title="${escapeAttr(preset.text || '')}">
             ${media}
+            ${preset.image && !preset.generatedPreview ? '<span class="style-tile-preview-label">示意</span>' : ''}
             ${on ? '<span class="style-tile-check"><i data-lucide="check"></i></span>' : ''}
             ${builtin ? '' : '<button type="button" class="style-tile-del" title="删除"><i data-lucide="trash-2"></i></button>'}
             <div class="style-tile-name">${escapeHtml(preset.name)}</div>
@@ -5910,15 +6264,135 @@ function renderComposerStyleControl(){
         <button class="smart-pill${activeIds.length ? ' has-value' : ''}" type="button" aria-label="${escapeAttr(label)}"><i data-lucide="palette"></i><span>${escapeHtml(label)}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
         <div class="smart-popover style-popover">
             <div class="style-popover-head">
-                <div class="smart-popover-title">风格库</div>
+                <div class="smart-popover-title">风格库 <span class="style-library-count" data-style-count></span></div>
                 <button type="button" class="style-new-btn" data-style-new title="新建自定义风格"><i data-lucide="plus"></i><span>新建</span></button>
             </div>
-            <div class="style-tile-grid">${BUILTIN_STYLE_PRESETS.map(tileHtml).join('')}</div>
-            ${userStylePresets.length ? `<div class="style-option-group-label">我的风格</div><div class="style-tile-grid">${userStylePresets.map(tileHtml).join('')}</div>` : ''}
+            <label class="style-library-search"><i data-lucide="search"></i><input type="search" data-style-search aria-label="搜索风格" placeholder="搜索风格、媒介或关键词" value="${escapeAttr(styleLibraryQuery)}"></label>
+            <div class="style-library-categories" aria-label="风格分类">
+                ${[{id:'all',name:'全部'},...CanvasStylePresets.categories,{id:'mine',name:'我的风格'}].map(category => `<button type="button" data-style-category="${category.id}" aria-pressed="${category.id === styleLibraryCategory}">${category.name}</button>`).join('')}
+            </div>
+            <div class="style-library-results">
+                ${CanvasStylePresets.categories.map(category => `<section data-style-group="${category.id}"><div class="style-option-group-label">${category.name}</div><div class="style-tile-grid">${BUILTIN_STYLE_PRESETS.filter(preset => preset.category === category.id).map(tileHtml).join('')}</div></section>`).join('')}
+                <section data-style-group="mine"><div class="style-option-group-label">我的风格</div><div class="style-tile-grid">${userStylePresets.map(tileHtml).join('')}</div></section>
+                <div class="style-library-empty" data-style-empty hidden></div>
+            </div>
+        </div>
+    </div>${filterPresetControlHtml()}`;
+    bindComposerStyleControl();
+    filterComposerStyleLibrary();
+    bindFilterPresetControl();
+    refreshIcons();
+}
+function bindPresetPopoverScroll(pop){
+    if(!pop) return;
+    pop.addEventListener('wheel',event => {
+        const results = pop.querySelector('[data-preset-scroll],.style-library-results');
+        if(!results) return;
+        if(!results.contains(event.target)){
+            event.preventDefault();
+            const factor = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? results.clientHeight : 1;
+            results.scrollTop += event.deltaY * factor;
+        }
+        event.stopPropagation();
+        event.__smartCanvasWheelHandled = true;
+    },{passive:false});
+}
+function positionPresetPopover(ctrl,pop){
+    if(!pop) return;
+    const rect = ctrl.getBoundingClientRect();
+    const below = window.innerHeight - rect.bottom - 20;
+    const above = rect.top - 80;
+    const useAbove = below < 420 && above > below;
+    const scale = rect.width / ctrl.offsetWidth || 1;
+    // Keep wide libraries clear of the fixed left canvas toolbar as well as the viewport edge.
+    const leftInset = document.querySelector('.canvas-tool-dock') ? 72 : 12;
+    const availableWidth = Math.max(200,(window.innerWidth - leftInset - 12)/scale);
+    pop.style.maxWidth = `${availableWidth}px`;
+    pop.style.minWidth = `${Math.min(360,availableWidth)}px`;
+    ctrl.classList.toggle('style-pop-above',useAbove);
+    pop.style.maxHeight = `${Math.max(180,Math.min(580,(useAbove ? above : below)/scale))}px`;
+    pop.style.marginLeft = '0px';
+    const bounds = pop.getBoundingClientRect();
+    const shift = bounds.right > window.innerWidth - 12 ? window.innerWidth - 12 - bounds.right : bounds.left < leftInset ? leftInset - bounds.left : 0;
+    if(shift) pop.style.marginLeft = `${shift/scale}px`;
+}
+function filterPresetControlHtml(){
+    const active = selectedFilterPresetId();
+    const selected = CanvasFilterPresets.presets.find(preset => preset.id === active);
+    const label = active === 'ft-none' ? '滤镜' : `滤镜·${selected?.name || ''}`;
+    return `<div class="smart-control filter-mode-control">
+        <button class="smart-pill${active !== 'ft-none' ? ' has-value' : ''}" type="button" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}"><i data-lucide="aperture"></i><span>${escapeHtml(label)}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+        <div class="smart-popover style-popover filter-popover">
+            <div class="style-popover-head"><div class="smart-popover-title">滤镜预设</div><button type="button" class="filter-preset-close" data-filter-close aria-label="关闭滤镜预设"><i data-lucide="x"></i></button></div>
+            <label class="style-library-search"><i data-lucide="search"></i><input type="search" data-filter-search aria-label="搜索滤镜" placeholder="搜索滤镜预设" value="${escapeAttr(filterLibraryQuery)}"></label>
+            <div class="style-library-results" data-preset-scroll><div class="style-tile-grid filter-preset-grid">
+                ${CanvasFilterPresets.presets.map(preset => `<div class="style-tile filter-preset-tile${preset.id === active ? ' active' : ''}" data-filter-option="${preset.id}" role="button" tabindex="0" aria-label="${preset.name}" aria-pressed="${preset.id === active}" title="${escapeAttr(preset.text || '移除当前滤镜')}"><div class="style-tile-img" style="background-image:url('${preset.image}');filter:${preset.previewFilter}"></div>${preset.id === active ? '<span class="style-tile-check"><i data-lucide="check"></i></span>' : ''}<div class="style-tile-name">${preset.name}</div></div>`).join('')}
+            </div><div class="style-library-empty" data-filter-empty hidden>没有匹配的滤镜</div></div>
         </div>
     </div>`;
-    bindComposerStyleControl();
-    refreshIcons();
+}
+function bindFilterPresetControl(){
+    const ctrl = composerStyleModeSlot?.querySelector('.filter-mode-control');
+    if(!ctrl) return;
+    const pop = ctrl.querySelector('.filter-popover');
+    const close = () => {ctrl.classList.remove('pinned'); if(ctrl.contains(document.activeElement)) document.activeElement.blur();};
+    ctrl.querySelector(':scope > .smart-pill').onclick = event => {
+        event.preventDefault(); event.stopPropagation();
+        const wasPinned = ctrl.classList.contains('pinned');
+        closeAllSmartPopovers();
+        if(wasPinned){close(); return;}
+        ctrl.classList.add('pinned'); positionPresetPopover(ctrl,pop);
+    };
+    const search = ctrl.querySelector('[data-filter-search]');
+    const filter = () => {
+        const query = filterLibraryQuery.trim().toLocaleLowerCase();
+        let count = 0;
+        ctrl.querySelectorAll('[data-filter-option]').forEach(tile => {
+            const preset = CanvasFilterPresets.presets.find(item => item.id === tile.dataset.filterOption);
+            tile.hidden = !!query && !`${preset.name} ${preset.text}`.toLocaleLowerCase().includes(query);
+            if(!tile.hidden) count++;
+        });
+        ctrl.querySelector('[data-filter-empty]').hidden = count > 0;
+        ctrl.querySelector('[data-preset-scroll]').scrollTop = 0;
+    };
+    search.addEventListener('input',event => {filterLibraryQuery = event.target.value; filter();});
+    ctrl.querySelector('[data-filter-close]').onclick = event => {event.preventDefault(); event.stopPropagation(); close();};
+    ctrl.addEventListener('keydown',event => {
+        if(event.key === 'Escape'){event.preventDefault(); event.stopPropagation(); close();}
+    });
+    ctrl.querySelectorAll('[data-filter-option]').forEach(tile => {
+        tile.onclick = event => {event.preventDefault(); event.stopPropagation(); applyFilterPreset(CanvasFilterPresets.presets.find(preset => preset.id === tile.dataset.filterOption));};
+        tile.onkeydown = event => {if(event.target === tile && ['Enter',' '].includes(event.key)){event.preventDefault(); event.stopPropagation(); tile.click();}};
+    });
+    filter(); bindPresetPopoverScroll(pop);
+}
+function filterComposerStyleLibrary(){
+    const ctrl = composerStyleModeSlot?.querySelector('.style-mode-control');
+    if(!ctrl) return;
+    const query = styleLibraryQuery.trim().toLocaleLowerCase();
+    let count = 0;
+    ctrl.querySelectorAll('[data-style-option]').forEach(tile => {
+        const preset = stylePresetById(tile.dataset.styleOption);
+        const category = preset?.category || 'mine';
+        const categoryName = CanvasStylePresets.categories.find(item => item.id === category)?.name || '我的风格';
+        const matches = (styleLibraryCategory === 'all' || styleLibraryCategory === category)
+            && (!query || `${preset?.name || ''} ${preset?.text || ''} ${categoryName}`.toLocaleLowerCase().includes(query));
+        tile.hidden = !matches;
+        if(matches) count++;
+    });
+    ctrl.querySelectorAll('[data-style-group]').forEach(group => {
+        group.hidden = !group.querySelector('[data-style-option]:not([hidden])');
+    });
+    ctrl.querySelectorAll('[data-style-category]').forEach(button => {
+        const active = button.dataset.styleCategory === styleLibraryCategory;
+        button.classList.toggle('active',active);
+        button.setAttribute('aria-pressed',String(active));
+    });
+    ctrl.querySelector('[data-style-count]').textContent = `${count} / ${allStylePresets().length}`;
+    const empty = ctrl.querySelector('[data-style-empty]');
+    empty.hidden = count > 0;
+    empty.textContent = styleLibraryCategory === 'mine' && !userStylePresets.length ? '还没有自建风格，点击“新建”添加' : '没有匹配的风格，试试其它关键词或分类';
+    ctrl.querySelector('.style-library-results').scrollTop = 0;
 }
 function bindComposerStyleControl(){
     if(!composerStyleModeSlot) return;
@@ -5933,12 +6407,7 @@ function bindComposerStyleControl(){
         if(wasPinned && ctrl.contains(document.activeElement)) document.activeElement.blur();
         if(!wasPinned){
             ctrl.classList.add('pinned');
-            const pop = ctrl.querySelector('.style-popover');
-            if(pop){
-                const need = pop.scrollHeight + 24;
-                const rect = ctrl.getBoundingClientRect();
-                ctrl.classList.toggle('style-pop-above', rect.bottom + need > window.innerHeight && rect.top > need);
-            }
+            positionPresetPopover(ctrl,ctrl.querySelector('.style-popover'));
         }
     };
     // 跟随鼠标的悬浮提示（tooltip 渲染在 body 层，不在按钮内）
@@ -5947,6 +6416,7 @@ function bindComposerStyleControl(){
         if(styleTip){ styleTip.remove(); styleTip = null; }
         pill.removeEventListener('mousemove', moveStyleTip);
     };
+    composerStyleModeSlot.__hideStyleTip = hideStyleTip;
     const moveStyleTip = e => {
         if(!styleTip) return;
         const pad = 14;
@@ -5966,6 +6436,22 @@ function bindComposerStyleControl(){
     });
     pill.addEventListener('mouseleave', hideStyleTip);
     }
+    bindPresetPopoverScroll(ctrl?.querySelector('.style-popover'));
+    ctrl?.querySelector('[data-style-search]')?.addEventListener('input',event => {
+        styleLibraryQuery = event.target.value;
+        filterComposerStyleLibrary();
+    });
+    ctrl?.addEventListener('keydown',event => {
+        if(event.key !== 'Escape') return;
+        event.preventDefault(); event.stopPropagation();
+        ctrl.classList.remove('pinned');
+        if(ctrl.contains(document.activeElement)) document.activeElement.blur();
+    });
+    ctrl?.querySelectorAll('[data-style-category]').forEach(button => button.addEventListener('click',event => {
+        event.preventDefault(); event.stopPropagation();
+        styleLibraryCategory = button.dataset.styleCategory;
+        filterComposerStyleLibrary();
+    }));
     ctrl?.querySelectorAll('[data-style-option]').forEach(row => {
         const id = row.dataset.styleOption;
         row.addEventListener('click', e => {
@@ -5974,6 +6460,10 @@ function bindComposerStyleControl(){
             const preset = stylePresetById(id);
             if(preset) insertStyleToken(preset);
             renderComposerStyleControl();
+        });
+        row.addEventListener('keydown',event => {
+            if(event.target !== row || !['Enter',' '].includes(event.key)) return;
+            event.preventDefault(); event.stopPropagation(); row.click();
         });
         row.querySelector('.style-tile-del')?.addEventListener('click', e => {
             e.preventDefault(); e.stopPropagation();
@@ -6017,6 +6507,208 @@ function toggleAssetLibrary(open=!assetLibraryOpen){
     if(assetLibraryOpen) loadAssetLibrary();
     render();
 }
+
+/* ===== 左侧风格面板（2026-10-05）=====
+ * 老王需求：左侧工具栏资产库下面加「风格」入口，滤镜整合进去，通过按钮切换。
+ * 数据源与 composer 里的风格库/滤镜完全同一套（BUILTIN_STYLE_PRESETS / userStylePresets /
+ * CanvasFilterPresets），所以这里只做「另一种摆放」——点选后仍然插到 promptInput 里，
+ * 与 composer 的两个 pill 共享同一份选中态。
+ */
+let stylePanelOpen = false;
+let stylePanelTab = 'style';
+/* 风格面板是独立于画布的浮层：不注册的话点它会冒泡到 shell.onclick，
+   被当成"点了空白"→ 触发 clearSelection/render，把刚插进 composer 的 token 一起清掉。
+   与 .asset-panel 一样注册进 overlay/pan-exclude/click-empty。 */
+CanvasOverlayRegistry.register('#stylePanel,.style-panel', ['overlay', 'pan-exclude', 'click-empty', 'wheel-exclude']);
+function stylePanelVisible(){
+    return Boolean(stylePanel?.classList.contains('open'));
+}
+function toggleStylePanel(open=!stylePanelOpen){
+    if(!stylePanel || !styleToggle) return;
+    stylePanelOpen = !!open;
+    stylePanel.classList.toggle('open', stylePanelOpen);
+    styleToggle.classList.toggle('active', stylePanelOpen);
+    // 资产库与风格面板同位（left:88px），同时开会叠在一起，开一个就收另一个。
+    if(stylePanelOpen && assetLibraryOpen) toggleAssetLibrary(false);
+    if(stylePanelOpen) renderStylePanel();
+}
+function setStylePanelTab(tab){
+    stylePanelTab = tab === 'filter' ? 'filter' : 'style';
+    document.querySelectorAll('#stylePanel [data-style-tab]').forEach(btn => {
+        const on = btn.dataset.styleTab === stylePanelTab;
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    const stylePane = document.getElementById('stylePanelStylePane');
+    const filterPane = document.getElementById('stylePanelFilterPane');
+    if(stylePane) stylePane.style.display = stylePanelTab === 'style' ? 'flex' : 'none';
+    if(filterPane) filterPane.style.display = stylePanelTab === 'filter' ? 'flex' : 'none';
+}
+function stylePanelTileHtml(preset, activeIds){
+    const on = activeIds.includes(preset.id);
+    const builtin = isBuiltinStyleId(preset.id);
+    const url = stylePresetImageUrl(preset);
+    const media = url
+        ? `<img class="style-tile-img" src="${escapeAttr(url)}" alt="" loading="lazy" decoding="async" draggable="false"${preset.previewFilter ? ` style="filter:${escapeAttr(preset.previewFilter)}"` : ''}>`
+        : `<div class="style-tile-ph"><i data-lucide="palette"></i></div>`;
+    return `<div class="style-tile${on ? ' active' : ''}" data-panel-style-option="${escapeAttr(preset.id)}" role="button" tabindex="0" aria-label="${escapeAttr(preset.name)}" aria-pressed="${on}" style="--style-fallback:${styleTileFallbackBg(preset)}" title="${escapeAttr(preset.text || '')}">
+        ${media}
+        ${on ? '<span class="style-tile-check"><i data-lucide="check"></i></span>' : ''}
+        ${builtin ? '' : '<button type="button" class="style-tile-del" title="删除"><i data-lucide="trash-2"></i></button>'}
+        <div class="style-tile-name">${escapeHtml(preset.name)}</div>
+    </div>`;
+}
+function stylePanelFilterTileHtml(preset, active){
+    return `<div class="style-tile filter-preset-tile${preset.id === active ? ' active' : ''}" data-panel-filter-option="${preset.id}" role="button" tabindex="0" aria-label="${preset.name}" aria-pressed="${preset.id === active}" title="${escapeAttr(preset.text || '移除当前滤镜')}"><div class="style-tile-img" style="background-image:url('${preset.image}');filter:${preset.previewFilter}"></div>${preset.id === active ? '<span class="style-tile-check"><i data-lucide="check"></i></span>' : ''}<div class="style-tile-name">${preset.name}</div></div>`;
+}
+function renderStylePanel(){
+    if(!stylePanel) return;
+    setStylePanelTab(stylePanelTab);
+    const activeIds = insertedStyleIds();
+    const categories = stylePanel.querySelector('[data-panel-style-categories]');
+    if(categories){
+        categories.innerHTML = [{id:'all',name:'全部'},...CanvasStylePresets.categories,{id:'mine',name:'我的风格'}]
+            .map(c => `<button type="button" data-panel-style-category="${c.id}" aria-pressed="${c.id === styleLibraryCategory}" class="${c.id === styleLibraryCategory ? 'active' : ''}">${c.name}</button>`).join('');
+    }
+    const results = stylePanel.querySelector('[data-panel-style-results]');
+    if(results){
+        results.innerHTML = `
+            ${CanvasStylePresets.categories.map(category => `<section data-panel-style-group="${category.id}"><div class="style-option-group-label">${category.name}</div><div class="style-tile-grid">${BUILTIN_STYLE_PRESETS.filter(p => p.category === category.id).map(p => stylePanelTileHtml(p, activeIds)).join('')}</div></section>`).join('')}
+            <section data-panel-style-group="mine"><div class="style-option-group-label">我的风格</div><div class="style-tile-grid">${userStylePresets.map(p => stylePanelTileHtml(p, activeIds)).join('')}</div></section>
+            <div class="style-library-empty" data-panel-style-empty hidden></div>`;
+    }
+    const filterResults = stylePanel.querySelector('[data-panel-filter-results]');
+    if(filterResults){
+        const activeFilter = selectedFilterPresetId();
+        filterResults.innerHTML = `<div class="style-tile-grid filter-preset-grid">${CanvasFilterPresets.presets.map(p => stylePanelFilterTileHtml(p, activeFilter)).join('')}</div><div class="style-library-empty" data-panel-filter-empty hidden>没有匹配的滤镜</div>`;
+    }
+    filterStylePanelLibrary();
+    refreshIcons();
+}
+function filterStylePanelLibrary(){
+    if(!stylePanel) return;
+    const query = styleLibraryQuery.trim().toLocaleLowerCase();
+    let count = 0;
+    stylePanel.querySelectorAll('[data-panel-style-option]').forEach(tile => {
+        const preset = stylePresetById(tile.dataset.panelStyleOption);
+        const category = preset?.category || 'mine';
+        const categoryName = CanvasStylePresets.categories.find(item => item.id === category)?.name || '我的风格';
+        const matches = (styleLibraryCategory === 'all' || styleLibraryCategory === category)
+            && (!query || `${preset?.name || ''} ${preset?.text || ''} ${categoryName}`.toLocaleLowerCase().includes(query));
+        tile.hidden = !matches;
+        if(matches) count++;
+    });
+    stylePanel.querySelectorAll('[data-panel-style-group]').forEach(group => {
+        group.hidden = !group.querySelector('[data-panel-style-option]:not([hidden])');
+    });
+    stylePanel.querySelectorAll('[data-panel-style-category]').forEach(button => {
+        const active = button.dataset.panelStyleCategory === styleLibraryCategory;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', String(active));
+    });
+    const empty = stylePanel.querySelector('[data-panel-style-empty]');
+    if(empty){
+        empty.hidden = count > 0;
+        empty.textContent = styleLibraryCategory === 'mine' && !userStylePresets.length ? '还没有自建风格，点击“新建”添加' : '没有匹配的风格，试试其它关键词或分类';
+    }
+    const fquery = filterLibraryQuery.trim().toLocaleLowerCase();
+    let fcount = 0;
+    stylePanel.querySelectorAll('[data-panel-filter-option]').forEach(tile => {
+        const preset = CanvasFilterPresets.presets.find(item => item.id === tile.dataset.panelFilterOption);
+        tile.hidden = !!fquery && !`${preset?.name || ''} ${preset?.text || ''}`.toLocaleLowerCase().includes(fquery);
+        if(!tile.hidden) fcount++;
+    });
+    const fempty = stylePanel.querySelector('[data-panel-filter-empty]');
+    if(fempty) fempty.hidden = fcount > 0;
+    const results = stylePanel.querySelector('[data-panel-style-results]');
+    if(results) results.scrollTop = 0;
+}
+function bindStylePanel(){
+    if(!stylePanel) return;
+    stylePanel.querySelectorAll('[data-style-tab]').forEach(btn => {
+        btn.addEventListener('click', event => {event.preventDefault(); setStylePanelTab(btn.dataset.styleTab);});
+    });
+    stylePanel.querySelector('[data-panel-style-search]')?.addEventListener('input', event => {
+        styleLibraryQuery = event.target.value;
+        filterStylePanelLibrary();
+    });
+    stylePanel.querySelector('[data-panel-filter-search]')?.addEventListener('input', event => {
+        filterLibraryQuery = event.target.value;
+        filterStylePanelLibrary();
+    });
+    stylePanel.addEventListener('click', event => {
+        // 面板内部一律不让事件冒泡到 shell：shell.onclick 的"点空白清选中"会把
+        // 刚插进 composer 的风格/滤镜 token 一起 render 掉。
+        event.stopPropagation();
+        const categoryBtn = event.target.closest('[data-panel-style-category]');
+        if(categoryBtn){
+            event.preventDefault();
+            styleLibraryCategory = categoryBtn.dataset.panelStyleCategory;
+            filterStylePanelLibrary();
+            return;
+        }
+        const filterTile = event.target.closest('[data-panel-filter-option]');
+        if(filterTile){
+            event.preventDefault();
+            applyFilterPreset(CanvasFilterPresets.presets.find(p => p.id === filterTile.dataset.panelFilterOption));
+            // 延到微任务再重建面板：本帧内若重建，事件继续冒泡时 e.target 已脱离 DOM，
+            // 上层浮层判定会失效（曾是"选完滤镜 token 立刻被清空"的真凶）。
+            queueMicrotask(() => renderStylePanel());
+            return;
+        }
+        const tile = event.target.closest('[data-panel-style-option]');
+        if(tile){
+            if(event.target.closest('.style-tile-del')) return;
+            event.preventDefault();
+            const preset = stylePresetById(tile.dataset.panelStyleOption);
+            if(preset) insertStyleToken(preset);
+            queueMicrotask(() => renderStylePanel());
+            return;
+        }
+        const newBtn = event.target.closest('[data-panel-style-new]');
+        if(newBtn){
+            event.preventDefault();
+            openStylePanelNewPresetDialog();
+        }
+    });
+    stylePanel.addEventListener('click', event => {
+        const del = event.target.closest('.style-tile-del');
+        if(!del) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const tile = del.closest('[data-panel-style-option]');
+        const id = tile?.dataset.panelStyleOption;
+        if(!id) return;
+        if(del.dataset.armed === '1'){
+            deleteStylePreset(id);
+            promptInput?.querySelectorAll(`.mention-style-token[data-style-id="${CSS.escape(id)}"]`).forEach(t => t.remove());
+            promptInput?.dispatchEvent(new Event('input', {bubbles:true}));
+            renderComposerStyleControl();
+            renderStylePanel();
+            toast('已删除风格');
+            return;
+        }
+        del.dataset.armed = '1';
+        del.classList.add('armed');
+        setTimeout(() => {
+            if(!del.isConnected) return;
+            del.dataset.armed = '';
+            del.classList.remove('armed');
+            refreshIcons();
+        }, 4000);
+    }, true);
+}
+async function openStylePanelNewPresetDialog(){
+    const name = await openAssetNameDialog({title:'新建风格', value:'', placeholder:'风格名称', cancelValue:null});
+    if(!name) return;
+    const text = await openAssetNameDialog({title:`「${name}」的风格提示词`, value:'', placeholder:'如：水墨画风格，留白构图，墨色浓淡渐变', cancelValue:null, multiline:true});
+    if(text === null) return;
+    saveStylePreset({id:`us-${Date.now().toString(36)}`, name, text: text || ''});
+    renderComposerStyleControl();
+    renderStylePanel();
+    toast('已创建风格');
+}
+
 function assetCategoryForMention(){
     const cats = assetCategories('image');
     if(!cats.length) return null;
@@ -6293,7 +6985,9 @@ async function loadCanvas(){
         );
         // Phase 4：载入即剔除墓碑节点（防御后端历史数据 / 多端竞态残留）
         const loadDead = nodeStore.deletedIds(canvas);
-        nodes = loadDead.size ? cleanedCanvas.nodes.filter(n => !loadDead.has(n.id)) : cleanedCanvas.nodes;
+        const liveNodes = loadDead.size ? cleanedCanvas.nodes.filter(n => !loadDead.has(n.id)) : cleanedCanvas.nodes;
+        nodes = migrateLegacyAutoImageGroups(liveNodes);
+        const migratedLegacyGroups = nodes.length !== liveNodes.length;
         nodes.forEach(n => {
             const pendingTasks = smartPendingTasks(n);
             if(pendingTasks.length){
@@ -6316,6 +7010,7 @@ async function loadCanvas(){
         updateProviderModels();
         applyViewport();
         render();
+        if(migratedLegacyGroups) scheduleSave();
         try {
             const focusNodeId = params.get('focus_node') || '';
             if(focusNodeId){
@@ -6329,6 +7024,7 @@ async function loadCanvas(){
         recoverCompletedEmptySmartNodes();
         resumeJimengPendingNodes();
         recoverStuckComfyNodes();
+        if(globalThis.CanvasComfyJobEngine && typeof CanvasComfyJobEngine.pruneStaleComfyErrorsOnLoad === 'function') CanvasComfyJobEngine.pruneStaleComfyErrorsOnLoad();
         startComfyJobSupervisor();
         startCanvasMetaPoll();
     } catch(e) { toast(tr('smart.toastCanvasFail')); }
@@ -6491,6 +7187,37 @@ function inheritNodeMetaFromImage(node){
     if(!node) return;
     node.images = (node.images || []).map(img => stripImageGenerationMeta(img));
 }
+CanvasSpeech.configure({
+    getNodes:() => nodes, getConnections:() => canvas?.connections || [], getProviders:() => apiProviders,
+    getCanvasId:() => canvasId, getCanvasTitle:() => canvas?.title || '',
+    escapeHtml, audioPlayerHtml, render, scheduleSave, toast, addSmartGenerationLog, createSpeechOutputNode,
+
+});
+function createSpeechOutputNode(source, items, taskId){
+    const media = items.map(item => ({...item,kind:'audio',generatedResult:true}));
+    const layout = imageLayout(media, MEDIA_NODE_DEFAULT_SCALE, {type:'smart-image',images:media});
+    const rect = nodeRect(source);
+    const point = agentFindEmptySpot(rect.x + rect.width + 60, rect.y, layout.width, layout.height);
+    const output = createNode(point.x,point.y,media,{select:false});
+    output.title = '音频';
+    output.speechSourceId = source.id;
+    output.speechTaskId = taskId;
+    addConnection(source.id,output.id,'input');
+    render();
+    scheduleSave();
+    return output;
+}
+function createSpeechNode(point){
+    pushUndo();
+    const node = {id:uid('speech'), type:'smart-speech', x:point.x-500, y:point.y-270, w:1000, h:540, speechLayout:3,
+        title:'语音生成', images:[], speechProvider:CanvasSpeech.providers()[0]?.id || '', speechModel:'mimo-v2.5-tts-voicedesign',
+        speechStyle:'', speechText:'', speechVoice:'mimo_default', created_at:Date.now(), status:'ready', role:'media', __origin:'user_manual'};
+    nodeStore.addNode(node, 'user_manual');
+    selectedId = node.id;
+    render();
+    scheduleSave();
+    return node;
+}
 function createNode(x, y, images=[], options={}){
     if(!options.skipUndo) pushUndo();
     const nodeImages = (images || []).map(img => ({...img}));
@@ -6499,6 +7226,7 @@ function createNode(x, y, images=[], options={}){
     const node = {id:uid('smart'), type:'smart-image', x, y, title:nodeImages.length > 1 ? 'Group' : nodeImages.length ? singleTitle : tr('smart.createImportNode'), images:nodeImages, created_at:Date.now(), __origin:'user_manual', status:'ready', role:'media'};
     node.scale = nodeImages.length > 1 ? MEDIA_GROUP_DEFAULT_SCALE : mediaNodeDefaultScale(node);
     inheritNodeMetaFromImage(node);
+    node.runSettings = settingsForStorage({...smartSettingsForNode(node), promptH:93});
     nodeStore.addNode(node, 'user_manual');
     if(options.select !== false) selectedId = node.id;
     render();
@@ -6553,6 +7281,7 @@ function createSmartGeneratorNode(point, config={}){
     node.title = config.title || '生成节点';
     node.runSettings = settingsForStorage({
         ...cloneSmartSettings(settings),
+        promptH:93,
         engine:config.engine || 'api',
         apiKind:config.apiKind || 'image',
  comfyMode:config.comfyMode || settings.comfyMode || 'custom'
@@ -6625,7 +7354,7 @@ function renderConnections(){
         const width = isLinkedToSelection ? '2.4' : kind === 'input' ? '1.9' : '1.6';
         // 运行中连线：底线常亮 + 两颗彗星光点沿管道滑行（A 方案），不再用滚动虚线
         const cometLayer = isPendingLine ? `<path class="conn-comet" d="${curve}" pathLength="180" stroke="#dbeafe" stroke-dasharray="22 158" fill="none"></path><path class="conn-comet conn-comet-2" d="${curve}" pathLength="180" stroke="#93c5fd" stroke-width="2" stroke-dasharray="10 170" fill="none"></path>` : '';
-        return `<path class="${cls}" d="${curve}" stroke="${color}" stroke-width="${width}" fill="none" opacity="${opacity}"></path>${cometLayer}<path class="conn-hit" data-conn-index="${conn.index}" d="${curve}" stroke="transparent" stroke-width="14" fill="none"></path><circle cx="${tx}" cy="${ty}" r="3.5" fill="${color}" opacity=".66"></circle>`;
+        return `<path class="${cls}" d="${curve}" stroke="${color}" stroke-width="${width}" fill="none" opacity="${opacity}"></path>${cometLayer}<path class="conn-hit" data-conn-index="${conn.index}" d="${curve}" stroke="transparent" stroke-width="14" fill="none"></path>`;
     }).join('');
     return `<svg class="connection-layer" width="6000" height="4000" viewBox="0 0 6000 4000" xmlns="http://www.w3.org/2000/svg"><defs><filter id="conn-comet-glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>${paths}<g class="conn-scissor" data-conn-index="-1" transform="translate(-100 -100)"><circle r="20" fill="transparent" pointer-events="all"></circle><circle r="13" fill="var(--card,#1f1f1f)" stroke="#C9A227" stroke-width="1.4"></circle><g transform="translate(-9.4 -9.4) scale(0.78)" fill="none" stroke="#C9A227" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.12 15.88"></path><path d="M14.47 14.48 20 20"></path><path d="M8.12 8.12 12 12"></path></g></g></svg>`;
 }
@@ -6702,12 +7431,12 @@ function imageDimensionPairFrom(obj, pairs){
 }
 function localAssetUrlForImageInfo(img){
     const candidates = [
+        img?.url,
         img?.originalLocalUrl,
         img?.localUrl,
         img?.sourceUrl,
         img?.local_url,
-        img?.source_url,
-        img?.url
+        img?.source_url
     ];
     for(const value of candidates){
         const url = String(value || '').trim();
@@ -6744,10 +7473,21 @@ function knownImageNaturalSize(img, allowDisplayFallback=false){
 }
 function mediaItemUrlMatches(item, url){
     if(!item || !url) return false;
-    return [item.url, item.originalLocalUrl, item.localUrl, item.sourceUrl, item.local_url, item.source_url]
-        .map(v => String(v || '').trim())
-        .filter(Boolean)
-        .some(value => value === url || localAssetUrlForImageInfo({url:value}) === url);
+    return localAssetUrlForImageInfo(item) === url;
+}
+function imageResolutionCacheKey(img){
+    return JSON.stringify([localAssetUrlForImageInfo(img), img?.generationTaskId || '', img?.source_url || img?.sourceUrl || '']);
+}
+function reconcileSingleImageAspect(owner, item, width, height){
+    if(!owner || (owner.images || []).length !== 1 || owner.images[0] !== item || owner.groupLayout?.mode === 'preserve') return false;
+    const displayW = Number(owner.w), displayH = Number(owner.h);
+    if(!(displayW > 24 && displayH > 24)) return false;
+    const ratio = width / height;
+    if(Math.abs(displayW / displayH - ratio) / ratio < 0.01) return false;
+    const longSide = Math.max(displayW, displayH);
+    owner.w = Math.round(ratio >= 1 ? longSide : longSide * ratio);
+    owner.h = Math.round(ratio >= 1 ? longSide / ratio : longSide);
+    return true;
 }
 function queueImageResolutionRerender(){
     if(imageResolutionRerenderQueued) return;
@@ -6758,22 +7498,27 @@ function queueImageResolutionRerender(){
         scheduleSave();
     });
 }
-function applyImageResolutionMetadata(url, width, height, target=null){
+function applyImageResolutionMetadata(url, width, height, target=null, cacheKey=''){
     const w = Math.round(positiveImageDimension(width));
     const h = Math.round(positiveImageDimension(height));
     if(!(w > 0 && h > 0)) return;
     let changed = false;
-    const apply = item => {
+    const apply = (item, owner=null) => {
         if(!item || typeof item !== 'object') return;
+        if(cacheKey && imageResolutionCacheKey(item) !== cacheKey) return;
         const current = knownImageNaturalSize(item, false);
-        if(current?.w === w && current?.h === h) return;
-        item.natural_w = w;
-        item.natural_h = h;
-        changed = true;
+        if(current?.w !== w || current?.h !== h){
+            item.natural_w = w;
+            item.natural_h = h;
+            changed = true;
+        }
+        if(owner && fitAutoGroupMemberToSlot(owner, item)) changed = true;
+        if(reconcileSingleImageAspect(owner, item, w, h)) changed = true;
     };
-    apply(target);
+    const targetOwner = target ? nodes.find(node => (node.images || []).includes(target)) : null;
+    apply(target, targetOwner);
     nodes.forEach(node => (node.images || []).forEach(item => {
-        if(mediaItemUrlMatches(item, url)) apply(item);
+        if(mediaItemUrlMatches(item, url)) apply(item, node);
     }));
     if(changed) queueImageResolutionRerender();
 }
@@ -6782,13 +7527,14 @@ function ensureImageResolutionMetadata(img, force=false){
     if(!force && knownImageNaturalSize(img, false)) return;
     const url = localAssetUrlForImageInfo(img);
     if(!url) return;
-    const cached = imageResolutionMetaCache.get(url);
+    const cacheKey = imageResolutionCacheKey(img);
+    const cached = imageResolutionMetaCache.get(cacheKey);
     if(cached === 'pending' || cached === 'failed') return;
     if(cached){
-        applyImageResolutionMetadata(url, cached.w, cached.h, img);
+        applyImageResolutionMetadata(url, cached.w, cached.h, img, cacheKey);
         return;
     }
-    imageResolutionMetaCache.set(url, 'pending');
+    imageResolutionMetaCache.set(cacheKey, 'pending');
     fetch(`/api/canvas-image-info?url=${encodeURIComponent(url)}`)
         .then(response => response.ok ? response.json() : Promise.reject(new Error('image info failed')))
         .then(data => {
@@ -6796,10 +7542,10 @@ function ensureImageResolutionMetadata(img, force=false){
             const h = positiveImageDimension(data?.height);
             if(!(w > 0 && h > 0)) throw new Error('missing image size');
             const size = {w:Math.round(w), h:Math.round(h)};
-            imageResolutionMetaCache.set(url, size);
-            applyImageResolutionMetadata(url, size.w, size.h, img);
+            imageResolutionMetaCache.set(cacheKey, size);
+            applyImageResolutionMetadata(url, size.w, size.h, img, cacheKey);
         })
-        .catch(() => imageResolutionMetaCache.set(url, 'failed'));
+        .catch(() => imageResolutionMetaCache.set(cacheKey, 'failed'));
 }
 function imageResolutionLabel(img){
     const localAssetUrl = localAssetUrlForImageInfo(img);
@@ -7022,6 +7768,7 @@ function restoreMediaPlaybackStates(states){
 }
 function smartRunTaskLabel(run){
     const s = run?.settings || {};
+    if(run?.kind === 'audio') return s.model || 'MiMo 语音';
     if(run?.kind === 'video') return s.videoModel || 'Video';
     if(s.engine === 'comfy'){
         return s.comfyWorkflow || 'ComfyUI';
@@ -7059,6 +7806,7 @@ function smartRunPlatformLabel(run){
 }
 function smartRunRequestMeta(run){
     const s = run?.settings || {};
+    if(run?.kind === 'audio') return {...(run.request || {}), provider_id:s.provider_id || '',model:s.model || ''};
     if(s.engine === 'comfy') return {workflow_json:s.comfyWorkflow || '', mode:s.comfyMode || 'custom'};
     if(run?.kind === 'video') return {provider_id:s.videoProvider || '', model:s.videoModel || '', duration:s.videoDuration || '', aspect_ratio:s.videoAspect || '', resolution:s.videoResolution || ''};
     return {provider_id:s.provider_id || '', model:s.model || '', size:run?.size || '', quality:s.quality || '', n:s.count || 1};
@@ -7075,15 +7823,17 @@ function smartRunSnapshot(node, prompt, refs=[], kind='image'){
         size: kind === 'image' && isApiLikeEngine(settingsSnapshot.engine) ? sizeForRun(settingsSnapshot) : ''
     };
 }
-function addSmartGenerationLog({run, outputs=[], runMs=0, error='', taskId=''}) {
+function addSmartGenerationLog({run, outputs=[], runMs=0, error='', taskId='', status='', update=false}) {
     if(!canvas) return;
     canvas.logs = canvas.logs || [];
-    if(taskId && canvas.logs.some(log => log.taskId === taskId)) return;
+    const previous = taskId ? canvas.logs.find(log => log.taskId === taskId) : null;
+    if(previous && !update) return;
     const entry = {
-        id:uid('log'),
+        id:previous?.id || uid('log'),
         ...(taskId ? {taskId} : {}),
         createdAt:Date.now(),
-        status:error ? 'failed' : 'success',
+        status:status || (error ? 'failed' : 'success'),
+        kind:run?.kind || 'image',
         platform:smartRunPlatformLabel(run),
         nodeType:run?.nodeType || 'smart-image',
         model:smartRunTaskLabel(run),
@@ -7094,7 +7844,7 @@ function addSmartGenerationLog({run, outputs=[], runMs=0, error='', taskId=''}) 
         runMs:Number(runMs || 0),
         error:error ? String(error) : ''
     };
-    canvas.logs = [entry, ...canvas.logs].slice(0, 500);
+    canvas.logs = [entry, ...canvas.logs.filter(log => log.id !== entry.id)].slice(0, 500);
     scheduleSave();
     refreshSmartLogPanel();
 }
@@ -7135,7 +7885,8 @@ function renderSmartCanvasLog(){
     smartLogList.innerHTML = logs.length ? logs.map(log => {
         const thumbs = (log.outputs || []).slice(0, 8).map(url => {
             const safe = escapeAttr(url);
-            const kind = outputUrlLooksVideo(url) ? 'video' : 'image';
+            const kind = log.kind === 'audio' || /\.(mp3|wav|ogg|m4a)(?:[?#]|$)/i.test(url) ? 'audio' : outputUrlLooksVideo(url) ? 'video' : 'image';
+            if(kind === 'audio') return audioPlayerHtml({url,kind:'audio',name:'语音生成结果'},220,84);
             return kind === 'video' ? `<video src="${safe}" data-url="${safe}" data-kind="video" muted playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"></video>` : `<img src="${safe}" data-url="${safe}" data-kind="image" alt="output">`;
         }).join('');
         const date = new Date(log.createdAt || Date.now()).toLocaleString(window.StudioI18n?.lang() === 'en' ? 'en-US' : 'zh-CN');
@@ -7151,7 +7902,7 @@ function renderSmartCanvasLog(){
         return `<div class="log-item ${log.status === 'failed' ? 'failed' : ''}">
             <div class="log-main">
                 <div class="log-meta">
-                    <span class="log-chip ${log.status === 'failed' ? 'status-failed' : 'status-ok'}">${escapeHtml(log.status === 'failed' ? tr('canvas.failed') : tr('canvas.success'))}</span>
+                    <span class="log-chip ${log.status === 'failed' ? 'status-failed' : 'status-ok'}">${escapeHtml(log.status === 'running' ? '运行中' : log.status === 'failed' ? tr('canvas.failed') : tr('canvas.success'))}</span>
                     <span class="log-chip">${escapeHtml(log.platform || '-')}</span>
                     ${log.model ? `<span class="log-chip">${escapeHtml(log.model)}</span>` : ''}
                     <span class="log-chip">${escapeHtml(formatRunDuration(log.runMs || 0))}</span>
@@ -7163,7 +7914,7 @@ function renderSmartCanvasLog(){
             <div class="log-thumbs">${thumbs}</div>
         </div>`;
     }).join('') : `<div class="log-empty">${escapeHtml(tr('canvas.noLogs'))}</div>`;
-    smartLogList.querySelectorAll('[data-url]').forEach(el => {
+    smartLogList.querySelectorAll('img[data-url], video[data-url]').forEach(el => {
         el.onclick = e => {
             e.stopPropagation();
             smartLogPreviewNode(el.dataset.url, el.dataset.kind || 'image');
@@ -7183,6 +7934,7 @@ function renderSmartCanvasLog(){
             }, 900);
         };
     });
+    bindSmartAudioPlayers(smartLogList);
     refreshIcons();
     // 重建后把滚动位置还回去，正在翻旧日志时不会被弹回顶部
     if(smartLogList && keepScroll > 0) smartLogList.scrollTop = keepScroll;
@@ -7237,6 +7989,13 @@ ${llmParams}
 </div>`;
 }
 // 智能循环token+节点body HTML带外移 canvas-node-body-html.js（第十八刀）。selected 三件套写入走 setter 回主文件真变量。
+// 镜像方向菜单：只注入执行回调，浮层本身由控制器自建自注册
+if(globalThis.CanvasImageMirrorMenuController){
+    CanvasImageMirrorMenuController.configure({
+        runMirror: (...a) => applyImageMirror(...a),
+        toast: message => toast(message)
+    });
+}
 if(globalThis.CanvasNodeBodyHtml){CanvasNodeBodyHtml.configure({
         canGroupSelectedNodes: (...a) => canGroupSelectedNodes(...a),
         comfyNodeProgressBarHtml: (...a) => comfyNodeProgressBarHtml(...a),
@@ -7247,10 +8006,12 @@ if(globalThis.CanvasNodeBodyHtml){CanvasNodeBodyHtml.configure({
         jimengQueueText: (...a) => jimengQueueText(...a),
         mediaKindForItem: (...a) => mediaKindForItem(...a),
         openImageEditor: (...a) => openImageEditor(...a),
+        openImageMirrorMenu: (nodeId, imageIndex, anchor) => globalThis.CanvasImageMirrorMenuController?.open(nodeId, imageIndex, anchor),
         promptNodeBodyHtml: (...a) => promptNodeBodyHtml(...a),
         selectedLayoutNodes: (...a) => selectedLayoutNodes(...a),
         setImageEditMode: (...a) => setImageEditMode(...a),
         singleMediaHtml: (...a) => singleMediaHtml(...a),
+        aspectGroupImageSize: (...a) => aspectGroupImageSize(...a),
         smartCascadeRunForLoop: (...a) => smartCascadeRunForLoop(...a),
         smartCascadeStopText: (...a) => smartCascadeStopText(...a),
         smartImageNameLabelHtml: (...a) => smartImageNameLabelHtml(...a),
@@ -7583,7 +8344,7 @@ const title = isScript ? '剧本' : isTable ? '镜头表' : node.type === 'smart
         const comfyNodeNote = node.comfyError
             ? `<div class="comfy-node-note error">${escapeHtml(`失败：${node.comfyError}`)}</div>`
             : node.comfyNotice ? `<div class="comfy-node-note">${escapeHtml(node.comfyNotice)}</div>` : '';
-const html = `<div class="image-node ${isEmpty ? 'empty-node' : ''} ${isGroup ? 'group-node' : ''} ${node.groupLayout?.mode === 'preserve' ? 'preserved-group-node' : ''} ${isCanvasGroupNode(node) ? 'canvas-group-node' : ''} ${isHistory ? 'history-group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isScript ? 'script-smart-node' : ''} ${isTable ? 'table-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isBlenderPreview ? 'blender-preview-node' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''} ${node.comfyStatus === 'running' ? 'comfy-running' : ''} ${node.comfyStatus === 'queued' ? 'comfy-queued' : ''} node-status-${escapeHtml(node.status || 'ready')} node-role-${escapeHtml(node.role || 'media')}" data-id="${escapeHtml(node.id)}" data-status="${escapeHtml(node.status || 'ready')}" data-role="${escapeHtml(node.role || 'media')}" data-comfy-status="${escapeHtml(node.comfyStatus || '')}" ${(node.comfyStatus === 'queued' && Number(node.comfyQueuePosition ?? -1) > 0) ? `data-comfy-queue="${Number(node.comfyQueuePosition)}"` : ''} style="left:${node.x || 0}px;top:${node.y || 0}px;width:${layout.width}px;height:${layout.height}px;z-index:${isCanvasGroupNode(node) ? 1 : nodeLayerZ(node)}">
+const html = `<div class="image-node ${isEmpty ? 'empty-node' : ''} ${node.type === 'smart-speech' ? 'speech-smart-node' : ''} ${isGroup ? 'group-node' : ''} ${node.groupLayout?.mode === 'preserve' ? 'preserved-group-node' : ''} ${isCanvasGroupNode(node) ? 'canvas-group-node' : ''} ${isHistory ? 'history-group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isScript ? 'script-smart-node' : ''} ${isTable ? 'table-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isBlenderPreview ? 'blender-preview-node' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''} ${node.comfyStatus === 'running' ? 'comfy-running' : ''} ${node.comfyStatus === 'queued' ? 'comfy-queued' : ''} node-status-${escapeHtml(node.status || 'ready')} node-role-${escapeHtml(node.role || 'media')}" data-id="${escapeHtml(node.id)}" data-status="${escapeHtml(node.status || 'ready')}" data-role="${escapeHtml(node.role || 'media')}" data-comfy-status="${escapeHtml(node.comfyStatus || '')}" ${(node.comfyStatus === 'queued' && Number(node.comfyQueuePosition ?? -1) > 0) ? `data-comfy-queue="${Number(node.comfyQueuePosition)}"` : ''} style="left:${node.x || 0}px;top:${node.y || 0}px;width:${layout.width}px;height:${layout.height}px;z-index:${isCanvasGroupNode(node) ? 1 : nodeLayerZ(node)}">
             <div class="node-head"><div class="node-title">${node.canvasSetEnabled === true ? `<span class="node-set-badge" title="${escapeAttr(tr('smart.setBadgeTip'))}">SET</span>` : ''}${title}</div><div class="node-actions">${deleteBtn}</div></div>
             ${isCanvasGroupNode(node) ? `<div class="canvas-group-header"><span class="canvas-group-title-display" title="双击重命名">${escapeHtml(node.title || '未命名组')}</span><button class="canvas-group-delete node-delete" type="button" title="删除组"><i data-lucide="trash-2"></i></button></div>` : ''}
             ${!isCanvasGroupNode(node) ? (!isEmpty ? `<div class="floating-node-set">${canvasNodeSetToggleHtml(node)}</div>${((node.type === 'smart-image' || node.type === 'smart-video' || node.type === 'smart-audio' || !node.type) && hasOut) ? '<button class="node-move-lines" type="button" title="把线移到新素材（点此节点，再点目标素材，旧素材所有连线整体平移，图片与节点均不动）"><i data-lucide="link"></i></button>' : ''}${(node.type === 'smart-image' || node.type === 'smart-video' || node.type === 'smart-audio' || !node.type) ? '<button class="upload-node-btn" type="button" data-upload-action="files"><i data-lucide="upload"></i><span>上传</span></button>' : ''}<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>` : `<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>`) : ''}
@@ -7592,7 +8353,7 @@ const html = `<div class="image-node ${isEmpty ? 'empty-node' : ''} ${isGroup ? 
             <div class="node-body">${body}</div>
             ${!isImageNode ? smartNodeToolbarHtml() : ''}
             <div class="node-hint">${hint}</div>
-            ${isCanvasGroupNode(node) || imgs.length || node.pending || isQueued || isJimengPending || isPrompt || isLoop || isTable ? '<div class="node-resize-handle" data-resize="1"></div>' : ''}
+            ${isCanvasGroupNode(node) || imgs.length || node.pending || isQueued || isJimengPending || isPrompt || isLoop || isTable || node.type === 'smart-speech' ? '<div class="node-resize-handle" data-resize="1"></div>' : ''}
             ${canvasPortDotsHtml(node, 'input')}
             ${canvasPortDotsHtml(node, 'output')}
         </div>`;
@@ -7716,7 +8477,7 @@ function measureSmartNodeImages(){
             image.natural_w = w;
             image.natural_h = h;
             applyThumbDisplaySizeToElement(itemEl, image, Math.max(itemEl?.clientWidth || 0, itemEl?.clientHeight || 0));
-            if((node.images || []).length === 1 && !node.w && !node.h){
+            if(!fitAutoGroupMemberToSlot(node, image) && (node.images || []).length === 1 && !node.w && !node.h){
                 const layout = singleImageLayout(image, node, mediaNodeDefaultScale(node));
                 node.w = layout.width;
                 node.h = layout.height;
@@ -7774,6 +8535,14 @@ function connScissorNearestPoint(path, x, y){
 }
 function updateConnScissorFromEvent(event){
     if(!world || connectionCutState) return;
+    // 交互进行中（平移/框选/拖节点/拖端口/缩节点/拖输入缩略图）直接跳过全量最近线求解。
+    // 求解成本 = 连线数 × 每条 28~84 次 path.getPointAtLength()（同步几何计算），
+    // 百来条连线时每次 pointermove 上万次；平移每帧都触发，是"连线一显示拖动就卡"的头号元凶。
+    // 跳过不影响功能：剪刀只在光标停留时弹出，交互结束后光标停下即恢复跟随。
+    if(panState || selectionState || portDragState || promptResizeState
+        || (inputThumbDragState && inputThumbDragState.active)
+        || document.body.classList.contains('smart-node-drag')
+        || document.body.classList.contains('smart-node-resize')) return;
     const g = world.querySelector('g.conn-scissor');
     if(!g) return;
     // 光标压在节点上时不弹（剪刀会被节点盖住）
@@ -7816,6 +8585,9 @@ function bindConnectionEvents(){
         world.addEventListener('pointerleave', requestHideConnScissor);
     }
     world.querySelectorAll('[data-conn-index]').forEach(el => {
+        // render() 与 refreshConnectionLayer() 可能连续处理同一组 SVG 节点。
+        if(el.__connectionEventsBound) return;
+        el.__connectionEventsBound = true;
         if(el.classList.contains('conn-scissor')){
             el.addEventListener('pointerenter', () => clearTimeout(connScissorHideTimer));
             el.addEventListener('pointerleave', requestHideConnScissor);
@@ -7826,6 +8598,7 @@ function bindConnectionEvents(){
             el.addEventListener('click', e => {
                 e.preventDefault();
                 e.stopPropagation();
+                if(!el.classList.contains('show')) return;
                 const index = Number(el.dataset.connIndex);
                 if(Number.isFinite(index) && index >= 0) disconnectConnection(index);
                 hideConnScissor();
@@ -7844,18 +8617,8 @@ function bindConnectionEvents(){
             const index = Number(el.dataset.connIndex);
             if(Number.isFinite(index)) startConnectionCutGesture(e, index);
         });
-        if(el.classList.contains('conn-hit')){
-            el.addEventListener('dblclick', e => {
-                e.preventDefault(); e.stopPropagation();
-                disconnectConnection(Number(el.dataset.connIndex));
-            });
-            return;
-        }
-        el.addEventListener('click', e => {
-            e.preventDefault(); e.stopPropagation();
-            const index = Number(el.dataset.connIndex);
-            disconnectConnection(index);
-        });
+        // 连线只作为命中区域和切断手势起点；点击删除仅由已显示的剪刀按钮触发。
+        if(el.classList.contains('conn-hit')) return;
     });
 }
 function isConnectionInteractionTarget(target){
@@ -8148,12 +8911,142 @@ function updatePortDragVisual(){
     const path = ensurePortDragPathElement();
     if(path) path.setAttribute('d', `M${fx} ${fy} C ${fx + dx * sign} ${fy}, ${tx - dx * sign} ${ty}, ${tx} ${ty}`);
     world.querySelectorAll('.node-port.is-active').forEach(el => el.classList.remove('is-active'));
-    world.querySelectorAll('.image-node.port-hover').forEach(el => el.classList.remove('port-hover'));
+    world.querySelectorAll('.image-node.port-hover').forEach(el => {
+        if(el.dataset.id !== portDragState.hoverTargetId) el.classList.remove('port-hover');
+    });
     if(portDragState.hoverTargetId){
         const targetNodeEl = world.querySelector(`.image-node[data-id="${portDragState.hoverTargetId}"]`);
         targetNodeEl?.classList.add('port-hover');
         targetNodeEl?.querySelector(`.node-port[data-port="${portDragState.hoverPort}"]`)?.classList.add('is-active');
     }
+}
+// The hit area stays still; only the visible plus follows the pointer inside it.
+world.addEventListener('mousemove', event => {
+    const port = event.target.closest?.('.node-port');
+    if(!port) return;
+    const rect = port.getBoundingClientRect();
+    if(!rect.width || !rect.height) return;
+    const x = Math.max(15, Math.min(69, (event.clientX - rect.left) / rect.width * 84));
+    const y = Math.max(15, Math.min(69, (event.clientY - rect.top) / rect.height * 84));
+    port.style.setProperty('--port-x', `${x}px`);
+    port.style.setProperty('--port-y', `${y}px`);
+}, true);
+world.addEventListener('mouseout', event => {
+    const port = event.target.closest?.('.node-port');
+    if(!port || port.contains(event.relatedTarget)) return;
+    port.style.removeProperty('--port-x');
+    port.style.removeProperty('--port-y');
+}, true);
+// ===== 拖线落空 → 选节点类型（createMenu 复用） =====
+// 菜单里 8 张卡对应的节点类型。判定"能不能接"要按连线方向分开看：
+//  - 往下游接（fromPort==='out'，新节点是终点）：新节点得有能吃这个输入的口子
+//  - 往上游接（fromPort==='in'，新节点是起点）：新节点得出得了东西给下游
+const PORT_DROP_CREATE_TYPES = {
+    image:     {nodeType:'smart-image',  labelKey:null},
+    speech:    {nodeType:'smart-speech', labelKey:null},
+    prompt:    {nodeType:'smart-prompt', labelKey:null},
+    loop:      {nodeType:'smart-loop',   labelKey:null},
+    generator: {nodeType:'smart-image',  labelKey:null},
+    video:     {nodeType:'smart-image',  labelKey:null},
+    rh:        {nodeType:'smart-image',  labelKey:null},
+    comfy:     {nodeType:'smart-image',  labelKey:null}
+};
+// 拖的是输入口（反向拖）时，提示词节点才是合理的上游；拖输出口时它自己没输入口，接不了
+function portDropTypeDisabledReason(type, drag){
+    const meta = PORT_DROP_CREATE_TYPES[type];
+    if(!meta) return '';
+    if(!drag) return '';
+    const ports = canvasNodePorts({type:meta.nodeType});
+    if(drag.fromPort === 'out'){
+        // 新节点要当终点：没有输入口就接不了
+        if(!(ports.inputs || []).length) return tr('smart.portDropNoInput');
+        // 循环节点只吃图片/提示词，源节点不是这两类就白建
+        if(meta.nodeType === 'smart-loop'){
+            const source = nodes.find(n => n.id === drag.fromId);
+            const looksImage = source ? (isSmartImageNode(source) || isCanvasGroupNode(source) || (source.type === 'smart-loop' && source.imageInput)) : false;
+            const looksPrompt = source ? (source.type === 'smart-prompt' || (source.type === 'smart-loop' && source.showPrompt)) : false;
+            if(!looksImage && !looksPrompt) return tr('smart.portDropLoopNeedsImage');
+        }
+        return '';
+    }
+    // 新节点要当起点：没有输出口就供不了下游
+    if(!(ports.outputs || []).length) return tr('smart.portDropNoOutput');
+    return '';
+}
+function refreshCreateMenuAvailability(){
+    if(!createMenu) return;
+    createMenu.querySelectorAll('[data-create-type]').forEach(card => {
+        const reason = pendingPortDrop ? portDropTypeDisabledReason(card.dataset.createType || '', pendingPortDrop.drag) : '';
+        card.classList.toggle('is-disabled', Boolean(reason));
+        card.disabled = Boolean(reason);
+        if(reason){
+            card.dataset.disabledReason = reason;
+            card.title = reason;
+        } else {
+            delete card.dataset.disabledReason;
+            card.removeAttribute('title');
+        }
+    });
+}
+function cancelPendingPortDrop(){
+    if(!pendingPortDrop) return false;
+    pendingPortDrop = null;
+    discardPendingUndo();
+    return true;
+}
+// 菜单定位在落点旁；菜单 520px 宽，优先放右侧，放不下翻到左侧，再夹进视口
+function placeCreateMenuNear(clientX, clientY){
+    if(!createMenu) return;
+    const w = 520;
+    const h = 460;
+    const gap = 16;
+    let left = clientX + gap;
+    if(left + w > window.innerWidth - gap) left = clientX - w - gap;
+    left = Math.max(gap, Math.min(left, window.innerWidth - w - gap));
+    const top = Math.max(gap, Math.min(clientY - 24, window.innerHeight - h - gap));
+    createMenu.style.left = `${left}px`;
+    createMenu.style.top = `${top}px`;
+}
+function openPortDropTypeMenu(drag, worldPoint, dropGroupId, e){
+    createMenuPoint = {x:worldPoint.x, y:worldPoint.y};
+    // mousedown 时 capture 的"拖线前"快照在这里作废：用户可能停留很久才选，
+    // 期间任何自动保存/其它编辑都会让它过期。撤销改由各 create*Node 自己 pushUndo 负责
+    // （它们都是"先 push 快照再加节点"，撤销正好回到拖线前的状态）。
+    discardPendingUndo();
+    pendingPortDrop = {
+        drag,
+        point:{x:worldPoint.x, y:worldPoint.y},
+        dropGroupId: dropGroupId || ''
+    };
+    placeCreateMenuNear(e?.clientX ?? window.innerWidth / 2, e?.clientY ?? window.innerHeight / 2);
+    createMenu.classList.add('open');
+    refreshCreateMenuAvailability();
+    refreshIcons();
+}
+// 用户在菜单里选完类型后：真正建节点 + 接上刚才那条线
+function finishPendingPortDrop(pending, node){
+    if(!pending || !node) return false;
+    if(pendingPortDrop === pending) pendingPortDrop = null;
+    const dropGroup = nodes.find(n => n.id === pending.dropGroupId) || CanvasNodeGestureController.canvasGroupDropTargetFor(node);
+    if(dropGroup) CanvasNodeGestureController.addNodeToCanvasGroup(node, dropGroup);
+    const drag = pending.drag;
+    const toId = drag.fromPort === 'out' ? node.id : drag.fromId;
+    const sourceIds = drag.fromPort === 'out' ? selectedPortDragSourceIds(drag) : [node.id];
+    const connected = connectSelectedNodesToTarget(sourceIds, toId) > 0;
+    if(!connected) toast(tr('smart.portDropConnectFailed'));
+    render();
+    scheduleSave();
+    return true;
+}
+// 拖线落空开菜单后，浏览器仍会为同一次手势派发 click / mousedown（mouseup 之后）。
+// 若不拦，shell.onclick → closeCreateMenu 会把刚开的菜单立刻关掉、pendingPortDrop 被清，
+// 表现为"菜单闪一下就没了"。这里开一个一次性闸门吞掉紧随其后的那一次 mousedown + click。
+let portDropClickGuardUntil = 0;
+function armPortDropClickGuard(){
+    portDropClickGuardUntil = Date.now() + 400;
+}
+function portDropClickGuardActive(){
+    return Date.now() < portDropClickGuardUntil;
 }
 function handlePortDrop(drag, e){
     const {targetId, targetPort, hit, dropGroupId} = (() => {
@@ -8164,7 +9057,7 @@ function handlePortDrop(drag, e){
         let groupId = '';
         if(nodeEl && nodeEl.dataset.id && nodeEl.dataset.id !== drag.fromId){
             const hitNode = nodes.find(n => n.id === nodeEl.dataset.id);
-            if(isCanvasGroupNode(hitNode)){
+            if(isCanvasGroupNode(hitNode) && !portEl){
                 groupId = hitNode.id;
             } else {
                 id = nodeEl.dataset.id;
@@ -8200,17 +9093,11 @@ function handlePortDrop(drag, e){
         discardPendingUndo(); render(); return;
     }
     const p = screenToWorld(e);
-    undoSuppressed = true;
-    const newNode = createImageNodeAt(p, [], {select:true, skipUndo:true});
-    undoSuppressed = false;
-    const dropGroup = nodes.find(n => n.id === dropGroupId) || CanvasNodeGestureController.canvasGroupDropTargetFor(newNode);
-    if(dropGroup) CanvasNodeGestureController.addNodeToCanvasGroup(newNode, dropGroup);
-    const toId = drag.fromPort === 'out' ? newNode.id : drag.fromId;
-    const sourceIds = drag.fromPort === 'out' ? selectedPortDragSourceIds(drag) : [newNode.id];
-    connectSelectedNodesToTarget(sourceIds, toId);
-    commitPendingUndo();
+    // 拖线落空不再写死建万能节点：挂起这次连线意图，弹节点类型菜单让用户选。
+    // 选中后由 createNodeFromMenu → finishPendingPortDrop 真正建节点 + 连线。
+    openPortDropTypeMenu(drag, p, dropGroupId, e);
+    armPortDropClickGuard();
     render();
-    scheduleSave();
 }
 function pickMediaForSmartNode(nodeId){
     const _pickNode = nodes.find(n => n.id === nodeId);
@@ -8219,10 +9106,10 @@ function pickMediaForSmartNode(nodeId){
     input.type = 'file';
     input.accept = 'image/*,video/*,audio/*';
     input.multiple = true;
-    input.onchange = () => {
-        if(input.files?.length) handleFiles(input.files, nodeId);
-        input.remove();
-    };
+        input.onchange = () => {
+            if(input.files?.length) handleFiles(input.files, nodeId, {replaceIfExists:true});
+            input.remove();
+        };
     input.style.position = 'fixed';
     input.style.left = '-9999px';
     input.style.top = '-9999px';
@@ -8258,6 +9145,7 @@ function bindNodeEvents(){
         const nodeForControls = nodeIndex.get(id);
         if(nodeForControls?.type === 'smart-prompt') bindPromptNodeControls(el, nodeForControls);
         if(nodeForControls?.type === 'smart-loop') bindLoopNodeControls(el, nodeForControls);
+        if(nodeForControls?.type === 'smart-speech') CanvasSpeech.bind(el, nodeForControls);
         CanvasNodeActionController.bind(el,id);
         CanvasNodeMediaActions.bind(el,id);
         CanvasImageNodeInteractions.bindItems(el,id);
@@ -9209,6 +10097,67 @@ async function applyImageCrop(){
         scheduleSave();
     }
 }
+// 2026-10-05（老王：画布里加图片镜像）：像素级镜像，复用裁剪/扩图那条
+// 「前端 canvas → toBlob → uploadCroppedBlob → createNode」链路，只在 drawImage
+// 前加方向 transform，其余（导出/上传/命名清洗/落盘）全部沿用既有实现。
+//
+// 为什么不用 CSS 显示层镜像(scaleX(-1))：那样只翻界面，送进 ComfyUI 生成/图生图时
+// 用的仍是原图，会出现「我镜像了怎么生成出来没镜像」的困惑。像素级才是真镜像。
+// 产物是【新节点】放在原节点右边，原素材不动 —— 与裁剪/扩图完全一致，删掉新节点即回退。
+const IMAGE_MIRROR_DIRS = {
+    flipX:    {flipX:true,  flipY:false, suffix:'_mirror_h.png'},
+    flipY:    {flipX:false, flipY:true,  suffix:'_mirror_v.png'},
+    flipBoth: {flipX:true,  flipY:true,  suffix:'_mirror_180.png'}
+};
+function loadImageForMirror(url){
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('图片加载失败'));
+        img.src = url;
+    });
+}
+async function applyImageMirror(nodeId, imageIndex, dir){
+    const conf = IMAGE_MIRROR_DIRS[dir] || IMAGE_MIRROR_DIRS.flipX;
+    const node = nodes.find(item => item.id === nodeId);
+    const image = node?.images?.[imageIndex];
+    if(!node || !image) return false;
+    // 只做图片（老王拍板）：视频/音频素材走 ffmpeg 翻转是另一套，先不碰
+    if(mediaKindForItem(image) !== 'image'){ toast('镜像仅支持图片素材'); return false; }
+    if(!image.url){ toast('该图片没有可用地址'); return false; }
+    try{
+        // 同源可直接读像素（裁剪链路已在用 drawImage，说明这些图没被 CORS 污染）
+        const img = await loadImageForMirror(image.url);
+        const w = img.naturalWidth, h = img.naturalHeight;
+        if(!w || !h) throw new Error('图片尺寸读取失败');
+        const canvasEl = document.createElement('canvas');
+        canvasEl.width = w; canvasEl.height = h;
+        const ctx = canvasEl.getContext('2d');
+        // 水平镜像 = 沿 x 轴翻：先平移到右边界，再把 x 方向缩放取反
+        if(conf.flipX) ctx.translate(w, 0);
+        if(conf.flipY) ctx.translate(0, h);
+        if(conf.flipX) ctx.scale(-1, 1);
+        if(conf.flipY) ctx.scale(1, -1);
+        ctx.drawImage(img, 0, 0, w, h);
+        const blob = await new Promise(resolve => canvasEl.toBlob(resolve, 'image/png'));
+        if(!blob) throw new Error('导出失败');
+        const base = (image.name || 'image').replace(/\.[^.]+$/, '');
+        const file = await uploadCroppedBlob(blob, `${base}${conf.suffix}`);
+        if(!file?.url) throw new Error('上传失败');
+        const mirrored = {...file, kind:'image', natural_w:w, natural_h:h};
+        const layout = imageLayout([mirrored], nodeScale(node), node);
+        const newNode = createNode(Number(node.x || 0) + Number(layout.width || 260) + 36, Number(node.y || 0), [mirrored]);
+        selectedIds = [];
+        selectedImage = {nodeId:newNode.id, index:0};
+        render();
+        scheduleSave();
+        toast('已生成镜像图');
+        return true;
+    }catch(err){
+        toast(`镜像失败：${err?.message || err}`);
+        return false;
+    }
+}
 async function applyImageOutpaint(){
     if(!cropState) return;
     const {node, image} = currentEditImage();
@@ -9339,6 +10288,11 @@ function savePromptDraftForCurrent(){
         delete promptInput.dataset.preserveDraftOnce;
         return;
     }
+    const hasImageMentionToken = promptHtmlHasImageMentionToken(promptInput?.innerHTML || '');
+    if(promptInput?.dataset?.promptDraftHadImageMention === '1' && !hasImageMentionToken){
+        subject.promptDraftRefsEdited = true;
+    }
+    if(promptInput) promptInput.dataset.promptDraftHadImageMention = hasImageMentionToken ? '1' : '0';
     subject.promptDraftHtml = promptInput.innerHTML;
     subject.promptDraftText = promptPlainText();
     if(subject.runSettings?.engine === 'blender' || settings.engine === 'blender'){
@@ -9360,7 +10314,9 @@ function setPromptDraftForNode(node, text){
     }
 }
 function loadPromptDraft(subject){
-    if(subject?.promptDraftHtml){
+    if(subject?.promptDraftRefsEdited){
+        promptInput.innerHTML = subject.promptDraftHtml || escapeHtml(subject.promptDraftText || '');
+    } else if(subject?.promptDraftHtml){
         const hasToken = promptHtmlHasMentionToken(subject.promptDraftHtml);
         promptInput.innerHTML = hasToken
             ? subject.promptDraftHtml
@@ -9372,16 +10328,24 @@ function loadPromptDraft(subject){
     } else {
         setPromptText('');
     }
+    if(CanvasPlainTextPaste.cleanFormatting(promptInput) && subject){
+        subject.promptDraftHtml = promptInput.innerHTML;
+        scheduleSave();
+    }
+    promptInput.dataset.promptDraftHadImageMention = promptHtmlHasImageMentionToken(promptInput.innerHTML) ? '1' : '0';
     refreshPromptPlaceholderVisible();
+    renderComposerStyleControl();
 }
 function positionComposerForNode(node){
     if(!node) return;
     const rect = nodeRect(node);
-    const gap = 14;
-    const cardW = settings.engine === 'comfy' ? 560 : 540;
+    const scale = safeScale(viewport.scale);
+    const cardW = Math.max(280, Math.min(825, shell.clientWidth * 0.615));
     composer.style.width = `${cardW}px`;
-    composer.style.left = `${rect.x + rect.width / 2 - cardW / 2}px`;
-    composer.style.top = `${rect.y + rect.height + gap}px`;
+    const nodeCenterX = viewport.x + (rect.x + rect.width / 2) * scale;
+    const nodeBottomScreen = viewport.y + (rect.y + rect.height) * scale;
+    composer.style.left = `${(nodeCenterX - cardW / 2 - viewport.x) / scale}px`;
+    composer.style.top = `${(nodeBottomScreen + 14 - viewport.y) / scale}px`;
 }
 function isAudioOnlyNode(node){
     const imgs = node?.images || [];
@@ -9396,7 +10360,7 @@ function updateComposer(){
         lastComposerNodeId = '';
         return;
     }
-    if(isAudioOnlyNode(node)){
+    if(node?.type === 'smart-speech' || isAudioOnlyNode(node)){
         savePromptDraftForCurrent();
         composer.classList.remove('open');
         activeComposerSubject = null;
@@ -9431,14 +10395,14 @@ function updateComposer(){
     }
     setPromptInputLocked(false);
     syncCascadeRunButton(node);
-    positionComposerForNode(node);
-    const ph = Math.max(60, Math.min(380, Number(settings.promptH) || 124));
+    const ph = Math.max(60, Math.min(380, Number(settings.promptH) || 93));
     promptInput.style.setProperty('--prompt-h', `${ph}px`);
     renderInputThumbsRow(node);
     renderInputPromptPreview(node);
     syncCascadeRunButton(node);
     syncRunButtonAvailability(node);
     updateProviderModels();
+    positionComposerForNode(node);
 }
 function renderInputPromptPreview(node){
     if(!inputPromptPreview) return;
@@ -9515,6 +10479,7 @@ if(globalThis.CanvasObjectRefPicker){CanvasObjectRefPicker.configure({
         canvasNodeResultKind: (...a) => canvasNodeResultKind(...a),
         canvasObjectRefPickerEl: (...a) => canvasObjectRefPickerEl(...a),
         canvasObjectReferencesFor: (...a) => canvasObjectReferencesFor(...a),
+        disconnectCanvasObjectReference: (...a) => disconnectCanvasObjectReference(...a),
         canvasSetSourceNodes: (...a) => canvasSetSourceNodes(...a),
         canvasThumbnailUrl: (...a) => canvasThumbnailUrl(...a),
         escapeHtml: (...a) => escapeHtml(...a),
@@ -9552,6 +10517,7 @@ CanvasImageNodeMediaController.configure({
     getNodes: () => nodes,
     selectedNode: () => selectedNode(),
     isImageNode: node => isSmartImageNode(node),
+    createGroupFromImages: (images, options) => createCanvasGroupFromImages(images, options),
     viewportCenter: () => viewportCenter(),
     createEmptyNodeAt: point => {
         undoSuppressed = true;
@@ -9625,9 +10591,19 @@ function expectedOutputSize(){
             const h = Number(settings.height) || 1024;
             return {w, h};
         }
+        // comfy 图像工作流的真实尺寸由工作流内的分辨率节点决定，composer 的 comfy-layout 里
+        // 也根本没有比例控件（settings.ratio 对它无意义），所以维持 1024×1024 中性方图。
         return {w:1024, h:1024};
     }
-    if(settings.engine === 'runninghub') return {w:1024, h:1024};
+    // 2026-10-06（老王："工作流类的任务怎么一运行，节点就先变成正方形窗口？而不是按设定的比例显示窗口"）：
+    // runninghub 原来在这里直接 return {w:1024,h:1024}。RH 的比例是随请求发给后端的（sizeForRun），
+    // 输出真的就是面板选的那个比例，硬编码方图等于骗人 —— 一运行，占位框走
+    // displayBoxFromNaturalSize(1024×1024) 被 singleImageLayout 的 520×440 上限一夹，
+    // 就成了 440×440 的正方形，面板选 16:9 完全不起作用（API 类走 isApiLikeEngine 分支，一直是对的）。
+    // 现在删掉这行 → 落到下面的 sizeForRun()，与 API 类口径一致。
+    // ⚠️ expectedOutputSize 全局只有 pendingBaseBoxSize 一个调用方，且只在
+    //    explicitRequestOutputSizeForPending / pendingSourceBoxSize 都没结论时才轮到，
+    //    改它只影响「运行中占位框的形状」，不碰任何真实请求尺寸。
     const sizeStr = sizeForRun();
     const parsed = parseSizeValue(sizeStr);
     if(parsed){
@@ -9644,6 +10620,18 @@ function explicitRequestOutputSizeForPending(){
         const w = Number(settings.width) || 1024;
         const h = Number(settings.height) || 1024;
         return {w, h};
+    }
+    // comfy 自定义工作流 + 视频：占位框按面板选的视频比例算，不能跟输入参考图走。
+    // 否则竖版参考图（如 1152x2048）会把 16:9 的视频占位框拉成 9:16，用户以为设置没生效。
+    // 输出真实尺寸由工作流内部分辨率节点决定，这里只负责把"用户选的比例"显示出来。
+    if(settings.engine === 'comfy' && settings.comfyMode === 'custom' && settings.apiKind === 'video'){
+        const am = String(settings.videoAspect || '').match(/^(\d+)\s*:\s*(\d+)$/);
+        if(am){
+            const aw = Number(am[1]) || 16;
+            const ah = Number(am[2]) || 9;
+            const base = 480;   // 短边取 480：占位框只需要比例正确，displayBoxFromNaturalSize 会再做布局缩放
+            return aw >= ah ? {w: Math.round(base * aw / ah), h: base} : {w: base, h: Math.round(base * ah / aw)};
+        }
     }
     return null;
 }
@@ -9713,7 +10701,72 @@ function mentionTokenHtml(img){
     const media = kind === 'video'
         ? `<video src="${escapeHtml(img.url)}" muted preload="metadata" playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"></video>`
         : `<img src="${escapeHtml(img.url)}" alt="">`;
- return `<span class="mention-image-token" contenteditable="false" data-url="${escapeHtml(img.url)}" data-kind="${escapeHtml(kind)}" data-name="${escapeHtml(name)}" data-node-id="${escapeHtml(img.nodeId || '')}" data-image-index="${escapeHtml(img.imageIndex ?? '')}">${media}<span>${escapeHtml(name)}</span></span>`;
+ return `<span class="mention-image-token" contenteditable="false" data-url="${escapeHtml(img.url)}" data-kind="${escapeHtml(kind)}" data-name="${escapeHtml(name)}" data-node-id="${escapeHtml(img.nodeId || '')}" data-image-index="${escapeHtml(img.imageIndex ?? '')}">${media}<span>${escapeHtml(name)}</span>${promptImageMentionRemoveButtonHtml()}</span>`;
+}
+function promptImageMentionRemoveButtonHtml(){
+ const label = escapeHtml(tr('common.delete'));
+ return `<button class="mention-image-token-remove" type="button" title="${label}" aria-label="${label}"></button>`;
+}
+function mentionImageTokenAdjacentToCaret(direction){
+ const selection = window.getSelection();
+ if(!selection?.rangeCount || !selection.isCollapsed) return null;
+ const node = selection.anchorNode;
+ const offset = selection.anchorOffset;
+ if(!node || (node !== promptInput && !promptInput.contains(node))) return null;
+ let candidate = null;
+ if(node.nodeType === Node.TEXT_NODE){
+  const text = node.textContent || '';
+  if(direction === 'backward'){
+   if(offset !== 0) return null;
+   candidate = node.previousSibling;
+  } else {
+   if(offset !== text.length) return null;
+   candidate = node.nextSibling;
+  }
+ } else if(node.nodeType === Node.ELEMENT_NODE){
+  candidate = node.childNodes[direction === 'backward' ? offset - 1 : offset] || null;
+ }
+ while(candidate?.nodeType === Node.TEXT_NODE && !candidate.textContent){
+  candidate = direction === 'backward' ? candidate.previousSibling : candidate.nextSibling;
+ }
+ return candidate?.classList?.contains('mention-image-token') ? candidate : null;
+}
+function removePromptImageMention(token){
+ if(!promptInput || !token || !promptInput.contains(token)) return false;
+ const parent = token.parentNode;
+ const tokenIndex = Array.prototype.indexOf.call(parent.childNodes, token);
+ const previous = token.previousSibling;
+ const next = token.nextSibling;
+ if(next?.nodeType === Node.TEXT_NODE && /^[ \u00a0]/.test(next.textContent || '')){
+  next.textContent = next.textContent.slice(1);
+ }
+ token.remove();
+ if(mentionPreview){
+  mentionPreview.style.display = 'none';
+  const previewMedia = mentionPreview.querySelector('img,video');
+  previewMedia?.pause?.();
+  previewMedia?.removeAttribute('src');
+  previewMedia?.load?.();
+ }
+ const subject = activeComposerNode();
+ if(subject) subject.promptDraftRefsEdited = true;
+ promptInput.focus();
+ const range = document.createRange();
+ if(previous?.nodeType === Node.TEXT_NODE && promptInput.contains(previous)){
+  range.setStart(previous, previous.textContent.length);
+ } else if(next?.nodeType === Node.TEXT_NODE && promptInput.contains(next)){
+  range.setStart(next, 0);
+ } else {
+  range.setStart(parent, Math.min(tokenIndex, parent.childNodes.length));
+ }
+ range.collapse(true);
+ const selection = window.getSelection();
+ if(selection){
+  selection.removeAllRanges();
+  selection.addRange(range);
+ }
+ promptInput.dispatchEvent(new Event('input', {bubbles:true}));
+ return true;
 }
 function insertImageReferenceIntoPrompt(ref){
  if(!promptInput || !ref?.url) return false;
@@ -9828,7 +10881,7 @@ function connectInputNode(fromId, toId){
     const to = nodes.find(n => n.id === toId);
     if(!from || !to || from.id === to.id) return false;
     if(to.type === 'smart-loop'){
-        const looksImage = isSmartImageNode(from) || (from.type === 'smart-loop' && from.imageInput);
+        const looksImage = isSmartImageNode(from) || (isCanvasGroupNode(from) && imagesForNode(from).some(img => img?.url)) || (from.type === 'smart-loop' && from.imageInput);
         const looksPrompt = from.type === 'smart-prompt' || (from.type === 'smart-loop' && from.showPrompt);
         if(looksImage && !to.imageInput) to.imageInput = true;
         if(looksPrompt && !to.showPrompt) to.showPrompt = true;
@@ -9857,7 +10910,17 @@ function inputNodesFor(node){
 function workflowInputNodesFor(node){
     return upstreamNodesForKinds(node, ['input', 'flow']);
 }
-function imagesForNode(node){
+function imagesForNode(node, visitedGroups=new Set()){
+    if(!node) return [];
+    if(isCanvasGroupNode(node)){
+        if(visitedGroups.has(node.id)) return [];
+        const nextVisited = new Set(visitedGroups);
+        nextVisited.add(node.id);
+        return (node.memberIds || [])
+            .map(id => nodes.find(candidate => candidate.id === id))
+            .filter(Boolean)
+            .flatMap(member => imagesForNode(member, nextVisited));
+    }
     ensureNodeTextMedia(node);
     return (node?.images || []).map((img, index) => ({...imageForDisplay(img), nodeId:node.id, imageIndex:index}));
 }
@@ -10169,15 +11232,12 @@ function positionMentionPickerAtCaret(){
         caretRect = range.getClientRects()[0] || range.getBoundingClientRect();
     }
     const inputRect = promptInput.getBoundingClientRect();
-    // composer 在 world 里被 viewport.scale 缩放过，getBoundingClientRect 返回的是缩放后的屏幕像素，
-    // 而 style.left/top 是逻辑像素 → 需要除以 scale 才能正确还原 caret 的逻辑坐标
-    const scale = (typeof viewport !== 'undefined' && Number(viewport?.scale)) || 1;
-    const safeScale = scale > 0 ? scale : 1;
-    const rowLogicalWidth = rowRect.width / safeScale;
+    // composer 本体反向抵消画布缩放后，内部坐标与屏幕像素保持 1:1。
+    const rowLogicalWidth = rowRect.width;
     const pickerWidth = mentionPicker.offsetWidth || 340;
     const maxLeft = Math.max(4, rowLogicalWidth - pickerWidth - 4);
-    const rawLeft = ((caretRect?.left || inputRect.left) - rowRect.left) / safeScale - 6;
-    const rawTop = ((caretRect?.bottom || inputRect.top + 24) - rowRect.top) / safeScale + 2;
+    const rawLeft = (caretRect?.left || inputRect.left) - rowRect.left - 6;
+    const rawTop = (caretRect?.bottom || inputRect.top + 24) - rowRect.top + 2;
     const left = Math.max(4, Math.min(rawLeft, maxLeft));
     const top = Math.max(2, rawTop);
     mentionPicker.style.left = `${left}px`;
@@ -10235,6 +11295,7 @@ function insertMentionToken(img){
     token.innerHTML = token.dataset.kind === 'video'
         ? `<video src="${escapeHtml(img.url)}" muted preload="metadata" playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"></video><span>${escapeHtml(token.dataset.name)}</span>`
         : `<img src="${escapeHtml(img.url)}" alt=""><span>${escapeHtml(token.dataset.name)}</span>`;
+    token.insertAdjacentHTML('beforeend', promptImageMentionRemoveButtonHtml());
     range.insertNode(token);
     const spacer = document.createTextNode(' ');
     token.after(spacer);
@@ -10533,6 +11594,7 @@ function extractCurrentImagesToSource(node, meta=null){
 }
 async function finalizePendingNode(pendingNode, urls, meta, kind='image'){
     if(!pendingNode) return;
+    urls = CanvasGenerationResultModel.uniqueMediaItems(urls);
     const ext = kind === 'video' ? 'mp4' : kind === 'audio' ? 'mp3' : kind === 'text' ? 'txt' : 'png';
     const date = new Date();
     const outputTitle = pendingNode.title || meta?.displayPrompt || meta?.promptText || '';
@@ -10904,28 +11966,49 @@ function syncRunButtonAvailability(node=selectedNode()){
     // comfyStatus 覆写成后端即时值（20112 行）—— 只认 running 的话，点下运行后按钮要么压根不亮、
     // 要么只亮一瞬就灭，看起来就是"动效不到 1 秒就变回来，但后台还在跑"。
     const isComfyRunning = Boolean(node && node.comfyJobId && ['running', 'queued'].includes(node.comfyStatus));
-    // 2026-09-16 运行按钮分类动效：AP 类（api/volcengine，对应 api-single-row / api-video-row 布局）
-    // 运行时单独挂 is-ap-running，与 ComfyUI 运行的 is-running/is-stop 区分，使两类运行态颜色/动效不同。
-    const apScope = runBtn.closest('.api-single-row, .api-video-row');
+    // 2026-10-05 老王定调：运行按钮分两种动效，按「工作流类 / 非工作流类」分，不按布局 class 分。
+    //   工作流类（comfy 本地 + runninghub 云端）→ 红态 is-running/is-stop，节点侧配进度环 + 流光。
+    //   其余（api / volcengine / blender 3D预演）→ 蓝色波纹 is-ap-running。
+    // 判定改用 isWorkflowEngine(settings.engine)（见 isWorkflowEngine 定义处），
+    // 不再用 apScope=closest('.api-single-row,.api-video-row') 判 API 身份 ——
+    // 那两个 class 与 RH 的 .rh-single-row 互斥，RH 永远命中不了，导致 RH 按钮毫无动效。
+    const engineIsWorkflow = isWorkflowEngine(settings.engine);
+    // 工作流类运行中：ComfyUI 认 comfyJobId（queued 也算，见上）；
+    // RH 没有 comfyJobId，认 runner 置的 comfyStatus='running' + comfyIndeterminate（canvas-generation-runner.js:148-153）。
+    const isWorkflowRunning = Boolean(node
+        && (node.comfyJobId ? ['running', 'queued'].includes(node.comfyStatus)
+            : (node.comfyStatus === 'running' && !node.comfyJobId)));
+    // 2026-09-16 运行按钮分类动效：非工作流类（api/volcengine/blender）运行时单独挂 is-ap-running，
+    // 与工作流类运行的 is-running/is-stop 区分，使两类运行态颜色/动效不同。
     // 2026-09-17：API 类运行态改用 node.apiRunning（与 node.running 解耦）。
     // 之前 isApRunning 依赖 node.running，而 API 并发任务里 node.running 被刻意保持 false
     // （避免锁住共享运行按钮），结果点运行后 is-ap-running 永远不触发、毫无动效。
     // node.apiRunning 由运行流程显式置位/清除，只管「动效」，不参与「禁用」判定。
-    const isApRunning = Boolean(node && (node.running || node.apiRunning) && !isComfyRunning && apScope);
-    // 选中节点正在 ComfyUI 运行时，按钮变"停止"，可点击；否则按原逻辑
+    const isApRunning = Boolean(node && (node.running || node.apiRunning)
+        && !isWorkflowRunning && !engineIsWorkflow);
+    // 选中节点正在 ComfyUI 本地运行时，按钮变"停止"，可点击；否则按原逻辑
     // 2026-09-23：smartCascadeAnyRunning() 是「级联批量运行」的标志位，它一旦卡在 true，
     // 会把普通单节点的运行按钮一起禁用 —— 表现就是「跑了一个之后别的节点全点不动」。
     // 任务现已改走后端 FIFO 队列，多节点提交只会排队、不会互相冲突，
     // 所以这里只保留「当前节点自己在跑」的禁用判定。
-    runBtn.disabled = isComfyRunning ? false : Boolean(node?.running);
-    runBtn.classList.toggle('is-running', isComfyRunning);
-    runBtn.classList.toggle('is-stop', isComfyRunning);
+    // ⚠️ 只有本地 ComfyUI 可停：cancelComfyJob 依赖 comfyJobId 打后端 cancel/interrupt，
+    // RH 没有 jobId，走那条路只会误清状态（canvas-comfy-job-engine.js:217-251）。
+    // 所以工作流类里再分「可停（ComfyUI）」与「仅显示（RH）」，后者 disabled。
+    const canStop = isComfyRunning;
+    // 工作流类里「不可停」的那一支（云端 RH）单独一个 class，走红底+进度条+流光（见 CSS is-wf-cloud）
+    const isWfCloud = isWorkflowRunning && !canStop;
+    runBtn.disabled = canStop ? false : Boolean(node?.running) || (engineIsWorkflow && isWorkflowRunning);
+    runBtn.classList.toggle('is-running', isWorkflowRunning);
+    runBtn.classList.toggle('is-stop', canStop);
+    runBtn.classList.toggle('is-wf-cloud', isWfCloud);
     runBtn.classList.toggle('is-ap-running', isApRunning);
-    runBtn.setAttribute('data-comfy-state', isComfyRunning ? 'running' : (isApRunning ? 'ap-running' : 'idle'));
+    // 数据态给 CSS/调试用：wf-running（工作流类，含不可停的 RH）/ ap-running / idle
+    runBtn.setAttribute('data-comfy-state', isWorkflowRunning ? 'running' : (isApRunning ? 'ap-running' : 'idle'));
+    // 只有可停的工作流任务才显示「停止」文案；RH 显示「生成中」但按钮 disabled
     const label = runBtn.querySelector('[data-i18n], span');
     if(label){
-        const runningText = isComfyRunning ? tr('smart.stop') : (isApRunning ? '生成中' : tr('smart.run'));
-        label.dataset.i18n = isComfyRunning ? 'smart.stop' : (isApRunning ? 'common.running' : 'smart.run');
+        const runningText = canStop ? tr('smart.stop') : (isWorkflowRunning || isApRunning ? '生成中' : tr('smart.run'));
+        label.dataset.i18n = canStop ? 'smart.stop' : ((isWorkflowRunning || isApRunning) ? 'common.running' : 'smart.run');
         label.textContent = runningText;
         runBtn.setAttribute('aria-label', runningText);
     }
@@ -11042,7 +12125,7 @@ function appendOutputsToNode(node, additions, kind='image', options={}){
     const beforeRight = (Number(node.x) || 0) + nodeRect(node).width;
     const existing = (node.images || []).filter(img => img?.url).map(img => stripImageGenerationMeta(img));
     const next = additions.map(img => stripImageGenerationMeta({...img}));
-    node.images = [...existing, ...next];
+    node.images = CanvasGenerationResultModel.uniqueMediaItems([...existing, ...next]);
     node.pending = 0;
     node.running = false;
     node.runFinishedAt = nowMs();
@@ -11079,7 +12162,9 @@ function syncCascadeRunButton(node=selectedNode()){
     refreshIcons();
 }
 function loadNodePromptDraftToInput(node){
-    if(node?.promptDraftHtml) {
+    if(node?.promptDraftRefsEdited) {
+        promptInput.innerHTML = node.promptDraftHtml || escapeHtml(node.promptDraftText || '');
+    } else if(node?.promptDraftHtml) {
         const hasToken = promptHtmlHasMentionToken(node.promptDraftHtml);
         promptInput.innerHTML = hasToken
             ? node.promptDraftHtml
@@ -11088,6 +12173,10 @@ function loadNodePromptDraftToInput(node){
         const rebuilt = promptHtmlWithMentionTokens(node?.runPrompt || '', node?.runPromptRefs || []);
         if(rebuilt) promptInput.innerHTML = rebuilt;
         else setPromptText(node?.runPrompt || '');
+    }
+    if(CanvasPlainTextPaste.cleanFormatting(promptInput) && node){
+        node.promptDraftHtml = promptInput.innerHTML;
+        scheduleSave();
     }
 }
 function buildPromptRequestForNode(node, defaultImages, ctx=smartLoopContext){
@@ -11587,6 +12676,9 @@ if(globalThis.CanvasEngineDispatch){CanvasEngineDispatch.configure({
         canvasLLMEndpointForPayload: (...a) => canvasLLMEndpointForPayload(...a),
         comfyFieldMeta: (...a) => comfyFieldMeta(...a),
         currentComfyWorkflowData: (...a) => currentComfyWorkflowData(...a),
+        expandSkillMentions: (...a) => (typeof CanvasNodePromptPicker !== 'undefined'
+            ? CanvasNodePromptPicker.expandSkillMentions(...a)
+            : Promise.resolve(String(a[0] || ''))),
         imageRefsOnly: (...a) => imageRefsOnly(...a),
         manualSmartMediaLinks: (...a) => manualSmartMediaLinks(...a),
         manualSmartVideoLink: (...a) => manualSmartVideoLink(...a),
@@ -11908,9 +13000,12 @@ function ungroupNode(groupId){
 }
 function closeCreateMenu(){
     createMenu?.classList.remove('open');
+    // 菜单关掉 = 用户没选（或按 Esc），挂起的连线意图作废，灰化状态也要还原
+    if(cancelPendingPortDrop()) refreshCreateMenuAvailability();
 }
 function openCreateMenuFromDock(){
     if(!createMenu || !canvasAddToggle) return;
+    if(cancelPendingPortDrop()) refreshCreateMenuAvailability();
     createMenuPoint = viewportCenter();
     const rect = canvasAddToggle.getBoundingClientRect();
     const w = 520;
@@ -11924,6 +13019,7 @@ function openCreateMenuFromDock(){
 }
 function openCreateMenu(event){
     if(!createMenu) return;
+    if(cancelPendingPortDrop()) refreshCreateMenuAvailability();
     createMenuPoint = screenToWorld(event);
     const w = 520;
     const h = 460;
@@ -11939,15 +13035,19 @@ function setMinimapOpen(open){
 }
 function createNodeFromMenu(type){
     const p = createMenuPoint || viewportCenter();
+    // 拖线落空来的：先摘下 pending（closeCreateMenu 会清状态），建完节点再补连线
+    const pending = pendingPortDrop;
     closeCreateMenu();
-if(type === 'prompt') return createPromptNode(p.x - 158, p.y - 97);
-if(type === 'script' || type === 'llm') return createScriptNode(p.x - 158, p.y - 97);
-if(type === 'loop') return createLoopNode(p.x - 135, p.y - 95);
-    if(type === 'generator') return createSmartGeneratorNode(p, {engine:'blender', apiKind:'image', title:'3D预演'});
-    if(type === 'video') return createSmartGeneratorNode(p, {engine:'api', apiKind:'video', title:'视频生成'});
-    if(type === 'rh') return createSmartGeneratorNode(p, {engine:'runninghub', apiKind:'image', title:'RH生成'});
- if(type === 'comfy') return createSmartGeneratorNode(p, {engine:'comfy', comfyMode:'custom', comfyWorkflow:comfyWorkflows[0]?.name || '', apiKind:'image', title:'ComfyUI 生成'});
-    return createImageNodeAt(p);
+    const finish = node => (pending ? finishPendingPortDrop(pending, node) : node);
+if(type === 'speech') return finish(createSpeechNode(p));
+if(type === 'prompt') return finish(createPromptNode(p.x - 158, p.y - 97));
+if(type === 'script' || type === 'llm') return finish(createPromptNode(p.x - 158, p.y - 97));
+if(type === 'loop') return finish(createLoopNode(p.x - 135, p.y - 95));
+    if(type === 'generator') return finish(createSmartGeneratorNode(p, {engine:'blender', apiKind:'image', title:'3D预演'}));
+    if(type === 'video') return finish(createSmartGeneratorNode(p, {engine:'api', apiKind:'video', title:'视频生成'}));
+    if(type === 'rh') return finish(createSmartGeneratorNode(p, {engine:'runninghub', apiKind:'image', title:'RH生成'}));
+ if(type === 'comfy') return finish(createSmartGeneratorNode(p, {engine:'comfy', comfyMode:'custom', comfyWorkflow:comfyWorkflows[0]?.name || '', apiKind:'image', title:'ComfyUI 生成'}));
+    return finish(createImageNodeAt(p));
 }
 shell.addEventListener('mousedown', e => {
     if(!CanvasViewport.inZoomPreview()) return;
@@ -11966,11 +13066,16 @@ shell.addEventListener('click', e => {
     if(nodeEl?.dataset?.id) exitZoomPreviewToNode(nodeEl.dataset.id);
     else exitZoomPreview(screenToWorld(e));
 }, true);
-function startCanvasMiddlePan(e){
+function startCanvasMiddlePan(e, opts){
     if(!e || e.button !== 1) return false;
+    // 幂等：pointerdown 已启动平移时，随后的 mousedown 不再重置起点（两种事件可能都到达）
+    if(panState){ if(e.cancelable) e.preventDefault(); return true; }
     if(isCanvasMiddlePanExcludedTarget(e.target)) return false;
     if(!shell.contains(e.target)) return false;
-    e.preventDefault();
+    // keepCompat：来自 pointerdown 入口时不能 preventDefault —— 那会抑制整条兼容性鼠标事件链
+    // （mousedown/mousemove/mouseup），平移反而彻底失效。此处仍要拦 Chrome 中键自动滚动，
+    // 故由紧随其后的 mousedown（若派发）补 preventDefault。
+    if(!(opts && opts.keepCompat) && e.cancelable) e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation?.();
     closeSmartImageContextMenu();
@@ -12121,6 +13226,8 @@ shell.onmousedown = e => {
     closeSmartImageContextMenu();
     if(startCanvasMiddlePan(e)) return;
     if(e.target.closest('.image-node') || isCanvasOverlayTarget(e.target)) return;
+    // 同上：吞掉拖线落空那次手势的 mousedown，否则会顺手开始框选并关掉菜单
+    if(portDropClickGuardActive()){ portDropClickGuardUntil = 0; return; }
     closeCreateMenu();
     if(e.button === 0){
         e.preventDefault();
@@ -12143,7 +13250,30 @@ shell.oncontextmenu = e => {
     }
     closeSmartImageContextMenu();
     if(isConnectionInteractionTarget(e.target)) return;
-    if(e.target.closest('.image-node') || isCanvasOverlayTarget(e.target)) return;
+    // 可编辑控件（textarea / input / contenteditable / 提示词框）：弹出画布自带的
+    // 复制/粘贴/全选菜单。真机跑在 WebView2 里，系统原生右键菜单被宿主关掉了，
+    // 所以不能再"放行原生菜单"——必须自己画一个，否则右键提示词框啥都没有（只能靠快捷键）。
+    const editField = CanvasEditableContextMenuController.isEditableTarget(e.target);
+    if(editField){
+        e.preventDefault();
+        e.stopPropagation();
+        CanvasEditableContextMenuController.open(editField, e);
+        return;
+    }
+    const nodeEl = e.target.closest('.image-node');
+    if(nodeEl){
+        const nodeId = nodeEl.dataset?.id;
+        if(!nodeId) return;
+        // 缩略图仍走图片菜单（它有更完整的操作）；其余区域走节点菜单。
+        if(e.target.closest('.thumb-item')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        selectNodeFromPointer(nodeId);
+        syncSelectionUi();
+        CanvasNodeContextMenuController.open(nodeId, e);
+        return;
+    }
+    if(isCanvasOverlayTarget(e.target)) return;
     if(document.getElementById('imageEditModal')?.classList.contains('open')) return;
     e.preventDefault();
     e.stopPropagation();
@@ -12157,6 +13287,8 @@ shell.ondblclick = e => {
     openCreateMenu(e);
 };
 shell.onclick = e => {
+    // 拖线落空刚弹的菜单：吞掉同一次手势带出来的 click，否则菜单会被立刻关掉
+    if(portDropClickGuardActive() && !e.target.closest?.('.create-menu')){ portDropClickGuardUntil = 0; return; }
     if(selectionJustFinished) return;
     closeSmartImageContextMenu();
     if(isConnectionInteractionTarget(e.target)) return;
@@ -12174,10 +13306,33 @@ shell.addEventListener('mousemove', rememberCanvasPointerClient, {passive:true, 
 shell.addEventListener('mouseenter', rememberCanvasPointerClient, {passive:true, capture:true});
 shell.addEventListener('pointerdown', rememberCanvasPointerClient, {passive:true, capture:true});
 shell.addEventListener('mousedown', rememberCanvasPointerClient, {passive:true, capture:true});
+// 中键平移补一条 pointerdown 入口：SVG 元素（连线 path / 剪刀 circle）上中键只派发 pointerdown、
+// 不派发 mousedown，落在连线或已弹出的剪刀按钮上时旧入口收不到事件，导致「线多了没地方拖」。
+// 这里只 stopPropagation（阻止剪刀按钮自己在 pointerdown 里 preventDefault 吞掉事件链），
+// 不动 preventDefault，保证 mousedown/mousemove/mouseup 照常派发，平移驱动不受影响。
+// 放在 rememberCanvasPointerClient 之后，保证先记录指针坐标再启动平移（行为零变更）。
+shell.addEventListener('pointerdown', e => {
+    if(e.button !== 1) return;
+    if(isCanvasMiddlePanExcludedTarget(e.target)) return;
+    if(!shell.contains(e.target)) return;
+    e.stopPropagation();
+    e.stopImmediatePropagation?.();
+    startCanvasMiddlePan(e, {keepCompat:true});
+}, true);
 document.addEventListener('mousedown', e => {
     if(!e.target.closest?.('#smartImageContextMenu')) closeSmartImageContextMenu();
+    // 节点右键菜单：点它自己（按钮）不关，点了外面才关
+    if(!e.target.closest?.('#smartNodeContextMenu')) CanvasNodeContextMenuController.close();
+    // 编辑右键菜单（复制/粘贴/全选）：同理
+    if(!e.target.closest?.('#smartEditableContextMenu')) CanvasEditableContextMenuController.close();
 }, true);
 window.addEventListener('resize', closeSmartImageContextMenu);
+window.addEventListener('resize', () => CanvasNodeContextMenuController.close());
+window.addEventListener('resize', () => CanvasEditableContextMenuController.close());
+document.addEventListener('keydown', e => {
+    if(e.key === 'Escape' && CanvasNodeContextMenuController.isOpen()) CanvasNodeContextMenuController.close();
+    if(e.key === 'Escape' && CanvasEditableContextMenuController.isOpen()) CanvasEditableContextMenuController.close();
+}, true);
 window.addEventListener('dragstart', e => { if(resizeState || dragState){ e.preventDefault(); e.stopPropagation(); } }, true);
 minimap?.addEventListener('mousedown', e => {
     if(e.button !== 0) return;
@@ -12358,7 +13513,9 @@ lastMouseWorld = screenToWorld(e);
         const dx = e.clientX - thumbDragState.startX;
         const dy = e.clientY - thumbDragState.startY;
         const source = nodes.find(n => n.id === thumbDragState.nodeId);
-        if(!thumbDragState.detached && Math.abs(dx) + Math.abs(dy) > 6){
+        // A click on a thumbnail always arms this gesture. Use a deliberate drag
+        // distance so small hand jitter does not split an image out of its group.
+        if(!thumbDragState.detached && Math.hypot(dx, dy) > 12){
             if(source && (source.images || []).length > 1){
                 const img = source.images[thumbDragState.imgIndex];
                 if(img){
@@ -12652,7 +13809,7 @@ if(promptResize){
         e.preventDefault(); e.stopPropagation();
         promptResizeState = {
             startY: e.clientY,
-            startH: Number(settings.promptH) || promptInput.offsetHeight || 124
+            startH: Number(settings.promptH) || promptInput.offsetHeight || 93
         };
         if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.begin('prompt-resize');
     });
@@ -12706,6 +13863,10 @@ if(minimapToggle) minimapToggle.onclick = e => {
 };
 if(assetToggle) assetToggle.onclick = () => toggleAssetLibrary();
 if(assetCloseBtn) assetCloseBtn.onclick = () => toggleAssetLibrary(false);
+if(styleToggle) styleToggle.onclick = () => toggleStylePanel();
+if(styleCloseBtn) styleCloseBtn.onclick = () => toggleStylePanel(false);
+bindStylePanel();
+setSnapEnabled(snapEnabled, {silent:true});
 setCanvasAgentOpen(false);
 installCanvasAgentToggleDrag();
 renderCanvasAgentRefs();
@@ -12988,7 +14149,13 @@ createMenu?.addEventListener('mousedown', event => event.stopPropagation());
 createMenu?.addEventListener('click', event => {
     event.stopPropagation();
     const card = event.target.closest('[data-create-type]');
-    if(card) createNodeFromMenu(card.dataset.createType || 'image');
+    if(!card) return;
+    // 灰化的卡（当前连线方向接不上）点了不建节点，只提示原因
+    if(card.classList.contains('is-disabled')){
+        toast(card.dataset.disabledReason || tr('smart.portDropConnectFailed'));
+        return;
+    }
+    createNodeFromMenu(card.dataset.createType || 'image');
 });
 
 composer.addEventListener('pointerdown', event => event.stopPropagation());
@@ -13022,7 +14189,24 @@ promptInput.addEventListener('keydown', event => {
             return;
         }
     }
+    if((event.key === 'Backspace' || event.key === 'Delete') && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey){
+        const direction = event.key === 'Backspace' ? 'backward' : 'forward';
+        const token = mentionImageTokenAdjacentToCaret(direction);
+        if(token){
+            event.preventDefault();
+            event.stopPropagation();
+            removePromptImageMention(token);
+            return;
+        }
+    }
     if(event.key === 'Escape') closeMentionPicker();
+});
+promptInput.addEventListener('click', event => {
+    const removeButton = event.target.closest?.('.mention-image-token-remove');
+    if(!removeButton) return;
+    event.preventDefault();
+    event.stopPropagation();
+    removePromptImageMention(removeButton.closest('.mention-image-token'));
 });
 promptInput.addEventListener('mouseover', event => {
     const token = event.target.closest?.('.mention-image-token');

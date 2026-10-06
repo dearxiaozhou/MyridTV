@@ -151,6 +151,7 @@ const workflowTitleInput = document.getElementById('workflowTitleInput');
 const subEl = document.getElementById('editorSub');
 const deleteBtn = document.getElementById('deleteBtn');
 const saveBtn = document.getElementById('saveBtn');
+const renameFileBtn = document.getElementById('renameFileBtn');
 const nodeListEl = document.getElementById('nodeList');
 const previewCard = document.getElementById('previewContent');
 const miniCanvasHost = document.getElementById('miniCanvasHost');
@@ -237,9 +238,18 @@ function mergeKnownComfyWorkflows(primary=[], fallback=[]){
     ]);
 }
 function updateKnownComfyWorkflows(primary=[]){
-    const merged = mergeKnownComfyWorkflows(primary, loadLocalComfyWorkflowRegistry());
+    const merged = mergeKnownComfyWorkflows(primary, pruneRegistryAgainstBackend(loadLocalComfyWorkflowRegistry(), primary));
     saveLocalComfyWorkflowRegistry(merged);
     return merged;
+}
+// 后端列表非空时以它为准：本地缓存里后端已不存在（被删除/被改名）的自定义条目不再
+// 合并回注册表，避免已删除的工作流在列表里阴魂不散（旧实现无脑 merge 还会写回缓存）。
+function pruneRegistryAgainstBackend(local=[], primary=[]){
+    const list = Array.isArray(primary) ? primary : [];
+    const backendNames = new Set(list.map(w => String(w?.name || '')).filter(Boolean));
+    if(!backendNames.size) return Array.isArray(local) ? local : [];
+    return (Array.isArray(local) ? local : []).filter(
+        w => w?.builtin === true || backendNames.has(String(w?.name || '')));
 }
 function replaceKnownComfyWorkflows(primary=[]){
     const normalized = normalizeComfyWorkflowEntries(primary);
@@ -646,10 +656,11 @@ function guessType(value, inputName){
     return 'text';
 }
 
-function updateField(fieldId, key, value){
+function updateField(fieldId, key, value, sourceEl){
     const f = currentConfig.fields.find(x => x.id === fieldId);
     if(!f) return;
     f[key] = value;
+    const sourceInPopup = !!(sourceEl && sourceEl.closest && sourceEl.closest('#nodePopup'));
     if(key === 'type'){
         previewValues[fieldId] = (value === 'boolean') ? false : (value === 'number' || value === 'slider' ? 0 : '');
         f.random_enabled = value === 'number' ? !!f.random_enabled : false;
@@ -663,7 +674,8 @@ function updateField(fieldId, key, value){
         syncMiniTestNodes();
         renderPreview();
         if(workspaceMode === 'canvas') renderMiniCanvasPreview(miniCanvasHost, true);
-        if(popupNodeId === f.node) refreshPopupBody();
+        // 浮窗内编辑时不要重建当前输入框，否则每输入一个字符都会失焦。
+        if(popupNodeId === f.node && !sourceInPopup) refreshPopupBody();
         return;
     }
     syncMiniTestNodes();
@@ -680,6 +692,45 @@ function updateWorkflowTitle(value){
     renderList();
 }
 
+async function onRenameFile(){
+    // 把后端文件名也改成显示名，让「前端显示名」和「后端文件名」统一；
+    // 画布里所有引用旧文件名的工作流节点由后端自动改写，无需手动重连。
+    if(!selectedName || !currentConfig) return;
+    const target = String(workflowTitleInput?.value || '').trim();
+    if(!target){ alert('请先填写工作流名称'); return; }
+    const base = target.replace(/\.json$/i, '').trim();
+    const oldBase = selectedName.replace(/\.json$/i, '');
+    if(!base) return;
+    if(base === oldBase){ setStatus('文件名已经一致了'); return; }
+    const confirmText = (typeof tf === 'function' && typeof tr === 'function')
+        ? `把工作流文件也改名为《${base}》？`
+        : `把工作流文件也改名为《${base}》？`;
+    if(!confirm(confirmText + '\n\n画布里引用它的节点会自动同步，不需要手动重连。')) return;
+    setStatus('正在改名…');
+    try {
+        const res = await fetch(`/api/workflows/${encodeURIComponent(selectedName)}/rename`, {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({name: base})
+        });
+        const data = await res.json().catch(() => ({}));
+        if(!res.ok) throw new Error(data.detail || '改名失败');
+        clearComfyWorkflowFetchCache(selectedName);
+        selectedName = data.name || (base + '.json');
+        setStatus('已改名为 ' + selectedName);
+        await loadList();
+        selectWorkflow(selectedName);
+        new BroadcastChannel('studio-api').postMessage({ type: 'workflows-changed' });
+    } catch(e){
+        const msg = String(e?.message || '改名失败');
+        // 后端没加载 rename 路由（Python 改动必须重启软件）时给明确指引，别甩黑话
+        alert(/not found|404/i.test(msg)
+            ? '改名失败：后端还没加载这个功能（改了后端 Python 必须重启软件）。\n请完全退出并重新启动 MyridTV，再点「同步文件名」。'
+            : ('改名失败：' + msg));
+        setStatus('改名失败');
+    }
+}
+
 function setWorkspaceMode(mode){
     workspaceMode = mode === 'canvas' ? 'canvas' : 'graph';
     document.getElementById('workspaceGraphTab')?.classList.toggle('active', workspaceMode === 'graph');
@@ -691,6 +742,7 @@ function renderEditor(){
     if(!currentWorkflow){
         deleteBtn.style.display = 'none';
         saveBtn.style.display = 'none';
+        if(renameFileBtn) renameFileBtn.style.display = 'none';
         nodeListEl.innerHTML = '';
         document.getElementById('graphCard').style.display = 'none';
         document.getElementById('nodesToggle').style.display = 'none';
@@ -702,6 +754,7 @@ function renderEditor(){
     subEl.textContent = tf('comfy.nodeStats', {nodes:Object.keys(currentWorkflow).length, fields:currentConfig.fields.length}) + (isBuiltin ? ` · ${tr('comfy.builtin')}` : '');
     deleteBtn.style.display = isBuiltin ? 'none' : 'inline-flex';
     saveBtn.style.display = 'inline-flex';
+    if(renameFileBtn) renameFileBtn.style.display = isBuiltin ? 'none' : 'inline-flex';
 
     renderGraph();
     renderWorkspaceView();
@@ -1033,7 +1086,7 @@ function renderInputRow(nodeId, inputKey, rawValue){
                 <div class="input-key">${escapeHtml(friendlyName)}${showOriginal ? ` <span style="font-size:10px;font-weight:600;color:var(--faint);margin-left:4px">${escapeHtml(inputKey)}</span>` : ''}</div>
                 <div class="input-orig">${tr('comfy.defaultValue')}${valueBadge}</div>
             </div>
-            <input class="small-input" type="text" placeholder="${tr('comfy.displayName')}" value="${active?escapeAttr(f.name):escapeAttr(friendlyName)}" ${active?'':'disabled'} oninput="updateField('${active?f.id:''}','name',this.value)">
+            <input class="small-input" type="text" placeholder="${tr('comfy.displayName')}" value="${active?escapeAttr(f.name):escapeAttr(friendlyName)}" ${active?'':'disabled'} oninput="updateField('${active?f.id:''}','name',this.value,this)">
             <select class="small-select" ${active?'':'disabled'} onchange="updateField('${active?f.id:''}','type',this.value)">
                 ${TYPES.map(t=>`<option value="${t.v}" ${active && f.type===t.v?'selected':''}>${typeLabel(t.v)}</option>`).join('')}
             </select>
@@ -1048,10 +1101,10 @@ function renderExtras(f){
             ? `<label class="random-toggle" onclick="event.stopPropagation()"><input type="checkbox" ${f.random_enabled === true ? 'checked' : ''} onchange="updateField('${f.id}','random_enabled',this.checked)">随机数</label>`
             : '';
         return `<div class="extras-row">
-            <div class="extra-pair">min<input class="small-input" type="number" value="${f.min ?? ''}" oninput="updateField('${f.id}','min',this.value===''?null:parseFloat(this.value))"></div>
-            <div class="extra-pair">max<input class="small-input" type="number" value="${f.max ?? ''}" oninput="updateField('${f.id}','max',this.value===''?null:parseFloat(this.value))"></div>
-            <div class="extra-pair">step<input class="small-input" type="number" value="${f.step ?? ''}" oninput="updateField('${f.id}','step',this.value===''?null:parseFloat(this.value))"></div>
-            <div class="extra-pair">${tr('comfy.defaultValue')}<input class="small-input" type="number" value="${f.default ?? ''}" oninput="updateField('${f.id}','default',this.value===''?null:parseFloat(this.value))"></div>
+            <div class="extra-pair">min<input class="small-input" type="number" value="${f.min ?? ''}" oninput="updateField('${f.id}','min',this.value===''?null:parseFloat(this.value),this)"></div>
+            <div class="extra-pair">max<input class="small-input" type="number" value="${f.max ?? ''}" oninput="updateField('${f.id}','max',this.value===''?null:parseFloat(this.value),this)"></div>
+            <div class="extra-pair">step<input class="small-input" type="number" value="${f.step ?? ''}" oninput="updateField('${f.id}','step',this.value===''?null:parseFloat(this.value),this)"></div>
+            <div class="extra-pair">${tr('comfy.defaultValue')}<input class="small-input" type="number" value="${f.default ?? ''}" oninput="updateField('${f.id}','default',this.value===''?null:parseFloat(this.value),this)"></div>
             ${randomToggle}
         </div>`;
     }

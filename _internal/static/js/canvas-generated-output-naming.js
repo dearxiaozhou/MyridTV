@@ -47,14 +47,7 @@ async function reserveGeneratedBaseNames(baseName, count=1, ext='png', kind='ima
     return names;
 }
 function uniqueGeneratedMediaItems(items){
-    const seen = new Set();
-    return (items || []).filter(item => {
-        const url = typeof item === 'string' ? item : item?.url || item?.path || item?.src || item?.uri || '';
-        const key = String(url || '').trim();
-        if(!key || seen.has(key)) return false;
-        seen.add(key);
-        return true;
-    });
+    return global.CanvasGenerationResultModel.uniqueMediaItems(items);
 }
 async function smartGeneratedOutputItems(items, kind='image', options={}){
     const ext = deps.generatedOutputExt(kind);
@@ -191,6 +184,20 @@ function updateComfyNodeLiveState(node, job){
         }
         note.textContent = noteText;
         note.classList.toggle('error', Boolean(node.comfyError));
+        // 这条横幅在轮询期间是轻量插入的（不经过全量 render），action-controller 里的
+        // 点击清除绑定覆盖不到 → 在这里补绑，否则失败横幅点了没反应、消不掉。
+        if(!note.dataset.errClearBound){
+            note.dataset.errClearBound = '1';
+            note.addEventListener('click', ev => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                delete node.comfyError;
+                note.remove();
+                el.classList.remove('comfy-failed');
+                deps.render();
+                deps.scheduleSave();
+            });
+        }
     } else if(note){
         note.remove();
     }

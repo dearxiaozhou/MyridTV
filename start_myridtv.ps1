@@ -436,4 +436,20 @@ if (!$NoDesktop -and -not $DesktopStarted) {
     }
 }
 
+# The release updater runs separately from the proxy. A file lock prevents
+# duplicate watchers when the launcher is opened more than once. Source checkouts
+# are never updated automatically, so local development edits stay intact.
+$UpdaterScript = Join-Path $AppDir 'myridtv_updater.py'
+$UpdateKey = Join-Path $AppDir 'update-public-key.pub'
+if (!$NoDesktop -and $PythonExe -and $env:MYRIDTV_UPDATE_FEED_URL -and (Test-Path -LiteralPath $UpdaterScript) -and (Test-Path -LiteralPath $UpdateKey) -and -not (Test-Path -LiteralPath (Join-Path $AppDir '.git'))) {
+    try {
+        $updateLogDir = Join-Path $UserDataRoot 'data\logs'
+        New-Item -ItemType Directory -Force -Path $updateLogDir | Out-Null
+        Start-Process -FilePath $PythonExe -ArgumentList @('-B', $UpdaterScript, '--watch') -WorkingDirectory $AppDir -WindowStyle Hidden -RedirectStandardOutput (Join-Path $updateLogDir 'updater.out.log') -RedirectStandardError (Join-Path $updateLogDir 'updater.err.log') | Out-Null
+        Write-StartupLog 'update watcher launched'
+    } catch {
+        Write-StartupLog "update watcher failed: $($_.Exception.Message)"
+    }
+}
+
 Write-StartupLog "startup end"

@@ -25,3 +25,7 @@ After modifying MyridTV, verify the actual running local application window with
 3. The staged release must contain only a clean `_internal/API/.env.example`, a clean `_internal/data/app_config.template.json`, and empty runtime directories needed for first launch.
 4. `prepare-release.ps1` owns the privacy gate. If its release privacy check fails, stop and fix the package source or exclusion logic before producing an installer.
 5. After packaging, verify both behavior and privacy: launch the staged or installed app, confirm `http://127.0.0.1:3107/health` responds, and scan the staged or installed tree for forbidden runtime files and local-path leaks.
+
+## Theme Regression Rule
+
+After changing theme or interaction styling, audit all shared and component-specific hover, selected, expanded, and focus rules. Cover the home page, task console and statistics, main dock, canvas left and bottom tools, node upload and media actions, API image/video and ComfyUI/RunningHub parameter bars, standalone prompt nodes, material/prompt libraries, and recycle bin. Resolve higher-specificity overrides rather than checking only the component in the user's screenshot. Use shared design tokens for neutral interaction colors; preserve selected, destructive, disabled, and primary-action states. Refresh changed stylesheet cache keys. Verify representative interactions in both light and dark themes in the running application, save screenshots, and distinguish source-only checks from runtime checks in the verification record.

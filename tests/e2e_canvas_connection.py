@@ -11,7 +11,7 @@ e2e_canvas_connection.py
 3. 取消选中（点空白）→ 逐个拖开节点（避免重叠：重叠时端口被覆盖无法命中）
 4. 从一个节点 port-out 拖到另一个节点 port-in → 连线建立
 5. 断言 canvas.connections 新增 {from,to,kind:'input'} + connection-layer path 渲染
-6. 断线：Alt+双击连线 或 evaluate 调断线函数 → canvas.connections 移除
+6. 断线：悬停连线出现剪刀按钮并点击 → canvas.connections 移除
 
 关键教训（2026-09-21 探测）：
 - 测试不能裸开 smart-canvas.html——canvas 是模块级闭包变量（let canvas = null），
@@ -148,8 +148,8 @@ def main():
         paths = page.eval_on_selector_all(".connection-layer path", "els => els.length")
         failures += not check("connection-layer 渲染连线路径", paths >= 4, str(paths))
 
-        # === 7. 断线（Alt+双击连线 或 evaluate 调断线函数）===
-        # 找断线函数：先尝试 evaluate 用 smart-canvas 的切连接函数
+        # === 7. 断线：用当前界面上的剪刀按钮删除连线 ===
+        # 找断线入口，便于诊断接线情况。
         cut_ok = page.evaluate("""() => {
             // 尝试常见的断线入口
             if (typeof disconnectNodes === 'function') { return 'disconnectNodes'; }
@@ -160,23 +160,26 @@ def main():
         }""")
         print(f"  断线函数探测: {cut_ok}")
 
-        # 先试 Alt+双击连线路径（真实交互）：找到连线的 hit 元素双击
-        # conn-hit 元素是连线的点击区
+        # conn-hit 是连线点击区；取 SVG 曲线中点的屏幕坐标，避免命中包围盒空白。
         conn_hit = page.eval_on_selector_all(".conn-hit", "els => els.length")
         failures += not check("连线存在 conn-hit 点击区", conn_hit >= 1, str(conn_hit))
 
         if conn_hit >= 1:
-            # Alt+双击第一个连线 hit（断线手势）
             hit_box = page.eval_on_selector(".conn-hit >> nth=0", """el => {
-                const r = el.getBoundingClientRect();
-                return {cx: Math.round(r.x+r.width/2), cy: Math.round(r.y+r.height/2)};
+                const p = el.getPointAtLength(el.getTotalLength()/2);
+                const screen = new DOMPoint(p.x, p.y).matrixTransform(el.getScreenCTM());
+                return {cx: Math.round(screen.x), cy: Math.round(screen.y)};
             }""")
-            page.keyboard.down("Alt")
-            page.mouse.dblclick(hit_box["cx"], hit_box["cy"])
-            page.keyboard.up("Alt")
-            page.wait_for_timeout(600)
+            page.mouse.move(hit_box["cx"], hit_box["cy"])
+            page.wait_for_function(
+                "() => document.querySelector('svg.connection-layer g.conn-scissor')?.classList.contains('show')",
+                timeout=5000,
+            )
+            page.locator("svg.connection-layer g.conn-scissor.show").click(timeout=5000)
+            page.wait_for_function("() => canvas.connections.length < 1", timeout=5000)
             conns2 = connections()
-            failures += not check("断线后 canvas.connections 减少", len(conns2) < len(conns), f"{len(conns)} -> {len(conns2)}")
+            failures += not check("点击剪刀按钮后 canvas.connections 减少",
+                                  len(conns2) < len(conns), f"{len(conns)} -> {len(conns2)}")
 
         # 无 JS 报错
         real_errors = [e for e in errors if "WebSocket" not in e and "stats" not in e]

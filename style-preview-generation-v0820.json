@@ -1,0 +1,89 @@
+[
+  {
+    "id": "rh-live-cinema",
+    "path": "C:\\Users\\77972\\.codex\\generated_images\\01a0f65d-17ff-7bd3-a757-2ed90b2429c9\\exec-381d65bd-b231-4e16-80f8-483f584cef13.png",
+    "accepted": true
+  },
+  {
+    "id": "rh-2d-cel",
+    "path": "C:\\Users\\77972\\.codex\\generated_images\\01a0f65d-17ff-7bd3-a757-2ed90b2429c9\\exec-b7faf133-fac3-47bf-9670-67fbaccbf70c.png",
+    "accepted": true
+  },
+  {
+    "id": "rh-3d-ue5",
+    "name": "UE5渲染风格",
+    "prompt": "Use case: stylized-concept. Asset type: square style-library preview. [BASE_STYLE] 三维CG渲染，明确的模型体积、接触阴影与空间纵深，统一的材质和灯光响应。UE5游戏引擎电影级三维角色渲染，理想化游戏角色造型、雕塑般转折明确的面部体块，分束有序的CG毛发，PBR材质、受控皮肤散射和渲染高光，可信间接光与接触阴影，保留可辨识的CG画面质感。仅调整美术表现，主体、动作、服装与场景以用户正文为准。\n[CONTENT] An original adult East Asian woman in a simple slate-blue cotton jacket at the open doorway of a wood-and-stone workshop, one hand on a worn wooden table with an unglazed ceramic cup and brass lamp. Natural alert expression, waist-up three-quarter view. Show face, hair, hand, cloth, wood, ceramics and background depth. Square composition with face in upper half.\n[COMPOSITION] A single finished image, never a collage, no text, logo, border or watermark. Follow BASE_STYLE faithfully, including the rendering medium.",
+    "path": "C:\\Users\\77972\\.codex\\generated_images\\01a0f65d-17ff-7bd3-a757-2ed90b2429c9\\exec-5f1cfdae-3e47-4ddf-bcb1-0ebe1e5a14de.png",
+    "accepted": true
+  },
+  {
+    "id": "rh-3d-hand-painted",
+    "name": "手绘质感3D动画",
+    "prompt": "Use case: stylized-concept. Asset type: square style-library preview. [BASE_STYLE] 三维CG渲染，明确的模型体积、接触阴影与空间纵深，统一的材质和灯光响应。三维几何体积为基础，手绘笔触贴图与概括色面覆盖表面，轮廓适度强调，光影带绘画分区，粗细边缘有变化，避免抹平为纯平面插画。仅调整美术表现，主体、动作、服装与场景以用户正文为准。\n[CONTENT] An original adult East Asian woman in a simple slate-blue cotton jacket at the open doorway of a wood-and-stone workshop, one hand on a worn wooden table with an unglazed ceramic cup and brass lamp. Natural alert expression, waist-up three-quarter view. Show face, hair, hand, cloth, wood, ceramics and background depth. Square composition with face in upper half.\n[COMPOSITION] A single finished image, never a collage, no text, logo, border or watermark. Follow BASE_STYLE faithfully, including the rendering medium.",
+    "path": "C:\\Users\\77972\\.codex\\generated_images\\01a0f65d-17ff-7bd3-a757-2ed90b2429c9\\exec-f5448916-7ed6-416d-8cc9-ea2022450564.png",
+    "accepted": false
+  },
+  {
+    "id": "rh-2d-ink",
+    "name": "国风水墨2D",
+    "prompt": "Use case: stylized-concept. Asset type: square style-library preview. [BASE_STYLE] 二维手绘或平面动画画面，以线条、色块和绘画层次塑形，保持二维媒介特征。二维水墨国风，书写性线条与浓淡墨色晕染，干湿笔触交错，宣纸质地和留白，设色轻淡，以墨色而非实体材质塑形。仅调整美术表现，主体、动作、服装与场景以用户正文为准。\n[CONTENT] An original adult East Asian woman in a simple slate-blue cotton jacket at the open doorway of a wood-and-stone workshop, one hand on a worn wooden table with an unglazed ceramic cup and brass lamp. Natural alert expression, waist-up three-quarter view. Show face, hair, hand, cloth, wood, ceramics and background depth. Square composition with face in upper half.\n[COMPOSITION] A single finished image, never a collage, no text, logo, border or watermark. Follow BASE_STYLE faithfully, including the rendering medium.",
+    "path": "C:\\Users\\77972\\.codex\\generated_images\\01a0f65d-17ff-7bd3-a757-2ed90b2429c9\\exec-2b196c1a-74cb-4fef-8426-ca9f5780f085.png",
+    "accepted": true
+  },
+  {
+    "id": "rh-2d-chibi",
+    "name": "Q版2D",
+    "path": "C:\\Users\\77972\\.codex\\generated_images\\01a0f65d-17ff-7bd3-a757-2ed90b2429c9\\exec-7978159c-8d75-41c8-9868-1ff2c80f05b5.png",
+    "accepted": true,
+    "prompt": "[BASE_STYLE] 二维手绘或平面动画画面，以线条、色块和绘画层次塑形，保持二维媒介特征。纯二维Q版卡通，约两头身的超大头与短小躯干，短胳膊短腿、圆手圆脚，五官简化为大眼小鼻小嘴，干净轮廓线与粉彩平涂，仅一层简洁阴影，禁止正常成人头身比例、摄影皮肤与三维材质。仅调整美术表现，主体、动作、服装与场景以用户正文为准。\n[CONTENT] 一个成年女工匠，穿蓝色工作服，在工坊门前跨过一块石头，双手和双脚完整可见。旁边有一张小木桌和陶杯。全身视图。\n[COMPOSITION] 正方形画面，无文字、标志、水印、边框。",
+    "notes": ""
+  },
+  {
+    "id": "rh-3d-family",
+    "name": "温情家庭动画",
+    "path": "C:\\Users\\77972\\.codex\\generated_images\\01a0f65d-17ff-7bd3-a757-2ed90b2429c9\\exec-20046624-20fb-41c4-8d51-291b031b5098.png",
+    "accepted": true,
+    "prompt": "[BASE_STYLE] 三维CG渲染，明确的模型体积、接触阴影与空间纵深，统一的材质和灯光响应。风格化三维动画与手绘贴图混合，雕塑般分面几何、略夸张的角色比例和成束塑形毛发，立体模型表面覆盖可见的干刷笔触，硬边色面划分明暗，保留遮挡、投影和体积转折；不用实拍人像或仅在照片上叠加油画滤镜。仅调整美术表现，主体、动作、服装与场景以用户正文为准。\n[CONTENT] 一个成年女工匠，穿蓝色工作服，在工坊门前跨过一块石头，双手和双脚完整可见。旁边有一张小木桌和陶杯。全身视图。\n[COMPOSITION] 正方形画面，无文字、标志、水印、边框。",
+    "notes": "手绘3D候选的笔触不足，但模型和造型符合家庭动画；作为家庭动画预览采用，不计作该风格提示词验证。"
+  },
+  {
+    "id": "rh-3d-mecha",
+    "name": "科幻机甲CG",
+    "path": "C:\\Users\\77972\\.codex\\generated_images\\01a0f65d-17ff-7bd3-a757-2ed90b2429c9\\exec-bc4d005e-c80d-46fc-a062-57deed895498.png",
+    "accepted": true,
+    "prompt": "[BASE_STYLE] 三维CG渲染，明确的模型体积、接触阴影与空间纵深，统一的材质和灯光响应。硬表面三维CG，分件清楚的几何体积，金属、涂层与磨损的物理材质响应，精密边缘倒角，冷色环境反射和清晰方向光，重量感明确。仅调整美术表现，主体、动作、服装与场景以用户正文为准。\n[CONTENT] 一台原创白色与橙色涂装的双足救援机甲，站在维修库中，人物大小的工程师站在其脚边；腰部液压关节、手臂护甲与金属结构清楚。三分之二全身画面。\n[COMPOSITION] 正方形画面，无文字、标志、水印、边框。",
+    "notes": ""
+  },
+  {
+    "id": "rh-3d-sunny-cel",
+    "name": "暖阳赛璐璐CG",
+    "path": "C:\\Users\\77972\\.codex\\generated_images\\01a0f65d-17ff-7bd3-a757-2ed90b2429c9\\exec-fcd797c8-74b8-4f67-abe8-8c31da85308d.png",
+    "accepted": true,
+    "prompt": "[BASE_STYLE] 三维CG渲染，明确的模型体积、接触阴影与空间纵深，统一的材质和灯光响应。三维动漫模型结合赛璐璐着色，圆润但有体积的造型，清楚色块阴影和暖色轮廓光，通透蓝色与暖肤色，清爽材质和明亮环境反射。仅调整美术表现，主体、动作、服装与场景以用户正文为准。\n[CONTENT] 一位成年女性旅行者穿明黄夹克，扶着自行车停在海滨小镇路边，天空明净，三分之二全身。\n[COMPOSITION] 正方形画面，无文字、标志、水印、边框。",
+    "notes": ""
+  },
+  {
+    "id": "rh-3d-atomic-wasteland",
+    "name": "原子朋克末日风格",
+    "path": "C:\\Users\\77972\\.codex\\generated_images\\01a0f65d-17ff-7bd3-a757-2ed90b2429c9\\exec-b841dc0c-140b-4e5f-9c91-1904b457baeb.png",
+    "accepted": true,
+    "prompt": "[BASE_STYLE] 三维CG渲染，明确的模型体积、接触阴影与空间纵深，统一的材质和灯光响应。复古未来主义三维CG，厚重而可信的几何结构，旧漆、搪瓷与金属的细致材质响应，褪色奶油黄和灰绿，电影般光影与磨损层次。仅调整美术表现，主体、动作、服装与场景以用户正文为准。\n[CONTENT] 一位成年女性机械师穿旧工作服站在荒废的复古未来加油站前，一台圆润的奶油绿色服务机器人在旁，半身画面。\n[COMPOSITION] 正方形画面，无文字、标志、水印、边框。",
+    "notes": ""
+  },
+  {
+    "id": "rh-3d-scifi-guoman",
+    "name": "科幻国漫",
+    "path": "C:\\Users\\77972\\.codex\\generated_images\\01a0f65d-17ff-7bd3-a757-2ed90b2429c9\\exec-b7cd17d0-18da-4be8-9193-05db694c3dc9.png",
+    "accepted": true,
+    "prompt": "[BASE_STYLE] 三维CG渲染，明确的模型体积、接触阴影与空间纵深，统一的材质和灯光响应。三维国漫科幻渲染，精致东方角色造型，真实模型体积，冷青与深蓝调色，材料反射和局部发光层次分明，电影光照与干净轮廓。仅调整美术表现，主体、动作、服装与场景以用户正文为准。\n[CONTENT] 一位成年东方女性飞行员身穿蓝灰色飞行制服，站在未来空间站观察窗边，外面可见巨大行星，三分之二全身。\n[COMPOSITION] 正方形画面，无文字、标志、水印、边框。",
+    "notes": ""
+  },
+  {
+    "id": "rh-3d-guoman-film",
+    "name": "国漫3D电影",
+    "path": "C:\\Users\\77972\\.codex\\generated_images\\01a0f65d-17ff-7bd3-a757-2ed90b2429c9\\exec-08bf7738-0535-4b39-9fbc-e6b2bd2dc9d4.png",
+    "accepted": true,
+    "prompt": "[BASE_STYLE] 三维CG渲染，明确的模型体积、接触阴影与空间纵深，统一的材质和灯光响应。高完成度三维国漫电影，东方审美的精致造型，自然比例与立体五官，细腻皮肤散射、分束毛发、可信布料，柔和电影灯光与清雅色彩。仅调整美术表现，主体、动作、服装与场景以用户正文为准。\n[CONTENT] 一位成年东方女侠穿暗青色布衣，站在山间石桥边，一手提着剑鞘，三分之二全身，清晨山岚。\n[COMPOSITION] 正方形画面，无文字、标志、水印、边框。",
+    "notes": ""
+  }
+]

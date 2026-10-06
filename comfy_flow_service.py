@@ -14,6 +14,7 @@ import socket
 import struct
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
@@ -100,14 +101,102 @@ def comfy_base():
     return _DEFAULT_BASE
 
 
+def _http_error_detail(exc):
+    """把 urllib 的 HTTP 错误翻译成带 ComfyUI 错误体的可读信息。
+
+    ComfyUI 的校验失败（server.py /prompt 返回 400）会把 node_errors 和逐节点 error
+    明细放在响应体里；旧实现直接把 HTTPError 抛出去，这些信息全丢，画布上只剩一句
+    「HTTP Error 400」，排查只能靠猜。
+    """
+    body = ""
+    try:
+        body = (exc.read() or b"").decode("utf-8", "replace")[:2000]
+    except Exception:
+        body = ""
+    if not body:
+        return f"HTTP {exc.code} {exc.reason}"
+    try:
+        parsed = json.loads(body)
+    except Exception:
+        return f"HTTP {exc.code} {exc.reason} — {body[:300]}"
+    if not isinstance(parsed, dict):
+        return f"HTTP {exc.code} {exc.reason} — {body[:300]}"
+    parts = []
+    for key in ("error", "message", "error_message", "detail"):
+        value = parsed.get(key)
+        if isinstance(value, dict):
+            value = value.get("message") or json.dumps(value, ensure_ascii=False)
+        if value:
+            parts.append(f"{key}: {value}")
+    node_errors = parsed.get("node_errors")
+    if isinstance(node_errors, dict) and node_errors:
+        parts.append("node_errors: " + json.dumps(node_errors, ensure_ascii=False)[:500])
+    return f"HTTP {exc.code} {exc.reason}" + (" — " + " | ".join(parts) if parts else "")
+
+
+def history_failure_reason(history):
+    """判定一条 /history 记录是不是真跑成了，失败返回原因，成功返回 ''。
+
+    ComfyUI 官方 PromptQueue.task_done 成功与失败都会落 history（execution.py
+    ExecutionStatus：status_str / completed / messages），所以「history 非空」乃至
+    「outputs 非空」都不能当成功——执行期炸掉时，前面节点已经出的预览图照样躺在
+    outputs 里。旧实现只看 outputs，于是失败任务被判完成、预览图被当产物回填。
+    """
+    if not isinstance(history, dict):
+        return "ComfyUI 返回的 history 结构异常"
+    status = history.get("status")
+    if not isinstance(status, dict):
+        # 老版本 / 第三方分支可能不带 status 字段：保持旧行为，不凭空判失败。
+        return ""
+    status_str = str(status.get("status_str") or "").strip().lower()
+    completed = status.get("completed")
+    if status_str not in ("error", "failed", "cancelled", "canceled", "interrupted") and completed is not False:
+        return ""
+    detail = _status_messages_text(status.get("messages"))
+    label = status_str or ("未完成" if completed is False else "失败")
+    return f"ComfyUI 执行失败（{label}）" + (f"：{detail}" if detail else "")
+
+
+def _status_messages_text(messages, limit=300):
+    """把 status.messages 摊平成一句人话。官方结构是 [[node_id, {...}], ...]。"""
+    if not isinstance(messages, list) or not messages:
+        return ""
+    chunks = []
+    for entry in messages:
+        if isinstance(entry, (list, tuple)) and len(entry) >= 2:
+            node_id, payload = entry[0], entry[1]
+        else:
+            node_id, payload = "", entry
+        text = ""
+        if isinstance(payload, dict):
+            for key in ("error", "message", "exception_message", "details", "value"):
+                value = payload.get(key)
+                if isinstance(value, dict):
+                    value = value.get("message") or json.dumps(value, ensure_ascii=False)
+                if value:
+                    text = str(value)
+                    break
+            if not text:
+                text = json.dumps(payload, ensure_ascii=False)
+        elif payload is not None:
+            text = str(payload)
+        if text:
+            chunks.append(f"节点 {node_id}：{text}" if node_id else text)
+    joined = " | ".join(chunks)
+    return joined[:limit]
+
+
 def _request_json(path, method="GET", payload=None, timeout=120):
     raw = None
     headers = {"Content-Type": "application/json"}
     if payload is not None:
         raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(comfy_base() + path, data=raw, headers=headers, method=method)
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return json.loads(response.read().decode("utf-8") or "{}")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read().decode("utf-8") or "{}")
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(_http_error_detail(exc)) from None
 
 
 def _is_vram_error(message):
@@ -345,6 +434,58 @@ def _ws_endpoint():
 # --------------------------------------------------------------------------
 
 
+def _count_executable_nodes(prompt):
+    """数一遍真正会被 ComfyUI 执行的节点数（输出节点的依赖闭包）。
+
+    prompt 是 API 格式 {node_id: {class_type, inputs}}，已过 bypass 编译（被摘除的
+    节点不在这张图里）。ComfyUI 只执行输出节点（SaveImage / VideoCombine 等）的
+    依赖闭包，直接数 len(prompt) 会把孤立节点也算进分母，进度永远到不了 100。
+    找不到输出节点时退回全图节点数。"""
+    if not isinstance(prompt, dict) or not prompt:
+        return 0
+    roots = []
+    for nid, node in prompt.items():
+        ct = str((node or {}).get("class_type") or "").lower()
+        if "save" in ct or "preview" in ct or "videocombine" in ct:
+            roots.append(str(nid))
+    if not roots:
+        return len(prompt)
+    seen = set()
+    stack = list(roots)
+    while stack:
+        nid = stack.pop()
+        if nid in seen:
+            continue
+        seen.add(nid)
+        node = prompt.get(nid) or {}
+        for v in (node.get("inputs") or {}).values():
+            if isinstance(v, list) and len(v) == 2 and str(v[0]) in prompt:
+                stack.append(str(v[0]))
+    return len(seen)
+
+
+def _advance_comfy_node(job, node_id):
+    """节点切换：上一个当前节点记入已完成集合。executing/progress 事件共用。"""
+    node_id = str(node_id or "")
+    if node_id and node_id != job.current_node:
+        if job.current_node:
+            job._done_nodes.add(job.current_node)
+        job.current_node = node_id
+
+
+def _compose_comfy_progress(job, node_pct):
+    """合成工作流级进度：已完成节点 + 当前节点内部步进，除以闭包节点总数。
+
+    只升不降（max 旧值）：阶段切换瞬间 node_pct 归零也不许把进度条拽回去。
+    未知总节点数（total<=1，如重启恢复的旧 job）退回单节点步进行为。
+    中途一律封顶 99，100 留给真正收尾（_collect_outputs 成功后）。"""
+    total = int(job._total_nodes or 0)
+    if total > 1:
+        raw = (len(job._done_nodes) + max(0.0, min(100.0, node_pct)) / 100.0) / total * 100.0
+        return max(job.progress, min(99, int(raw)))
+    return max(job.progress, min(99, int(node_pct)))
+
+
 class ComfyJob:
     def __init__(self, job_id, workflow_name, prompt, client_id="", meta=None):
         self.id = job_id
@@ -374,6 +515,13 @@ class ComfyJob:
         self.vram_retry = 0
         # 运行期提示语，给前端显示「等待显存释放…」「显存不足，正在重试(1/2)」
         self.notice = ""
+        # 工作流级进度合成（2026-09-30）：ComfyUI ws 的 progress 事件只是「单个节点内部」
+        # 的步进（如采样器 step 8/20），多阶段工作流（I2V→upscale→…）第一阶段跑满就会把
+        # progress 顶到 100，进入下一阶段又跌回去 —— 前端进度环表现为「没跑完圈就满了又缩」。
+        # 改成：已完成节点数 + 当前节点内部步进，除以依赖闭包节点总数，且只升不降。
+        # 下划线字段不入盘（to_dict 不含），重启恢复的 job 走 total<=1 的旧行为兜底。
+        self._done_nodes = set()
+        self._total_nodes = 0
 
     def to_dict(self):
         elapsed = int((self.finished_at or time.time()) - (self.started_at or self.created_at))
@@ -725,13 +873,17 @@ class JobManager:
                 data = data if isinstance(data, dict) else {}
                 if str(data.get("prompt_id") or "") and job.prompt_id and data.get("prompt_id") != job.prompt_id:
                     return
+                # 终态守卫：一旦失败/取消，迟到的 executing/progress 消息不许把状态翻回 RUNNING。
+                # 否则任务「error 已落地却还显示运行中」，前端一直转圈，用户只能手动点停止。
+                if kind in ("execution_start", "executing", "progress") and job.status in (STATUS_ERROR, STATUS_CANCELLED):
+                    return
                 if kind == "execution_start":
                     job.status = STATUS_RUNNING
                     job.started_at = job.started_at or time.time()
                 elif kind == "executing":
                     node_id = str(data.get("node") or "")
+                    _advance_comfy_node(job, node_id)
                     if node_id:
-                        job.current_node = node_id
                         job.current_node_title = str(node_titles.get(node_id) or "")
                     job.status = STATUS_RUNNING
                     job.started_at = job.started_at or time.time()
@@ -739,19 +891,26 @@ class JobManager:
                     value = data.get("value") or 0
                     maximum = data.get("max") or 0
                     try:
-                        job.progress = int(float(value) / float(maximum) * 100) if maximum else 0
+                        node_pct = float(value) / float(maximum) * 100.0 if maximum else 0.0
                     except (TypeError, ValueError, ZeroDivisionError):
-                        job.progress = 0
+                        node_pct = 0.0
                     node_id = str(data.get("node") or "")
+                    _advance_comfy_node(job, node_id)
                     if node_id:
-                        job.current_node = node_id
                         job.current_node_title = str(node_titles.get(node_id) or "")
+                    job.progress = _compose_comfy_progress(job, node_pct)
                 elif kind == "execution_error":
                     job.status = STATUS_ERROR
                     job.error = str(data.get("exception_message") or "ComfyUI 执行出错")[:500]
                     job.finished_at = time.time()
                 elif kind == "executed":
-                    job.progress = max(job.progress, 99)
+                    node_id = str(data.get("node") or "")
+                    if node_id:
+                        job._done_nodes.add(node_id)
+                    if int(job._total_nodes or 0) > 1:
+                        job.progress = max(job.progress, min(99, int(len(job._done_nodes) / job._total_nodes * 100)))
+                    else:
+                        job.progress = max(job.progress, 99)
 
             # 拿不到节点级进度就退回纯轮询，不影响任务本身
             close_stream = open_progress_stream(client_id, on_message)
@@ -770,6 +929,8 @@ class JobManager:
                 raise RuntimeError("工作流校验失败：" + json.dumps(submitted["node_errors"], ensure_ascii=False)[:400])
             job.status = STATUS_RUNNING
             job.started_at = job.started_at or time.time()
+            # 分母 = 输出节点的依赖闭包（prompt 已过 bypass 编译，图里就是会执行的节点）
+            job._total_nodes = _count_executable_nodes(job.prompt)
 
             history = None
             deadline = time.time() + COMFY_JOB_TIMEOUT_SECONDS
@@ -810,6 +971,16 @@ class JobManager:
                     pass
 
     def _collect_outputs(self, job, history):
+        # 官方 task_done 成功/失败都落 history，所以先看 status 再谈 outputs：
+        # 执行期炸掉时前面节点的预览图照样在 outputs 里，不判 status 就会把失败
+        # 任务报成完成，还把预览图当产物回填画布（"假成功"）。
+        failure = history_failure_reason(history)
+        if failure:
+            job.error = failure
+            job.status = STATUS_ERROR
+            job.images = []
+            job.videos = []
+            return
         outputs = history.get("outputs") if isinstance(history, dict) else {}
         if not isinstance(outputs, dict):
             job.error = "ComfyUI 没有返回任何输出"
@@ -835,13 +1006,20 @@ class JobManager:
         for _node_id, node_output in image_nodes:
             for item in node_output.get("images") or []:
                 url = _save_asset(item, job.prompt_id, "image", canvas_title, canvas_id)
-                if url:
+                if url and url not in job.images:
                     job.images.append(url)
         for _node_id, node_output in video_nodes:
             for item in (node_output.get("videos") or []) + (node_output.get("gifs") or []):
                 url = _save_asset(item, job.prompt_id, "video", canvas_title, canvas_id)
-                if url:
+                if url and url not in job.videos:
                     job.videos.append(url)
+        # 视频优先（2026-09-30 打组 bug 修复）：工作流同时有视频节点和预览图节点
+        # （VHS VideoCombine + PreviewImage/SaveImage 出 ComfyUI_temp 截图）时，预览图
+        # 会以 kind=image 混进结果，前端统一按本次 run 的 kind（video）回填，PNG 被标成
+        # output-2.mp4 的"假视频"黑卡，节点还因多产物变成 Videos 打组态。与前端
+        # supervisor 兜底口径（job.videos 优先）对齐：有视频就只回视频。
+        if job.videos:
+            job.images = []
         if not job.images and not job.videos:
             job.status = STATUS_ERROR
             job.error = job.error or "工作流跑完了但没有产出图片或视频"

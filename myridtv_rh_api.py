@@ -2,6 +2,9 @@
 """RH API 地址与资产上传域（后端拆分第34刀自 rh_official_proxy.py 逐字外移）：
 平台地址跟随用户 API 设置（含 /openapi/v2 双路径归一）、URL 拼接、
 二进制/任务资产上传（本地媒体→RH asset）。零主文件全局依赖。"""
+import time
+import socket
+import urllib.error
 import urllib.parse
 import myridtv_http
 import myridtv_media_localize
@@ -38,13 +41,34 @@ def runninghub_api_url(path):
     return runninghub_api_base() + path
 
 
+def _rh_upload_multipart_retry(url, fields, files, headers, timeout):
+    """RH 素材上传偶发网络写超时（urllib The write operation timed out）。
+    最多重试 3 次，仅重试底层网络错误；HTTP 错误已在 request_multipart_json
+    内转 RuntimeError 冒泡，不在此重试。2026-09-29 修。"""
+    last_exc = None
+    for attempt in range(3):
+        try:
+            return myridtv_http.request_multipart_json(
+                url, fields=fields, files=files, headers=headers, timeout=timeout
+            )
+        except (urllib.error.URLError, TimeoutError, socket.timeout, OSError) as exc:
+            last_exc = exc
+            if attempt < 2:
+                time.sleep(3)
+                continue
+            raise
+    if last_exc is not None:
+        raise last_exc
+
+
 def runninghub_upload_binary_media(source_url):
     raw, file_name, content_type = myridtv_media_localize.local_media_source_bytes(source_url)
-    data = myridtv_http.request_multipart_json(
+    data = _rh_upload_multipart_retry(
         runninghub_api_url("/openapi/v2/media/upload/binary"),
+        fields=None,
         files=[{"name": "file", "filename": file_name, "content_type": content_type, "data": raw}],
         headers=myridtv_runninghub_build.runninghub_task_auth_headers(),
-        timeout=180,
+        timeout=600,
     )
     info = data.get("data") if isinstance(data.get("data"), dict) else data
     public_url = (
@@ -64,7 +88,7 @@ def runninghub_upload_binary_media(source_url):
 
 def runninghub_upload_task_asset(source_url):
     raw, file_name, content_type = myridtv_media_localize.local_media_source_bytes(source_url)
-    data = myridtv_http.request_multipart_json(
+    data = _rh_upload_multipart_retry(
         runninghub_api_url("/task/openapi/upload"),
         # RH 旧版 /task/openapi/upload 的鉴权要求 apiKey 作为 multipart 表单字段一起提交
         # （官方 curl 示例里 apiKey 是 --form）。只带 Authorization: Bearer 会被拒：
@@ -72,7 +96,7 @@ def runninghub_upload_task_asset(source_url):
         fields={"fileType": "input", "apiKey": myridtv_runninghub_build.runninghub_task_key()},
         files=[{"name": "file", "filename": file_name, "content_type": content_type, "data": raw}],
         headers=myridtv_runninghub_build.runninghub_task_auth_headers(),
-        timeout=180,
+        timeout=600,
     )
     info = data.get("data") if isinstance(data.get("data"), dict) else data
     resolved_name = info.get("fileName") or info.get("filename") or info.get("name") or ""

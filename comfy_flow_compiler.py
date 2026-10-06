@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 
 MODE_RUN = "run"
 MODE_BYPASS = "bypass"
@@ -132,6 +133,31 @@ def _required_input_keys(class_type, object_info):
     return [str(k) for k in entries.keys()]
 
 
+def normalize_aspect_ratios(workflow, object_info):
+    """原地将数字比例补全为该节点唯一匹配的枚举值。"""
+    for node in workflow.values():
+        if not isinstance(node, dict):
+            continue
+        inputs = _node_inputs(node)
+        specs = _input_spec(_node_type(node), object_info)
+        for key, value in inputs.items():
+            if not isinstance(value, str) or not re.fullmatch(r"\s*\d+\s*:\s*\d+\s*", value):
+                continue
+            spec = specs.get(key)
+            if not isinstance(spec, list) or not spec:
+                continue
+            choices = spec[0] if isinstance(spec[0], list) else (
+                spec[1].get("options", [])
+                if spec[0] == "COMBO" and len(spec) > 1 and isinstance(spec[1], dict) else [])
+            if not isinstance(choices, list) or value in choices:
+                continue
+            ratio = re.sub(r"\s+", "", value)
+            matches = [option for option in choices if isinstance(option, str)
+                       and option.split(" ", 1)[0] == ratio]
+            if len(matches) == 1:
+                inputs[key] = matches[0]
+
+
 def _build_reverse_index(workflow):
     """{被引用节点 id: [(下游节点 id, 输入名)]}"""
     index = {}
@@ -192,6 +218,9 @@ def compile_prompt(workflow, overrides=None, modes=None, object_info=None):
         for key, value in patch.items():
             node["inputs"][str(key)] = value
             report["overridden"].append({"node": str(node_id), "input": str(key)})
+
+    normalize_aspect_ratios(graph, object_info)
+    original_graph = copy.deepcopy(graph)
 
     # ---- 2. 归集节点状态 ----
     bypassed = set()
@@ -281,6 +310,13 @@ def compile_prompt(workflow, overrides=None, modes=None, object_info=None):
 
     # ---- 5. 重写下游连线 ----
     dropped = bypassed | muted_full
+    # 改写前的连线表（供 5.5 判断「彻底断粮」）与被切断输入的登记表
+    original_links = {}
+    for nid, orig_node in graph.items():
+        if isinstance(orig_node, dict):
+            original_links[str(nid)] = [
+                key for key, value in _node_inputs(orig_node).items() if _is_link(value)]
+    severed = {}  # node_id -> 被切断的输入名集合（含必填与可选）
     for node_id, node in graph.items():
         if str(node_id) in dropped or not isinstance(node, dict):
             continue
@@ -314,6 +350,7 @@ def compile_prompt(workflow, overrides=None, modes=None, object_info=None):
                     )
                 else:
                     del inputs[key]
+                    severed.setdefault(str(node_id), set()).add(str(key))
                     if key in _required_input_keys(_node_type(node), object_info):
                         report["warnings"].append(
                             f"节点 {node_id} 的必填输入 {key} 上游被摘除且无默认值，可能导致执行失败"
@@ -322,6 +359,68 @@ def compile_prompt(workflow, overrides=None, modes=None, object_info=None):
                         report["warnings"].append(
                             f"节点 {node_id} 的输入 {key} 上游被摘除，已从 prompt 中移除"
                         )
+
+    # ---- 5.5 级联摘除断供节点 ----
+    # bypass/mute 切断连线后，有的下游节点既接不回上游也没有默认值：
+    # - 必填输入被切断 → 节点根本无法执行；
+    # - 原有的连线输入全部断供（彻底断粮）→ 只会产出 None/垃圾，提交时
+    #   ComfyUI 校验放行、执行到一半才炸（典型：吊在被旁路 LoadImage 下面的
+    #   缩放/预览节点，在 save_images 的 images[0] 处报
+    #   'NoneType' object is not subscriptable）。
+    # 这类节点连同下游一起摘除，让主链继续跑；只断掉部分可选输入
+    # （如 H3 的 ref_audios、部分 ref_images）的节点仍有存活连线，保持原样。
+    dropped_extra = set()
+    for nid, keys in severed.items():
+        dead_node = graph.get(nid)
+        if not isinstance(dead_node, dict):
+            continue
+        req = set(_required_input_keys(_node_type(dead_node), object_info))
+        if keys & req:
+            dropped_extra.add(str(nid))
+    while True:
+        grew = False
+        bad = dropped | dropped_extra
+        for node_id, node in graph.items():
+            key_str = str(node_id)
+            if key_str in bad or not isinstance(node, dict):
+                continue
+            inputs = _node_inputs(node)
+            req = set(_required_input_keys(_node_type(node), object_info))
+            # 必填连线指向已摘节点 → 活不成
+            if any(k in req and _is_link(v) and str(v[0]) in bad
+                   for k, v in inputs.items()):
+                dropped_extra.add(key_str)
+                grew = True
+                continue
+            # 原有连线全部断供（被切断或指向已摘节点）→ 彻底断粮
+            orig = original_links.get(key_str) or []
+            if orig:
+                live = [
+                    value for value in (inputs.get(k) for k in orig)
+                    if _is_link(value) and str(value[0]) not in bad]
+                if not live:
+                    dropped_extra.add(key_str)
+                    grew = True
+        if not grew:
+            break
+    dropped |= dropped_extra
+    if dropped_extra:
+        report["cascaded_dropped"] = sorted(dropped_extra)
+        report["warnings"].append(
+            "有 {} 个节点的输入因上游被旁路/禁用而断供，已随本层级联摘除：{}".format(
+                len(dropped_extra), ", ".join(sorted(dropped_extra))))
+    # 级联后仍存活的节点若还挂着指向已摘节点的连线（只可能是可选输入），
+    # 把悬空线摘掉，免得 ComfyUI 报「指向不存在的节点」。
+    for node_id, node in graph.items():
+        if str(node_id) in dropped or not isinstance(node, dict):
+            continue
+        inputs = _node_inputs(node)
+        for key in list(inputs.keys()):
+            value = inputs[key]
+            if _is_link(value) and str(value[0]) in dropped:
+                del inputs[key]
+                report["warnings"].append(
+                    f"节点 {node_id} 的输入 {key} 指向已被摘除的节点，连线已移除")
 
     # ---- 6. 摘掉被关闭的节点 ----
     compiled = {
@@ -332,31 +431,80 @@ def compile_prompt(workflow, overrides=None, modes=None, object_info=None):
     report["bypassed"] = sorted(bypassed)
     report["muted"] = sorted(muted_full)
 
+    _protect_media_output_chains(original_graph, compiled, safe_modes, object_info)
     if not compiled:
         raise CompileError("工作流里所有节点都被关闭了，没有可提交的内容")
     if not any(str(n) in compiled for n in _output_node_ids(compiled, object_info)):
-        report["warnings"].append("编译后的工作流里没有输出节点，ComfyUI 可能会报 no outputs")
+        if _output_node_ids(source, object_info):
+            raise CompileError("节点关闭后没有可执行的输出。请开启保存/预览节点及其必需的上游输入，再运行。")
+        report["warnings"].append("工作流没有识别到输出节点，请检查保存/预览节点")
 
     return compiled, report
 
 
 def _output_node_ids(workflow, object_info):
-    """找出没有出边、且类型属于输出类（Save*/Preview*）的节点。"""
-    referenced = set()
-    for node in (workflow or {}).values():
-        if not isinstance(node, dict):
-            continue
-        for value in _node_inputs(node).values():
-            if _is_link(value):
-                referenced.add(value[0])
+    """Use ComfyUI's output declaration, including custom and connected outputs."""
     output_ids = []
     for node_id, node in (workflow or {}).items():
-        if not isinstance(node, dict) or node_id in referenced:
+        if not isinstance(node, dict):
             continue
         class_type = _node_type(node)
-        if class_type.startswith("Save") or class_type.startswith("Preview"):
+        info = (object_info or {}).get(class_type) or {}
+        is_output = info.get("output_node") if "output_node" in info else class_type.startswith(("Save", "Preview"))
+        if is_output:
             output_ids.append(str(node_id))
     return output_ids
+
+
+def _protect_media_output_chains(source, compiled, modes, object_info):
+    """Reject missing media that silently removes a final output, even if others survive.
+
+    Never restore a missing media loader's bundled filename: it may be invalid or
+    belong to another project. Optional reference/preview branches may disappear.
+    """
+    outputs = _output_node_ids(source, object_info)
+    final_outputs = [nid for nid in outputs if not _node_type(source[nid]).startswith("Preview")]
+    final_outputs = final_outputs or outputs
+    lost = {nid for nid in final_outputs if nid not in compiled and
+            str(modes.get(nid, "run")).lower() not in (MODE_BYPASS, MODE_MUTE)}
+    if not lost:
+        return
+    reverse = _build_reverse_index(source)
+    failures = []
+    for nid, mode in modes.items():
+        nid = str(nid)
+        node = source.get(nid)
+        if str(mode).lower() not in (MODE_BYPASS, MODE_MUTE) or not isinstance(node, dict):
+            continue
+        kind = _node_type(node)
+        types = _output_types(kind, object_info)
+        media_source = kind.startswith(("LoadImage", "LoadAudio", "LoadVideo", "VHS_LoadVideo")) or (
+            any(t in ("IMAGE", "AUDIO", "VIDEO", "VHS_VIDEO") for t in types)
+            and not any(_is_link(v) for v in _node_inputs(node).values())
+            and any(k in _node_inputs(node) for k in ("image", "audio", "video", "file", "path")))
+        if not media_source:
+            continue
+        # Breadth-first dependency path gives an actionable explanation.
+        queue = [(nid, [nid])]
+        visited = {nid}
+        for current, path in queue:
+            if current in lost:
+                labels = []
+                for key in path:
+                    n = source[key]
+                    title = (n.get("_meta") or {}).get("title") or _node_type(n)
+                    labels.append(f"#{key} {title}")
+                failures.append(" → ".join(labels))
+                break
+            for child, _input in sorted(reverse.get(current, ())):
+                if child not in visited:
+                    visited.add(child)
+                    queue.append((child, path + [child]))
+    if failures:
+        raise CompileError(
+            "无法安全裁剪缺少的媒体输入：它还被生成主链使用，关闭后会丢失输出。"
+            "请补充以下输入，或调整工作流使生成尺寸和主链不依赖该空槽位；"
+            "不会使用工作流自带的默认素材代替。依赖链：" + "；".join(failures))
 
 
 def describe_workflow(workflow, object_info=None, prefs=None):

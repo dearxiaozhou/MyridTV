@@ -10,6 +10,7 @@
 async function runGeneration(){
     const node = deps.selectedNode();
     if(!node) return;
+    if(node.type === 'smart-speech') return global.CanvasSpeech.run(node);
     const previousSettings = deps.cloneSmartSettings(D("settings"));
     const runSettings = deps.smartSettingsForNode(node);
     await deps.ensureCustomComfyWorkflowReady(runSettings);

@@ -26,7 +26,7 @@ permissions:
   contents: read
 
 jobs:
-  # ── 自检：语法 / i18n / 悬空名字 / 单测 ────────────────────────────
+  # ── 自检：语法 / i18n / 悬空名字 / 前端接线 / 单测 ────────────────
   # PR、push main、打 tag、手动触发都会跑。红了就别往下走。
   verify:
     name: Self-check
@@ -47,7 +47,7 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install websockets
+          python -m pip install websockets ecdsa cryptography
 
       - name: Self-check (verify)
         shell: pwsh
@@ -149,6 +149,38 @@ jobs:
         with:
           name: MyridTV-Setup-${{ steps.version.outputs.display }}
           path: installer/build/installer/MyridTV-Setup.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      # Create the signed static delta as a private CI artifact. Public upload is
+      # deliberately separate: the public channel must not receive Python source.
+      - name: Build signed static update
+        shell: pwsh
+        env:
+          MYRIDTV_UPDATE_SIGNING_KEY: ${{ secrets.MYRIDTV_UPDATE_SIGNING_KEY }}
+        run: |
+          if (-not $env:MYRIDTV_UPDATE_SIGNING_KEY) { throw 'Missing update signing key' }
+          python -m pip install ecdsa cryptography
+          $previous = 'installer/build/previous-update-manifest.json'
+          $updateArgs = @('--stage', 'installer/build/MyridTV', '--out', 'installer/build/update-release')
+          try {
+            Invoke-WebRequest 'https://github.com/dearxiaozhou/MyridTV-updates/releases/latest/download/update-manifest.json' -OutFile $previous -TimeoutSec 15
+            $oldVersion = (Get-Content $previous -Raw | ConvertFrom-Json).version
+            $newVersion = (Get-Content VERSION -Raw).Trim()
+            if ([version]($oldVersion.TrimStart('V','v')) -lt [version]($newVersion.TrimStart('V','v'))) {
+              $updateArgs += @('--previous', $previous)
+            }
+          } catch {
+            Write-Host 'No earlier public update manifest; creating the first static baseline.'
+          }
+          python installer/make-update-release.py @updateArgs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload signed static update artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyridTV-Static-Update-${{ steps.version.outputs.display }}
+          path: installer/build/update-release/*
           if-no-files-found: error
           retention-days: 30
 

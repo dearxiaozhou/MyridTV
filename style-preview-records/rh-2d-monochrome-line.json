@@ -1,0 +1,7 @@
+{
+  "id": "rh-2d-monochrome-line",
+  "name": "单色线稿",
+  "prompt": "[BASE_STYLE] 二维手绘或平面动画画面，以线条、色块和绘画层次塑形，保持二维媒介特征。单色手绘线稿，细致而有轻重变化的轮廓与内部结构线，极少填色，留白充分，以疏密和排线表现体积，纸面干净。仅调整美术表现，主体、动作、服装与场景以用户正文为准。\n[CONTENT] 一位成年女艺术家坐在窗边画板前，头部与上半身近景，几盆植物作为背景。\n[COMPOSITION] 正方形画面，单幅完整作品。无文字、无水印、无边框。\n优先忠实遵守BASE_STYLE的媒介和造型语言。",
+  "path": "C:\\Users\\77972\\.codex\\generated_images\\01a0f65d-17ff-7bd3-a757-2ed90b2429c9\\exec-fcc22edd-47aa-4b8b-b614-a6f7c51d210b.png",
+  "accepted": true
+}

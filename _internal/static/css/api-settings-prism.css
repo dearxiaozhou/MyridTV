@@ -127,6 +127,9 @@ body.prism-api-page .page-head .status,
   color: rgba(248, 250, 252, 0.92);
   font-size: 11.5px;
   font-weight: 800;
+}/* 2026-09-28 老王：编辑器顶部「当前：XX」chip 从药丸改小圆角硬朗（同排删除/保存已是 4px） */
+.prism-api-meta-chip {
+  border-radius: 8px;
 }.prism-api-active-pill::before {
   content: "";
   width: 9px;
@@ -459,7 +462,7 @@ body.prism-api-page .key-panel select {
 }body.prism-api-page .ghost-btn,
 body.prism-api-page .action-btn,
 body.prism-api-page .key-btn {
-  border-radius: 12px;
+  border-radius: 8px;
   border-color: rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.05);
   color: rgba(248, 250, 252, 0.9);

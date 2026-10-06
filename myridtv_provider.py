@@ -124,7 +124,7 @@ def ensure_api_provider_models(providers):
             continue
         pid = str(provider.get("id") or "").strip()
         if pid in defaults:
-            for key in ("image_models", "video_models"):
+            for key in ("image_models", "video_models", "audio_models"):
                 fallback_list = defaults[pid].get(key)
                 if fallback_list is None:
                     continue
@@ -136,6 +136,16 @@ def ensure_api_provider_models(providers):
                 elif not current:
                     # 内置清单只在用户列表为空时兜底；非空一律以用户保存的为准（删掉的模型不再复活）
                     provider[key] = list(fallback_list)
+    mimo = next((p for p in providers if str(p.get("id") or "").lower() == "mimo" or "xiaomimimo.com" in str(p.get("base_url") or "").lower()), None)
+    if mimo is None:
+        mimo = {"id":"mimo", "name":"小米 MiMo", "base_url":"https://api.xiaomimimo.com/v1", "protocol":"openai", "enabled":True, "image_models":[], "chat_models":[], "video_models":[]}
+        providers.append(mimo)
+    if "audio_models" not in mimo:
+        mimo["audio_models"] = ["mimo-v2.5-tts-voicedesign", "mimo-v2.5-tts", "mimo-v2.5-tts-voiceclone"]
+    names = mimo.setdefault("model_display_names", {})
+    for model, label in (("mimo-v2.5-tts-voicedesign", "MiMo 音色设计"), ("mimo-v2.5-tts", "MiMo 预置音色"), ("mimo-v2.5-tts-voiceclone", "MiMo 音色复刻")):
+        if model in mimo.get("audio_models", []):
+            names.setdefault(model, label)
     return providers
 
 
@@ -163,7 +173,7 @@ def apply_user_model_prefs(providers):
             continue
         pid = str(provider.get("id") or "").strip()
         if pid in prefs:
-            for key in ("image_models", "video_models"):
+            for key in ("image_models", "video_models", "audio_models"):
                 if key in prefs[pid]:
                     provider[key] = list(prefs[pid][key])
     return providers
@@ -196,6 +206,7 @@ API_PROVIDER_ALLOWED_KEYS = {
     "image_models",
     "chat_models",
     "video_models",
+    "audio_models",
     "model_display_names",
     "model_protocols",
     "rh_apps",
@@ -217,12 +228,13 @@ API_PROVIDER_REQUIRED_HINTS = {
     "image_models",
     "chat_models",
     "video_models",
+    "audio_models",
     "model_display_names",
     "rh_apps",
     "rh_workflows",
     "model_protocols",
 }
-API_PROVIDER_LIST_KEYS = {"image_models", "chat_models", "video_models", "rh_apps", "rh_workflows"}
+API_PROVIDER_LIST_KEYS = {"image_models", "chat_models", "video_models", "audio_models", "rh_apps", "rh_workflows"}
 REMOVED_NATIVE_PROVIDER_IDS = {"modelscope"}
 API_PROVIDER_BOOL_KEYS = {
     "enabled",
@@ -292,6 +304,8 @@ def sanitize_api_provider_record(record):
         if isinstance(value, list):
             continue
         safe[key] = []
+    if "audio_models" not in record and (provider_id.lower() == "mimo" or "xiaomimimo.com" in str(record.get("base_url") or "").lower()):
+        safe["audio_models"] = ["mimo-v2.5-tts-voicedesign", "mimo-v2.5-tts", "mimo-v2.5-tts-voiceclone"]
     if provider_id != "runninghub":
         safe["rh_apps"] = []
         safe["rh_workflows"] = []
@@ -343,7 +357,7 @@ def write_user_model_prefs(providers):
         if not pid:
             continue
         entry = {}
-        for key in ("image_models", "video_models"):
+        for key in ("image_models", "video_models", "audio_models"):
             models = p.get(key)
             if isinstance(models, list):
                 entry[key] = list(models)

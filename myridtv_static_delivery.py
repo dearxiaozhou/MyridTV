@@ -67,7 +67,20 @@ def patch_static_versions_once():
         try:
             text = path.read_text(encoding="utf-8")
             updated = text
-            for url in urls:
+            # Keep explicit targets for established ?v= links, and also discover every
+            # local static resource carrying a cache-buster in this managed HTML page.
+            # Newly split canvas modules often arrive as ?cb=... and must not depend on
+            # remembering to add each filename to _STATIC_PATCHES.
+            discovered_cb_urls = []
+            attr_pattern = re.compile(r'''\b(?:src|href|data-src)\s*=\s*(?:"([^"]+)"|'([^']+)')''')
+            for attr_match in attr_pattern.finditer(text):
+                resource = attr_match.group(1) or attr_match.group(2)
+                resource_path, separator, query = resource.partition("?")
+                if (separator and resource_path.startswith("/static/")
+                        and re.search(r"(?:^|&)(?:amp;)?cb=", query)):
+                    discovered_cb_urls.append(resource_path)
+            all_urls = list(dict.fromkeys([*urls, *discovered_cb_urls]))
+            for url in all_urls:
                 # 兼容两种 URL 形态：/x.css?v= 与 /x.css?cb=xxx&v= （后者曾导致版本号永远刷不到）
                 pattern = re.compile(rf"({re.escape(url)}\?(?:[^\"'<>\s]*&)?v=)[^\"'<>\s]+")
                 updated = pattern.sub(lambda match: f"{match.group(1)}{_static_version_getter()}", updated)

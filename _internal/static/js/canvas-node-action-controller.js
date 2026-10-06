@@ -79,6 +79,20 @@
                 ctx.deleteNodeFromButton(nodeId);
             });
         });
+        // 失败横幅点击清除：comfyError 是上一轮任务的失败原因，持久化在画布 JSON 里，
+        // 重开软件也会跟着回来 —— 给用户一个手动「看见了、清掉」的出口（重新运行节点本来也会清）。
+        el.querySelectorAll('.comfy-node-note.error').forEach(note => {
+            note.addEventListener('click', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                const node = ctx.getNodes().find(item => item.id === nodeId);
+                if(!node) return;
+                delete node.comfyError;
+                note.remove();
+                ctx.render();
+                ctx.scheduleSave();
+            });
+        });
         el.querySelectorAll('.node-set-toggle').forEach(btn => {
             btn.addEventListener('mousedown', event => {event.preventDefault();event.stopPropagation();}, true);
             btn.addEventListener('click', event => {

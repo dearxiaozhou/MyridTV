@@ -3,6 +3,7 @@
 workflow 记录创建/保存/删除、路由解析、素材名/类型工具、
 blender payload 解码落盘。LOG_FILE 走 getter；ROOT/ASSETS_DIR 统一 getter 处方。"""
 from pathlib import Path
+import json
 import re
 import time
 import base64
@@ -19,13 +20,16 @@ from myridtv_core import ApiError
 _G_LOG_FILE = lambda: None
 _G_ROOT = lambda: None
 _G_ASSETS_DIR = lambda: None
+_G_CANVAS_DIR = lambda: None
 
 
 def configure(getters):
-    global _G_LOG_FILE, _G_ROOT, _G_ASSETS_DIR
+    global _G_LOG_FILE, _G_ROOT, _G_ASSETS_DIR, _G_CANVAS_DIR
     _G_LOG_FILE = getters['LOG_FILE']
     _G_ROOT = getters['ROOT']
     _G_ASSETS_DIR = getters['ASSETS_DIR']
+    # 重命名工作流时要连带改写画布里的引用，故需知道画布目录（旧调用无此键则安全降级）
+    _G_CANVAS_DIR = getters.get('CANVAS_DIR', lambda: None)
 
 
 def create_workflow_record(name, workflow):
@@ -83,6 +87,99 @@ def save_workflow_config(name, config):
     return myridtv_libraries.read_workflow_record(file_name)
 
 
+def rename_workflow_record(name, new_name):
+    """重命名自定义工作流文件（改名 = 文件名与显示名统一）。
+
+    老王诉求：不要「前端叫 MMH3-文戏、后端文件叫 MMH3.json」两套名字。
+    这里把 .json 与 .config.json 一起改名，并**递归改写所有画布里对该文件名的
+    引用**（节点 runSettings.comfyWorkflow、settings.comfyWorkflow、以及其它
+    以文件名做键/值的缓存），否则改名后引用旧名的节点会直接失效。
+    """
+    old_file, workflow_path, config_path, builtin = myridtv_libraries.find_workflow_files(name)
+    if builtin:
+        raise ApiError(403, "内置工作流不能重命名")
+    base = re.sub(r"\.json$", "", str(new_name or "").strip(), flags=re.I).strip()
+    if not base or base in (".", "..") or re.search(r'[\\/:*?"<>|]', base):
+        raise ApiError(400, "工作流名称非法（不能包含 \\ / : * ? \" < > |）")
+    new_file = base + ".json"
+    if new_file == old_file:
+        return {"ok": True, "name": new_file, "renamed": False, "updated_canvases": 0}
+
+    new_workflow_path = workflow_path.parent / new_file
+    if new_workflow_path.exists():
+        raise ApiError(409, f"工作流已存在: {new_file}")
+
+    workflow_path.rename(new_workflow_path)
+    new_config_path = new_workflow_path.with_suffix(".config.json")
+    config = None
+    if config_path.exists():
+        try:
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+        except Exception:
+            config = None
+        config_path.rename(new_config_path)
+    # 显示名同步为新文件名（用户就是要两者统一）
+    if isinstance(config, dict):
+        config["title"] = base
+        try:
+            myridtv_core.write_json_file(new_config_path, config)
+        except Exception:
+            pass
+
+    updated = _rewrite_canvas_workflow_refs(old_file, new_file)
+    myridtv_core.append_log(_G_LOG_FILE(), f"comfy workflow renamed {old_file} -> {new_file}, canvases updated={updated}")
+    return {"ok": True, "name": new_file, "renamed": True, "updated_canvases": updated}
+
+
+def _rewrite_canvas_workflow_refs(old_file, new_file):
+    """把所有画布里等于旧文件名的字符串（键与值）改写成新文件名。"""
+    canvas_dir = None
+    try:
+        canvas_dir = _G_CANVAS_DIR()
+    except Exception:
+        canvas_dir = None
+    if not canvas_dir:
+        return 0
+    root = Path(canvas_dir)
+    if not root.exists():
+        return 0
+    updated = 0
+
+    def walk_container(node):
+        nonlocal updated
+        if isinstance(node, dict):
+            for key in list(node.keys()):
+                value = node[key]
+                if isinstance(value, str) and value == old_file:
+                    node[key] = new_file
+                    updated += 1
+                elif isinstance(key, str) and key == old_file:
+                    node[new_file] = node.pop(key)
+                    updated += 1
+                walk_container(value)
+        elif isinstance(node, list):
+            for index, item in enumerate(node):
+                if isinstance(item, str) and item == old_file:
+                    node[index] = new_file
+                    updated += 1
+                else:
+                    walk_container(item)
+
+    for canvas_path in root.glob("*.json"):
+        try:
+            data = json.loads(canvas_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        before = updated
+        walk_container(data)
+        if updated > before:
+            try:
+                myridtv_core.write_json_file(canvas_path, data)
+            except Exception as exc:
+                myridtv_core.append_log(_G_LOG_FILE(), f"rename ref write failed {canvas_path.name}: {exc}")
+    return updated
+
+
 def delete_workflow_record(name):
     file_name, workflow_path, config_path, builtin = myridtv_libraries.find_workflow_files(name)
     if builtin:
@@ -104,6 +201,7 @@ def parse_workflow_route(request_path):
     for suffix, route_name in (
         ("/config", "config"),
         ("/run", "run"),
+        ("/rename", "rename"),
     ):
         if tail.endswith(suffix):
             return (route_name, urllib.parse.unquote(tail[:-len(suffix)]))
