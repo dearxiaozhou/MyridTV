@@ -159,6 +159,21 @@ def load_app_config():
     return myridtv_env.load_app_config()
 
 
+def describe_update_error(exc):
+    """把更新检查的网络异常翻成人话，供界面提示用。"""
+    text = str(exc)
+    lowered = text.lower()
+    if "urlopen" in lowered or "timed out" in lowered or "10060" in text:
+        return "连不上更新服务器，请检查网络或代理设置"
+    if "10053" in text or "aborted" in lowered or "reset" in lowered:
+        return "连接被中断，请检查网络后重试"
+    if "ssl" in lowered or "certificate" in lowered:
+        return "安全证书校验失败，请检查系统时间或网络代理"
+    if "resolve" in lowered or "getaddrinfo" in lowered:
+        return "域名解析失败，请检查 DNS 或网络设置"
+    return text or "未知错误"
+
+
 def root_path(value, fallback):
     return myridtv_env.root_path(value, fallback)
 
@@ -1752,13 +1767,13 @@ class Handler(BaseHTTPRequestHandler):
         import myridtv_updater
         public_key = Path(APP_DIR) / "update-public-key.pub"
         if not public_key.is_file():
-            self._send(200, {"ok": False, "status": "unsupported", "detail": "missing update public key"})
+            self._send(200, {"ok": False, "status": "unsupported", "detail": "缺少更新公钥"})
             return
         try:
             result = myridtv_updater.check_now(Path(APP_DIR), public_key)
         except Exception as exc:
             append_log(LOG_FILE, f"update check failed: {exc}\n")
-            self._send(200, {"ok": False, "status": "error", "detail": str(exc)})
+            self._send(200, {"ok": False, "status": "error", "detail": describe_update_error(exc)})
             return
         self._send(200, {"ok": True, **result})
         return

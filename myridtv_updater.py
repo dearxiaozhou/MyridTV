@@ -114,7 +114,7 @@ def verify_manifest(manifest: dict, public_key_file: Path) -> None:
         raise ValueError("update manifest signature is invalid") from exc
 
 
-def get_bytes(url: str, limit: int, allow_local: bool = False) -> bytes:
+def get_bytes(url: str, limit: int, allow_local: bool = False, fast: bool = False) -> bytes:
     parsed = urllib.parse.urlsplit(url)
     if parsed.scheme != "https" and not (allow_local and parsed.scheme in {"http", "file"}):
         raise ValueError("update source must use HTTPS")
@@ -122,16 +122,20 @@ def get_bytes(url: str, limit: int, allow_local: bool = False) -> bytes:
     last: Exception | None = None
     # CDN and release downloads drop connections fairly often; a few retries with
     # backoff keep a transient network blip from failing the whole update.
-    for attempt in range(4):
+    # fast=True 用于界面上的「立即检查」：宁可快速失败给出可读原因，也不让按钮
+    # 干等两分钟（4 次 x30s 超时 + 退避）。后台 --watch 仍用完整重试。
+    attempts = 1 if fast else 4
+    timeout = 8 if fast else 30
+    for attempt in range(attempts):
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
                 data = response.read(limit + 1)
             if len(data) > limit:
                 raise ValueError("update download exceeds size limit")
             return data
         except Exception as exc:  # noqa: BLE001 - retried below, re-raised if all fail
             last = exc
-            if attempt < 3:
+            if attempt < attempts - 1:
                 time.sleep(1.5 * (attempt + 1))
     raise last if last else ValueError("update download failed")
 
@@ -142,7 +146,12 @@ def safe_static_path(app_dir: Path, relative: str) -> Path:
     parts = relative.split("/")
     if any(part in {"", ".", ".."} or ":" in part or "\\" in part for part in parts):
         raise ValueError("unsafe update path")
-    if relative == "_internal/static/app_config.json" or relative.startswith("_internal/static/images/styles/generated/"):
+    if relative == "_internal/static/app_config.json":
+        raise ValueError("runtime file excluded from update")
+    # 风格缩略图（generated/）：只下发 .webp。缩略图已从 PNG 换成 WebP，
+    # 但老版本安装目录里留的是 .png；让更新通道带 .webp 下去，前端引用即可
+    # 换成 webp，同时不必把 .png 也重复推一遍。
+    if relative.startswith("_internal/static/images/styles/generated/") and not relative.endswith(".webp"):
         raise ValueError("runtime file excluded from update")
     target = app_dir.joinpath(*parts)
     static_root = app_dir / "_internal" / "static"
@@ -255,8 +264,8 @@ def apply_manifest(app_dir: Path, manifest: dict, allow_local: bool = False) -> 
         raise
 
 
-def check_once(app_dir: Path, feed: str, public_key_file: Path, allow_local: bool = False) -> dict:
-    raw = get_bytes(feed, MAX_MANIFEST_BYTES, allow_local=allow_local)
+def check_once(app_dir: Path, feed: str, public_key_file: Path, allow_local: bool = False, fast: bool = False) -> dict:
+    raw = get_bytes(feed, MAX_MANIFEST_BYTES, allow_local=allow_local, fast=fast)
     manifest = json.loads(raw)
     if not isinstance(manifest, dict):
         raise ValueError("invalid update manifest")
@@ -273,7 +282,7 @@ def check_now(app_dir: Path, public_key_file: Path, allow_local: bool = False) -
     """
     feed = os.environ.get("MYRIDTV_UPDATE_FEED_URL", "").strip() or DEFAULT_FEED
     try:
-        return check_once(app_dir, feed, public_key_file, allow_local=allow_local)
+        return check_once(app_dir, feed, public_key_file, allow_local=allow_local, fast=True)
     except Exception as exc:
         state = read_state(app_dir)
         state.update({"status": "error", "error": str(exc), "checked_at": int(time.time())})
