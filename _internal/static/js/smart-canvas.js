@@ -4437,6 +4437,9 @@ function openImagePreviewFromCanvasDblClick(event){
 function rememberCanvasPointerClient(event){
     CanvasViewport.rememberCanvasPointerClient(event);
 }
+function forgetCanvasPointerClient(){
+    CanvasViewport.forgetCanvasPointerClient();
+}
 function canvasWheelAnchorPoint(event){
     return CanvasViewport.canvasWheelAnchorPoint(event);
 }
@@ -8326,6 +8329,7 @@ if(globalThis.CanvasGeneratedOutputNaming){CanvasGeneratedOutputNaming.configure
         generatedImageNeedsLocalization: () => generatedImageNeedsLocalization,
         generatedOutputNameReservations: () => generatedOutputNameReservations,
         nodes: () => nodes,
+        visibleNodeList: (...a) => visibleNodeList(...a),
         world: () => world
 });}
 
@@ -12328,13 +12332,18 @@ async function generateComfyUrlsWithSettings(runSettings, prompt, refs, node=nul
         {fields:audioFields, refs:audioRefs},
     ]);
     promptFields.forEach((field, index) => {
-        // 画布里 user 配的提示词 textarea 字段（settings.comfyParams[field.id]）优先，
-        // 没填才回退到全局 prompt slot，再 fallback default。
+        // 2026-10-07 BUGFIX：提示词一律以「大框」（composer 提示词输入框）为准。
+        // 原先参数区 textarea 字段（comfyParams[field.id]）优先、大框只做兜底，
+        // 导致旧残留把用户在大框里写的提示词整段压住；现在反转优先级。
+        // 大框为空（级联/循环等无 UI 输入场景）才回退参数区字段，再回退 default。
         const userVal = runSettings.comfyParams?.[field.id];
-        if(userVal !== undefined && userVal !== null && String(userVal).trim() !== ''){
+        const boxText = index === 0 ? (prompt ?? '') : '';
+        if(String(boxText).trim() !== ''){
+            values[field.id] = boxText;
+        } else if(userVal !== undefined && userVal !== null && String(userVal).trim() !== ''){
             values[field.id] = userVal;
         } else {
-            values[field.id] = index === 0 ? prompt : (field.default ?? '');
+            values[field.id] = index === 0 ? boxText : (field.default ?? '');
         }
     });
     const assignMediaFields = async (mediaFields, mediaRefs) => {
@@ -12851,13 +12860,18 @@ async function buildComfyWorkflowJobPayload(node, runSettings, prompt, refs){
         {fields:audioFields, refs:audioRefs},
     ]);
     promptFields.forEach((field, index) => {
-        // 画布里 user 配的提示词 textarea 字段（settings.comfyParams[field.id]）优先，
-        // 没填才回退到全局 prompt slot，再 fallback default。
+        // 2026-10-07 BUGFIX：提示词一律以「大框」（composer 提示词输入框）为准。
+        // 原先参数区 textarea 字段（comfyParams[field.id]）优先、大框只做兜底，
+        // 导致旧残留把用户在大框里写的提示词整段压住；现在反转优先级。
+        // 大框为空（级联/循环等无 UI 输入场景）才回退参数区字段，再回退 default。
         const userVal = runSettings.comfyParams?.[field.id];
-        if(userVal !== undefined && userVal !== null && String(userVal).trim() !== ''){
+        const boxText = index === 0 ? (prompt ?? '') : '';
+        if(String(boxText).trim() !== ''){
+            values[field.id] = boxText;
+        } else if(userVal !== undefined && userVal !== null && String(userVal).trim() !== ''){
             values[field.id] = userVal;
         } else {
-            values[field.id] = index === 0 ? prompt : (field.default ?? '');
+            values[field.id] = index === 0 ? boxText : (field.default ?? '');
         }
     });
     const assignMediaFields = async (mediaFields, mediaRefs) => {
@@ -13383,6 +13397,10 @@ shell.addEventListener('mousemove', rememberCanvasPointerClient, {passive:true, 
 shell.addEventListener('mouseenter', rememberCanvasPointerClient, {passive:true, capture:true});
 shell.addEventListener('pointerdown', rememberCanvasPointerClient, {passive:true, capture:true});
 shell.addEventListener('mousedown', rememberCanvasPointerClient, {passive:true, capture:true});
+// 指针离开 shell 就把记忆作废：滚轮缩放的锚点必须来自本次事件坐标，
+// 陈旧记忆会让画面「固定从几秒前去过的某个点放大」（2026-10-07）。
+shell.addEventListener('mouseleave', forgetCanvasPointerClient, {passive:true, capture:true});
+shell.addEventListener('pointerleave', forgetCanvasPointerClient, {passive:true, capture:true});
 // 中键平移补一条 pointerdown 入口：SVG 元素（连线 path / 剪刀 circle）上中键只派发 pointerdown、
 // 不派发 mousedown，落在连线或已弹出的剪刀按钮上时旧入口收不到事件，导致「线多了没地方拖」。
 // 这里只 stopPropagation（阻止剪刀按钮自己在 pointerdown 里 preventDefault 吞掉事件链），

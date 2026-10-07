@@ -142,7 +142,20 @@ function updateComfyNodeLiveState(node, job){
         node.runStartedAt = node.comfyStartedAt;
     }
     const el = D("world").querySelector(`.image-node[data-id="${CSS.escape(node.id)}"]`);
-    if(!el) { deps.render(); return; } // 节点不在 DOM（如首次提交），退回全量渲染
+    // 节点不在 DOM 时分两种情况，千万别一律 deps.render() —— 2026-10-06 多任务卡顿真因：
+    // 画布有视口裁剪（visibleNodeList），画面外的节点压根不在 DOM 里；提交一批任务后只要
+    // 有 N 个任务跑到了视野之外，这条兜底就会让「每个任务每轮轮询」各触发一次整画布 render()
+    // （旧实测单次 35ms、我们的画布节点更多时更贵）， polling 越密越卡，直接雪崩。
+    // ① 被裁掉（不在可见名单里）→ 不用更新它的 DOM，回到视野时 cull 会按最新模型重绘；
+    // ② 不该被裁却不在 DOM（刚提交出来的新节点）→ 才真的需要全量渲染。
+    if(!el){
+        const visible = typeof deps.visibleNodeList === 'function' ? deps.visibleNodeList() : null;
+        const culled = Array.isArray(visible) && visible.length
+            ? !visible.some(n => n && n.id === node.id)
+            : false;   // 拿不到可见名单时保守起见照旧渲染
+        if(!culled) deps.render();
+        return;
+    }
     // 排队 ≠ 运行：queued 只给「排队中 · 第 N 位」徽标 + 静态描边，不显示进度、不跑流光。
     // （以前把 queued 也算进 running，排在队尾的节点会亮蓝框 + 进度环空转，看着像在生成。）
     const isQueued = node.comfyStatus === 'queued';
@@ -226,7 +239,14 @@ function syncNodeProgressRing(bar, host, node){
     const w = box ? (box.clientWidth || Number.parseFloat(box.style.width) || 0) : 0;
     const h = box ? (box.clientHeight || Number.parseFloat(box.style.height) || 0) : 0;
     const d = nodeProgressRingPath(w || 260, h || 178, 10);
-    bar.querySelectorAll('path').forEach(p => p.setAttribute('d', d));
+    // 多任务性能护栏（2026-10-06）：这个函数每轮轮询对每个运行中节点都跑一次，而 setAttribute('d')
+    // 会让整段路径几何失效、getTotalLength()/getPointAtLength() 又会强制同步布局 —— 轮询越密、
+    // 任务越多，这些"没变化也照写一遍"的开销越叠加。这里先比对上次写进去的值，没变就整段跳过。
+    if(bar.dataset.ringD !== d){
+        bar.dataset.ringD = d;
+        bar.querySelectorAll('path').forEach(p => p.setAttribute('d', d));
+        bar.dataset.ringLen = '';   // 形状变了，缓存的长度作废
+    }
     const pct = Math.max(0, Math.min(100, Number(progress) || 0));
     const arc = bar.querySelector('.comfy-node-progress-path');
     if(arc) arc.setAttribute('stroke-dashoffset', String(indeterminate ? 0 : (100 - pct)));
@@ -243,12 +263,16 @@ function syncNodeProgressRing(bar, host, node){
         const show = !indeterminate && pct > 0.5 && pct < 99.5;
         dot.classList.toggle('is-on', show);
         dot.style.opacity = show ? '' : '0';
-        if(show && typeof arc.getTotalLength === 'function'){
-            const len = arc.getTotalLength();
+        // 亮点位置只在进度真的动了才重算（getPointAtLength 强制布局）：同值直接复用旧坐标
+        const posKey = bar.dataset.ringLen ? `${bar.dataset.ringLen}|${pct.toFixed(1)}` : '';
+        if(show && bar.dataset.ringPos !== posKey && typeof arc.getTotalLength === 'function'){
+            let len = Number(bar.dataset.ringLen || 0);
+            if(!len){ len = arc.getTotalLength(); bar.dataset.ringLen = String(len); }
             if(len){
                 const pt = arc.getPointAtLength(len * pct / 100);
                 dot.setAttribute('cx', pt.x.toFixed(2));
                 dot.setAttribute('cy', pt.y.toFixed(2));
+                bar.dataset.ringPos = `${len}|${pct.toFixed(1)}`;
             }
         }
     }

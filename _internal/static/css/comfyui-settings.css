@@ -694,6 +694,11 @@ html.studio-theme-dark body {
     background:transparent !important;
     color:var(--wf-v2-muted) !important;
 }
+.workflow-panel-comfy .upload-btn {
+    width:auto !important;
+    min-width:0 !important;
+    align-self:stretch !important;
+}
 .upload-btn:hover,
 .action-btn:hover,
 .graph-ctrl-btn:hover {

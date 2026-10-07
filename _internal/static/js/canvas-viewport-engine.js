@@ -231,27 +231,71 @@
     }
 
     // ===== 指针记忆与滚轮缩放锚点 =====
+    // 记忆只存「视口坐标（clientX/Y）」，使用时再按当下的 shell rect 换算。
+    // 以前存的是相对 rect 的坐标，一旦中间 rect 变化（窗口缩放/布局挪动/页面被滚过）
+    // 这份记忆就成了陈旧坐标，再拿去当锚点画面就会从错误的点放大。
+    const POINTER_MEMORY_MS = 800;      // 兜底记忆的有效期；wheel 自身坐标永远是第一优先
+    const zoomAnchorDiag = [];          // 自诊断环形缓冲：锚点偏离事件坐标时留一条证据
+
     function rememberCanvasPointerClient(event) {
-        const rect = deps.shell.getBoundingClientRect();
-        const x = event.clientX - rect.left;
-        const y = event.clientY - rect.top;
-        if (x < 0 || y < 0 || x > rect.width || y > rect.height) return;
+        if (!event) return;
+        const x = Number(event.clientX);
+        const y = Number(event.clientY);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        // (0,0) 基本只会来自未指定坐标的合成事件，不作数
+        if (x === 0 && y === 0) return;
         lastCanvasPointerClient = { x, y, at: performance.now() };
+    }
+
+    function forgetCanvasPointerClient() {
+        lastCanvasPointerClient = null;
     }
 
     function canvasWheelAnchorPoint(event) {
         const rect = deps.shell.getBoundingClientRect();
-        const eventX = event.clientX - rect.left;
-        const eventY = event.clientY - rect.top;
-        const eventInside = eventX >= 0 && eventY >= 0 && eventX <= rect.width && eventY <= rect.height;
-        const recentPointer = lastCanvasPointerClient && performance.now() - lastCanvasPointerClient.at < 15000;
-        const point = recentPointer ? lastCanvasPointerClient : { x: eventX, y: eventY };
-        const x = eventInside || recentPointer ? point.x : rect.width / 2;
-        const y = eventInside || recentPointer ? point.y : rect.height / 2;
-        return {
+        const eX = Number(event && event.clientX);
+        const eY = Number(event && event.clientY);
+        const hasPoint = Number.isFinite(eX) && Number.isFinite(eY);
+        let x = hasPoint ? eX - rect.left : NaN;
+        let y = hasPoint ? eY - rect.top : NaN;
+        const inside = hasPoint && x >= 0 && y >= 0 && x <= rect.width && y <= rect.height;
+        if (!inside) {
+            // 只有本次事件自身坐标不可用、或确实落在画布之外时，才退回最后的指针位置兜底。
+            // 反过来「有坐标却用旧记忆」会让缩放锚点停在几秒前鼠标去过的地方 —— 表现为
+            // 「固定从某个点放大，画面整体往另一边扩张」（2026-10-07 修）。
+            const mem = lastCanvasPointerClient;
+            const fresh = mem && (performance.now() - mem.at) < POINTER_MEMORY_MS;
+            const mx = fresh ? mem.x - rect.left : NaN;
+            const my = fresh ? mem.y - rect.top : NaN;
+            if (fresh && mx >= 0 && my >= 0 && mx <= rect.width && my <= rect.height) {
+                x = mx;
+                y = my;
+            } else {
+                x = rect.width / 2;
+                y = rect.height / 2;
+            }
+        }
+        const anchor = {
             x: Math.max(0, Math.min(rect.width, x)),
             y: Math.max(0, Math.min(rect.height, y))
         };
+        recordZoomAnchorDiag(event, hasPoint, anchor);
+        return anchor;
+    }
+
+    // 自诊断：正常情况锚点必须与事件坐标一致，偏离说明还有别的路径在污染，留证据取证。
+    function recordZoomAnchorDiag(event, hasPoint, anchor) {
+        if (!hasPoint) return;
+        const rect = deps.shell ? deps.shell.getBoundingClientRect() : { left: 0, top: 0 };
+        const gap = Math.hypot(anchor.x - (Number(event.clientX) - rect.left), anchor.y - (Number(event.clientY) - rect.top));
+        if (gap <= 24) return;
+        zoomAnchorDiag.push({
+            at: Date.now(),
+            gap: Math.round(gap),
+            event: { x: Math.round(Number(event.clientX) - rect.left), y: Math.round(Number(event.clientY) - rect.top) },
+            anchor: { x: Math.round(anchor.x), y: Math.round(anchor.y) }
+        });
+        if (zoomAnchorDiag.length > 20) zoomAnchorDiag.shift();
     }
 
     function zoomViewportAtClientPoint(event) {
@@ -303,7 +347,9 @@
         lockSmartCanvasRootScroll: lockSmartCanvasRootScroll,
         beginSmartCanvasScrollLock: beginSmartCanvasScrollLock,
         rememberCanvasPointerClient: rememberCanvasPointerClient,
+        forgetCanvasPointerClient: forgetCanvasPointerClient,
         canvasWheelAnchorPoint: canvasWheelAnchorPoint,
-        zoomViewportAtClientPoint: zoomViewportAtClientPoint
+        zoomViewportAtClientPoint: zoomViewportAtClientPoint,
+        zoomAnchorDiag: zoomAnchorDiag
     };
 })(typeof window !== 'undefined' ? window : globalThis);
