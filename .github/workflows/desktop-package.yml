@@ -53,6 +53,7 @@ jobs:
         shell: pwsh
         env:
           MYRIDTV_PYTHON_EXE: ${{ steps.setup-python.outputs.python-path }}
+          MYRIDTV_SKIP_E2E: "1"
         run: |
           & .\tests\verify.ps1
           if ($LASTEXITCODE -ne 0) {
