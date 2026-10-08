@@ -108,6 +108,12 @@ if (Test-Path -LiteralPath (Join-Path $e2eDir 'e2e_canvas_scale_benchmark.py')) 
     Write-Host '[INFO] canvas performance benchmark is opt-in: run_regression.ps1 -Only scale_benchmark -IncludePerformanceBenchmarks'
 }
 if ($e2eFiles.Count -gt 0) {
+    # CI 出包通道逃生门：显式设置 MYRIDTV_SKIP_E2E=1 时跳过整套浏览器 e2e
+    # （runner 无 playwright/浏览器；e2e 已由本地 pre-commit 在提交时全量把关）。
+    # 注意此开关必须在 playwright 可用性判断之前，否则有 playwright 的本机上不生效。
+    if ($env:MYRIDTV_SKIP_E2E -eq '1') {
+        $pass.Add("画布 e2e: 跳过（MYRIDTV_SKIP_E2E=1，e2e 由本地 pre-commit 把关）")
+    } else {
     # 确认 playwright 可用（Python313 装了；其它解释器可能没有）
     $hasPw = & $python -c "import playwright" 2>&1
     if ($LASTEXITCODE -eq 0) {
@@ -155,6 +161,7 @@ if ($e2eFiles.Count -gt 0) {
     } else {
         $fail.Add("画布 e2e: 当前 python 无 playwright 模块（需要 Python313），跳过")
     }
+    } # end MYRIDTV_SKIP_E2E else
 } else {
     $fail.Add('找不到 tests/e2e_canvas_*.py（画布交互 e2e 缺失）')
 }
