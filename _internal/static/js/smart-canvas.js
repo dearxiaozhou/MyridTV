@@ -5634,7 +5634,11 @@ function syncVideoSpecControl(){
     });
 }
 function closeAllSmartPopovers(){
-    document.querySelectorAll('.smart-control.pinned').forEach(c => c.classList.remove('pinned'));
+    document.querySelectorAll('.smart-control.pinned').forEach(c => {
+        c.classList.remove('pinned');
+        const trigger = c.querySelector(':scope > .smart-pill[aria-expanded]');
+        if(trigger) trigger.setAttribute('aria-expanded', 'false');
+    });
     document.querySelectorAll('.loop-number-control.pinned').forEach(c => c.classList.remove('pinned'));
 }
 function bindComposerReferenceModeControl(){
@@ -6315,7 +6319,7 @@ function renderComposerStyleControl(){
         </div>`;
     };
     composerStyleModeSlot.innerHTML = `<div class="smart-control style-mode-control">
-        <button class="smart-pill${activeIds.length ? ' has-value' : ''}" type="button" aria-label="${escapeAttr(label)}"><i data-lucide="palette"></i><span>${escapeHtml(label)}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+        <button class="smart-pill${activeIds.length ? ' has-value' : ''}" type="button" aria-label="${escapeAttr(label)}" aria-expanded="false"><i data-lucide="palette"></i><span>${escapeHtml(label)}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
         <div class="smart-popover style-popover">
             <div class="style-popover-head">
                 <div class="smart-popover-title">风格库 <span class="style-library-count" data-style-count></span></div>
@@ -6375,7 +6379,7 @@ function filterPresetControlHtml(){
     const selected = CanvasFilterPresets.presets.find(preset => preset.id === active);
     const label = active === 'ft-none' ? '滤镜' : `滤镜·${selected?.name || ''}`;
     return `<div class="smart-control filter-mode-control">
-        <button class="smart-pill${active !== 'ft-none' ? ' has-value' : ''}" type="button" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}"><i data-lucide="aperture"></i><span>${escapeHtml(label)}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
+        <button class="smart-pill${active !== 'ft-none' ? ' has-value' : ''}" type="button" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}" aria-expanded="false"><i data-lucide="aperture"></i><span>${escapeHtml(label)}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
         <div class="smart-popover style-popover filter-popover">
             <div class="style-popover-head"><div class="smart-popover-title">滤镜预设</div><button type="button" class="filter-preset-close" data-filter-close aria-label="关闭滤镜预设"><i data-lucide="x"></i></button></div>
             <label class="style-library-search"><i data-lucide="search"></i><input type="search" data-filter-search aria-label="搜索滤镜" placeholder="搜索滤镜预设" value="${escapeAttr(filterLibraryQuery)}"></label>
@@ -6389,13 +6393,14 @@ function bindFilterPresetControl(){
     const ctrl = composerStyleModeSlot?.querySelector('.filter-mode-control');
     if(!ctrl) return;
     const pop = ctrl.querySelector('.filter-popover');
-    const close = () => {ctrl.classList.remove('pinned'); if(ctrl.contains(document.activeElement)) document.activeElement.blur();};
-    ctrl.querySelector(':scope > .smart-pill').onclick = event => {
+    const pill = ctrl.querySelector(':scope > .smart-pill');
+    const close = () => {ctrl.classList.remove('pinned'); pill?.setAttribute('aria-expanded','false'); if(ctrl.contains(document.activeElement)) document.activeElement.blur();};
+    pill.onclick = event => {
         event.preventDefault(); event.stopPropagation();
         const wasPinned = ctrl.classList.contains('pinned');
         closeAllSmartPopovers();
         if(wasPinned){close(); return;}
-        ctrl.classList.add('pinned'); positionPresetPopover(ctrl,pop);
+        ctrl.classList.add('pinned'); pill.setAttribute('aria-expanded','true'); positionPresetPopover(ctrl,pop);
     };
     const search = ctrl.querySelector('[data-filter-search]');
     const filter = () => {
@@ -6461,6 +6466,7 @@ function bindComposerStyleControl(){
         if(wasPinned && ctrl.contains(document.activeElement)) document.activeElement.blur();
         if(!wasPinned){
             ctrl.classList.add('pinned');
+            pill.setAttribute('aria-expanded','true');
             positionPresetPopover(ctrl,ctrl.querySelector('.style-popover'));
         }
     };
@@ -8397,6 +8403,11 @@ const title = isScript ? '剧本' : isTable ? '镜头表' : node.type === 'smart
         const isEmpty = isImageNode && imgs.length === 0 && !node.pending && !isQueued && !isJimengPending && !comfyBusy;
         const isHistory = isHistoryGroupNode(node);
         const isGroup = isImageNode && imgs.length > 1;
+        // ⚠️ isGroup 会给节点加 `.group-node` 类，而这个类名同时被「空壳组框」使用
+        // （node.type==='smart-group'，nodeLayerZ 对它返回 0）。所以凡是针对
+        // `.group-node` 写死 z-index 的 CSS 都会误伤这里的多图节点（内部真的装着
+        // .thumb-item > img）——2026-10-07「连线在组里盖住图片」就是这个原因，已去掉
+        // `.image-node.group-node{z-index:0 !important}`。层级一律交给 nodeLayerZ()。
         const isPending = ((node.pending || node.status === 'pending' || isQueued || isJimengPending || comfyBusy) && imgs.length === 0);
         const isBlenderPreview = node.runSettings?.engine === 'blender' || node.runSettings?.provider_id === 'blender' || node.title === '3D预演';
         const body = nodeBodyHtml(node, layout);
@@ -8406,7 +8417,7 @@ const title = isScript ? '剧本' : isTable ? '镜头表' : node.type === 'smart
         const comfyNodeNote = node.comfyError
             ? `<div class="comfy-node-note error">${escapeHtml(`失败：${node.comfyError}`)}</div>`
             : node.comfyNotice ? `<div class="comfy-node-note">${escapeHtml(node.comfyNotice)}</div>` : '';
-const html = `<div class="image-node ${node.cardSize ? 'fixed-media-card' : ''} ${isEmpty ? 'empty-node' : ''} ${node.type === 'smart-speech' ? 'speech-smart-node' : ''} ${isGroup ? 'group-node' : ''} ${node.groupLayout?.mode === 'preserve' ? 'preserved-group-node' : ''} ${isCanvasGroupNode(node) ? 'canvas-group-node' : ''} ${isHistory ? 'history-group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isScript ? 'script-smart-node' : ''} ${isTable ? 'table-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isBlenderPreview ? 'blender-preview-node' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''} ${node.comfyStatus === 'running' ? 'comfy-running' : ''} ${node.comfyStatus === 'queued' ? 'comfy-queued' : ''} node-status-${escapeHtml(node.status || 'ready')} node-role-${escapeHtml(node.role || 'media')}" data-id="${escapeHtml(node.id)}" data-status="${escapeHtml(node.status || 'ready')}" data-role="${escapeHtml(node.role || 'media')}" data-comfy-status="${escapeHtml(node.comfyStatus || '')}" ${(node.comfyStatus === 'queued' && Number(node.comfyQueuePosition ?? -1) > 0) ? `data-comfy-queue="${Number(node.comfyQueuePosition)}"` : ''} style="left:${node.x || 0}px;top:${node.y || 0}px;width:${layout.width}px;height:${layout.height}px;z-index:${isCanvasGroupNode(node) ? 1 : nodeLayerZ(node)}">
+const html = `<div class="image-node ${node.cardSize ? 'fixed-media-card' : ''} ${isEmpty ? 'empty-node' : ''} ${node.type === 'smart-speech' ? 'speech-smart-node' : ''} ${isGroup ? 'group-node' : ''} ${node.groupLayout?.mode === 'preserve' ? 'preserved-group-node' : ''} ${isCanvasGroupNode(node) ? 'canvas-group-node' : ''} ${isHistory ? 'history-group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isScript ? 'script-smart-node' : ''} ${isTable ? 'table-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isBlenderPreview ? 'blender-preview-node' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''} ${node.comfyStatus === 'running' ? 'comfy-running' : ''} ${node.comfyStatus === 'queued' ? 'comfy-queued' : ''} node-status-${escapeHtml(node.status || 'ready')} node-role-${escapeHtml(node.role || 'media')}" data-id="${escapeHtml(node.id)}" data-status="${escapeHtml(node.status || 'ready')}" data-role="${escapeHtml(node.role || 'media')}" data-comfy-status="${escapeHtml(node.comfyStatus || '')}" ${(node.comfyStatus === 'queued' && Number(node.comfyQueuePosition ?? -1) > 0) ? `data-comfy-queue="${Number(node.comfyQueuePosition)}"` : ''} style="left:${node.x || 0}px;top:${node.y || 0}px;width:${layout.width}px;height:${layout.height}px;z-index:${nodeLayerZ(node)}">
             <div class="node-head"><div class="node-title">${node.canvasSetEnabled === true ? `<span class="node-set-badge" title="${escapeAttr(tr('smart.setBadgeTip'))}">SET</span>` : ''}${title}</div><div class="node-actions">${deleteBtn}</div></div>
             ${isCanvasGroupNode(node) ? `<div class="canvas-group-header"><span class="canvas-group-title-display" title="双击重命名">${escapeHtml(node.title || '未命名组')}</span><button class="canvas-group-delete node-delete" type="button" title="删除组"><i data-lucide="trash-2"></i></button></div>` : ''}
             ${!isCanvasGroupNode(node) ? (!isEmpty ? `<div class="floating-node-set">${canvasNodeSetToggleHtml(node)}</div>${((node.type === 'smart-image' || node.type === 'smart-video' || node.type === 'smart-audio' || !node.type) && hasOut) ? '<button class="node-move-lines" type="button" title="把线移到新素材（点此节点，再点目标素材，旧素材所有连线整体平移，图片与节点均不动）"><i data-lucide="link"></i></button>' : ''}${(node.type === 'smart-image' || node.type === 'smart-video' || node.type === 'smart-audio' || !node.type) ? '<button class="upload-node-btn" type="button" data-upload-action="files"><i data-lucide="upload"></i><span>上传</span></button>' : ''}<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>` : `<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>`) : ''}
@@ -14145,6 +14156,21 @@ document.getElementById('canvasAgentChatProvider')?.addEventListener('change', e
 document.getElementById('canvasAgentGenProvider')?.addEventListener('change', e => {
     e.stopPropagation();
     const modelSel = document.getElementById('canvasAgentGenModel');
+    if(modelSel){
+        const models = canvasAgentGenModelsFor(e.target.value);
+        modelSel.innerHTML = models.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(canvasAgentGenModelLabel(m, e.target.value))}</option>`).join('');
+    }
+});
+/* 2026-10-08（老王："生图预设-图生图，选择平台后，后面的模型没有跟着变，要把窗口关闭再打开才换过来"）
+   上面 canvasAgentGenProvider（文生图）绑了「平台 → 模型」联动，图生图这一组
+   （canvasAgentGen2Provider / canvasAgentGen2Model）却漏绑了：换平台后模型下拉不动，
+   必须把设置窗口关掉重开（走 renderCanvasAgentSettingsPanel 重新渲染）才刷新。
+   这里补一份与文生图完全对称的绑定。
+   能生效的原因：自定义下拉 enhanceAgentSelects 点选项时会执行
+   `sel.dispatchEvent(new Event('change',{bubbles:true}))`，原生监听收得到。 */
+document.getElementById('canvasAgentGen2Provider')?.addEventListener('change', e => {
+    e.stopPropagation();
+    const modelSel = document.getElementById('canvasAgentGen2Model');
     if(modelSel){
         const models = canvasAgentGenModelsFor(e.target.value);
         modelSel.innerHTML = models.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(canvasAgentGenModelLabel(m, e.target.value))}</option>`).join('');

@@ -230,8 +230,9 @@ def request_text(url, timeout=60):
     req = urllib.request.Request(url, method="GET")
     req.add_header("Accept", "text/plain, text/markdown, text/html;q=0.9, */*;q=0.8")
     req.add_header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36")
+    ssl_ctx = _rh_forced_tls_context(url)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout, context=ssl_ctx) as resp:
             return resp.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as exc:
         raw = exc.read().decode("utf-8", "replace")

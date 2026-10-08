@@ -19,10 +19,21 @@
         });
     }
 
+    /* 2026-10-07（老王："把打组改成：两个空节点也可以打组"）
+       原来这里拿 `(node.images || []).length` 当准入条件，等于要求"节点已经有图片/产物"
+       才能进组 —— 两个空节点会被过滤成 0 个，打组按钮直接 disabled，执行时还会弹
+       smart.toastNeedGroup。现在放宽为：节点存在即可入组（空节点、空 Prompt 节点都行）。
+
+       仍然排除组框本身（node.type === 'smart-group'），避免组套组 ——
+       它以前是被 images.length 顺带挡掉的，去掉那个条件后必须显式挡。 */
+    function groupableNode(node){
+        return Boolean(node && node.id) && node.type !== 'smart-group';
+    }
+
     function canGroupSelectedNodes(){
         const ctx = context();
         return ctx.selectedNodeIds().map(id => ctx.getNodes().find(node => node.id === id))
-            .filter(node => node && (node.images || []).length).length >= 2;
+            .filter(groupableNode).length >= 2;
     }
 
     function refreshToolButtons(){
@@ -81,7 +92,7 @@
             ctx.setSelectedIds(ids.length > 1 ? ids.slice() : []);
             ctx.setSelectedId(ids.length === 1 ? ids[0] : '');
         }
-        const selected = ids.map(id => ctx.getNodes().find(node => node.id === id)).filter(node => node && (node.images || []).length);
+        const selected = ids.map(id => ctx.getNodes().find(node => node.id === id)).filter(groupableNode);
         if(selected.length < 2){ctx.toast(ctx.tr('smart.toastNeedGroup'));return;}
         ctx.pushUndo();
         const group = createCanvasGroupForNodes(selected);

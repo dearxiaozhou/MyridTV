@@ -27,7 +27,7 @@ function smartLoopTokenLabel(token){
     return token;
 }
 function smartLoopTokenChipHtml(token){
-    return `<span class="loop-smart-token-chip" contenteditable="false" data-token="${deps.escapeHtml(token)}"><span>${deps.escapeHtml(smartLoopTokenLabel(token))}</span><button type="button" aria-label="${deps.escapeHtml(tr('common.delete'))}" title="${deps.escapeHtml(tr('common.delete'))}">×</button></span>`;
+    return `<span class="loop-smart-token-chip" contenteditable="false" data-token="${deps.escapeHtml(token)}"><span>${deps.escapeHtml(smartLoopTokenLabel(token))}</span><button class="loop-smart-token-remove" type="button" aria-label="${deps.escapeHtml(tr('common.delete'))}" title="${deps.escapeHtml(tr('common.delete'))}">×</button></span>`;
 }
 function smartLoopVariableHtml(text){
     return String(text || '').split(/(《计数》|\[计数\])/g).map(part => {

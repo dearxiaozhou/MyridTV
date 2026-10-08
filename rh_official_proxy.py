@@ -216,7 +216,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.10.01.speech7"
+STATIC_VERSION = "2026.10.01.speech9"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 # Windows 版 Python 的 mimetypes 不带 webp，猜不出来会回落成
 # application/octet-stream，浏览器按未知类型拒绝渲染（风格缩略图会全变空白）。
@@ -475,9 +475,12 @@ myridtv_runninghub.configure(
 )
 
 myridtv_rh_catalog.configure(
-    lambda url: request_text(url),
+    lambda url, timeout=60: request_text(url, timeout),
     RUNNINGHUB_DEFAULT_IMAGE_MODELS,
     USER_DATA_DIR, lambda: LOG_FILE,
+    lambda url, method="GET", payload=None, headers=None, timeout=120: myridtv_http.request_json(
+        url, method=method, payload=payload, headers=headers, timeout=timeout
+    ),
 )
 
 myridtv_volcengine.configure(
@@ -2241,7 +2244,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, myridtv_provider_audio.probe(payload))
             return
         if is_runninghub_request(payload):
-            # 用户点「拉取模型」= 显式要最新清单，强制重爬文档（约 25 秒）
+            # 用户点「拉取模型」= 显式要最新清单，强制同步官方目录和文档路由
             self._send(200, runninghub_model_catalog(payload.get("provider_id"), payload.get("base_url"), force=True))
             return
         if str(payload.get("protocol") or "").strip().lower() == "volcengine":

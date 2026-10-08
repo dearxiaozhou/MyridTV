@@ -26,6 +26,16 @@
   --x-dur: .16s;
   --x-dur-slow: .24s;
 
+  /* ---------- AI 助手品牌操作 ---------- */
+  --x-agent-brand-gradient: linear-gradient(135deg, #38f8ff, #8b5cf6);
+  --x-agent-brand-shadow: 0 3px 10px rgba(139, 92, 246, .25);
+  --x-agent-brand-hover-filter: brightness(1.06);
+  --x-agent-brand-border: rgba(255, 255, 255, .22);
+  --x-agent-brand-border-hover: rgba(255, 255, 255, .44);
+  --x-agent-action-bg: rgba(99, 102, 241, .92);
+  --x-agent-action-hover: rgba(99, 102, 241, 1);
+  --x-agent-action-text: #ffffff;
+
   /* ---------- 圆角阶梯 ---------- */
   --x-r-xs: 6px;    /* 标签、徽标 */
   --x-r-sm: 8px;    /* 输入框、小按钮 */

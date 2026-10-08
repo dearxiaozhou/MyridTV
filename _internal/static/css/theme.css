@@ -439,13 +439,15 @@ body.studio-theme-dark .canvas-open {
 
 html.studio-theme-dark body .canvas-item:hover,
 body.studio-theme-dark .canvas-item:hover {
-    background: #2f2f2f !important;
+    background: var(--x-hover-bg) !important;
 }
 
 html.studio-theme-dark body .canvas-item.active,
 body.studio-theme-dark .canvas-item.active {
-    background: #404040 !important;
-    color: #e5e9f0 !important;
+    background: var(--x-selected-fill) !important;
+    border-color: var(--x-selected-line) !important;
+    color: var(--x-selected-text) !important;
+    box-shadow: inset 0 0 0 1px var(--x-selected-ring) !important;
 }
 
 html.studio-theme-dark body .canvas-card-title,

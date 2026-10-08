@@ -29,3 +29,13 @@ After modifying MyridTV, verify the actual running local application window with
 ## Theme Regression Rule
 
 After changing theme or interaction styling, audit all shared and component-specific hover, selected, expanded, and focus rules. Cover the home page, task console and statistics, main dock, canvas left and bottom tools, node upload and media actions, API image/video and ComfyUI/RunningHub parameter bars, standalone prompt nodes, material/prompt libraries, and recycle bin. Resolve higher-specificity overrides rather than checking only the component in the user's screenshot. Use shared design tokens for neutral interaction colors; preserve selected, destructive, disabled, and primary-action states. Refresh changed stylesheet cache keys. Verify representative interactions in both light and dark themes in the running application, save screenshots, and distinguish source-only checks from runtime checks in the verification record.
+
+## Canvas Interaction Style Rule
+
+1. Keep shared canvas hover, selected, expanded, focus, and native dropdown states in `_internal/static/css/canvas-interaction-style.css`. Load this file after every canvas component stylesheet, including speech and theme overrides.
+2. Component styles may set layout and surface treatment, but neutral interaction colors must use the shared `--x-*` tokens. Do not leave older hard-coded hover or selected colors that conflict with the shared layer.
+3. Custom dropdown triggers must expose `aria-expanded="false"` initially and update it on every open and close path; the shared expanded state uses that attribute.
+4. A semantic exception such as pin/warning, destructive, disabled, running, or primary action must be explicit, token-based, and excluded from the generic selected/hover rules instead of relying on a later high-specificity override.
+5. Before adding an interaction rule, check the shared selector and verify the selector matches the control itself. Document any component exception beside its rule, refresh the cache key, and verify both themes in the running app.
+6. Keep neutral hover/open and selected states distinct: hover/open uses `--x-hover-bg`, `--x-text`, and `--x-selected-line`; selected uses `--x-selected-fill`, `--x-selected-text`, and `--x-selected-ring`.
+7. A borderless neutral control needs a visible inset hover edge. If a neutral control is excluded from the shared hover selector, add a matching explicit rule in the shared stylesheet and verify it in the running UI.

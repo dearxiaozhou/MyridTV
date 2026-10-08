@@ -33,6 +33,7 @@
         if(!ctx.canvasListDropdown) return;
         dropdownOpen=true;
         ctx.canvasTitleDropdown?.classList.add('open');
+        ctx.canvasTitleDropdown?.setAttribute('aria-expanded','true');
         ctx.canvasListDropdown.style.display='flex';
         if(ctx.canvasDropdownSearch) ctx.canvasDropdownSearch.value='';
         await loadAllCanvases();
@@ -42,6 +43,7 @@
         const ctx=context();
         dropdownOpen=false;
         ctx.canvasTitleDropdown?.classList.remove('open');
+        ctx.canvasTitleDropdown?.setAttribute('aria-expanded','false');
         if(ctx.canvasListDropdown) ctx.canvasListDropdown.style.display='none';
     }
     function renderDropdownItems(){

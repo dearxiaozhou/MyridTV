@@ -2509,10 +2509,16 @@ body.prism-api-page .provider-status-dot {
     font-size:13px !important;
     font-weight:900 !important;
     box-shadow:none !important;
-}.api-model-tab.active {
-    background:var(--api-hard-panel) !important;
-    border-color:var(--api-hard-line) !important;
-    color:var(--api-hard-text) !important;
+}.api-model-tab:hover {
+    border-color:#4ade80 !important;
+    color:#4ade80 !important;
+    background:rgba(74,222,128,.14) !important;
+    box-shadow:none !important;
+}
+.api-model-tab.active {
+    background:rgba(74,222,128,.14) !important;
+    border-color:#4ade80 !important;
+    color:#4ade80 !important;
 }.api-model-tab span {
     margin-left:4px;
     font-variant-numeric:tabular-nums;
@@ -2726,4 +2732,96 @@ body.prism-api-page .page-head {
 html:not(.studio-theme-dark) body.prism-api-page .provider-card:focus-visible,
 html.studio-theme-dark body.prism-api-page .provider-card:focus-visible {
     outline-color:var(--api-hard-text) !important;
+}
+
+/* 可用模型块：删标题后 —— 类型按钮组单独靠左（不撑长），
+   右侧「保存模型设置 / 选择模型 / 拉取模型」仍留在原 .models-toolbar-actions 里、保持右对齐 */
+.models-settings-block .block-head {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+}
+.models-settings-block .block-head > .api-model-tabs {
+    flex:0 0 auto;
+    width:fit-content;
+}
+/* ===== RH 应用与工作流：单页 + 按钮切换 + 工作流两列 ===== */
+.rh-view-tabs {
+    display:flex;
+    gap:4px;
+    margin:0;
+    padding:4px;
+    border-radius:5px;
+    background:var(--api-hard-soft);
+    border:1px solid var(--api-hard-line);
+    width:fit-content;
+    max-width:100%;
+}
+.rh-view-tab {
+    display:inline-flex;
+    align-items:center;
+    gap:7px;
+    min-height:30px;
+    padding:0 12px;
+    border:1px solid transparent;
+    border-radius:4px;
+    background:transparent;
+    color:var(--api-hard-muted);
+    font-size:13px;
+    font-weight:800;
+    cursor:pointer;
+    transition:background .15s ease, color .15s ease, border-color .15s ease;
+}
+.rh-view-tab:hover {
+    border-color:#4ade80 !important;
+    color:#4ade80 !important;
+    background:rgba(74,222,128,.14) !important;
+    box-shadow:none !important;
+}
+.rh-view-tab.active {
+    background:rgba(74,222,128,.14);
+    border-color:#4ade80;
+    color:#4ade80;
+    box-shadow:none;
+}
+.rh-view-count {
+    margin-left:4px;
+    font-variant-numeric:tabular-nums;
+}
+/* RH 切换条是 block-head 的直接子 div，必须取消 .block-head>div 的 flex:1 1 280px，
+   否则会被横向撑满整行（看似"边框没起作用"的空长盒子）。与可用模型块的修法一致。 */
+.runninghub-config-block .block-head > .rh-view-tabs {
+    flex:0 0 auto;
+}
+.rh-view-panel[hidden] { display:none !important; }
+/* 浅色主题下，AI 应用/工作流 与 生图/聊天/视频/音频 两组切换按钮的选中态
+   也统一为绿色，与任务控制台/数据统计的 active 一致（#22c55e 边框、#15803d 文字） */
+html.theme-light body .rh-view-tab.active,
+html.theme-light body .api-model-tab.active {
+    background:rgba(34,197,94,.10) !important;
+    border-color:#22c55e !important;
+    color:#15803d !important;
+}
+html.theme-light body .rh-view-tab:hover,
+html.theme-light body .api-model-tab:hover {
+    background:rgba(34,197,94,.10) !important;
+    border-color:#22c55e !important;
+    color:#15803d !important;
+}
+.rh-view-panel { margin-top:2px; }
+.rh-apps-list {
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0,1fr));
+    gap:12px;
+}
+.rh-workflows-list {
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0,1fr));
+    gap:12px;
+}
+@media (max-width:720px) {
+    .rh-apps-list,
+    .rh-workflows-list { grid-template-columns:1fr; }
+    .rh-view-tabs { width:100%; }
+    .rh-view-tab { flex:1; justify-content:center; }
 }

@@ -151,7 +151,6 @@ const workflowTitleInput = document.getElementById('workflowTitleInput');
 const subEl = document.getElementById('editorSub');
 const deleteBtn = document.getElementById('deleteBtn');
 const saveBtn = document.getElementById('saveBtn');
-const renameFileBtn = document.getElementById('renameFileBtn');
 const nodeListEl = document.getElementById('nodeList');
 const previewCard = document.getElementById('previewContent');
 const miniCanvasHost = document.getElementById('miniCanvasHost');
@@ -742,7 +741,6 @@ function renderEditor(){
     if(!currentWorkflow){
         deleteBtn.style.display = 'none';
         saveBtn.style.display = 'none';
-        if(renameFileBtn) renameFileBtn.style.display = 'none';
         nodeListEl.innerHTML = '';
         document.getElementById('graphCard').style.display = 'none';
         document.getElementById('nodesToggle').style.display = 'none';
@@ -754,7 +752,6 @@ function renderEditor(){
     subEl.textContent = tf('comfy.nodeStats', {nodes:Object.keys(currentWorkflow).length, fields:currentConfig.fields.length}) + (isBuiltin ? ` · ${tr('comfy.builtin')}` : '');
     deleteBtn.style.display = isBuiltin ? 'none' : 'inline-flex';
     saveBtn.style.display = 'inline-flex';
-    if(renameFileBtn) renameFileBtn.style.display = isBuiltin ? 'none' : 'inline-flex';
 
     renderGraph();
     renderWorkspaceView();
@@ -1703,11 +1700,51 @@ async function onSave(){
         });
         if(!res.ok) throw new Error((await res.json()).detail || tr('comfy.saveFailed'));
         clearComfyWorkflowFetchCache(selectedName);
-        rememberComfyWorkflow(selectedName, currentConfig.title || selectedName.replace('.json',''), {field_count:(currentConfig.fields || []).length, builtin:isBuiltin});
-        setStatus(tr('comfy.saved'));
+        const savedName = await saveComfyWorkflowConfigAndFile(currentConfig, selectedName);
+        rememberComfyWorkflow(savedName, currentConfig.title || savedName.replace('.json',''), {field_count:(currentConfig.fields || []).length, builtin:isBuiltin});
+        setStatus(savedName !== selectedName ? (tr('comfy.saved') + ' · ' + savedName) : tr('comfy.saved'));
         await loadList();
         new BroadcastChannel('studio-api').postMessage({ type: 'workflows-changed' });
     } catch(e){ alert(e.message || tr('comfy.saveFailed')); setStatus(tr('comfy.saveFailed')); }
+}
+
+// 保存配置时顺手把后端文件名也同步成显示名，省掉单独的「同步文件名」按钮。
+// 返回最终生效的文件名；改名失败只提示不阻断（配置本身已经存下去了）。
+async function saveComfyWorkflowConfigAndFile(config, name){
+    const renamed = await renameComfyWorkflowFileIfNeeded(config, name);
+    if(renamed){
+        selectedName = renamed;
+        // 只刷新列表和标题，不走 selectWorkflow（那会重置预览/节点选中态）
+        renderList();
+        if(workflowTitleInput) workflowTitleInput.value = config.title || renamed.replace('.json','');
+    }
+    return renamed || name;
+}
+
+async function renameComfyWorkflowFileIfNeeded(config, name){
+    if(isBuiltin) return '';
+    const base = String(config?.title || '').replace(/\.json$/i, '').trim();
+    const oldBase = String(name || '').replace(/\.json$/i, '').trim();
+    if(!base || base === oldBase) return '';
+    try {
+        const res = await fetch(`/api/workflows/${encodeURIComponent(name)}/rename`, {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({name: base})
+        });
+        const data = await res.json().catch(() => ({}));
+        if(!res.ok) throw new Error(data.detail || '改名失败');
+        clearComfyWorkflowFetchCache(name);
+        const nextName = data.name || (base + '.json');
+        if(nextName !== name) new BroadcastChannel('studio-api').postMessage({ type: 'workflows-changed' });
+        return nextName;
+    } catch(e){
+        const msg = String(e?.message || '改名失败');
+        alert(/not found|404/i.test(msg)
+            ? '配置已保存，但文件名没同步：后端还没加载这个功能（改了后端 Python 必须重启软件）。'
+            : ('配置已保存，但文件名同步失败：' + msg));
+        return '';
+    }
 }
 
 async function onDelete(){

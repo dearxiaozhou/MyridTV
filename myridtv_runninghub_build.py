@@ -139,9 +139,12 @@ def build_official_body(payload, model, refs):
     aspect_ratio = _normalize_rh_aspect_ratio(aspect_ratio, payload.get("size"))
     body = {
         "prompt": payload.get("prompt") or "",
-        "resolution": resolution,
         "aspectRatio": aspect_ratio,
     }
+    # N 系（nano-banana 家族，rhart-image-n-*）：官方文档只接受 prompt/aspectRatio(+imageUrls)，
+    # 传 resolution 会被拒（实测 "2K/4K image size is not supported" / "Invalid parameters"）。
+    if not str(model or "").startswith("rhart-image-n-"):
+        body["resolution"] = resolution
     if model.startswith("rhart-image-g-2-official/"):
         body["quality"] = payload.get("quality") or "medium"
     if refs:

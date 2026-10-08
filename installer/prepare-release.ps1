@@ -131,6 +131,9 @@ function Should-SkipRelativePath {
         if ($fileName -match '(?i)^canvas_.*\.json$') { return $true }
         if ($fileName -match '(?i)^style-preview-.*\.json$') { return $true }
         if ($fileName -match '(?i)\.png$') { return $true }
+        # 开发期一次性脚本/验证记录不进包（含 D:\APP\MyridTV 硬编码路径，且 run_*.py 内嵌 BASE_STYLE 提示词）
+        if ($fileName -match '(?i)^run_.*\.py$') { return $true }
+        if ($fileName -match '(?i)^verification-') { return $true }
     }
 
     if ($normalized.Equals('_internal\history.json', [System.StringComparison]::OrdinalIgnoreCase)) { return $true }
@@ -327,7 +330,7 @@ function Remove-StageSensitiveFiles {
     }
 
     Get-ChildItem -LiteralPath $TargetStageDir -Force -File -Filter '*.txt' -ErrorAction SilentlyContinue |
-        Remove-Item -Force
+        ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
 }
 
 function Initialize-StageRuntimeState {
@@ -355,10 +358,10 @@ function Remove-StageAuthorTraces {
     if (Test-Path -LiteralPath $pythonDir) {
         Get-ChildItem -LiteralPath $pythonDir -Recurse -Force -Directory -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -eq '__pycache__' } |
-            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+            ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
         foreach ($pattern in @('*.pyc', '*.pyo')) {
             Get-ChildItem -LiteralPath $pythonDir -Recurse -Force -File -Filter $pattern -ErrorAction SilentlyContinue |
-                Remove-Item -Force -ErrorAction SilentlyContinue
+                ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
         }
     }
     foreach ($relative in @('python\Lib\site-packages\bin', 'python\Scripts')) {
@@ -487,7 +490,7 @@ function Remove-StageLegacySensitiveFiles {
     Remove-IfExists (Join-Path $TargetStageDir '_internal\static\app_config.json')
     Remove-IfExists (Join-Path $TargetStageDir 'installer-build.json')
     Get-ChildItem -LiteralPath $TargetStageDir -Force -File -Filter '*.txt' -ErrorAction SilentlyContinue |
-        Remove-Item -Force
+        ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
 }
 
 function Sanitize-RunningHubCatalog {
@@ -699,7 +702,7 @@ New-Item -ItemType Directory -Force -Path $StageDir | Out-Null
 
 Copy-FilteredTree -RootDir $SourceDir -CurrentSource $SourceDir -CurrentDest $StageDir -AppRoot
 Remove-StageSensitiveFiles -TargetStageDir $StageDir
-Get-ChildItem -LiteralPath $StageDir -File -Force | Where-Object { $_.Extension -in @('.vbs', '.bat') } | Remove-Item -Force
+Get-ChildItem -LiteralPath $StageDir -File -Force | Where-Object { $_.Extension -in @('.vbs', '.bat') } | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
 
 $launcherProject = Join-Path $PSScriptRoot 'launcher\MyridTV.Launcher.csproj'
 Build-Launcher -ProjectFile $launcherProject -StageDest (Join-Path $StageDir 'MyridTV.exe')

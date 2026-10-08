@@ -10,11 +10,11 @@ e2e_canvas_group_zorder.py
 组框盖住成员时点成员 = 命中组框（选中组而非节点），表现为「有时死活点不到」。
 
 断言：
-1. 建组后 render → 组 zIndex == '1'
-2. 点选组内成员（走 syncSelectionUi 路径）→ 成员=4，组仍=1（修复前此处组会变 2）
-3. bringNodesToFront(成员) → refreshNodeLayerStyles 全量刷 → 组仍=1
+1. 建组后 render → 组 zIndex == '0'
+2. 点选组内成员（走 syncSelectionUi 路径）→ 成员=4，组仍=0（修复前此处组会变 2）
+3. bringNodesToFront(成员) → refreshNodeLayerStyles 全量刷 → 组仍=0
 4. 成员中心点 elementsFromPoint 命中在成员自身（不被组框拦截）
-5. Ctrl+G groupSelectedNodes 建组路径 → 新组 zIndex=1
+5. Ctrl+G groupSelectedNodes 建组路径 → 新组 zIndex=0
 """
 import json, sys
 from playwright.sync_api import sync_playwright
@@ -73,7 +73,7 @@ def main():
             };
             return {groupZ0: z('gz_group'), n1Z0: z('gz_n1')};
         }""")
-        failures += not check("render 后组 zIndex=1", setup["groupZ0"] == "1", str(setup))
+        failures += not check("render 后组 zIndex=0", setup["groupZ0"] == "0", str(setup))
 
         # 1) 走真实选中路径：selectNodeFromPointer（内部 syncSelectionUi 直写 zIndex）
         step1 = page.evaluate("""() => {
@@ -102,7 +102,7 @@ def main():
         }""")
         failures += not check("成员中心命中在成员本体（不被组框拦截）", hit == "gz_n1", hit)
 
-        # 4) Ctrl+G 建组路径产出的组同样 =1
+        # 4) Ctrl+G 建组路径产出的组同样 =0
         step4 = page.evaluate("""() => {
             selectedIds = []; selectedId = '';
             // 用真实交互：选中两个图片节点再 groupSelectedNodes
@@ -112,7 +112,7 @@ def main():
             return 'manual';
         }""")
         step4b = page.evaluate("""() => {
-            // 直接调用应用函数验证其经 render 后组 z=1
+            // 直接调用应用函数验证其经 render 后组 z=0
             selectedIds = ['gz_n1', 'gz_n2']; selectedId = '';
             render();
             groupSelectedNodes();
@@ -120,7 +120,7 @@ def main():
             const el = gid && document.querySelector(`.image-node[data-id="${gid.id}"]`);
             return el ? el.style.zIndex : 'NO_GROUP_EL';
         }""")
-        failures += not check("Ctrl+G 建组后新组 zIndex=1", step4b == "1", str(step4b))
+        failures += not check("Ctrl+G 建组后新组 zIndex=0", step4b == "0", str(step4b))
 
         # 5) 真实拖入和拖出分组：检查拖动结束后成员关系同步
         page.evaluate("""() => {

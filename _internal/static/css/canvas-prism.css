@@ -439,17 +439,16 @@ body.prism-canvas-page .canvas-item {
 }
 
 body.prism-canvas-page .canvas-item:hover {
-  border-color: rgba(170,170,170,0.104);
-  box-shadow: 0 24px 46px rgba(82, 95, 129, 0.14);
+  border-color: var(--x-selected-line);
+  box-shadow: 0 0 0 1px var(--x-selected-ring), var(--x-sh-3);
   transform: translateY(-1px);
 }
 
 body.prism-canvas-page .canvas-item.active {
-  background:
-    rgba(26,26,26,.96),
-    linear-gradient(135deg, rgba(170,170,170,0.048), rgba(150,150,150,0.04));
-  border-color: rgba(255, 255, 255, 0.12);
-  box-shadow: 0 24px 48px rgba(8, 15, 34, 0.3);
+  background: var(--x-selected-fill);
+  border-color: var(--x-selected-line);
+  color: var(--x-selected-text);
+  box-shadow: inset 0 0 0 1px var(--x-selected-ring);
 }
 
 body.prism-canvas-page .smart-create-btn {
@@ -570,7 +569,7 @@ body.prism-canvas-page .gate-back-link:hover,
 body.prism-canvas-page .smart-create-btn:hover {
 background:
 rgba(38,38,38,.95) padding-box,
-#7a7a7a border-box !important;
+var(--x-selected-line) border-box !important;
 }
 
 /* Full-bleed workspace: remove title/time text and let canvas content occupy the full frame. */
@@ -808,7 +807,7 @@ box-shadow:0 10px 22px rgba(0,0,0,.12), inset 0 1px 0 rgba(255,255,255,.035) !im
 
 body.prism-canvas-page .canvas-item:hover {
 transform:translateY(-2px) !important;
-box-shadow:0 16px 30px rgba(0,0,0,.18), 0 0 18px rgba(170,170,170,0.048) !important;
+box-shadow:0 0 0 1px var(--x-selected-ring), 0 16px 30px rgba(0,0,0,.18) !important;
 }
 
 /* Restore the canvas page's own rounded content surfaces. */
@@ -1003,7 +1002,7 @@ box-shadow:0 10px 22px rgba(0,0,0,.12), inset 0 1px 0 rgba(255,255,255,.035) !im
 
 body.prism-canvas-page .canvas-item:hover {
 transform:translateY(-2px) !important;
-box-shadow:0 16px 30px rgba(0,0,0,.18), 0 0 18px rgba(170,170,170,0.048) !important;
+box-shadow:0 0 0 1px var(--x-selected-ring), 0 16px 30px rgba(0,0,0,.18) !important;
 }
 
 body.prism-canvas-page .smart-create-btn {

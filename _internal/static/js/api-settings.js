@@ -781,6 +781,13 @@ function isFixedProvider(itemOrId){
     // RunningHub 已解锁为全可修改平台（2026-09-10 用户要求），仅火山/魔搭保持固定。
     return id === 'volcengine';
 }
+// 可删除性独立于 isFixedProvider：2026-10-07 用户要求火山引擎也能删。
+// 固定语义仍保留两处 —— ①base_url 锁官方地址 ②不可拖动排序，避免误拖打乱内置顺序。
+// 这里只放开「删除」，让 deleteBtn 显示、deleteProvider 放行。
+function isProviderDeletable(itemOrId){
+    const id = typeof itemOrId === 'string' ? itemOrId : itemOrId?.id;
+    return !!id;
+}
 function isRunningHubProvider(item){
   if(!item) return false;
   // 以协议为准：RunningHub 平台协议改成其他值后按新协议走，不再被 id 强行认定
@@ -2841,7 +2848,7 @@ document.body.classList.remove('show-runninghub', 'show-volcengine', 'show-volce
         if(isJimeng) refreshJimengStatus(false);
     }
     const deleteBtn = document.getElementById('deleteBtn');
-    if(deleteBtn) deleteBtn.style.display = isFixedProvider(item) ? 'none' : 'inline-flex';
+    if(deleteBtn) deleteBtn.style.display = isProviderDeletable(item) ? 'inline-flex' : 'none';
     renderModels('image');
     renderModels('chat');
     renderModels('video');
@@ -3234,7 +3241,7 @@ async function fetchModels(){
     const extra = (detectedProtocol === 'volcengine' || isVolcengineProvider(item))
         ? ' · 已识别方舟协议，火山聊天建议改填 ep-... 接入点'
         : ((detectedProtocol === 'runninghub' || isRunningHubProvider(item))
-            ? ' · RunningHub 已按官方文档实时同步模型'
+            ? ' · RunningHub 已从官方目录实时同步模型'
             : '');
     setStatus(`已拉取 ${data.total} 个模型 · 点「选择模型」勾选要导入的${extra}`);
     openModelPicker();
@@ -3570,7 +3577,7 @@ function deleteProvider(){
     }
     const item = provider();
     if(!item) return;
-    if(isFixedProvider(item)){ alert(tr('api.defaultNoDelete') || '默认平台不能删除'); return; }
+    if(!isProviderDeletable(item)){ alert(tr('api.defaultNoDelete') || '默认平台不能删除'); return; }
     if(providers.length <= 1){ alert(tr('api.keepOne')); return; }
     providers = providers.filter(p => p.id !== item.id);
     selectedId = providers[0]?.id || '';
@@ -3941,6 +3948,21 @@ async function handlePageSave(){
     return outcome === 'done';
 }
 
+let currentRhView = 'apps';
+function setRhView(view){
+    if(view !== 'apps' && view !== 'workflows') return;
+    currentRhView = view;
+    const appsPanel = document.getElementById('rhAppsPanel');
+    const wfPanel = document.getElementById('rhWorkflowsPanel');
+    const tabApps = document.getElementById('rhTabApps');
+    const tabWf = document.getElementById('rhTabWorkflows');
+    if(appsPanel) appsPanel.hidden = view !== 'apps';
+    if(wfPanel) wfPanel.hidden = view !== 'workflows';
+    if(tabApps){ tabApps.classList.toggle('active', view === 'apps'); tabApps.setAttribute('aria-selected', String(view === 'apps')); }
+    if(tabWf){ tabWf.classList.toggle('active', view === 'workflows'); tabWf.setAttribute('aria-selected', String(view === 'workflows')); }
+    try { localStorage.setItem('rh_view', view); } catch(e){}
+}
+
 window.onload = () => {
     if(window.StudioTheme) window.StudioTheme.apply();
     if(window.StudioI18n) window.StudioI18n.apply();
@@ -3956,4 +3978,5 @@ window.onload = () => {
     [keyInput, rhFreeKeyInput, rhWalletKeyInput, volcAkInput, volcSkInput].forEach(input => {
         if(input) input.addEventListener('input', markConnectionDirty);
     });
+    setRhView((function(){ try { return localStorage.getItem('rh_view') || 'apps'; } catch(e){ return 'apps'; } })());
 };

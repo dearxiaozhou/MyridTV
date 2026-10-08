@@ -13,9 +13,9 @@ body { margin:0; height:100vh; overflow:hidden; background:var(--page); color:va
 .current-canvas-time { max-width:260px; color:var(--faint); font-size:10px; font-weight:400; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .canvas-list { display:flex; flex-direction:column; gap:8px; overflow:auto; max-height:360px; }
 .canvas-item { position:relative; width:100%; aspect-ratio:1/1; text-align:left; border:3px solid #edf0f3; background:#fff; border-radius:14px; padding:0; transition:all .18s var(--ease); cursor:pointer; }
-.canvas-item:hover { border-color:#cbd5e1; box-shadow:0 1px 3px rgba(0,0,0,.06); }
-.canvas-item.active { background:#1f1f1f; border-color:#1f1f1f; box-shadow:0 1px 3px rgba(0,0,0,.15); }
-.canvas-item.active .canvas-card-title { color:#fff; }
+.canvas-item:hover { border-color:var(--x-selected-line); box-shadow:0 0 0 1px var(--x-selected-ring); }
+.canvas-item.active { background:var(--x-selected-fill); border-color:var(--x-selected-line); box-shadow:inset 0 0 0 1px var(--x-selected-ring); }
+.canvas-item.active .canvas-card-title { color:var(--x-selected-text); }
 .canvas-kind-chip { display:inline-flex; align-items:center; gap:4px; height:18px; padding:0 7px; border-radius:999px; background:rgba(139,92,246,.1); color:#7c3aed; border:1px solid rgba(139,92,246,.18); font-size:9px; font-weight:900; letter-spacing:.05em; }
 .canvas-item.active .canvas-kind-chip { color:#ddd6fe; background:rgba(255,255,255,.1); border-color:rgba(255,255,255,.16); }
 .canvas-open { width:100%; height:100%; border-radius:14px; padding:10px 12px; text-align:left; display:flex; flex-direction:column; gap:8px; background:transparent; }
@@ -26,7 +26,7 @@ body { margin:0; height:100vh; overflow:hidden; background:var(--page); color:va
 .canvas-card-id-row { display:flex; align-items:center; justify-content:space-between; gap:6px; min-height:24px; padding:3px 7px; border-radius:8px; background:#fff; border:1px solid #e8edf3; }
 .canvas-card-id { min-width:0; font-size:10px; line-height:1.2; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:#8a8a8a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .canvas-card-copy-id { width:22px; height:22px; flex:0 0 22px; border-radius:7px; display:flex; align-items:center; justify-content:center; color:#c8c8c8; background:transparent; border:none; cursor:pointer; transition:color .14s var(--ease), background .14s var(--ease); }
-.canvas-card-copy-id:hover { color:#1f1f1f; background:#f8fafc; }
+.canvas-card-copy-id:hover { color:var(--x-text); background:var(--x-hover-bg); border-color:var(--x-selected-line); }
 .canvas-card-copy-id.copied { color:#16a34a; background:#f0fdf4; }
 .canvas-card-meta { margin-top:auto; display:inline-flex; align-items:center; gap:4px; max-width:100%; padding:2px 7px; border-radius:8px; background:#f8fafc; border:1px solid #edf2f7; align-self:flex-start; }
 .canvas-item.active .canvas-card-meta { background:rgba(255,255,255,.06); border-color:rgba(255,255,255,.08); }
@@ -46,39 +46,39 @@ body { margin:0; height:100vh; overflow:hidden; background:var(--page); color:va
 .canvas-confirm-btn { background:#fff; color:#1f1f1f; }
 .canvas-cancel-btn { background:rgba(255,255,255,.1); color:#fff; border:1px solid rgba(255,255,255,.16); }
 .canvas-preview-mark { width:34px; height:34px; border-radius:10px; display:flex; align-items:center; justify-content:center; background:#f8fafc; color:#8a8a8a; border:1px solid #edf2f7; font-size:16px; cursor:pointer; transition:all .15s var(--ease); flex:0 0 auto; }
-.canvas-preview-mark:hover { background:#fff; border-color:#cbd5e1; color:#1f1f1f; }
+.canvas-preview-mark:hover { background:var(--x-hover-bg); border-color:var(--x-selected-line); color:var(--x-text); }
 .canvas-item.active .canvas-preview-mark { background:rgba(255,255,255,.08); color:#fff; border-color:rgba(255,255,255,.12); }
 .emoji-picker { position:absolute; left:8px; top:48px; z-index:20; width:170px; padding:8px; border-radius:12px; background:#1f1f1f; box-shadow:0 20px 44px rgba(31,31,31,.24); display:grid; grid-template-columns:repeat(6, 1fr); gap:4px; }
 .emoji-option { width:22px; height:22px; border-radius:6px; display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,.65); background:transparent; transition:all .15s var(--ease); padding:0; }
 .emoji-option:hover { background:rgba(255,255,255,.14); color:#fff; }
 .canvas-card-edit { position:absolute; right:40px; top:8px; width:26px; height:26px; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#c8c8c8; background:rgba(255,255,255,.92); border:1px solid #e8edf3; z-index:2; opacity:0; transition:all .14s var(--ease); }
 .canvas-item:hover .canvas-card-edit { opacity:1; }
-.canvas-card-edit:hover { color:#1f1f1f; border-color:#cbd5e1; background:#fff; }
+.canvas-card-edit:hover { color:var(--x-text); border-color:var(--x-selected-line); background:var(--x-hover-bg); }
 .canvas-item.active .canvas-card-edit { background:rgba(255,255,255,.14); color:#fff; border-color:rgba(255,255,255,.18); opacity:1; }
-.canvas-item.active .canvas-card-edit:hover { background:rgba(255,255,255,.22); }
+.canvas-item.active .canvas-card-edit:hover { background:var(--x-hover-bg); }
 .canvas-card-export { position:absolute; right:72px; top:8px; width:26px; height:26px; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#c8c8c8; background:rgba(255,255,255,.92); border:1px solid #e8edf3; z-index:2; opacity:0; transition:all .14s var(--ease); }
 .canvas-item:hover .canvas-card-export { opacity:1; }
-.canvas-card-export:hover { color:#1f1f1f; border-color:#cbd5e1; background:#fff; }
+.canvas-card-export:hover { color:var(--x-text); border-color:var(--x-selected-line); background:var(--x-hover-bg); }
 .canvas-item.active .canvas-card-export { background:rgba(255,255,255,.14); color:#fff; border-color:rgba(255,255,255,.18); opacity:1; }
-.canvas-item.active .canvas-card-export:hover { background:rgba(255,255,255,.22); }
+.canvas-item.active .canvas-card-export:hover { background:var(--x-hover-bg); }
 .canvas-delete { position:absolute; right:8px; top:8px; width:26px; height:26px; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#c8c8c8; background:rgba(255,255,255,.92); border:1px solid #e8edf3; z-index:2; opacity:0; transition:all .14s var(--ease); }
 .canvas-item:hover .canvas-delete { opacity:1; }
-.canvas-delete:hover { background:#fee2e2; color:#dc2626; border-color:#fecaca; }
-.canvas-restore:hover { background:#ecfdf5; color:#059669; border-color:#a7f3d0; }
+.canvas-delete:hover { background:var(--x-danger-soft); color:var(--x-danger); border-color:var(--x-danger); }
+.canvas-restore:hover { background:var(--x-selected-fill); color:var(--x-selected-text); border-color:var(--x-selected-line); }
 .canvas-item.active .canvas-delete { background:rgba(255,255,255,.14); color:#fff; border-color:rgba(255,255,255,.18); opacity:1; }
-.canvas-item.active .canvas-delete:hover { background:rgba(248,113,113,.22); color:#fecaca; }
+.canvas-item.active .canvas-delete:hover { background:var(--x-danger-soft); color:var(--x-danger); border-color:var(--x-danger); }
 /* === 画布卡片增强：颜色标记 / 负责人 / 置顶 / 排序 === */
 .cc-red{--cc:#ef4444}.cc-orange{--cc:#f97316}.cc-amber{--cc:#f59e0b}.cc-green{--cc:#22c55e}.cc-teal{--cc:#14b8a6}.cc-blue{--cc:#3b82f6}.cc-violet{--cc:#8b5cf6}.cc-pink{--cc:#ec4899}.cc-slate{--cc:#8a8a8a}
 .canvas-color-bar { position:absolute; left:0; right:0; top:0; height:5px; background:var(--cc,#cbd5e1); border-radius:14px 14px 0 0; z-index:3; pointer-events:none; }
 .canvas-item.pinned { border-color:#fde68a; box-shadow:0 1px 3px rgba(217,119,6,.12); }
 .canvas-owner-chip { display:inline-flex; align-items:center; gap:3px; align-self:flex-start; max-width:100%; padding:2px 8px; border-radius:999px; background:#eef2ff; color:#4338ca; border:1px solid #e0e7ff; font-size:9.5px; font-weight:800; cursor:pointer; overflow:hidden; }
-.canvas-owner-chip:hover { background:#e0e7ff; }
+.canvas-owner-chip:hover { background:var(--x-hover-bg); color:var(--x-text); border-color:var(--x-selected-line); }
 .canvas-owner-text { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:96px; }
 .canvas-item.active .canvas-owner-chip { background:rgba(255,255,255,.14); color:#e0e7ff; border-color:rgba(255,255,255,.2); }
 .canvas-pin-btn { position:absolute; right:8px; bottom:8px; width:26px; height:26px; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#c8c8c8; background:rgba(255,255,255,.92); border:1px solid #e8edf3; z-index:2; opacity:0; transition:all .14s var(--ease); }
 .canvas-item:hover .canvas-pin-btn { opacity:1; }
-.canvas-pin-btn:hover { color:#d97706; border-color:#fde68a; background:#fffbeb; }
-.canvas-pin-btn.active { opacity:1; color:#d97706; background:#fef3c7; border-color:#fde68a; }
+.canvas-pin-btn:hover { color:var(--x-warn); border-color:var(--x-warn); background:var(--x-warn-soft); }
+.canvas-pin-btn.active { opacity:1; color:var(--x-warn); background:var(--x-warn-soft); border-color:var(--x-warn); }
 .canvas-pin-btn.active i { fill:currentColor; }
 .canvas-pin-btn.active svg, .canvas-pin-btn.active svg * { fill:currentColor; }
 .canvas-item.active .canvas-pin-btn { background:rgba(255,255,255,.14); color:#fff; border-color:rgba(255,255,255,.18); }
@@ -1121,7 +1121,7 @@ body.studio-theme-dark .comfy-random-btn.active,
 .theme-dark .canvas-card-export,
 .theme-dark .canvas-delete { background:var(--soft); border-color:var(--line); color:var(--muted); }
 .theme-dark .canvas-item { background:var(--card-solid); border-color:var(--line); }
-.theme-dark .canvas-item:hover { border-color:var(--line-2); box-shadow:0 14px 30px rgba(0,0,0,.18); }
+.theme-dark .canvas-item:hover { border-color:var(--x-selected-line); box-shadow:0 0 0 1px var(--x-selected-ring); }
 .theme-dark .smart-create-btn { background:linear-gradient(var(--card-solid),var(--card-solid)) padding-box, linear-gradient(135deg,#22c55e,#06b6d4,#8b5cf6,#f97316) border-box; color:var(--text); }
 .theme-dark .canvas-card-title { color:var(--text); }
 .theme-dark .canvas-card-id-row { background:var(--soft); border-color:var(--line); }
@@ -1144,9 +1144,9 @@ body.studio-theme-dark .comfy-random-btn.active,
 .theme-dark .create-confirm { background:#d8dee9; color:#1f1f1f; border-color:#d8dee9; }
 .theme-dark .trash-note { background:rgba(146,64,14,.18); color:#fed7aa; border-color:rgba(251,191,36,.28); }
 .theme-dark .gate-list-empty-icon { background:linear-gradient(135deg, var(--soft), var(--card-solid)); border-color:var(--line); color:var(--faint); box-shadow:none; }
-.theme-dark .canvas-item.active { background:#d8dee9; border-color:#d8dee9; box-shadow:0 16px 34px rgba(0,0,0,.22); }
+.theme-dark .canvas-item.active { background:var(--x-selected-fill); border-color:var(--x-selected-line); box-shadow:inset 0 0 0 1px var(--x-selected-ring); }
 .theme-dark .canvas-item.active .canvas-card-title,
-.theme-dark .canvas-item.active .canvas-card-time { color:#1f1f1f; }
+.theme-dark .canvas-item.active .canvas-card-time { color:var(--x-selected-text); }
 .theme-dark .canvas-item.active .canvas-card-id-row { background:rgba(0,0,0,.08); border-color:rgba(0,0,0,.14); }
 .theme-dark .canvas-item.active .canvas-card-id { color:#4a4a4a; }
 .theme-dark .canvas-item.active .canvas-card-copy-id { color:#4a4a4a; }
@@ -1190,7 +1190,7 @@ body.studio-theme-dark .comfy-random-btn.active,
 }
 .gate-list .canvas-item:hover {
   transform: translateY(-1px);
-  border-color: rgba(6,182,212,.42) !important;
+  border-color: var(--x-selected-line) !important;
   box-shadow: 0 16px 34px rgba(0,0,0,.13) !important;
 }
 .gate-list .canvas-open {
@@ -1254,7 +1254,7 @@ body.studio-theme-dark .comfy-random-btn.active,
   box-shadow: 0 12px 30px rgba(0,0,0,.22) !important;
 }
 .theme-dark .gate-list .canvas-item:hover {
-  border-color: rgba(34,211,238,.46) !important;
+  border-color: var(--x-selected-line) !important;
   box-shadow: 0 18px 40px rgba(0,0,0,.32) !important;
 }
 .theme-dark .gate-list .canvas-preview-mark,

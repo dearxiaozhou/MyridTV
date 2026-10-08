@@ -69,23 +69,39 @@ function canvasAgentChatModelsFor(providerId){
     return [...new Set(provider?.chat_models || [])].filter(Boolean);
 }
 // 画布「智能体设置」里的 LLM 平台下拉：已配置好的自定义对话平台（OpenAI 兼容、有请求地址）。
+/* 2026-10-08（老王："智能体设置的 LLM 平台，自动过滤掉没有 LLM 模型的平台"）
+   原来只按 enabled / 非 runninghub / 有 base_url 过滤，于是纯生图平台、或者压根没拉过
+   模型的平台也混进「LLM平台」下拉，选了才发现模型是空的。
+
+   判据用 available_chat_models（平台**提供**的全部 chat 模型，拉取模型时写入），
+   并回退 chat_models（用户已勾选的）：
+     · 只看 chat_models 会误杀「平台有模型、但用户还没勾选」的平台
+     · 只看 available_chat_models 会漏掉「模型是手填的」老配置
+   两者任一非空即视为该平台可用。 */
 function canvasAgentLlmProviders(){
+    const modelList = (...buckets) => [...new Set(buckets.flat().map(v => String(v || '').trim()).filter(Boolean))];
     const list = (D("apiProviders") || []).filter(p => p && p.enabled !== false
         && p.id !== 'runninghub' && String(p.protocol || '').toLowerCase() !== 'runninghub'
         && String(p.base_url || '').trim())
         .map(p => ({
             id:String(p.id || ''),
             name:p.name || String(p.id || ''),
-            chat_models:[...new Set((p.chat_models || []).filter(Boolean))]
+            chat_models:modelList(p.chat_models),
+            available_chat_models:modelList(p.available_chat_models)
         }))
-        .filter(p => p.id);
+        .filter(p => p.id)
+        // 没有 LLM 模型的平台一律不进下拉
+        .filter(p => p.available_chat_models.length || p.chat_models.length);
     const entry = deps.canvasAgentActiveEntry() || {};
     const savedPid = String(entry.provider_id || deps.configuredAgentProviderId() || '').trim();
     if(savedPid && !list.some(p => p.id === savedPid)){
-        list.unshift({
+        // 兜底项（配置里存着、但平台列表里没有）同样要求有模型，否则别塞回下拉
+        const fbModels = modelList(entry.chat_models, entry.available_chat_models);
+        if(fbModels.length) list.unshift({
             id:savedPid,
             name:entry.name || savedPid,
-            chat_models:[...new Set((entry.chat_models || []).filter(Boolean))]
+            chat_models:fbModels,
+            available_chat_models:[]
         });
     }
     return list;
@@ -95,6 +111,7 @@ function canvasAgentLlmProviders(){
    做法：保留隐藏原生 select 作数据载体（collect/render 仍读写 .value），
    外面盖一个方正按钮 + 自研列表气泡（挂在 body 用 fixed 定位，避免面板 overflow:auto 裁剪）。 */
 function closeAgentDropdown(){
+    document.querySelectorAll('.agent-select-btn[aria-expanded="true"]').forEach(btn => btn.setAttribute('aria-expanded', 'false'));
     document.querySelectorAll('.agent-select-pop').forEach(e => e.remove());
 }
 function openAgentDropdown(sel, anchor){
@@ -104,6 +121,7 @@ function openAgentDropdown(sel, anchor){
     const rect = anchorEl.getBoundingClientRect();
     const opts = [...sel.options];
     if(!opts.length) return;
+    anchorEl.setAttribute('aria-expanded', 'true');
     const pop = document.createElement('div');
     pop.className = 'agent-select-pop';
     const rowH = 26, maxVisible = 8;
@@ -164,6 +182,7 @@ function enhanceAgentSelects(){
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'agent-select-btn';
+            btn.setAttribute('aria-expanded', 'false');
             btn.innerHTML = `<span>${deps.escapeHtml(sel.options[sel.selectedIndex]?.textContent || '')}</span><span class="agent-select-caret">▾</span>`;
             btn.onclick = e => { e.preventDefault(); e.stopPropagation(); openAgentDropdown(sel, btn); };
             wrap.insertBefore(btn, sel);
@@ -204,7 +223,7 @@ function renderCanvasAgentSettingsPanel(){
     const selectedPid = String(agentSel?.value || activeEntry.provider_id || '').trim();
     const chatProvider = llmProviders.find(p => p.id === selectedPid) || llmProviders[0] || null;
     const configuredChatModel = deps.canvasAgentConfiguredChatModel(activeEntry, chatProvider);
-    const chatModels = chatProvider ? [...new Set([configuredChatModel, ...(chatProvider.chat_models || [])].filter(Boolean))] : [configuredChatModel].filter(Boolean);
+    const chatModels = chatProvider ? [...new Set([configuredChatModel, ...(chatProvider.chat_models || []), ...(chatProvider.available_chat_models || [])].filter(Boolean))] : [configuredChatModel].filter(Boolean);
     const activeChatModel = chatModels.includes(configuredChatModel) ? configuredChatModel : (chatModels[0] || '');
     chatModelSel.innerHTML = [...new Set([activeChatModel, ...chatModels].filter(Boolean))].map(m => `<option value="${deps.escapeHtml(m)}" ${m === activeChatModel ? 'selected' : ''}>${deps.escapeHtml(m)}</option>`).join('');
     // 生图控件无论哪种模式都渲染

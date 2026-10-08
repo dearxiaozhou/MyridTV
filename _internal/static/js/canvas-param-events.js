@@ -110,15 +110,19 @@
         }
         container.querySelectorAll('.smart-control > .smart-pill').forEach(function (pill) {
             // The style library binds its own positioning and search controls.
+            var control = pill.parentElement;
+            pill.setAttribute('aria-expanded', control.classList.contains('pinned') ? 'true' : 'false');
             if (pill.closest('.style-mode-control,.filter-mode-control')) return;
             pill.onclick = function (event) {
                 event.preventDefault(); event.stopPropagation();
-                var control = pill.parentElement;
                 var wasPinned = control.classList.contains('pinned');
                 deps.closeAllSmartPopovers();
                 if (wasPinned && control.contains(global.document.activeElement)) global.document.activeElement.blur();
                 else pill.focus({ preventScroll: true });
-                if (!wasPinned) control.classList.add('pinned');
+                if (!wasPinned) {
+                    control.classList.add('pinned');
+                    pill.setAttribute('aria-expanded', 'true');
+                }
             };
         });
         container.querySelectorAll('[data-combo-engine]').forEach(function (button) {

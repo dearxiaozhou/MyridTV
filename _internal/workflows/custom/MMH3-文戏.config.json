@@ -2,23 +2,10 @@
   "title": "MMH3-文戏",
   "fields": [
     {
-      "id": "f_ay3gqji",
-      "node": "163",
-      "input": "value",
-      "name": "时长",
-      "type": "number",
-      "default": 15,
-      "options": [],
-      "min": 0,
-      "max": 30,
-      "step": 1,
-      "random_enabled": false
-    },
-    {
       "id": "f_foal4hk",
       "node": "164",
       "input": "aspect_ratio",
-      "name": "视频比例",
+      "name": "比例",
       "type": "text",
       "default": "16:9 (Widescreen)",
       "options": []
@@ -49,7 +36,7 @@
       "id": "f_kgle5jb",
       "node": "268",
       "input": "value",
-      "name": "数值",
+      "name": "二采倍数",
       "type": "number",
       "default": 1.5,
       "options": [],
@@ -129,6 +116,19 @@
       "name": "加载图像 #274",
       "type": "image",
       "options": []
+    },
+    {
+      "id": "f_xv03kr4",
+      "node": "163",
+      "input": "value",
+      "name": "时长",
+      "type": "number",
+      "default": 10,
+      "options": [],
+      "min": 0,
+      "max": 30,
+      "step": 1,
+      "random_enabled": false
     }
   ],
   "mini_cards": {

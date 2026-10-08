@@ -237,7 +237,7 @@
         "smart.toastNoUndo": { zh: "没有可撤销的操作", en: "Nothing to undo" },
         "smart.toastUndone": { zh: "已撤销", en: "Undone" },
         "smart.toastNeedPrompt": { zh: "请输入提示词", en: "Please enter a prompt" },
-        "smart.toastNeedGroup": { zh: "请先按住 Ctrl 框选至少两个图片节点", en: "Ctrl+box-select at least two image nodes first" },
+        "smart.toastNeedGroup": { zh: "请先按住 Ctrl 框选至少两个节点（空节点也可以）", en: "Ctrl+box-select at least two nodes first (empty nodes are allowed)" },
         "smart.toastUploadFail": { zh: "素材上传失败", en: "Media upload failed" },
         "smart.toastApiSettingsFail": { zh: "API 设置加载失败", en: "Failed to load API settings" },
         "smart.toastCanvasFail": { zh: "智能画布加载失败", en: "Failed to load smart canvas" },

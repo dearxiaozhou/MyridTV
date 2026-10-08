@@ -188,7 +188,7 @@
         var popId = 'unifiedPickerPopover';
         return '<div class="param-item param-unified-picker">' +
             '<div class="smart-control unified-picker-control" id="unifiedPickerControl">' +
-            '<button class="smart-pill unified-picker-pill" type="button" onclick="CanvasUnifiedPicker.onPillClick(event)" title="' + esc('平台·工作流/模型（图片/视频已过滤）') + '"><i data-lucide="layers"></i><span class="sub">' + esc(label) + '</span></button>' +
+            '<button class="smart-pill unified-picker-pill" type="button" aria-expanded="false" aria-controls="unifiedPickerPopover" onclick="CanvasUnifiedPicker.onPillClick(event)" title="' + esc('平台·工作流/模型（图片/视频已过滤）') + '"><i data-lucide="layers"></i><span class="sub">' + esc(label) + '</span></button>' +
             '<div class="smart-popover unified-picker-popover" id="' + popId + '">' +
             '<div class="unified-picker-body">' + (groups.length ? groups.map(function (g) {
                 return '<div class="unified-group"><div class="unified-group-title">' + esc(g.title) + '</div>' +
@@ -202,18 +202,34 @@
             '</div></div></div>';
     }
 
-    // ---- 事件绑定（click 委托，宿主 DOMContentLoaded 后调用一次即可，pill 重建不影响）----
+    // Keep the visual open state and the accessibility state in sync.
     var bound = false;
+    function setPinned(ctrl, open) {
+        if (!ctrl) return;
+        ctrl.classList.toggle('pinned', !!open);
+        ctrl.classList.remove('open');
+        var pill = ctrl.querySelector('.unified-picker-pill');
+        if (pill) pill.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    function closeAll() {
+        document.querySelectorAll('.unified-picker-control.pinned').forEach(function (ctrl) { setPinned(ctrl, false); });
+        document.querySelectorAll('.unified-picker-control .unified-picker-pill').forEach(function (pill) {
+            if (pill.getAttribute('aria-expanded') === 'true') setPinned(pill.closest('.unified-picker-control'), false);
+        });
+    }
+    function togglePinned(ctrl) {
+        if (!ctrl) return;
+        var wasOpen = ctrl.classList.contains('pinned');
+        closeAll();
+        if (!wasOpen) setPinned(ctrl, true);
+    }
     function bindEvents() {
         if (bound) return; bound = true;
         document.addEventListener('click', function (e) {
             var pill = e.target.closest && e.target.closest('.unified-picker-pill');
             if (pill) {
                 e.preventDefault(); e.stopPropagation();
-                var ctrl = pill.closest('.unified-picker-control');
-                var open = ctrl.classList.contains('pinned');
-                document.querySelectorAll('.unified-picker-control.pinned').forEach(function (x) { x.classList.remove('pinned'); });
-                if (!open) ctrl.classList.add('open');
+                togglePinned(pill.closest('.unified-picker-control'));
                 return;
             }
             var opt = e.target.closest && e.target.closest('[data-unified-id]');
@@ -223,26 +239,17 @@
                 var groups = buildGroups(kind());
                 var item = null;
                 groups.forEach(function (g) { g.items.forEach(function (it) { if (it.id === id) item = it; }); });
-                if (item) { select(item); document.querySelectorAll('.unified-picker-control.pinned').forEach(function (x) { x.classList.remove('pinned'); }); }
+                if (item) select(item);
+                closeAll();
                 return;
             }
-            if (!e.target.closest || !e.target.closest('.unified-picker-control')) {
-                document.querySelectorAll('.unified-picker-control.pinned').forEach(function (x) { x.classList.remove('pinned'); });
-            }
+            if (!e.target.closest || !e.target.closest('.unified-picker-control')) closeAll();
         });
-    }
-
-    function closeAll() {
-        document.querySelectorAll('.unified-picker-control.pinned').forEach(function (x) { x.classList.remove('pinned'); });
     }
     function onPillClick(e) {
         if (e) { e.preventDefault(); e.stopPropagation(); }
-        var pill = e.target.closest ? e.target.closest('.unified-picker-pill') : null;
-        var ctrl = pill && pill.closest('.unified-picker-control');
-        if (!ctrl) return;
-        var was = ctrl.classList.contains('pinned');
-        closeAll();
-        if (!was) ctrl.classList.add('pinned');
+        var pill = e && e.target && e.target.closest ? e.target.closest('.unified-picker-pill') : null;
+        togglePinned(pill && pill.closest('.unified-picker-control'));
     }
     function onOptionClick(e, id) {
         if (e) { e.preventDefault(); e.stopPropagation(); }
@@ -252,7 +259,6 @@
         closeAll();
         if (item) select(item);
     }
-
     global.CanvasUnifiedPicker = {
         onPillClick: onPillClick, onOptionClick: onOptionClick,
         configure: configure, bindEvents: bindEvents,

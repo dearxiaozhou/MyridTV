@@ -19,13 +19,13 @@
     <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.06.29.9"></script>
     <script src="/static/vendor/js/lucide.js?v=2026.06.29.9"></script>
     <script src="/static/js/theme.js?v=2026.09.25.lighttrial1"></script>
-    <script src="/static/js/i18n.js?v=2026.10.01.speech7"></script>
+    <script src="/static/js/i18n.js?v=2026.10.01.speech9"></script>
     <link rel="icon" href="/static/images/myrid-icon.png" type="image/png">
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.09.16.skill3col1">
-<link rel="stylesheet" href="/static/css/api-settings.css?v=2026.10.01.speech7">
+    <link rel="stylesheet" href="/static/css/theme.css?cb=interaction-audit-v0105c&v=2026.10.01.speech9">
+<link rel="stylesheet" href="/static/css/api-settings.css?v=2026.10.01.speech9">
 <link rel="stylesheet" href="/static/css/api-settings-prism.css?v=theme-audit-v0911-final">
-<link rel="stylesheet" href="/static/css/light-theme-trial.css?v=theme-audit-v0911-final">
-<link rel="stylesheet" href="/static/css/canvas-interaction-style.css?v=theme-audit-v0911-final">
+<link rel="stylesheet" href="/static/css/light-theme-trial.css?v=interaction-audit-v0105c">
+<link rel="stylesheet" href="/static/css/canvas-interaction-style.css?v=dropdown-menu-v0109">
 </head>
 <body>
 <style>
@@ -213,46 +213,37 @@
 
 <section id="runninghubConfigBlock" class="block runninghub-config-block" hidden>
 <div class="block-head">
-<div class="block-head-left">
-<div class="block-title">应用与工作流</div>
-</div>
-<button id="rhSaveBtn" class="action-btn primary-btn" type="button" onclick="saveRunningHubConfig()"><i data-lucide="save" class="w-3.5 h-3.5"></i><span>保存工作流配置</span></button>
-</div>
+                        <div class="rh-view-tabs" role="tablist" aria-label="应用与工作流视图切换">
+                            <button id="rhTabApps" class="rh-view-tab active" type="button" data-rh-view="apps" aria-selected="true" onclick="setRhView('apps')">
+                                <span class="rh-view-tab-label">AI 应用</span><span id="rhAppsCount" class="rh-view-count">0</span>
+                            </button>
+                            <button id="rhTabWorkflows" class="rh-view-tab" type="button" data-rh-view="workflows" aria-selected="false" onclick="setRhView('workflows')">
+                                <span class="rh-view-tab-label">工作流</span><span id="rhWorkflowsCount" class="rh-view-count">0</span>
+                            </button>
+                        </div>
+                        <button id="rhSaveBtn" class="action-btn primary-btn" type="button" onclick="saveRunningHubConfig()"><i data-lucide="save" class="w-3.5 h-3.5"></i><span>保存工作流配置</span></button>
+                    </div>
                         <div class="rh-paste-row">
                             <input id="rhPasteInput" class="rh-paste-input" type="text" placeholder="/run/ai-app/... 或 /run/workflow/...">
                             <button class="action-btn" type="button" onclick="createRhEntryFromPaste()"><i data-lucide="plus" class="w-3.5 h-3.5"></i><span>创建</span></button>
                         </div>
-                        <div class="rh-card-columns">
-                            <div class="rh-card-group">
-                                <div class="rh-group-head">
-                                    <div class="rh-group-title">AI 应用</div>
-                                    <div id="rhAppsCount" class="rh-group-count">0</div>
-                                </div>
-                                <div id="rhAppsList" class="rh-card-list"></div>
-                            </div>
-                            <div class="rh-card-group">
-                                <div class="rh-group-head">
-                                    <div class="rh-group-title">工作流</div>
-                                    <div id="rhWorkflowsCount" class="rh-group-count">0</div>
-                                </div>
-                                <div id="rhWorkflowsList" class="rh-card-list"></div>
-                            </div>
+                        <div id="rhAppsPanel" class="rh-view-panel">
+                            <div id="rhAppsList" class="rh-card-list rh-apps-list"></div>
+                        </div>
+                        <div id="rhWorkflowsPanel" class="rh-view-panel" hidden>
+                            <div id="rhWorkflowsList" class="rh-card-list rh-workflows-list"></div>
                         </div>
                     </section>
 
                     <section id="modelsSettingsBlock" class="block models-settings-block">
                         <div class="block-head">
-                            <div class="block-head-left mod-head-left">
-                                <div class="block-title">可用模型</div>
-                                <span id="modelsTotalCount" class="mod-total">共 0 个</span>
+                            <div class="api-model-tabs" role="tablist" aria-label="模型类型">
+                                <button class="api-model-tab active" type="button" data-model-tab="image">生图 <span id="imageModelTabCount">0</span></button>
+                                <button class="api-model-tab" type="button" data-model-tab="chat">聊天 <span id="chatModelTabCount">0</span></button>
+                                <button class="api-model-tab" type="button" data-model-tab="video">视频 <span id="videoModelTabCount">0</span></button>
+                                <button class="api-model-tab" type="button" data-model-tab="audio">音频 <span id="audioModelTabCount">0</span></button>
                             </div>
                             <div class="models-toolbar-actions block-head-actions">
-                                <div class="api-model-tabs" role="tablist" aria-label="模型类型">
-                                    <button class="api-model-tab active" type="button" data-model-tab="image">生图 <span id="imageModelTabCount">0</span></button>
-                                    <button class="api-model-tab" type="button" data-model-tab="chat">聊天 <span id="chatModelTabCount">0</span></button>
-                                    <button class="api-model-tab" type="button" data-model-tab="video">视频 <span id="videoModelTabCount">0</span></button>
-                                    <button class="api-model-tab" type="button" data-model-tab="audio">音频 <span id="audioModelTabCount">0</span></button>
-                                </div>
                                 <button id="saveModelsBtn" class="action-btn primary-btn" type="button" onclick="saveModelSettingsOnly()">
                                     <i data-lucide="save" class="w-3.5 h-3.5"></i><span data-i18n="api.saveModels">保存模型设置</span>
                                 </button>
@@ -415,12 +406,12 @@
     </div>
 
 <script src="/static/js/rh-model-aliases.js?v=2026.06.21.rh-alias-fix1"></script>
-<script src="/static/js/api-settings-provider-repair.js?v=2026.10.01.speech7"></script>
+<script src="/static/js/api-settings-provider-repair.js?v=2026.10.01.speech9"></script>
 <script src="/static/js/api-settings-picker.js?v=2026.06.22.picker-fresh1"></script>
-<script src="/static/js/api-settings.js?v=2026.10.01.speech7"></script>
+<script src="/static/js/api-settings.js?v=2026.10.01.speech9"></script>
 <script src="/static/js/api-settings-prism.js?v=2026.06.29.7"></script>
+<script src="/static/js/shared-native-select-menu.js?cb=dropdown-menu-v0108c&v=2026.10.01.speech9"></script>
 </body>
 </html>
-
 
 

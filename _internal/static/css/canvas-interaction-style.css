@@ -2,7 +2,7 @@
 :is(button.active, [role="tab"].active, [role="tab"][aria-selected="true"],
     button[aria-pressed="true"], [role="button"].active,
     [role="option"].selected, [role="option"][aria-selected="true"],
-    .canvas-input-mode-toggle.is-objects):not(:disabled):not(.tc-btn-danger):not(.is-running):not(.is-stop):not(.canvas-color-swatch) {
+    .canvas-input-mode-toggle.is-objects):not(:disabled):not([aria-disabled="true"]):not(.tc-btn-danger):not(.danger):not(.is-running):not(.is-stop):not(.is-ap-running):not(.canvas-color-swatch):not(.canvas-pin-btn):not(.audio-play-button) {
   color: var(--x-selected-text) !important;
   background: var(--x-selected-fill) !important;
   border-color: var(--x-selected-line) !important;
@@ -18,6 +18,8 @@
     .tc-item.selected, .tree-row.active, .tree-parent.active, .tree-child.active,
     .skill-row.active, .prompt-row.active, .nav-row.active,
     .group-name.active, .rh-app-field-card.active, .rh-editor-field-row.active,
+    .prompt-lib-item.active, .canvas-agent-history-item.active,
+    .canvas-agent-chip.active, .object-ref-item.is-selected, .compare-thumb.active,
     .rh-editor-keep.active, .rh-editor-random.active, .rh-editor-required.active,
     [role="option"].selected, [role="option"][aria-selected="true"]) {
   border-color: var(--x-selected-line) !important;
@@ -80,7 +82,7 @@ button.canvas-color-swatch.active {
 }
 
 /* Hover and keyboard focus echo the selected control without changing page layout. */
-button:not(:disabled):not(.tc-btn-danger):hover,
+button:not(:disabled):not(.tc-btn-danger):not(.canvas-pin-btn):not(.audio-play-button):hover,
 [role="button"]:not([aria-disabled="true"]):hover {
   border-color: var(--x-selected-line);
 }
@@ -100,6 +102,27 @@ textarea:focus {
   outline: none !important;
   outline-offset: 0 !important;
   box-shadow: none !important;
+}
+
+/* Native dropdowns use the same interaction edge in every canvas parameter bar.
+   Keep their component-specific fill and chevron, but stop hover/focus colors from
+   drifting between --text, --line, and one-off accent colors. */
+html body select:not(:disabled):is(:hover, :focus, :focus-visible) {
+  border-color: var(--x-selected-line) !important;
+}
+
+/* A listbox trigger stays visibly active while its menu is open. */
+button[aria-haspopup="listbox"]:not(:disabled):is(:hover, [aria-expanded="true"]) {
+  border-color: var(--x-selected-line) !important;
+}
+
+/* Pinning is a warning/status action, not the canvas's general selection state. */
+html body.prism-canvas-page .gate-list .canvas-pin-btn:not(:disabled):is(:hover, .active),
+html body.prism-canvas-page .gate-list .canvas-item.active .canvas-pin-btn.active:not(:disabled) {
+  color: var(--x-warn) !important;
+  background: var(--x-warn-soft) !important;
+  border-color: var(--x-warn) !important;
+  box-shadow: inset 0 0 0 1px var(--x-warn-soft) !important;
 }
 
 /* Canvas list header actions use the active theme instead of legacy fixed palettes. */
@@ -297,4 +320,553 @@ html body .comfy-layout .composer-card .prompt-input:active {
   outline: none !important;
   outline-offset: 0 !important;
   box-shadow: none !important;
+}
+
+/* The smart canvas has several older component hover rules with different colors
+   (blue, purple, and theme-specific white). Normalize neutral controls here, after
+   component styles. Primary, destructive, running, pin, and swatch states keep their
+   own semantic treatment. */
+html body .shell:not(.no-canvas) :is(button, [role="button"], [role="option"]):not(:disabled):not([aria-disabled="true"]):not(:is(.active, .selected, .is-active, .is-selected, [aria-pressed="true"], [aria-selected="true"], .canvas-input-mode-toggle.is-objects)):not(:is(.primary, .primary-btn, .save-btn, .danger, .tc-btn-danger, .run-btn, .loop-smart-run, .cascade-run-btn, .is-running, .is-stop, .is-ap-running, .canvas-pin-btn, .canvas-color-swatch, .canvas-dock-item, .canvas-bottom-button)):not(:is(.mini-x, .node-delete, .image-delete, .canvas-group-delete, [data-agent-ref-remove], .loop-smart-token-remove, .mention-image-token-remove, .style-tile-del, .style-token-x, .input-thumb-unset, .canvas-agent-history-delete, .canvas-agent-quote-card-close, .smart-image-meta-delete, .loop-smart-icon-btn)):not(:is(.canvas-agent-toggle, .canvas-agent-ic-main, .canvas-agent-send, .canvas-agent-edit-send, .canvas-agent-history-newchat, .canvas-agent-message-action.primary, .canvas-agent-bs-pick.done)):not(:is(.danger, .node-delete, .style-tile-del, .mini-x.node-delete, .loop-smart-token-remove, .mention-image-token-remove, .canvas-agent-history-delete, .canvas-agent-artifacts-clear, .smart-image-meta-delete, [data-agent-ref-remove], .loop-smart-icon-btn[data-loop-prompt-delete], .asset-mini-btn[data-delete-asset])):hover {
+  background-color: var(--x-hover-bg) !important;
+  color: var(--x-text) !important;
+  border-color: var(--x-selected-line) !important;
+}
+
+/* Dropdown triggers show the same open feedback after the pointer leaves them.
+   Native selects keep their chevron/background image while the surface changes. */
+html body .shell:not(.no-canvas)
+  :is(button[aria-expanded="true"], [role="button"][aria-expanded="true"],
+      .canvas-title-dropdown.open, .smart-control.pinned > .smart-pill,
+      .agent-select-btn[aria-expanded="true"]) {
+  background-color: var(--x-hover-bg) !important;
+  color: var(--x-text) !important;
+  border-color: var(--x-selected-line) !important;
+  box-shadow: inset 0 0 0 1px var(--x-selected-ring) !important;
+}
+
+/* The title trigger shares its hover edge with the outer back/title capsule. */
+html body .shell:not(.no-canvas) .canvas-title-dropdown.open {
+  box-shadow: none !important;
+}
+
+/* Composer parameter pills stay borderless to avoid layout changes. Use an inset
+   edge so hover/open still reads as the same interactive state as other controls. */
+html body .shell:not(.no-canvas) .composer .smart-control.pinned > .smart-pill,
+html body .shell:not(.no-canvas) .composer .unified-picker-pill[aria-expanded="true"] {
+  background-color: var(--x-hover-bg) !important;
+  border-color: transparent !important;
+  box-shadow: inset 0 0 0 1px var(--x-selected-line) !important;
+}
+
+
+html body .shell:not(.no-canvas) select:not(:disabled):is(:hover, :focus, :focus-visible) {
+  background-color: var(--x-hover-bg) !important;
+  border-color: var(--x-selected-line) !important;
+}
+
+/* 2026-10-07 设置页按钮 hover 统一为绿框。
+   需求来源：RH-API（应用与工作流 / 可用模型）两组切换按钮确定的绿框交互，
+   推广到设置类页面的全部按钮 —— 资产库标签组（图片资产/提示词库/技能）、
+   RH-API 动作按钮（验证地址/验证协议/选择模型/拉取模型/创建）、
+   ComfyUI 设置的动作按钮（同步文件名/删除/保存配置）与工作模式标签组（工作流/测试画布）。
+   与上方全局选中态共用 --x-selected-* 变量，深浅主题自动适配。
+   放在文件末尾以保证覆盖各组件自带的中性 hover 规则（它们多为 !important）。
+
+   2026-10-07 补：素材库(asset-manager)小按钮与 RH-API Key/卡片按钮原先各自是灰描边 hover，
+   与上面这套不一致，一并收口 ——
+     · .asset-btn / .asset-icon-btn（刷新·批量管理·全选·清空·剪切·复制·裁剪·新增·保存·编辑·删除）
+     · .asset-icon-btn.danger / .asset-btn.danger（删除所选等）
+     · .tree-action-bar button（新分组·重命名·删除库/删除）
+     · .tree-inline-edit button（保存·取消）
+     · .key-btn / .key-btn.key-clear（Key 保存·清除，RH 页 4 组 8 个）
+     · .rh-card-action / .rh-card-action.danger（AI 应用/工作流卡片 编辑·删除）
+   刻意排除：:disabled（灰掉的不该有 hover）、[aria-disabled="true"]、
+   .detail-confirm（二次确认"已上膛"的红色警示态，必须保留红色，不能被绿框覆盖）。
+   刻意不含：.tree-row/.nav-row/.skill-row/.asset-card/.prompt-row/.upload-grid-card
+   （这些是列表行与卡片，不是按钮，选中态由上方统一表负责）。 */
+html body :is(.action-btn, .asset-btn, .asset-icon-btn,
+              .asset-tabs button, .workspace-mode-tabs button,
+              .tree-action-bar button, .tree-inline-edit button,
+              .rh-card-action, .key-btn):not(:disabled):not([aria-disabled="true"]):not(.detail-confirm):not(:is(.danger, .danger-btn, .key-clear)):hover {
+  color: var(--x-selected-text) !important;
+  background: var(--x-selected-fill) !important;
+  border-color: var(--x-selected-line) !important;
+  box-shadow: inset 0 0 0 1px var(--x-selected-ring) !important;
+}
+
+/* Canvas-list cards have older theme selectors with higher specificity than the
+   generic button rule. Keep the card edge, open-row actions, and keyboard focus
+   on the same neutral-hover/green-selection tokens in both themes. */
+html body.prism-canvas-page .gate-list .canvas-item:not(.active):hover {
+  background: var(--x-hover-bg) !important;
+  background-image: none !important;
+  border: 1px solid var(--x-selected-line) !important;
+  box-shadow: 0 0 0 1px var(--x-selected-ring), var(--x-sh-2) !important;
+}
+
+html body.prism-canvas-page .gate-list .canvas-item.active,
+html.theme-light body.prism-canvas-page .gate-list .canvas-item.active,
+html.studio-theme-dark body.prism-canvas-page .gate-list .canvas-item.active {
+  background: var(--x-selected-fill) !important;
+  background-image: none !important;
+  border: 1px solid var(--x-selected-line) !important;
+  color: var(--x-selected-text) !important;
+  box-shadow: inset 0 0 0 1px var(--x-selected-ring) !important;
+}
+
+html body.prism-canvas-page .gate-list .canvas-item.active
+  :is(.canvas-card-title, .canvas-card-time, .canvas-card-asset-count, .canvas-card-copy-id) {
+  color: var(--x-selected-text) !important;
+}
+
+html body.prism-canvas-page .gate-list .canvas-item
+  :is(.canvas-card-copy-id, .canvas-card-edit, .canvas-card-export, .canvas-preview-mark):not(:disabled):hover {
+  color: var(--x-text) !important;
+  background: var(--x-hover-bg) !important;
+  border-color: var(--x-selected-line) !important;
+  box-shadow: inset 0 0 0 1px var(--x-selected-ring) !important;
+}
+
+html body.prism-canvas-page .gate-list .canvas-item .canvas-delete:hover:not(:disabled) {
+  color: var(--x-danger) !important;
+  background: var(--x-danger-soft) !important;
+  border-color: var(--x-danger) !important;
+  box-shadow: inset 0 0 0 1px var(--x-danger-soft) !important;
+}
+
+html.theme-light body.prism-canvas-page .gate-list .canvas-item:has(:focus-visible),
+html.studio-theme-dark body.prism-canvas-page .gate-list .canvas-item:has(:focus-visible) {
+  outline: 2px solid var(--x-selected-line) !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 2px var(--x-page), 0 0 0 4px var(--x-selected-ring) !important;
+}
+
+/* Audio waveforms are keyboard controls even though they are not buttons. */
+html body .audio-player-waveform:focus-visible {
+  border-radius: 8px !important;
+  box-shadow: 0 0 0 2px var(--x-selected-line) !important;
+}
+
+/* Every canvas audio player uses one play control. Compact waveform cards may
+   change placement, but never the button or icon scale. Playing, hover and focus
+   remain explicit token-based states so the control reads the same in both themes. */
+html body .audio-play-button {
+  box-sizing: border-box !important;
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px !important;
+  min-height: 34px !important;
+  padding: 0 !important;
+  border: 1px solid transparent !important;
+  border-radius: 50% !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 34px !important;
+  background: var(--x-strong) !important;
+  color: var(--x-strong-text) !important;
+  box-shadow: var(--x-sh-2) !important;
+  cursor: pointer;
+  transition: transform var(--x-dur-fast) var(--x-ease),
+    filter var(--x-dur-fast) var(--x-ease),
+    border-color var(--x-dur-fast) var(--x-ease),
+    box-shadow var(--x-dur-fast) var(--x-ease),
+    background-color var(--x-dur-fast) var(--x-ease),
+    color var(--x-dur-fast) var(--x-ease) !important;
+}
+
+html body .audio-play-button i,
+html body .audio-play-button svg {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+html body .audio-play-button:not(:disabled):hover {
+  border-color: var(--x-selected-line) !important;
+  box-shadow: inset 0 0 0 1px var(--x-selected-ring), var(--x-sh-2) !important;
+  filter: brightness(1.04);
+  transform: translateY(-1px);
+}
+
+html body .media-audio-player .audio-play-button:not(:disabled):hover {
+  transform: translateX(-50%) translateY(-1px);
+}
+
+html body .audio-play-button:not(:disabled):active {
+  filter: brightness(.98);
+  transform: scale(.96);
+}
+
+html body .media-audio-player .audio-play-button:not(:disabled):active {
+  transform: translateX(-50%) scale(.96);
+}
+
+html body .audio-play-button:focus-visible {
+  outline: 2px solid var(--x-selected-line) !important;
+  outline-offset: 2px !important;
+}
+
+html body .audio-play-button:disabled {
+  cursor: default;
+  filter: none;
+  opacity: .45;
+  box-shadow: none !important;
+}
+
+html body .media-audio-player.is-playing .audio-play-button:not(:disabled) {
+  border-color: var(--x-selected-line) !important;
+  background: var(--x-selected-fill) !important;
+  color: var(--x-selected-text) !important;
+  box-shadow: inset 0 0 0 1px var(--x-selected-ring), var(--x-sh-1) !important;
+}
+
+/* The checkbox mark is nested in a selected pill; keep its own mini-state green. */
+html body .dynamic-params .setting-check.active .check-box {
+  background: var(--x-selected-fill) !important;
+  border-color: var(--x-selected-line) !important;
+}
+
+html body .dynamic-params .setting-check.active .check-box::after {
+  border-right-color: var(--x-selected-line) !important;
+  border-bottom-color: var(--x-selected-line) !important;
+}
+
+/* 2026-10-07 画布页无边框控件补可见悬停边缘：
+     · .canvas-preview-mark —— canvas.html 画布卡片左上角图标按钮（原暗色下 hover 边框被
+       `.theme-dark .gate-list .canvas-preview-mark` 的 `border-color:...!important` 灰边锁死 → 看不到绿框）
+     · .canvas-dock-item —— smart-canvas 左侧工具坞（新增 / 资产库 / 风格）
+     · .canvas-bottom-button —— smart-canvas 底部工具簇（小地图 / 日志 / 快捷键 / 吸附 / 连线）
+   画布工具和按钮组本身没有边框，单改 border-color 不可见。悬停沿用普通中性按钮的底色与文字，
+   只用 inset 描边显示绿边；选中态继续由独立的绿色填充表示。 */
+html body :is(.canvas-preview-mark, .canvas-dock-item, .canvas-bottom-button):not(:disabled):not([aria-disabled="true"]):not(.active):hover {
+  color: var(--x-text) !important;
+  background: var(--x-hover-bg) !important;
+  border-color: var(--x-selected-line) !important;
+  box-shadow: inset 0 0 0 1px var(--x-selected-line) !important;
+}
+
+/* Borderless canvas controls still need a visible hover edge. Their neutral fill
+   comes from component rules or the shared shell rule above; this adds only the
+   inset green edge without changing their dimensions. */
+html body .shell:not(.no-canvas) :is(
+  .kind-toggle button,
+  .smart-crop-action,
+  .smart-node-action,
+  .image-edit-mode button,
+  .canvas-agent-icon-btn,
+  .canvas-agent-history-item:not(.canvas-agent-history-newchat),
+  .canvas-back-btn,
+  .composer .smart-pill:not(.run-btn)
+):not(:disabled):not([aria-disabled="true"]):not(.active):hover {
+  box-shadow: inset 0 0 0 1px var(--x-selected-line) !important;
+}
+
+/* Canvas title segments form one capsule, so the container carries the hover and
+   keyboard-focus edge for the back button and the open/hovered dropdown alike. */
+html body .shell:not(.no-canvas) .canvas-title-cap:has(
+  .canvas-back-btn:is(:hover, :focus-visible),
+  .canvas-title-dropdown:is(:hover, :focus-visible, .open)
+) {
+  border-color: var(--x-selected-line) !important;
+  box-shadow: inset 0 0 0 1px var(--x-selected-ring), var(--x-sh-2) !important;
+}
+
+/* 2026-10-07（老王："这里还有几处"）：工作流配置画布（comfyui-settings）右上角的
+   缩小 / 百分比 / 放大 / 适应 控件。它们的元素是 <div class="graph-ctrl-btn"> 而不是
+   <button>，所以本文件前面两条通用 hover 规则（只匹配 button / [role="button"] /
+   [role="option"]）完全够不到它，交互表里也此前没有任何 .graph-ctrl-btn 规则；其自身
+   comfyui-settings.css:57 与两处主题覆盖（:392 -> --wf-hard-text、:704 ->
+   --wf-v2-line-strong）都把 hover 设成中性灰框。此处按同文件既有口径补上可见绿边
+   （inset 描边，不改 border-width，故零布局位移）与中性填充。百分比读数
+   .graph-zoom-pill 是显示件、不可点，不参与 hover 统一。 */
+html body .graph-ctrl-btn:not([aria-disabled="true"]):hover {
+  color: var(--x-text) !important;
+  background: var(--x-hover-bg) !important;
+  border-color: var(--x-selected-line) !important;
+  box-shadow: inset 0 0 0 1px var(--x-selected-line) !important;
+}
+
+/* ============================================================================
+   2026-10-07「删除类按钮」标准 —— 🔴 样品阶段，暂未全站应用
+
+   老王两次纠正后的准确要求（不要再自行加料）：
+     1. 不要把整个按钮的底色改成红的
+     2. 只要「垃圾桶图标 + 文字」是红的
+     3. 边框默认不是红色的，**悬停时才变红**（与绿色按钮同一套逻辑）
+     4. 先做一个给老王验收，确认 OK 后再铺开全站
+
+   所以标准是：
+     默认 = 图标+文字红；底色与边框保持中性（跟普通按钮无异）
+     悬停 = 边框转红（用 inset 描边给 border:0 的也补上）+ 极淡红底，
+             与绿色按钮 hover 的「淡绿底 + 绿框」完全同构，只是把绿换成红。
+
+   当前只作用于一个样品：api-settings 提示词编辑器顶部的「🗑 删除」
+   （.api-page-delete-btn，就是老王截图那一排）。字色 #fca5a5 取自该按钮改动前
+   的实测值，不是另调的。若验收通过，再把同一套铺到其余删除按钮。 */
+html body :is(
+  .danger,
+  .danger-btn,
+  .ic-mini,
+  .node-delete,
+  .canvas-group-delete,
+  .canvas-delete:not(.canvas-restore),
+  .style-tile-del,
+  .loop-smart-token-remove,
+  .mention-image-token-remove,
+  .canvas-agent-history-delete,
+  .canvas-agent-artifacts-clear,
+  .key-clear,
+  .opt-del,
+  .mini-delete,
+  .smart-image-meta-delete,
+  .asset-mini-btn[data-delete-asset],
+  .loop-smart-icon-btn[data-loop-prompt-delete],
+  [data-agent-ref-remove]
+):not(:disabled):not([aria-disabled="true"]):not(.detail-confirm) {
+  color: #fca5a5 !important;
+  border-color: var(--line) !important;
+}
+
+html body :is(
+  .danger,
+  .danger-btn,
+  .ic-mini,
+  .node-delete,
+  .canvas-group-delete,
+  .canvas-delete:not(.canvas-restore),
+  .style-tile-del,
+  .loop-smart-token-remove,
+  .mention-image-token-remove,
+  .canvas-agent-history-delete,
+  .canvas-agent-artifacts-clear,
+  .key-clear,
+  .opt-del,
+  .mini-delete,
+  .smart-image-meta-delete,
+  .asset-mini-btn[data-delete-asset],
+  .loop-smart-icon-btn[data-loop-prompt-delete],
+  [data-agent-ref-remove]
+):not(:disabled):not([aria-disabled="true"]):hover {
+  color: #ef4444 !important;
+  background: rgba(248,113,113,.14) !important;
+  border-color: #ef4444 !important;
+  box-shadow: inset 0 0 0 1px #ef4444 !important;
+}
+
+/* Native select popups are painted by the browser/OS, so their option rows do
+   not inherit the app's hover and selected states. Keep the native select as
+   the value source, and render the visible popup with this shared menu. */
+.shared-native-select {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+}
+
+.shared-native-select-source {
+  position: absolute !important;
+  z-index: -1 !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.shared-native-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  padding: 0 10px;
+  border: 1px solid var(--x-line);
+  border-radius: 8px;
+  background: var(--x-panel-solid);
+  color: var(--x-text);
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+  transition: color var(--x-dur) var(--x-ease),
+              background-color var(--x-dur) var(--x-ease),
+              border-color var(--x-dur) var(--x-ease),
+              box-shadow var(--x-dur) var(--x-ease);
+}
+
+.shared-native-select-trigger:hover:not(:disabled),
+.shared-native-select-trigger[aria-expanded="true"]:not(:disabled) {
+  border-color: var(--x-selected-line);
+  background: var(--x-hover-bg);
+  color: var(--x-text);
+}
+
+.shared-native-select-trigger:focus-visible {
+  outline: 2px solid var(--x-selected-line) !important;
+  outline-offset: 2px;
+}
+
+.shared-native-select-trigger:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.shared-native-select-label {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shared-native-select-caret {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  opacity: .78;
+  transition: transform .14s ease;
+}
+
+.shared-native-select-trigger[aria-expanded="true"] .shared-native-select-caret {
+  transform: rotate(180deg);
+}
+
+.protocol-selector-wrap > .shared-native-select {
+  height: 32px;
+}
+
+.protocol-selector-wrap .shared-native-select-trigger--protocol {
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text, var(--x-text));
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.protocol-selector-wrap .shared-native-select-trigger--protocol:hover:not(:disabled),
+.protocol-selector-wrap .shared-native-select-trigger--protocol[aria-expanded="true"]:not(:disabled) {
+  border: 0;
+  background: var(--x-hover-bg);
+}
+
+.mod-row .shared-native-select-trigger--model {
+  height: 26px;
+  padding: 0 20px 0 8px;
+  border: 1px solid var(--api-hard-line, var(--x-line)) !important;
+  border-radius: 4px !important;
+  background: var(--api-hard-soft, var(--x-soft)) !important;
+  color: var(--api-hard-text, var(--x-text)) !important;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.mod-row .shared-native-select-trigger--model:hover:not(:disabled),
+.mod-row .shared-native-select-trigger--model[aria-expanded="true"]:not(:disabled) {
+  border-color: var(--x-selected-line) !important;
+  background: var(--x-hover-bg) !important;
+}
+
+.prompt-node-llm .shared-native-select-trigger {
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(200, 200, 200, .32);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .62);
+  color: var(--text, var(--x-text));
+  font-size: 16px;
+}
+
+.theme-dark .prompt-node-llm .shared-native-select-trigger,
+html.studio-theme-dark .prompt-node-llm .shared-native-select-trigger {
+  border-color: rgba(200, 200, 200, .24);
+  background: rgba(31, 31, 31, .42);
+}
+
+.shared-native-select-menu {
+  position: fixed;
+  z-index: 2147483000;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  overflow: auto;
+  border: 1px solid var(--x-line-strong);
+  border-radius: 8px;
+  background: var(--x-panel-solid);
+  color: var(--x-text);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .34);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.3;
+  overscroll-behavior: contain;
+}
+
+.shared-native-select-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--x-muted);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--x-dur) var(--x-ease),
+              background-color var(--x-dur) var(--x-ease),
+              border-color var(--x-dur) var(--x-ease),
+              box-shadow var(--x-dur) var(--x-ease);
+}
+
+.shared-native-select-option:hover:not(:disabled),
+.shared-native-select-option.keyboard-active:not(:disabled) {
+  border-color: var(--x-selected-line);
+  background: var(--x-hover-bg);
+  color: var(--x-text);
+  box-shadow: inset 0 0 0 1px var(--x-selected-ring);
+}
+
+.shared-native-select-option[aria-selected="true"]:not(:disabled) {
+  border-color: var(--x-selected-line);
+  background: var(--x-selected-fill);
+  color: var(--x-selected-text);
+  box-shadow: inset 0 0 0 1px var(--x-selected-ring);
+  font-weight: 700;
+}
+
+.shared-native-select-option:disabled {
+  opacity: .42;
+  cursor: not-allowed;
+}
+
+.shared-native-select-option-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shared-native-select-option-check {
+  flex: 0 0 12px;
+  width: 12px;
+  color: var(--x-selected-line);
+  text-align: center;
 }
