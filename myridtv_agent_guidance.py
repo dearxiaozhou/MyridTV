@@ -56,7 +56,7 @@ def _agent_inject_tool_guidance(messages, preset=None):
     guidance = ("\n\n## 画布工具\n"
                 "你可以调用工具直接在画布上工作:canvas_get_state 查看画布;canvas_search_nodes 搜索素材;"
                 "对话中【引用图片】开头的文字就是后台视觉模型(GLM)对图片的识别描述,直接把它当作图片内容使用;"
-                "canvas_create_text_node 写剧本/脚本/方案;【头脑风暴分层】同一次会话里产出多个板块(人物/故事/场面/世界观/视觉/结局方案)时,必须带 section_title(板块名,如'核心人物'),同一会话同一板块会合并更新而不是重复新建,整轮讨论会成为侧边栏里的一个整体产物;板块内还有多个并列条目(如林澜/司徒岳)时再带 item_title;canvas_create_generation_node 把图片提示词+引用图+生图预设同步到画布生成节点(建立待生成节点,返回 node_id);"
+                "canvas_create_text_node 写设定/方案/笔记;【头脑风暴分层】同一次会话里产出多个板块(人物/故事/场面/世界观/视觉/结局方案)时,必须带 section_title(板块名,如'核心人物'),同一会话同一板块会合并更新而不是重复新建,整轮讨论会成为侧边栏里的一个整体产物;板块内还有多个并列条目(如林澜/司徒岳)时再带 item_title;canvas_create_generation_node 把图片提示词+引用图+生图预设同步到画布生成节点(建立待生成节点,返回 node_id);"
                 "canvas_update_node 修改节点;canvas_check_generation 查询生成任务状态。"
                 "canvas_batch_operations 批量执行标准化操作(add_node/update_node/delete_node/add_link/delete_link/set_variable/layer_operate,原子性,失败全回滚,适合一次建多个节点并连线);"
                 "canvas_undo_batch 撤销某次批量操作;canvas_add_link 连线;canvas_delete_node 删除节点。"

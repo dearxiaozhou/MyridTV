@@ -37,10 +37,8 @@ async function runGeneration(){
     // History is scoped to the node itself. Input links and neighboring nodes never
     // affect whether this is the node's first generation.
     const overwriteExistingOutput = nodeHasImages && nodeHasCompletedGeneration(node) && !workflowModeRun;
-    // 覆盖重跑：新图沿用第一次生图的名称（显示名 + 磁盘文件名），不再按日期重新命名
-    const retainedOutputNames = overwriteExistingOutput
-        ? (node.images || []).map(img => String(img?.name || '').trim()).filter(Boolean)
-        : [];
+    // 2026-10-09 老王拍板：保留名机制已移除 —— 画布素材名与磁盘文件名保持一致，
+    // 覆盖重跑产物按新落盘名命名，旧产物仍归档进 history/ 分组（下方 move 逻辑保留）。
     const movedOutputAssetUrls = overwriteExistingOutput ? await moveOutputImagesToHistoryForRun(node.images || []) : new Map();
     if(movedOutputAssetUrls.size){
         refs = remapRefsForMovedAssets(refs, movedOutputAssetUrls);
@@ -73,9 +71,8 @@ async function runGeneration(){
     const pendingNode = branchNode || node;
     const comfyRunToken = D("settings").engine === 'comfy' ? deps.uid('comfy_run') : '';
     if(comfyRunToken) pendingNode.comfyRunToken = comfyRunToken;
-    // 保留名持久化到节点：覆盖重跑=沿用第一次生图名；非覆盖（首跑/追加）=清掉
-    if(retainedOutputNames.length) pendingNode.retainOutputNames = retainedOutputNames;
-    else delete pendingNode.retainOutputNames;
+    // 保留名机制已移除（2026-10-09）：清理存量节点上遗留的 retainOutputNames 字段
+    delete pendingNode.retainOutputNames;
     if(extracted) pendingNode._runMetaTargetId = extracted.id;
     if(!branchNode){
         pendingNode.pending = Math.max(1, Number(expectedCount) || 1);

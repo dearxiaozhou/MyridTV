@@ -298,6 +298,25 @@ E2E_PASS
 
 ---
 
+## 一键发布（GitHub 推 + Gitee 镜像，省事版）
+
+上面的第 6 步 + Gitee 镜像可合成一条命令：`installer/publish-all.ps1`。
+前提：`installer\build\update-release\` 已由第 5 步生成（`make-update-release.py`），且 `gh` 已登录、本机设了 `GITEE_TOKEN`。
+
+```powershell
+cd D:\APP\MyridTV
+# 自动从 update-manifest.json 读版本号，GitHub 发版 + Gitee 镜像一次完成
+.\installer\publish-all.ps1
+# 只发 GitHub 不碰 Gitee（没设 token 时）：
+.\installer\publish-all.ps1 -SkipGitee
+# 强制指定版本：
+.\installer\publish-all.ps1 -Version V0.10.10
+```
+
+脚本内部：建 tag → 建草稿 release → 逐个上传 blob（网络抖动自动补传 5 轮）→ 传清单转正式 → 调 `mirror_to_gitee.py` 推 Gitee 文件树（失败重试 3 次）。忘跑 Gitee 不影响已装用户更新（GitHub 是主源，Gitee 只是备胎）。
+
+---
+
 ## 常见故障速查
 
 | 报错 | 原因 | 解决 |

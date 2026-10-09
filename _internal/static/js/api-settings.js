@@ -3426,13 +3426,9 @@ function updateModelCounts(item){
  const video = (p.video_models || []).length;
  const audio = (p.audio_models || []).length;
  const set = (id, value) => { const el = document.getElementById(id); if(el) el.textContent = String(value); };
- set('imageModelCount', image);
- set('chatModelCount', chat);
- set('videoModelCount', video);
  set('imageModelTabCount', image);
  set('chatModelTabCount', chat);
  set('videoModelTabCount', video);
- set('audioModelCount', audio);
  set('audioModelTabCount', audio);
  set('modelsTotalCount', image + chat + video + audio);
 }

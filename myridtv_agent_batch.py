@@ -49,7 +49,7 @@ def _agent_batch_build_text_node(canvas, params):
         "id": "agent_" + uuid.uuid4().hex[:12],
         "type": "smart-prompt",
         "title": str(params.get("title") or "Agent 笔记").strip(),
-        "kind": "script",
+        "kind": "text",
         "text": text, "content": text,
         "promptDraftText": text,
         "promptDraftHtml": myridtv_agent_state._agent_html_escape(text),

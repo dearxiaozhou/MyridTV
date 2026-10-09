@@ -1,376 +1,130 @@
-#!/usr/bin/env python3
 """
-WcsTV Canvas MCP server for Codex.
+MyridTV Canvas MCP Server (Codex) —— 统一转发层
 
-This is the Codex-facing semantic interface for the local infinite canvas.
-It talks only to the WcsTV local proxy at http://127.0.0.1:3107.
+与 hermes-canvas-mcp.py 完全一致：所有工具请求直接转发到后端 3107 的
+JSON-RPC 端点 POST /mcp，与前端 / 内置 Agent / Hermes 走同一条收口：
+    _agent_batch_build_* + Artifact Gate（单写点/墓碑） + 后端 _normalize_node
+
+不再本地手搓节点、不再自管画布读写，因此：
+  - 节点字段格式与主通道完全一致（type 白名单、w/h 尺寸键、text/promptDraftText 别名）
+  - 自动获得 409 冲突处理（_agent_canvas_repo_upsert_node 已处理）
+  - 连线字段正确读取后端的 connections（不再恒空）
+  - 工具 schema 实时从后端 tools/list 同步，不会与主通道漂移
+  - Codex 与 Hermes 两个外部入口暴露完全相同的工具集（canvas_*），真正统一
 """
-
-from __future__ import annotations
-
+import asyncio
 import json
-import sys
-import time
-import urllib.error
-import urllib.parse
+import itertools
 import urllib.request
-import uuid
 from typing import Any
 
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
-from mcp.types import TextContent, Tool
-
+try:
+    from mcp.server import Server, stdio_server
+except ImportError:
+    from mcp.server import Server
+    from mcp.server.stdio import stdio_server
+from mcp.types import Tool, TextContent
 
 BACKEND = "http://127.0.0.1:3107"
-SERVER_NAME = "wcstv-canvas"
-
-app = Server(SERVER_NAME)
-
-
-def _json_content(payload: Any) -> list[TextContent]:
-    return [TextContent(type="text", text=json.dumps(payload, ensure_ascii=False, indent=2))]
+_REQ_ID = itertools.count(1)
+BACKEND_TOOLS = None  # 懒加载：首次 list_tools 时连后端拉取
 
 
-def _request_json(method: str, path: str, payload: Any | None = None, timeout: int = 15) -> Any:
-    url = f"{BACKEND}{path}"
-    data = None
-    headers = {"Accept": "application/json"}
-    if payload is not None:
-        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        headers["Content-Type"] = "application/json; charset=utf-8"
-    request = urllib.request.Request(url, data=data, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            raw = response.read().decode("utf-8", errors="replace")
-            return json.loads(raw) if raw.strip() else {}
-    except urllib.error.HTTPError as exc:
-        raw = exc.read().decode("utf-8", errors="replace")
+def _mcp_post(method, params=None):
+    """向后端 POST /mcp 发一条 JSON-RPC 请求，返回解析后的响应 dict。"""
+    payload = {"jsonrpc": "2.0", "id": next(_REQ_ID), "method": method, "params": params or {}}
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(
+        f"{BACKEND}/mcp", data=body, method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=10) as r:
+        resp = json.loads(r.read().decode("utf-8"))
+    if "error" in resp:
+        raise RuntimeError(str(resp["error"]))
+    return resp
+
+
+def _mcp_call_tool(name, arguments):
+    """转发一次 tools/call，并把后端回传的 text 反序列化成 dict 返回。"""
+    resp = _mcp_post("tools/call", {"name": name, "arguments": arguments})
+    result = resp.get("result", {}) or {}
+    content = result.get("content") or []
+    if content and isinstance(content[0], dict) and content[0].get("type") == "text":
         try:
-            detail = json.loads(raw)
-        except json.JSONDecodeError:
-            detail = raw
-        raise RuntimeError(f"{method} {url} failed with HTTP {exc.code}: {detail}") from exc
-    except Exception as exc:
-        raise RuntimeError(f"{method} {url} failed: {exc}") from exc
+            return json.loads(content[0]["text"])
+        except Exception:
+            return {"raw": content[0]["text"]}
+    if result.get("isError"):
+        return {"error": result.get("content")}
+    return result
 
 
-def _unwrap_canvas(response: Any) -> dict[str, Any]:
-    if isinstance(response, dict) and isinstance(response.get("canvas"), dict):
-        return response["canvas"]
-    if isinstance(response, dict):
-        return response
-    raise RuntimeError("WcsTV returned an unexpected canvas payload")
+# 后端连不上时的兜底 schema（与 myridtv_mcp.MCP_TOOLS 同名工具一致），
+# 仅保证 server 能启动并列出基础工具；实际调用仍会转发到后端。
+_FALLBACK_TOOLS = [
+    {"name": "canvas_list_canvases", "description": "列出所有画布", "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "canvas_get_state", "description": "获取画布状态", "inputSchema": {"type": "object", "properties": {"canvas_id": {"type": "string"}}}},
+    {"name": "canvas_get_selection", "description": "获取选中节点", "inputSchema": {"type": "object", "properties": {"canvas_id": {"type": "string"}}}},
+    {"name": "canvas_search", "description": "搜索节点", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "canvas_id": {"type": "string"}}, "required": ["query"]}},
+    {"name": "canvas_create_node", "description": "创建节点（与画布 Agent/人工同一落库链路）。type=text|generation；x/y 可省=自动空位", "inputSchema": {"type": "object", "properties": {"type": {"type": "string"}, "text": {"type": "string"}, "content": {"type": "string"}, "prompt": {"type": "string"}, "title": {"type": "string"}, "label": {"type": "string"}, "x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number"}, "height": {"type": "number"}, "provider_id": {"type": "string"}, "model": {"type": "string"}, "size": {"type": "string"}, "canvas_id": {"type": "string"}}, "required": ["type"]}},
+    {"name": "canvas_delete_node", "description": "删除节点", "inputSchema": {"type": "object", "properties": {"node_id": {"type": "string"}, "canvas_id": {"type": "string"}}, "required": ["node_id"]}},
+    {"name": "canvas_update_node", "description": "更新节点（与人工编辑同字段族：text/content/prompt 改正文，尺寸 w/h）", "inputSchema": {"type": "object", "properties": {"node_id": {"type": "string"}, "text": {"type": "string"}, "content": {"type": "string"}, "prompt": {"type": "string"}, "title": {"type": "string"}, "label": {"type": "string"}, "x": {"type": "number"}, "y": {"type": "number"}, "w": {"type": "number"}, "h": {"type": "number"}, "canvas_id": {"type": "string"}}, "required": ["node_id"]}},
+    {"name": "canvas_connect_nodes", "description": "连接节点", "inputSchema": {"type": "object", "properties": {"from_id": {"type": "string"}, "to_id": {"type": "string"}, "label": {"type": "string"}, "canvas_id": {"type": "string"}}, "required": ["from_id", "to_id"]}},
+    {"name": "canvas_snapshot", "description": "保存快照", "inputSchema": {"type": "object", "properties": {"canvas_id": {"type": "string"}}}},
+    {"name": "canvas_create_text_node", "description": "创建智能画布原生文本节点(type=smart-prompt)", "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}, "title": {"type": "string"}, "x": {"type": "number"}, "y": {"type": "number"}, "canvas_id": {"type": "string"}}, "required": ["text"]}},
+    {"name": "canvas_create_generation_node", "description": "创建图片生成节点(type=smart-image,待生成)", "inputSchema": {"type": "object", "properties": {"prompt": {"type": "string"}, "title": {"type": "string"}, "model": {"type": "string"}, "size": {"type": "string"}, "x": {"type": "number"}, "y": {"type": "number"}, "canvas_id": {"type": "string"}}, "required": ["prompt"]}},
+    {"name": "canvas_generate_images", "description": "提交图片生成任务并回填画布节点(异步)", "inputSchema": {"type": "object", "properties": {"prompt": {"type": "string"}, "node_id": {"type": "string"}, "model": {"type": "string"}, "size": {"type": "string"}, "reference_image_urls": {"type": "array", "items": {"type": "string"}}, "canvas_id": {"type": "string"}}, "required": ["prompt"]}},
+]
 
 
-def _list_canvases_raw() -> list[dict[str, Any]]:
-    response = _request_json("GET", "/api/canvases")
-    if isinstance(response, list):
-        return response
-    canvases = response.get("canvases") if isinstance(response, dict) else None
-    return canvases if isinstance(canvases, list) else []
+def _fetch_backend_tools():
+    try:
+        resp = _mcp_post("tools/list")
+        tools = (resp.get("result", {}) or {}).get("tools", [])
+        if tools:
+            return tools
+    except Exception:
+        pass
+    return _FALLBACK_TOOLS
 
 
-def _latest_canvas_id() -> str:
-    canvases = _list_canvases_raw()
-    if not canvases:
-        raise RuntimeError("No WcsTV canvases were found")
-    canvases.sort(key=lambda item: item.get("updated_at") or item.get("last_modified") or 0, reverse=True)
-    canvas_id = str(canvases[0].get("id") or "").strip()
-    if not canvas_id:
-        raise RuntimeError("Latest WcsTV canvas has no id")
-    return canvas_id
+def _load_tools():
+    global BACKEND_TOOLS
+    if BACKEND_TOOLS is None:
+        BACKEND_TOOLS = _fetch_backend_tools()
+    return BACKEND_TOOLS
 
 
-def _get_canvas(canvas_id: str = "") -> dict[str, Any]:
-    resolved = canvas_id.strip() or _latest_canvas_id()
-    response = _request_json("GET", f"/api/canvases/{urllib.parse.quote(resolved)}")
-    return _unwrap_canvas(response)
-
-
-def _save_canvas(canvas: dict[str, Any]) -> dict[str, Any]:
-    canvas_id = str(canvas.get("id") or "").strip()
-    if not canvas_id:
-        raise RuntimeError("Cannot save a canvas without an id")
-    canvas["updated_at"] = int(time.time() * 1000)
-    response = _request_json("PUT", f"/api/canvases/{urllib.parse.quote(canvas_id)}", canvas)
-    return response if isinstance(response, dict) else {"ok": True, "response": response}
-
-
-def _canvas_summary(canvas: dict[str, Any], max_nodes: int = 80) -> dict[str, Any]:
-    nodes = canvas.get("nodes") if isinstance(canvas.get("nodes"), list) else []
-    edges = canvas.get("edges") if isinstance(canvas.get("edges"), list) else []
-    slim_nodes = [_node_summary(node) for node in nodes[:max_nodes] if isinstance(node, dict)]
-    return {
-        "id": canvas.get("id"),
-        "title": canvas.get("title"),
-        "kind": canvas.get("kind"),
-        "updated_at": canvas.get("updated_at"),
-        "node_count": len(nodes),
-        "edge_count": len(edges),
-        "nodes": slim_nodes,
-        "truncated": len(nodes) > max_nodes,
-    }
-
-
-def _node_summary(node: dict[str, Any]) -> dict[str, Any]:
-    text = _node_text(node)
-    images = node.get("images") if isinstance(node.get("images"), list) else []
-    return {
-        "id": node.get("id"),
-        "type": node.get("type"),
-        "title": node.get("title") or node.get("label"),
-        "x": node.get("x"),
-        "y": node.get("y"),
-        "w": node.get("w") or node.get("width"),
-        "h": node.get("h") or node.get("height"),
-        "text": text[:1200],
-        "image_count": len(images),
-    }
-
-
-def _node_text(node: dict[str, Any]) -> str:
-    parts: list[str] = []
-    for key in ("title", "label", "content", "text", "promptDraftText", "runPrompt"):
-        value = node.get(key)
-        if isinstance(value, str) and value.strip():
-            parts.append(value.strip())
-    return "\n".join(dict.fromkeys(parts))
-
-
-def _find_node(canvas: dict[str, Any], node_id: str) -> dict[str, Any]:
-    for node in canvas.get("nodes") or []:
-        if isinstance(node, dict) and str(node.get("id")) == node_id:
-            return node
-    raise RuntimeError(f"Node not found: {node_id}")
-
-
-def _tool_schema(properties: dict[str, Any], required: list[str] | None = None) -> dict[str, Any]:
-    return {"type": "object", "properties": properties, "required": required or []}
+app = Server("myridtv-canvas-codex")
 
 
 @app.list_tools()
 async def list_tools() -> list[Tool]:
+    tools = await asyncio.to_thread(_load_tools)
     return [
         Tool(
-            name="wcstv_health",
-            description="Check whether the local WcsTV proxy is reachable.",
-            inputSchema=_tool_schema({}),
-        ),
-        Tool(
-            name="wcstv_list_canvases",
-            description="List WcsTV canvases available through the local proxy.",
-            inputSchema=_tool_schema({}),
-        ),
-        Tool(
-            name="wcstv_get_canvas",
-            description="Get a summarized canvas state. Defaults to the most recently updated canvas.",
-            inputSchema=_tool_schema(
-                {
-                    "canvas_id": {"type": "string", "description": "Canvas id. Omit for latest canvas."},
-                    "include_full": {"type": "boolean", "description": "Return the full raw canvas JSON."},
-                }
-            ),
-        ),
-        Tool(
-            name="wcstv_search_canvas",
-            description="Search node text/title/prompt fields in a canvas.",
-            inputSchema=_tool_schema(
-                {
-                    "query": {"type": "string", "description": "Search text."},
-                    "canvas_id": {"type": "string", "description": "Canvas id. Omit for latest canvas."},
-                    "limit": {"type": "number", "description": "Maximum matches to return."},
-                },
-                ["query"],
-            ),
-        ),
-        Tool(
-            name="wcstv_create_text_node",
-            description="Create a text note node on a WcsTV canvas.",
-            inputSchema=_tool_schema(
-                {
-                    "text": {"type": "string", "description": "Node text content."},
-                    "title": {"type": "string", "description": "Optional node title."},
-                    "x": {"type": "number", "description": "Canvas x coordinate."},
-                    "y": {"type": "number", "description": "Canvas y coordinate."},
-                    "width": {"type": "number", "description": "Node width."},
-                    "height": {"type": "number", "description": "Node height."},
-                    "canvas_id": {"type": "string", "description": "Canvas id. Omit for latest canvas."},
-                },
-                ["text"],
-            ),
-        ),
-        Tool(
-            name="wcstv_update_node",
-            description="Update text/title/position/size fields on an existing canvas node.",
-            inputSchema=_tool_schema(
-                {
-                    "node_id": {"type": "string", "description": "Node id to update."},
-                    "text": {"type": "string", "description": "Replacement text content."},
-                    "title": {"type": "string", "description": "Replacement title."},
-                    "x": {"type": "number", "description": "Canvas x coordinate."},
-                    "y": {"type": "number", "description": "Canvas y coordinate."},
-                    "width": {"type": "number", "description": "Node width."},
-                    "height": {"type": "number", "description": "Node height."},
-                    "canvas_id": {"type": "string", "description": "Canvas id. Omit for latest canvas."},
-                },
-                ["node_id"],
-            ),
-        ),
-        Tool(
-            name="wcstv_delete_node",
-            description="Delete a node and edges connected to it from a WcsTV canvas.",
-            inputSchema=_tool_schema(
-                {
-                    "node_id": {"type": "string", "description": "Node id to delete."},
-                    "canvas_id": {"type": "string", "description": "Canvas id. Omit for latest canvas."},
-                },
-                ["node_id"],
-            ),
-        ),
-        Tool(
-            name="wcstv_connect_nodes",
-            description="Create an edge between two existing WcsTV canvas nodes.",
-            inputSchema=_tool_schema(
-                {
-                    "from_id": {"type": "string", "description": "Source node id."},
-                    "to_id": {"type": "string", "description": "Target node id."},
-                    "label": {"type": "string", "description": "Optional edge label."},
-                    "canvas_id": {"type": "string", "description": "Canvas id. Omit for latest canvas."},
-                },
-                ["from_id", "to_id"],
-            ),
-        ),
+            name=t["name"],
+            description=t.get("description", ""),
+            inputSchema=t.get("inputSchema", {"type": "object", "properties": {}}),
+        )
+        for t in tools
     ]
 
 
 @app.call_tool()
-async def call_tool(name: str, arguments: dict[str, Any] | None) -> list[TextContent]:
-    args = arguments or {}
+async def call_tool(name: str, arguments: dict) -> list:
     try:
-        if name == "wcstv_health":
-            return _json_content(_request_json("GET", "/health"))
-
-        if name == "wcstv_list_canvases":
-            return _json_content({"ok": True, "canvases": _list_canvases_raw()})
-
-        if name == "wcstv_get_canvas":
-            canvas = _get_canvas(str(args.get("canvas_id") or ""))
-            if bool(args.get("include_full")):
-                return _json_content({"ok": True, "canvas": canvas})
-            return _json_content({"ok": True, "canvas": _canvas_summary(canvas)})
-
-        if name == "wcstv_search_canvas":
-            query = str(args.get("query") or "").strip().lower()
-            if not query:
-                raise RuntimeError("query is required")
-            limit = int(args.get("limit") or 20)
-            canvas = _get_canvas(str(args.get("canvas_id") or ""))
-            matches = []
-            for node in canvas.get("nodes") or []:
-                if not isinstance(node, dict):
-                    continue
-                haystack = _node_text(node).lower()
-                if query in haystack:
-                    matches.append(_node_summary(node))
-                    if len(matches) >= limit:
-                        break
-            return _json_content({"ok": True, "canvas_id": canvas.get("id"), "matches": matches})
-
-        if name == "wcstv_create_text_node":
-            text = str(args.get("text") or "").strip()
-            if not text:
-                raise RuntimeError("text is required")
-            canvas = _get_canvas(str(args.get("canvas_id") or ""))
-            node = {
-                "id": f"codex_{uuid.uuid4().hex[:12]}",
-                "type": "note",
-                "title": str(args.get("title") or "Codex Note").strip(),
-                "text": text,
-                "content": text,
-                "x": float(args.get("x") if args.get("x") is not None else 0),
-                "y": float(args.get("y") if args.get("y") is not None else 0),
-                "w": float(args.get("width") if args.get("width") is not None else 360),
-                "h": float(args.get("height") if args.get("height") is not None else 220),
-                "created_at": int(time.time() * 1000),
-            }
-            nodes = canvas.setdefault("nodes", [])
-            if not isinstance(nodes, list):
-                raise RuntimeError("Canvas nodes field is not a list")
-            nodes.append(node)
-            result = _save_canvas(canvas)
-            return _json_content({"ok": True, "node": _node_summary(node), "save": result})
-
-        if name == "wcstv_update_node":
-            canvas = _get_canvas(str(args.get("canvas_id") or ""))
-            node = _find_node(canvas, str(args.get("node_id") or ""))
-            if "text" in args:
-                text = str(args.get("text") or "")
-                node["text"] = text
-                node["content"] = text
-            if "title" in args:
-                node["title"] = str(args.get("title") or "")
-            for source, target in (("x", "x"), ("y", "y"), ("width", "w"), ("height", "h")):
-                if source in args:
-                    node[target] = float(args[source])
-            result = _save_canvas(canvas)
-            return _json_content({"ok": True, "node": _node_summary(node), "save": result})
-
-        if name == "wcstv_delete_node":
-            node_id = str(args.get("node_id") or "")
-            if not node_id:
-                raise RuntimeError("node_id is required")
-            canvas = _get_canvas(str(args.get("canvas_id") or ""))
-            canvas["nodes"] = [
-                node for node in (canvas.get("nodes") or [])
-                if not isinstance(node, dict) or str(node.get("id")) != node_id
-            ]
-            canvas["edges"] = [
-                edge for edge in (canvas.get("edges") or [])
-                if not isinstance(edge, dict)
-                or (str(edge.get("from") or edge.get("source")) != node_id and str(edge.get("to") or edge.get("target")) != node_id)
-            ]
-            result = _save_canvas(canvas)
-            return _json_content({"ok": True, "deleted": node_id, "save": result})
-
-        if name == "wcstv_connect_nodes":
-            from_id = str(args.get("from_id") or "")
-            to_id = str(args.get("to_id") or "")
-            if not from_id or not to_id:
-                raise RuntimeError("from_id and to_id are required")
-            canvas = _get_canvas(str(args.get("canvas_id") or ""))
-            _find_node(canvas, from_id)
-            _find_node(canvas, to_id)
-            edge = {
-                "id": f"codex_edge_{uuid.uuid4().hex[:12]}",
-                "from": from_id,
-                "to": to_id,
-                "source": from_id,
-                "target": to_id,
-                "label": str(args.get("label") or ""),
-                "created_at": int(time.time() * 1000),
-            }
-            edges = canvas.setdefault("edges", [])
-            if not isinstance(edges, list):
-                raise RuntimeError("Canvas edges field is not a list")
-            edges.append(edge)
-            result = _save_canvas(canvas)
-            return _json_content({"ok": True, "edge": edge, "save": result})
-
-        raise RuntimeError(f"Unknown tool: {name}")
-    except Exception as exc:
-        return _json_content({"ok": False, "error": str(exc), "tool": name})
+        result = await asyncio.to_thread(_mcp_call_tool, name, arguments)
+    except Exception as e:
+        return [TextContent(type="text", text=json.dumps({"error": str(e)}, ensure_ascii=False))]
+    return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
 
 
-async def main() -> None:
-    async with stdio_server() as (read_stream, write_stream):
-        await app.run(read_stream, write_stream, app.create_initialization_options())
+async def main():
+    async with stdio_server() as (read, write):
+        await app.run(read, write, app.create_initialization_options())
 
 
 if __name__ == "__main__":
-    try:
-        import asyncio
-
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        sys.exit(0)
+    asyncio.run(main())

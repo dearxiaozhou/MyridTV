@@ -26,10 +26,60 @@ from ecdsa import BadSignatureError, Ed25519, VerifyingKey
 
 APP_DIR = Path(__file__).resolve().parent
 DEFAULT_FEED = "https://github.com/dearxiaozhou/MyridTV-updates/releases/latest/download/update-manifest.json"
+# 镜像回退（GitHub 不可达时）：用 Gitee 公开仓库的 raw 文件树当备胎。
+# Gitee 免费账户的 release 附件上传 API 不可达（404），所以不走 release，
+# 而是把文件推到仓库文件树、用 raw 链接访问（国内裸连稳定）。
+# URL 结构重写（非简单换 host）：
+#   https://github.com/dearxiaozhou/MyridTV-updates/releases/download/<tag>/<file>
+#     -> https://gitee.com/myridtv/myrid-tv-updates/raw/master/<tag>/<file>
+#   https://github.com/dearxiaozhou/MyridTV-updates/releases/latest/download/update-manifest.json
+#     -> https://gitee.com/myridtv/myrid-tv-updates/raw/master/update-manifest.json
+# （Gitee 个人空间 path 是 myridtv，显示名 Xiaozhou；默认分支 master。）
+GITHUB_RELEASE_RE = re.compile(
+    r"^https://github\.com/dearxiaozhou/MyridTV-updates/releases/download/([^/]+)/(.+)$")
+GITHUB_LATEST_RE = re.compile(
+    r"^https://github\.com/dearxiaozhou/MyridTV-updates/releases/latest/download/update-manifest\.json$")
+GITEE_RAW_BASE = "https://gitee.com/myridtv/myrid-tv-updates/raw/master"
+
+
+def remap_to_gitee(url: str) -> str | None:
+    """把 GitHub release 下载 URL 重写成 Gitee raw 文件树 URL；非 GitHub 源返回 None。"""
+    m = GITHUB_RELEASE_RE.match(url)
+    if m:
+        return f"{GITEE_RAW_BASE}/{m.group(1)}/{m.group(2)}"
+    if GITHUB_LATEST_RE.match(url):
+        return f"{GITEE_RAW_BASE}/update-manifest.json"
+    return None
 MAX_MANIFEST_BYTES = 2_000_000
 MAX_FILE_BYTES = 100_000_000
 VERSION_RE = re.compile(r"^V(\d+)\.(\d+)\.(\d+)$")
 SHA_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _env_mirrors() -> list[tuple[str, str]]:
+    """MYRIDTV_UPDATE_MIRRORS 覆盖：分号分隔的 src=dst 前缀对（可选自定义镜像）。"""
+    raw = os.environ.get("MYRIDTV_UPDATE_MIRRORS", "").strip()
+    if not raw:
+        return []
+    pairs: list[tuple[str, str]] = []
+    for part in re.split(r"[;\s]+", raw):
+        if "=" in part:
+            src, dst = part.split("=", 1)
+            if src and dst:
+                pairs.append((src, dst))
+    return pairs
+
+
+def mirror_candidates(url: str, extra: list[tuple[str, str]] | None = None) -> list[str]:
+    """返回含主源在内的候选 URL 列表：默认 GitHub→Gitee raw 重写，再加可选自定义前缀镜像。"""
+    out = [url]
+    g = remap_to_gitee(url)
+    if g:
+        out.append(g)
+    for src, dst in (extra or _env_mirrors()):
+        if src in url and dst not in url:
+            out.append(url.replace(src, dst, 1))
+    return out
 
 
 def user_data_root(app_dir: Path) -> Path:
@@ -114,29 +164,32 @@ def verify_manifest(manifest: dict, public_key_file: Path) -> None:
         raise ValueError("update manifest signature is invalid") from exc
 
 
-def get_bytes(url: str, limit: int, allow_local: bool = False, fast: bool = False) -> bytes:
+def get_bytes(url: str, limit: int, allow_local: bool = False, fast: bool = False,
+              mirror_hosts: list[tuple[str, str]] | None = None) -> bytes:
     parsed = urllib.parse.urlsplit(url)
     if parsed.scheme != "https" and not (allow_local and parsed.scheme in {"http", "file"}):
         raise ValueError("update source must use HTTPS")
-    request = urllib.request.Request(url, headers={"User-Agent": "MyridTV-Updater/1"})
+    candidates = mirror_candidates(url, extra=mirror_hosts)
     last: Exception | None = None
-    # CDN and release downloads drop connections fairly often; a few retries with
-    # backoff keep a transient network blip from failing the whole update.
-    # fast=True 用于界面上的「立即检查」：宁可快速失败给出可读原因，也不让按钮
-    # 干等两分钟（4 次 x30s 超时 + 退避）。后台 --watch 仍用完整重试。
-    attempts = 1 if fast else 4
+    # 每个候选源各重试若干次：CDN / release 下载常掉连接，退避重试能挡掉瞬时抖动。
+    # fast=True（界面「立即检查」）：每个候选只试 1 次，主源失败立刻切镜像源再试
+    # 一次，仍失败才报错——既快速失败又能在 GitHub 抖动时白嫖镜像源。后台 --watch
+    # 用完整重试（每候选 4 次）。
+    per_candidate = 1 if fast else 4
     timeout = 8 if fast else 30
-    for attempt in range(attempts):
-        try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
-                data = response.read(limit + 1)
-            if len(data) > limit:
-                raise ValueError("update download exceeds size limit")
-            return data
-        except Exception as exc:  # noqa: BLE001 - retried below, re-raised if all fail
-            last = exc
-            if attempt < attempts - 1:
-                time.sleep(1.5 * (attempt + 1))
+    for cand in candidates:
+        request = urllib.request.Request(cand, headers={"User-Agent": "MyridTV-Updater/1"})
+        for attempt in range(per_candidate):
+            try:
+                with urllib.request.urlopen(request, timeout=timeout) as response:
+                    data = response.read(limit + 1)
+                if len(data) > limit:
+                    raise ValueError("update download exceeds size limit")
+                return data
+            except Exception as exc:  # noqa: BLE001 - retried below, re-raised if all fail
+                last = exc
+                if attempt < per_candidate - 1:
+                    time.sleep(1.5 * (attempt + 1))
     raise last if last else ValueError("update download failed")
 
 
@@ -273,21 +326,47 @@ def check_once(app_dir: Path, feed: str, public_key_file: Path, allow_local: boo
     return apply_manifest(app_dir, manifest, allow_local=allow_local)
 
 
-def check_now(app_dir: Path, public_key_file: Path, allow_local: bool = False) -> dict:
-    """One-shot check honouring MYRIDTV_UPDATE_FEED_URL.
+def resolve_feeds() -> list[str]:
+    """更新源列表。MYRIDTV_UPDATE_FEED_URL（分号分隔）优先，否则用默认 GitHub
+    源；主源不可达时的 Gitee raw 文件树镜像回退由 get_bytes 内部 remap_to_gitee 处理。"""
+    raw = os.environ.get("MYRIDTV_UPDATE_FEED_URL", "").strip()
+    if raw:
+        feeds = [f.strip() for f in raw.split(";") if f.strip()]
+        if feeds:
+            return feeds
+    return [DEFAULT_FEED]
 
-    Used by the in-app "check for updates" button. Returns the last known state
-    when no feed is configured, so the caller never has to special-case a
-    disabled channel.
-    """
-    feed = os.environ.get("MYRIDTV_UPDATE_FEED_URL", "").strip() or DEFAULT_FEED
-    try:
-        return check_once(app_dir, feed, public_key_file, allow_local=allow_local, fast=True)
-    except Exception as exc:
-        state = read_state(app_dir)
-        state.update({"status": "error", "error": str(exc), "checked_at": int(time.time())})
-        write_state(app_dir, state)
-        raise
+
+def humanize_error(exc: BaseException | None) -> str:
+    """把网络/系统级异常翻译成用户能读的中文原因。"""
+    if exc is None:
+        return "未知错误"
+    s = str(exc)
+    if "10060" in s or "timed out" in s or "Connection timed out" in s:
+        return "网络连接超时：请检查网络或代理设置后重试"
+    if "UNEXPECTED_EOF" in s or "SSLEOF" in s or "SSL" in s or "CERT" in s:
+        return "安全连接被中断：请检查代理或网络稳定性后重试"
+    if "Name or service" in s or "getaddrinfo" in s or "Name resolution" in s:
+        return "无法解析更新服务器地址：请检查 DNS 或网络后重试"
+    if "404" in s or "Not Found" in s:
+        return "未找到更新清单：可能尚未发布对应版本"
+    return f"更新检查失败：{s[:120]}"
+
+
+def check_now(app_dir: Path, public_key_file: Path, allow_local: bool = False) -> dict:
+    """界面「检查更新」按钮调用。依次尝试各更新源（默认仅 GitHub，不可达时
+    get_bytes 自动回退 Gitee 镜像），全部失败时将可读的中文原因写入 state。"""
+    last: Exception | None = None
+    for feed in resolve_feeds():
+        try:
+            return check_once(app_dir, feed, public_key_file, allow_local=allow_local, fast=True)
+        except Exception as exc:  # noqa: BLE001 - 尝试下一个源
+            last = exc
+    state = read_state(app_dir)
+    msg = humanize_error(last)
+    state.update({"status": "error", "error": msg, "raw_error": str(last), "checked_at": int(time.time())})
+    write_state(app_dir, state)
+    raise RuntimeError(msg) from last
 
 
 def acquire_watcher_lock(app_dir: Path):
@@ -322,13 +401,20 @@ def main() -> int:
     if args.watch and lock is None:
         print("update watcher already running")
         return 0
+    feeds = [f.strip() for f in args.feed.split(";") if f.strip()] or resolve_feeds()
     recover_incomplete_update(args.app_dir)
     while True:
-        try:
-            result = check_once(args.app_dir, args.feed, args.public_key, args.allow_local_feed)
-            print(json.dumps(result, ensure_ascii=False), flush=True)
-        except Exception as exc:
-            print(f"update check failed: {exc}", file=sys.stderr, flush=True)
+        last: Exception | None = None
+        for feed in feeds:
+            try:
+                result = check_once(args.app_dir, feed, args.public_key, args.allow_local_feed)
+                print(json.dumps(result, ensure_ascii=False), flush=True)
+                last = None
+                break
+            except Exception as exc:  # noqa: BLE001
+                last = exc
+        if last is not None:
+            print(f"update check failed: {humanize_error(last)}", file=sys.stderr, flush=True)
             if not args.watch:
                 return 1
         if not args.watch:

@@ -9,6 +9,11 @@
         const list = [...(items || [])];
         if(!list.length) return fallback;
         const kinds = new Set(list.map(item => deps.isFile(item) ? deps.mediaKindForFile(item) : deps.mediaKindForItem(item)));
+        // 单素材优先用文件名当标题（2026-10-09）：上传"主角设定.png"标题就叫"主角设定"
+        if(list.length === 1){
+            const stem = String(list[0]?.name || '').replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 30);
+            if(stem && !['Image','Images','Video','Videos','Audio','Audios','Group','Media'].includes(stem)) return stem;
+        }
         if(kinds.size > 1) return list.length > 1 ? 'Media' : fallback;
         if(kinds.has('video')) return list.length > 1 ? 'Videos' : 'Video';
         if(kinds.has('audio')) return 'Audio';

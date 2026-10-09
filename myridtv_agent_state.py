@@ -269,7 +269,7 @@ def _agent_tool_create_text_node(args, session_id=""):
     # 不新增第二条建节点路径，因此不会出现双重创建。
     _atype = str(args.get("artifact_type") or args.get("artifactType") or "").strip().lower()
     if not _atype:
-        _atype = "script" if str(args.get("kind") or "").strip().lower() == "script" else "text"
+        _atype = "text"
     _route = myridtv_canvas_store.route_artifact(
         artifact_type=_atype,
         role="text",
@@ -307,7 +307,6 @@ def _agent_tool_create_text_node(args, session_id=""):
         "id": "agent_" + uuid.uuid4().hex[:12],
         "type": "smart-prompt",
         "title": str(args.get("title") or "Agent 笔记").strip(),
-        "kind": "script",
         "text": text, "content": text,
         "promptDraftText": text,
         "promptDraftHtml": _agent_html_escape(text),

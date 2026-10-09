@@ -1,327 +1,147 @@
 """
-MyridTV Canvas MCP Server
-作为语义接口层，把无限画布抽象成结构化对象，通过 MCP 暴露给 Agent。
+MyridTV Canvas MCP Server (Hermes) —— 统一转发层
+
+所有工具请求直接转发到后端 3107 的 JSON-RPC 端点 POST /mcp，
+与前端 / 内置 Agent 走同一条收口：
+    _agent_batch_build_* + Artifact Gate（单写点/墓碑） + 后端 _normalize_node
+
+不再本地手搓节点、不再自管画布读写，因此：
+  - 节点字段格式与画布主通道完全一致（type 白名单、w/h 尺寸键、text/promptDraftText 别名）
+  - 自动获得 409 冲突处理（_agent_canvas_repo_upsert_node 已处理）
+  - 连线字段正确读取后端的 connections（不再恒空）
+  - 工具 schema 实时从后端 tools/list 同步，不会与主通道漂移
 """
-import json, os, sys, urllib.request, urllib.parse
+import asyncio
+import json
+import itertools
+import urllib.request
 from typing import Any
+
+from mcp.server import Server
 try:
-    from mcp.server import Server, stdio_server
-except ImportError:
-    from mcp.server import Server
     from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent, ImageContent
+except ImportError:  # mcp 1.x
+    from mcp.server import stdio_server  # type: ignore
+try:
+    import mcp_types as types  # mcp 2.x
+except ImportError:  # mcp 1.x
+    from mcp import types  # type: ignore
 
 BACKEND = "http://127.0.0.1:3107"
-
-canvas_cache = {"id": None, "data": None}
-
-
-def _get_canvas_id() -> str:
-    """获取最近编辑的画布 ID"""
-    try:
-        req = urllib.request.Request(f"{BACKEND}/api/canvases")
-        with urllib.request.urlopen(req, timeout=5) as r:
-            data = json.loads(r.read())
-        canvases = data if isinstance(data, list) else data.get("canvases", [])
-        if not canvases:
-            return ""
-        # 按 last_modified 排序取最新的
-        canvases.sort(key=lambda c: c.get("last_modified", 0), reverse=True)
-        return str(canvases[0].get("id", ""))
-    except Exception as e:
-        return ""
-
-def _fetch_canvas(canvas_id: str = "") -> dict:
-    """从后端获取画布数据"""
-    cid = canvas_id or _get_canvas_id()
-    if not cid:
-        return {"ok": False, "error": "未找到画布"}
-    try:
-        req = urllib.request.Request(f"{BACKEND}/api/canvases/{urllib.parse.quote(cid)}")
-        with urllib.request.urlopen(req, timeout=5) as r:
-            resp = json.loads(r.read())
-        data = resp.get("canvas", resp)
-        canvas_cache["id"] = cid
-        canvas_cache["data"] = data
-        return data
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-def _save_canvas(canvas_id: str, data: dict) -> dict:
-    """保存画布数据到后端"""
-    try:
-        body = json.dumps(data).encode()
-        req = urllib.request.Request(
-            f"{BACKEND}/api/canvases/{urllib.parse.quote(canvas_id)}",
-            data=body,
-            method="PUT",
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=5) as r:
-            return {"ok": True}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+_REQ_ID = itertools.count(1)
+BACKEND_TOOLS = None  # 懒加载：首次 list_tools 时连后端拉取
 
 
-# ---------- MCP Server ----------
-
-app = Server("myridtv-canvas")
-
-@app.list_tools()
-async def list_tools() -> list[Tool]:
-    return [
-        Tool(
-            name="canvas_list_canvases",
-            description="列出所有画布及基本信息",
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        Tool(
-            name="canvas_get_state",
-            description="获取当前画布完整状态（节点、连线、视口）",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "canvas_id": {"type": "string", "description": "画布 ID（可选，默认最近编辑的画布）"}
-                },
-            },
-        ),
-        Tool(
-            name="canvas_get_selection",
-            description="获取当前选中节点",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "canvas_id": {"type": "string", "description": "画布 ID（可选）"}
-                },
-            },
-        ),
-        Tool(
-            name="canvas_search",
-            description="按名称或内容搜索节点",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "搜索关键词"},
-                    "canvas_id": {"type": "string", "description": "画布 ID（可选）"},
-                },
-                "required": ["query"],
-            },
-        ),
-        Tool(
-            name="canvas_create_node",
-            description="创建新节点",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "type": {"type": "string", "description": "节点类型: image/text/card/group"},
-                    "x": {"type": "number", "description": "X 坐标"},
-                    "y": {"type": "number", "description": "Y 坐标"},
-                    "width": {"type": "number", "description": "宽度"},
-                    "height": {"type": "number", "description": "高度"},
-                    "content": {"type": "string", "description": "节点内容/提示词"},
-                    "label": {"type": "string", "description": "节点标签"},
-                    "canvas_id": {"type": "string", "description": "画布 ID（可选）"},
-                },
-                "required": ["type", "x", "y"],
-            },
-        ),
-        Tool(
-            name="canvas_delete_node",
-            description="删除指定节点",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "node_id": {"type": "string", "description": "节点 ID"},
-                    "canvas_id": {"type": "string", "description": "画布 ID（可选）"},
-                },
-                "required": ["node_id"],
-            },
-        ),
-        Tool(
-            name="canvas_update_node",
-            description="更新节点属性",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "node_id": {"type": "string", "description": "节点 ID"},
-                    "content": {"type": "string", "description": "新内容"},
-                    "x": {"type": "number", "description": "新 X 坐标"},
-                    "y": {"type": "number", "description": "新 Y 坐标"},
-                    "width": {"type": "number", "description": "新宽度"},
-                    "height": {"type": "number", "description": "新高度"},
-                    "label": {"type": "string", "description": "新标签"},
-                    "canvas_id": {"type": "string", "description": "画布 ID（可选）"},
-                },
-                "required": ["node_id"],
-            },
-        ),
-        Tool(
-            name="canvas_connect_nodes",
-            description="连接两个节点",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "from_id": {"type": "string", "description": "源节点 ID"},
-                    "to_id": {"type": "string", "description": "目标节点 ID"},
-                    "label": {"type": "string", "description": "连线标签"},
-                    "canvas_id": {"type": "string", "description": "画布 ID（可选）"},
-                },
-                "required": ["from_id", "to_id"],
-            },
-        ),
-        Tool(
-            name="canvas_snapshot",
-            description="保存当前画布快照",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "canvas_id": {"type": "string", "description": "画布 ID（可选）"}
-                },
-            },
-        ),
-    ]
+def _mcp_post(method, params=None):
+    """向后端 POST /mcp 发一条 JSON-RPC 请求，返回解析后的响应 dict。"""
+    payload = {"jsonrpc": "2.0", "id": next(_REQ_ID), "method": method, "params": params or {}}
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(
+        f"{BACKEND}/mcp", data=body, method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=10) as r:
+        resp = json.loads(r.read().decode("utf-8"))
+    if "error" in resp:
+        raise RuntimeError(str(resp["error"]))
+    return resp
 
 
-@app.call_tool()
-async def call_tool(name: str, arguments: dict) -> list:
-    cid = arguments.get("canvas_id", "")
-
-    if name == "canvas_list_canvases":
+def _mcp_call_tool(name, arguments):
+    """转发一次 tools/call，并把后端回传的 text 反序列化成 dict 返回。"""
+    resp = _mcp_post("tools/call", {"name": name, "arguments": arguments})
+    result = resp.get("result", {}) or {}
+    content = result.get("content") or []
+    if content and isinstance(content[0], dict) and content[0].get("type") == "text":
         try:
-            req = urllib.request.Request(f"{BACKEND}/api/canvases")
-            with urllib.request.urlopen(req, timeout=5) as r:
-                data = json.loads(r.read())
-            canvases = data if isinstance(data, list) else data.get("canvases", [])
-            summary = []
-            for c in canvases:
-                summary.append({
-                    "id": c.get("id", ""),
-                    "title": c.get("title", c.get("name", "未命名")),
-                    "nodes": c.get("node_count", 0),
-                    "modified": c.get("last_modified", ""),
-                })
-            return [TextContent(type="text", text=json.dumps(summary, ensure_ascii=False, indent=2))]
-        except Exception as e:
-            return [TextContent(type="text", text=json.dumps({"error": str(e)}, ensure_ascii=False))]
+            return json.loads(content[0]["text"])
+        except Exception:
+            return {"raw": content[0]["text"]}
+    if result.get("isError"):
+        return {"error": result.get("content")}
+    return result
 
-    # 获取画布数据
-    canvas = _fetch_canvas(cid)
-    if "error" in canvas:
-        return [TextContent(type="text", text=json.dumps(canvas, ensure_ascii=False))]
 
-    nodes = canvas.get("nodes", canvas.get("data", {}).get("nodes", []))
-    edges = canvas.get("edges", canvas.get("data", {}).get("edges", []))
-    selection = canvas.get("data", {}).get("selectedIds", [])
-    cid = canvas_cache["id"]
+# 后端连不上时的兜底 schema（与 myridtv_mcp.MCP_TOOLS 同名工具一致），
+# 仅保证 server 能启动并列出基础工具；实际调用仍会转发到后端。
+_FALLBACK_TOOLS = [
+    {"name": "canvas_list_canvases", "description": "列出所有画布", "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "canvas_get_state", "description": "获取画布状态", "inputSchema": {"type": "object", "properties": {"canvas_id": {"type": "string"}}}},
+    {"name": "canvas_get_selection", "description": "获取选中节点", "inputSchema": {"type": "object", "properties": {"canvas_id": {"type": "string"}}}},
+    {"name": "canvas_search", "description": "搜索节点", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "canvas_id": {"type": "string"}}, "required": ["query"]}},
+    {"name": "canvas_create_node", "description": "创建节点（与画布 Agent/人工同一落库链路）。type=text|generation；x/y 可省=自动空位", "inputSchema": {"type": "object", "properties": {"type": {"type": "string"}, "text": {"type": "string"}, "content": {"type": "string"}, "prompt": {"type": "string"}, "title": {"type": "string"}, "label": {"type": "string"}, "x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number"}, "height": {"type": "number"}, "provider_id": {"type": "string"}, "model": {"type": "string"}, "size": {"type": "string"}, "canvas_id": {"type": "string"}}, "required": ["type"]}},
+    {"name": "canvas_delete_node", "description": "删除节点", "inputSchema": {"type": "object", "properties": {"node_id": {"type": "string"}, "canvas_id": {"type": "string"}}, "required": ["node_id"]}},
+    {"name": "canvas_update_node", "description": "更新节点（与人工编辑同字段族：text/content/prompt 改正文，尺寸 w/h）", "inputSchema": {"type": "object", "properties": {"node_id": {"type": "string"}, "text": {"type": "string"}, "content": {"type": "string"}, "prompt": {"type": "string"}, "title": {"type": "string"}, "label": {"type": "string"}, "x": {"type": "number"}, "y": {"type": "number"}, "w": {"type": "number"}, "h": {"type": "number"}, "canvas_id": {"type": "string"}}, "required": ["node_id"]}},
+    {"name": "canvas_connect_nodes", "description": "连接节点", "inputSchema": {"type": "object", "properties": {"from_id": {"type": "string"}, "to_id": {"type": "string"}, "label": {"type": "string"}, "canvas_id": {"type": "string"}}, "required": ["from_id", "to_id"]}},
+    {"name": "canvas_snapshot", "description": "保存快照", "inputSchema": {"type": "object", "properties": {"canvas_id": {"type": "string"}}}},
+    {"name": "canvas_create_text_node", "description": "创建智能画布原生文本节点(type=smart-prompt)", "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}, "title": {"type": "string"}, "x": {"type": "number"}, "y": {"type": "number"}, "canvas_id": {"type": "string"}}, "required": ["text"]}},
+    {"name": "canvas_create_generation_node", "description": "创建图片生成节点(type=smart-image,待生成)", "inputSchema": {"type": "object", "properties": {"prompt": {"type": "string"}, "title": {"type": "string"}, "model": {"type": "string"}, "size": {"type": "string"}, "x": {"type": "number"}, "y": {"type": "number"}, "canvas_id": {"type": "string"}}, "required": ["prompt"]}},
+    {"name": "canvas_generate_images", "description": "提交图片生成任务并回填画布节点(异步)", "inputSchema": {"type": "object", "properties": {"prompt": {"type": "string"}, "node_id": {"type": "string"}, "model": {"type": "string"}, "size": {"type": "string"}, "reference_image_urls": {"type": "array", "items": {"type": "string"}}, "canvas_id": {"type": "string"}}, "required": ["prompt"]}},
+]
 
-    if name == "canvas_get_state":
-        return [TextContent(type="text", text=json.dumps({
-            "canvas_id": cid,
-            "node_count": len(nodes),
-            "edge_count": len(edges),
-            "selected_ids": selection,
-            "nodes": [{ "id": n.get("id"), "type": n.get("type"), "label": n.get("label", n.get("title", "")),
-                        "x": n.get("x"), "y": n.get("y"), "w": n.get("width"), "h": n.get("height") }
-                      for n in nodes],
-            "edges": edges,
-        }, ensure_ascii=False, indent=2))]
 
-    if name == "canvas_get_selection":
-        selected_nodes = [n for n in nodes if n.get("id") in selection]
-        return [TextContent(type="text", text=json.dumps({
-            "selected_ids": selection,
-            "nodes": selected_nodes,
-        }, ensure_ascii=False, indent=2))]
+def _fetch_backend_tools():
+    try:
+        resp = _mcp_post("tools/list")
+        tools = (resp.get("result", {}) or {}).get("tools", [])
+        if tools:
+            return tools
+    except Exception:
+        pass
+    return _FALLBACK_TOOLS
 
-    if name == "canvas_search":
-        q = arguments.get("query", "").lower()
-        matches = [n for n in nodes if q in str(n.get("label", n.get("title", ""))).lower()
-                   or q in str(n.get("content", "")).lower()
-                   or q in str(n.get("id", "")).lower()]
-        return [TextContent(type="text", text=json.dumps({
-            "query": q,
-            "matches": len(matches),
-            "nodes": matches,
-        }, ensure_ascii=False, indent=2))]
 
-    if name == "canvas_create_node":
-        import uuid
-        node_id = f"hermes_{uuid.uuid4().hex[:8]}"
-        new_node = {
-            "id": node_id,
-            "type": arguments.get("type", "text"),
-            "x": arguments.get("x", 0),
-            "y": arguments.get("y", 0),
-            "width": arguments.get("width", 300),
-            "height": arguments.get("height", 200),
-            "label": arguments.get("label", ""),
-            "content": arguments.get("content", ""),
-        }
-        # 保存到画布
-        data = canvas.get("data", canvas)
-        node_list = data.get("nodes", [])
-        node_list.append(new_node)
-        data["nodes"] = node_list
-        result = _save_canvas(cid, data)
-        if result.get("ok"):
-            return [TextContent(type="text", text=json.dumps({"ok": True, "node_id": node_id}, ensure_ascii=False))]
-        return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
+def _load_tools():
+    global BACKEND_TOOLS
+    if BACKEND_TOOLS is None:
+        BACKEND_TOOLS = _fetch_backend_tools()
+    return BACKEND_TOOLS
 
-    if name == "canvas_delete_node":
-        node_id = arguments.get("node_id", "")
-        data = canvas.get("data", canvas)
-        data["nodes"] = [n for n in data.get("nodes", []) if n.get("id") != node_id]
-        data["edges"] = [e for e in data.get("edges", [])
-                         if e.get("from", e.get("source")) != node_id
-                         and e.get("to", e.get("target")) != node_id]
-        result = _save_canvas(cid, data)
-        return [TextContent(type="text", text=json.dumps({"ok": True, "deleted": node_id}, ensure_ascii=False))]
 
-    if name == "canvas_update_node":
-        node_id = arguments.get("node_id", "")
-        data = canvas.get("data", canvas)
-        for n in data.get("nodes", []):
-            if n.get("id") == node_id:
-                if "content" in arguments: n["content"] = arguments["content"]
-                if "x" in arguments: n["x"] = arguments["x"]
-                if "y" in arguments: n["y"] = arguments["y"]
-                if "width" in arguments: n["width"] = arguments["width"]
-                if "height" in arguments: n["height"] = arguments["height"]
-                if "label" in arguments: n["label"] = arguments["label"]
-                break
-        result = _save_canvas(cid, data)
-        return [TextContent(type="text", text=json.dumps({"ok": True, "node_id": node_id}, ensure_ascii=False))]
+async def _on_list_tools(ctx, params):
+    tools = await asyncio.to_thread(_load_tools)
+    return types.ListToolsResult(
+        tools=[
+            types.Tool(
+                name=t["name"],
+                description=t.get("description", ""),
+                inputSchema=t.get("inputSchema", {"type": "object", "properties": {}}),
+            )
+            for t in tools
+        ]
+    )
 
-    if name == "canvas_connect_nodes":
-        from_id = arguments.get("from_id", "")
-        to_id = arguments.get("to_id", "")
-        import uuid
-        edge_id = f"e_{uuid.uuid4().hex[:8]}"
-        data = canvas.get("data", canvas)
-        edges = data.get("edges", [])
-        edges.append({
-            "id": edge_id,
-            "from": from_id,
-            "to": to_id,
-            "label": arguments.get("label", ""),
-        })
-        data["edges"] = edges
-        result = _save_canvas(cid, data)
-        return [TextContent(type="text", text=json.dumps({"ok": True, "edge_id": edge_id}, ensure_ascii=False))]
 
-    if name == "canvas_snapshot":
-        data = canvas.get("data", canvas)
-        data["snapshot_at"] = __import__("time").time()
-        result = _save_canvas(cid, data)
-        return [TextContent(type="text", text=json.dumps({"ok": True, "canvas_id": cid}, ensure_ascii=False))]
+async def _on_call_tool(ctx, params):
+    name = getattr(params, "name", None) or (params or {}).get("name")
+    arguments = getattr(params, "arguments", None) or (params or {}).get("arguments") or {}
+    try:
+        result = await asyncio.to_thread(_mcp_call_tool, name, arguments)
+    except Exception as e:
+        return types.CallToolResult(
+            content=[types.TextContent(type="text", text=json.dumps({"error": str(e)}, ensure_ascii=False))]
+        )
+    return types.CallToolResult(
+        content=[types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
+    )
 
-    return [TextContent(type="text", text=json.dumps({"error": f"unknown tool: {name}"}))]
+
+app = Server("myridtv-canvas", on_list_tools=_on_list_tools, on_call_tool=_on_call_tool)
+
+
+# ---- mcp 1.x 兜底：装饰器式注册（2.x 的 Server 没有 list_tools/call_tool 装饰器）----
+if hasattr(Server, "list_tools"):
+    try:
+        app.list_tools()(lambda: _on_list_tools(None, None))
+        app.call_tool()(lambda name, arguments: _on_call_tool(None, {"name": name, "arguments": arguments}))
+    except Exception:
+        pass
 
 
 async def main():
     async with stdio_server() as (read, write):
         await app.run(read, write, app.create_initialization_options())
 
+
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())

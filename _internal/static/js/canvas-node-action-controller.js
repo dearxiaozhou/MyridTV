@@ -22,6 +22,8 @@
             input.spellcheck = false;
             const finish = () => {
                 node.title = input.value.trim().slice(0, 80) || '未命名组';
+                // 用户手动改过名：生成成功后的自动命名不再覆盖（2026-10-09）
+                node.titleManual = true;
                 ctx.commitPendingUndo();
                 ctx.scheduleSave();
                 ctx.render();

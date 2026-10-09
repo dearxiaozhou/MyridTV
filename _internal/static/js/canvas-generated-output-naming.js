@@ -57,12 +57,15 @@ async function smartGeneratedOutputItems(items, kind='image', options={}){
     const preparedItems = rawItems.map((item, index) => {
         const source = item && typeof item === 'object' ? {...item} : {url:item};
         const fallbackName = names[index] || deps.generatedDateSequenceName(index, ext, date);
-        // 保留后端已经 localiza 设置的合法文件名（非日期序列名）；item 只有 url 字符串时用后端落盘的 URL 基础名（节点标题名）
+        // 2026-10-09 老王拍板：画布素材名必须与磁盘文件名一致 —— url 已是本地落盘文件的，
+        // 其名字（含日期流水名）就是磁盘真名，原样保留，不再用前端预约名覆盖；
+        // 仅远程 url（尚未落盘）才走"非日期名保留/日期名重新预约"的老逻辑。
         const existingName = String(source.name || source.display_name || '').trim()
             || decodeURIComponent(String(typeof item === 'string' ? item : (item?.url || '')).split(/[?#]/)[0].split('/').pop() || '').trim();
         const isDateSeq = /^\d{2,4}-\d{2}-\d{2}([-_]\d+)?\.\w+$|^\d{8}-\d{6}[-_]\d{2}\.\w+$/i.test(existingName);
-        const retainedName = String((options?.retainNames || [])[index] || '').trim();
-        const name = retainedName || (existingName && !isDateSeq ? existingName : fallbackName);
+        const isLocalUrl = !/^https?:\/\//i.test(String(typeof item === 'string' ? item : (source.url || '')).split(/[?#]/)[0]);
+        const name = (isLocalUrl && existingName) ? existingName
+            : (existingName && !isDateSeq ? existingName : fallbackName);
         source.name = name;
         source.display_name = name;
         return source;
@@ -80,11 +83,10 @@ async function smartGeneratedOutputItems(items, kind='image', options={}){
         }))
         : await deps.localizeGeneratedOutputItems(preparedItems, kind);
     const named = sources.map((entry, index) => {
-        // 保留 preparedItems/localize 阶段已确定的合法文件名（后端按节点标题落盘的），仅日期流水名才允许被重新预约
+        // 2026-10-09 老王拍板：后端 localize 返回的 name 就是磁盘文件真名，一律直接采用
+        // （含日期流水名）；前端预约名只在后端没给出名字时兜底（远程兜底未落盘的场景）。
         const entryName = String(entry.name || entry.display_name || '').trim();
-        const entryIsDateSeq = /^\d{2,4}-\d{2}-\d{2}([-_]\d+)?\.\w+$|^\d{8}-\d{6}[-_]\d{2}\.\w+$/i.test(entryName);
-        const retainedName = String((options?.retainNames || [])[index] || '').trim();
-        const name = retainedName || ((entryName && !entryIsDateSeq) ? entryName : (names[index] || deps.generatedDateSequenceName(index, ext, date)));
+        const name = entryName || names[index] || deps.generatedDateSequenceName(index, ext, date);
         return {
             ...entry,
             url:entry.url,
@@ -94,6 +96,38 @@ async function smartGeneratedOutputItems(items, kind='image', options={}){
         };
     });
     return named.map(item => deps.stripImageGenerationMeta(item));
+}
+function promptTitleStem(prompt, maxLen=16){
+    const firstLine = String(prompt || '').split(/\r?\n/).map(s => s.trim()).find(Boolean) || '';
+    const cleaned = firstLine
+        .replace(/[\\/:*?"<>|]+/g, ' ')
+        .replace(/[\s，。；：、！！？？""''（）()\[\]【】-]+$/g, '')
+        .trim();
+    return cleaned ? cleaned.slice(0, maxLen).trim() : '';
+}
+function mediaNameStem(name, maxLen=30){
+    const stem = String(name || '').replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|]+/g, ' ').trim();
+    return stem ? stem.slice(0, maxLen).trim() : '';
+}
+// 生成成功后的节点自动命名：提示词前缀 + 首个产物文件名序号（如 苏焰特写_10-09-03）。
+// 两类节点永不覆盖：①用户手动改过名（titleManual）；②Agent 创建/管理的节点
+// （id 前缀 agent_ 或 __origin 以 agent_ 开头）——Agent 卡的标题带验收状态等语义，
+// 重跑后被提示词截短名顶掉会破坏 Agent 的管理流（2026-10-09 老王要求跳过）。
+// 提示词为空时退回调用方给的 fallback。
+function isAgentManagedNode(node){
+    return String(node && node.id || '').startsWith('agent_') || String(node && node.__origin || '').startsWith('agent_');
+}
+// promptOverride：调用方在回填时点手里就有真实提示词（node.runPrompt 要到回填之后才写入），
+// 优先用它，避免读到上一轮的旧提示词。
+function autoNodeTitleFromNode(node, fallback, promptOverride){
+    if(!node) return fallback;
+    if(node.titleManual) return node.title || fallback;
+    if(isAgentManagedNode(node)) return node.title || fallback;
+    const stem = promptTitleStem(promptOverride || node.runPrompt || node.promptDraftText || (node.runSettings && node.runSettings.prompt) || '');
+    if(!stem) return fallback;
+    const firstNamed = (node.images || []).find(img => img && img.name);
+    const seq = firstNamed ? mediaNameStem(firstNamed.name, 20) : '';
+    return seq ? `${stem}_${seq}` : stem;
 }
 function formatRunDuration(ms){
     const total = Math.max(0, Math.floor(Number(ms || 0) / 1000));
@@ -346,6 +380,9 @@ function refreshRunTimerPills(){
         reserveGeneratedBaseNames,
         uniqueGeneratedMediaItems,
         smartGeneratedOutputItems,
+        promptTitleStem,
+        mediaNameStem,
+        autoNodeTitleFromNode,
         formatRunDuration,
         nodeRunElapsedMs,
         runTimePillHtml,

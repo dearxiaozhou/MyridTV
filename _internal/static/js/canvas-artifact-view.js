@@ -19,7 +19,7 @@
         getNodes: null, getRefs: null, getMessages: null,
         render: null, scheduleSave: null, escapeHtml: null,
         artifactTypeLabel: null, artifactTypeMeta: null,
-        createScriptNode: null, screenCenterForNewNode: null,
+        createTextNode: null, screenCenterForNewNode: null,
         newCanvasAgentSession: null, renderCanvasAgentRefs: null
     };
     function configure(opts) {
@@ -265,7 +265,7 @@ function addArtifactToCanvas(id, opts){
     if(!String(text || '').trim()) return null;
 
     const center = deps.screenCenterForNewNode ? deps.screenCenterForNewNode() : artifactNodeDropSpot();
-    const node = deps.createScriptNode(center.x, center.y, {
+    const node = deps.createTextNode(center.x, center.y, {
         skipUndo:false, select:true,
         title: label,
         text: text

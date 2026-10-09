@@ -371,7 +371,9 @@ async function finalizeSmartPendingTask(node, taskId, images, kind='image'){
         node.runTimerHidden = false;
         node.running = false;
         if((node.images || []).length){
-            node.title = node.images.length > 1 ? (kind === 'video' ? 'Videos' : kind === 'audio' ? 'Audios' : kind === 'text' ? 'Texts' : 'Group') : (kind === 'video' ? 'Video' : kind === 'audio' ? 'Audio' : kind === 'text' ? 'Text' : 'Image');
+            // 自动命名（2026-10-09）：提示词前缀 + 产物序号；用户手动改过名（titleManual）不覆盖
+            const fallbackTitle = node.images.length > 1 ? (kind === 'video' ? 'Videos' : kind === 'audio' ? 'Audios' : kind === 'text' ? 'Texts' : 'Group') : (kind === 'video' ? 'Video' : kind === 'audio' ? 'Audio' : kind === 'text' ? 'Text' : 'Image');
+            node.title = deps.autoNodeTitle ? deps.autoNodeTitle(node, fallbackTitle) : fallbackTitle;
             node.scale = deps.mediaNodeDefaultScale(node);
             delete node.w;
             delete node.h;

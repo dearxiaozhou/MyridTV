@@ -1037,14 +1037,9 @@ function canvasPortMeta(type, direction){
         tip: reg.labelForNodePort(type, direction) || (direction === 'input' ? '输入' : '输出')
     };
 }
-function isScriptPromptNode(node){
-    return Boolean(node && node.type === 'smart-prompt' && node.kind === 'script');
-}
 function canvasPortDotsHtml(node, direction){
     // 无线模式：隐藏端口圆点（只隐藏，画布数据不动）
     if(canvasObjectsMode()) return '';
-    // 剧本节点不显示输入口（2026-09-16 老王：这个节点的输入不再用）
-    if(direction === 'input' && isScriptPromptNode(node)) return '';
     const meta = canvasPortMeta(node?.type, direction);
     const cls = direction === 'input' ? 'port-in' : 'port-out';
     const dataPort = direction === 'input' ? 'in' : 'out';
@@ -1116,7 +1111,7 @@ function normalizeLegacySmartNode(node){
     if(node.type === 'note'){
         // 旧 Agent 文本节点（canvas_create_text_node 早期产物）迁移为原生 smart-prompt
         node.type = 'smart-prompt';
-        node.kind = 'script';
+        node.kind = 'text';
         node.text = String(node.text || node.content || '').trim();
         node.llmEnabled = false;
         node.llmSystemEnabled = false;
@@ -2669,7 +2664,7 @@ function agentFindEmptySpot(x, y, w, h, step=36){
 async function executeCanvasAgentActionPlan(plan){
     if(!plan || !Array.isArray(plan.steps) || !plan.steps.length) return;
     // CanvasMutationManager 前端守卫：Agent 计划创建节点前必须先经过用户确认，避免 story-outline 等规划技能批量倾倒"垃圾节点"。
-    const stepsToCreate = (plan.steps || []).filter(s => s.type === 'create_image_node' || s.type === 'create_script_node');
+    const stepsToCreate = (plan.steps || []).filter(s => s.type === 'create_image_node');
     if(stepsToCreate.length > 3){
         const ok = confirm(`Agent 准备在此画布创建 ${stepsToCreate.length} 个节点。\n\n为避免生成提示词尚未就绪就提前落盘，请确认这些节点确实需要现在创建。\n\n点「取消」则本次不创建任何节点。`);
         if(!ok){
@@ -2686,7 +2681,7 @@ async function executeCanvasAgentActionPlan(plan){
     const DEFAULT_W = 316;
     const DEFAULT_H = 194;
     plan.steps.forEach(step => {
-        if(step.type !== 'create_image_node' && step.type !== 'create_script_node') return;
+        if(step.type !== 'create_image_node') return;
         const prompt = extractCanvasAgentPrompt(step.text || '') || String(step.text || '').trim();
         // 额外守卫：尚未生成有效文生图提示词的图片节点禁止落盘
         if(step.type === 'create_image_node'){
@@ -2707,32 +2702,8 @@ async function executeCanvasAgentActionPlan(plan){
         // Phase 8c：文档类产物交给 Artifact Router 决策（需求第三十一/三十二条）。
         // 默认 sidebar；用户明确说"放到画布"则 both（Sidebar 保留 + 建节点，共享 artifactId）。
         let sidebarArtifact = null;
-        if(step.type === 'create_script_node'){
-            const dest = routeArtifact({
-                artifactType: 'script',
-                toolName: 'canvas_create_text_node',
-                userText: canvasAgentLatestUserText()
-            });
-            if(dest !== 'canvas'){
-                sidebarArtifact = saveArtifactToSidebar({
-                    title: step.title || '剧本',
-                    content: step.text || '',
-                    artifactType: 'script',
-                    sourceRunId: 'agent_action_plan',
-                    // Phase 9：Brainstorm 流程中的多个板块合并进同一轮会话的 Conversation，
-                    // 而不是在 Sidebar 平铺成一堆一级文件（需求第二/二十七条）
-                    conversationId: canvasAgentSessionId || '',
-                    conversationTitle: canvasAgentConversationSeedTitle(),
-                    sectionTitle: canvasAgentBrainstormState ? (step.sectionTitle || step.title || '剧本') : '',
-                    sectionType: step.sectionType || '',
-                    itemTitle: step.itemTitle || ''
-                });
-            }
-            if(dest === 'sidebar') return;   // 只进 Sidebar，不建节点
-        }
-        const node = step.type === 'create_script_node'
-            ? createScriptNode(spot.x, spot.y, {skipUndo:true, select:false, title:step.title || '剧本', text:step.text || ''})
-            : createSmartGeneratorNode({x:spot.x + 158, y:spot.y + 97}, {skipUndo:true, select:false, engine:'api', apiKind:'image', title:step.title || '镜头生成'});
+
+        const node = createSmartGeneratorNode({x:spot.x + 158, y:spot.y + 97}, {skipUndo:true, select:false, engine:'api', apiKind:'image', title:step.title || '镜头生成'});
         if(step.type === 'create_image_node'){
             node.runPrompt = prompt;
             setPromptDraftForNode(node, prompt);
@@ -2764,8 +2735,7 @@ async function executeCanvasAgentActionPlan(plan){
             node.artifactId = sidebarArtifact.id;
             sidebarArtifact.canvasNodeId = node.id;
         }
-        if(step.type === 'create_script_node'){ node.role = 'text'; node.status = 'ready'; }
-        else { node.role = 'generation'; node.status = 'pending'; }
+        node.role = 'generation'; node.status = 'pending';
         created.push({node, step});
         const sourceIds = Array.isArray(step.sourceIds) ? step.sourceIds : [step.sourceId].filter(Boolean);
         sourceIds.filter(Boolean).forEach(sourceId => connectInputNode(sourceId, node.id));
@@ -3399,7 +3369,7 @@ CanvasArtifactView.configure({
     escapeHtml: (s) => escapeHtml(s),
     artifactTypeLabel: (t) => artifactTypeLabel(t),
     artifactTypeMeta: (t) => artifactTypeMeta(t),
-    createScriptNode: (x, y, o) => createScriptNode(x, y, o),
+    createTextNode: (x, y, o) => createTextNode(x, y, o),
     newCanvasAgentSession: (s) => newCanvasAgentSession(s),
     renderCanvasAgentRefs: () => renderCanvasAgentRefs()
 });
@@ -7283,7 +7253,9 @@ function createNode(x, y, images=[], options={}){
     const nodeImages = (images || []).map(img => ({...img}));
     const firstKind = nodeImages[0] ? mediaKindForItem(nodeImages[0]) : 'image';
     const singleTitle = firstKind === 'video' ? 'Video' : firstKind === 'audio' ? 'Audio' : firstKind === 'text' ? 'Text' : firstKind === 'file' ? 'File' : 'Image';
-    const node = {id:uid('smart'), type:'smart-image', x, y, title:nodeImages.length > 1 ? 'Group' : nodeImages.length ? singleTitle : tr('smart.createImportNode'), images:nodeImages, created_at:Date.now(), __origin:'user_manual', status:'ready', role:'media'};
+    // 单素材节点默认用素材文件名当标题（2026-10-09），拖一张"主角设定.png"进来标题就叫"主角设定"
+    const nameTitle = nodeImages.length === 1 ? CanvasGeneratedOutputNaming.mediaNameStem(nodeImages[0]?.name) : '';
+    const node = {id:uid('smart'), type:'smart-image', x, y, title:nodeImages.length > 1 ? 'Group' : (nameTitle || (nodeImages.length ? singleTitle : tr('smart.createImportNode'))), images:nodeImages, created_at:Date.now(), __origin:'user_manual', status:'ready', role:'media'};
     node.scale = nodeImages.length > 1 ? MEDIA_GROUP_DEFAULT_SCALE : mediaNodeDefaultScale(node);
     if(!nodeImages.length){
         node.cardSize = {width:EMPTY_UPLOAD_NODE_WIDTH, height:EMPTY_UPLOAD_NODE_HEIGHT};
@@ -7329,8 +7301,8 @@ llmEnabled:Boolean(options.llmEnabled),
     scheduleSave();
 return node;
 }
-function createScriptNode(x, y, options={}){
-return createPromptNode(x, y, {...options, kind:'script', title:'剧本', llmEnabled:false});
+function createTextNode(x, y, options={}){
+return createPromptNode(x, y, {...options});
 }
 function createLoopNode(x, y, options={}){
     if(!options.skipUndo) pushUndo();
@@ -8026,8 +7998,7 @@ function closeSmartCanvasShortcuts(){
     smartShortcutModal?.classList.remove('open');
 }
 function promptNodeBodyHtml(node){
-const isScript = node.kind === 'script';
-if(isScript) node.llmEnabled = false;
+
 node.llmProvider = resolveChatProviderId(node.llmProvider || '');
     node.llmModel = resolveChatModel(node.llmModel || '', node.llmProvider);
     node.llmSystemEnabled = node.llmSystemEnabled === true;
@@ -8046,9 +8017,9 @@ node.llmProvider = resolveChatProviderId(node.llmProvider || '');
             </div>
             ${node.llmSystemEnabled ? `<textarea class="prompt-node-control prompt-llm-system" placeholder="${escapeHtml(tr('smart.promptLlmSystemPlaceholder'))}">${escapeHtml(systemPrompt || 'You are a helpful prompt assistant.')}</textarea>` : ''}
         </div>` : '';
-return `<div class="prompt-node-card ${isScript ? 'script-node-card' : ''}">
-<textarea class="prompt-node-text prompt-node-control" ${readonly} placeholder="${escapeHtml(isScript ? '编写剧本、分镜、角色动作或画面描述...' : tr('smart.promptPlaceholderNode'))}">${escapeHtml(node.text || '')}</textarea>
-${isScript ? '' : `<div class="prompt-node-tools">
+return `<div class="prompt-node-card">
+<textarea class="prompt-node-text prompt-node-control" ${readonly} placeholder="${escapeHtml(tr('smart.promptPlaceholderNode'))}">${escapeHtml(node.text || '')}</textarea>
+${`<div class="prompt-node-tools">
 <button class="prompt-node-pill prompt-llm-toggle ${node.llmEnabled ? 'active' : ''}" type="button"><i data-lucide="sparkles"></i><span>LLM</span></button>
 </div>`}
 ${node.llmEnabled ? inputThumbs : ''}
@@ -8109,9 +8080,6 @@ function smartNodeToolbarHtml(){return CanvasNodeBodyHtml.smartNodeToolbarHtml.a
 function openSmartImageTool(){return CanvasNodeBodyHtml.openSmartImageTool.apply(null, arguments);}
 function nodeBodyHtml(){return CanvasNodeBodyHtml.nodeBodyHtml.apply(null, arguments);}
 function nowMs(){return CanvasNodeBodyHtml.nowMs.apply(null, arguments);}
-// 生成结果导出目录：应由后端按当前用户数据目录下发，前端不能写死开发者本机路径
-// （写死绝对路径会污染发布包，也会让装在其他机器上的实例导出到错误位置）
-const GENERATED_OUTPUT_EXPORT_FOLDER = '';
 const generatedOutputNameReservations = new Set();
 const remoteGeneratedMediaLocalizationInFlight = new Set();
 function generatedDatePrefix(date=new Date()){
@@ -8167,29 +8135,6 @@ async function reserveGeneratedDateNames(count=1, ext='png', date=new Date(), ki
         names.push(name);
     }
     return names;
-}
-async function exportGeneratedOutputFiles(items){
-    const exportItems = (items || []).filter(item => item?.url && item?.name && /^\/assets\/output\//.test(item.url) && item.url !== generatedOutputUrlForName(item.name, item.kind || 'image'));
-    if(!exportItems.length) return false;
-    try {
-        const res = await fetch('/api/smart-canvas/group-export', {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({
-                folder:GENERATED_OUTPUT_EXPORT_FOLDER,
-                group_name:generatedDatePrefix(),
-                items:exportItems.map(item => ({kind:item.kind || 'image', url:item.url, name:item.name}))
-            })
-        });
-        if(!res.ok) throw new Error(await res.text());
-        const data = await res.json().catch(() => ({}));
-        if(data.ok === false) throw new Error(data.error || 'export failed');
-        exportItems.forEach(item => { item.url = generatedOutputUrlForName(item.name, item.kind || 'image'); });
-        return true;
-    } catch(err) {
-        console.warn('Sync generated output file failed', err);
-        return false;
-    }
 }
 async function localizeGeneratedOutputItems(items, kind='image'){
     const sources = (items || []).map(item => {
@@ -8387,9 +8332,8 @@ function render(){
     const nodeHtmlEntries = renderNodes.map(node => {
         ensureNodeTextMedia(node, true);
         const imgs = node.images || [];
-const isScript = node.type === 'smart-prompt' && node.kind === 'script';
 const isTable = node.type === 'smart-table';
-const title = isScript ? '剧本' : isTable ? '镜头表' : node.type === 'smart-prompt' ? 'Prompt' : node.type === 'smart-loop' ? 'Loop' : (node.title || (imgs.length > 1 ? 'Group' : imgs.length ? 'Image' : escapeHtml(tr('smart.createImportNode'))));
+const title = isTable ? '镜头表' : node.type === 'smart-prompt' ? 'Prompt' : node.type === 'smart-loop' ? 'Loop' : (node.title || (imgs.length > 1 ? 'Group' : imgs.length ? 'Image' : escapeHtml(tr('smart.createImportNode'))));
         const scale = nodeScale(node);
         const layout = imageLayout(imgs, scale, node);
         const isPrompt = node.type === 'smart-prompt';
@@ -8417,7 +8361,7 @@ const title = isScript ? '剧本' : isTable ? '镜头表' : node.type === 'smart
         const comfyNodeNote = node.comfyError
             ? `<div class="comfy-node-note error">${escapeHtml(`失败：${node.comfyError}`)}</div>`
             : node.comfyNotice ? `<div class="comfy-node-note">${escapeHtml(node.comfyNotice)}</div>` : '';
-const html = `<div class="image-node ${node.cardSize ? 'fixed-media-card' : ''} ${isEmpty ? 'empty-node' : ''} ${node.type === 'smart-speech' ? 'speech-smart-node' : ''} ${isGroup ? 'group-node' : ''} ${node.groupLayout?.mode === 'preserve' ? 'preserved-group-node' : ''} ${isCanvasGroupNode(node) ? 'canvas-group-node' : ''} ${isHistory ? 'history-group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isScript ? 'script-smart-node' : ''} ${isTable ? 'table-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isBlenderPreview ? 'blender-preview-node' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''} ${node.comfyStatus === 'running' ? 'comfy-running' : ''} ${node.comfyStatus === 'queued' ? 'comfy-queued' : ''} node-status-${escapeHtml(node.status || 'ready')} node-role-${escapeHtml(node.role || 'media')}" data-id="${escapeHtml(node.id)}" data-status="${escapeHtml(node.status || 'ready')}" data-role="${escapeHtml(node.role || 'media')}" data-comfy-status="${escapeHtml(node.comfyStatus || '')}" ${(node.comfyStatus === 'queued' && Number(node.comfyQueuePosition ?? -1) > 0) ? `data-comfy-queue="${Number(node.comfyQueuePosition)}"` : ''} style="left:${node.x || 0}px;top:${node.y || 0}px;width:${layout.width}px;height:${layout.height}px;z-index:${nodeLayerZ(node)}">
+const html = `<div class="image-node ${node.cardSize ? 'fixed-media-card' : ''} ${isEmpty ? 'empty-node' : ''} ${node.type === 'smart-speech' ? 'speech-smart-node' : ''} ${isGroup ? 'group-node' : ''} ${node.groupLayout?.mode === 'preserve' ? 'preserved-group-node' : ''} ${isCanvasGroupNode(node) ? 'canvas-group-node' : ''} ${isHistory ? 'history-group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isTable ? 'table-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isBlenderPreview ? 'blender-preview-node' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''} ${node.comfyStatus === 'running' ? 'comfy-running' : ''} ${node.comfyStatus === 'queued' ? 'comfy-queued' : ''} node-status-${escapeHtml(node.status || 'ready')} node-role-${escapeHtml(node.role || 'media')}" data-id="${escapeHtml(node.id)}" data-status="${escapeHtml(node.status || 'ready')}" data-role="${escapeHtml(node.role || 'media')}" data-comfy-status="${escapeHtml(node.comfyStatus || '')}" ${(node.comfyStatus === 'queued' && Number(node.comfyQueuePosition ?? -1) > 0) ? `data-comfy-queue="${Number(node.comfyQueuePosition)}"` : ''} style="left:${node.x || 0}px;top:${node.y || 0}px;width:${layout.width}px;height:${layout.height}px;z-index:${nodeLayerZ(node)}">
             <div class="node-head"><div class="node-title">${node.canvasSetEnabled === true ? `<span class="node-set-badge" title="${escapeAttr(tr('smart.setBadgeTip'))}">SET</span>` : ''}${title}</div><div class="node-actions">${deleteBtn}</div></div>
             ${isCanvasGroupNode(node) ? `<div class="canvas-group-header"><span class="canvas-group-title-display" title="双击重命名">${escapeHtml(node.title || '未命名组')}</span><button class="canvas-group-delete node-delete" type="button" title="删除组"><i data-lucide="trash-2"></i></button></div>` : ''}
             ${!isCanvasGroupNode(node) ? (!isEmpty ? `<div class="floating-node-set">${canvasNodeSetToggleHtml(node)}</div>${((node.type === 'smart-image' || node.type === 'smart-video' || node.type === 'smart-audio' || !node.type) && hasOut) ? '<button class="node-move-lines" type="button" title="把线移到新素材（点此节点，再点目标素材，旧素材所有连线整体平移，图片与节点均不动）"><i data-lucide="link"></i></button>' : ''}${(node.type === 'smart-image' || node.type === 'smart-video' || node.type === 'smart-audio' || !node.type) ? '<button class="upload-node-btn" type="button" data-upload-action="files"><i data-lucide="upload"></i><span>上传</span></button>' : ''}<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>` : `<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>`) : ''}
@@ -9158,8 +9102,7 @@ function handlePortDrop(drag, e){
                 port = (e.clientX - rect.left) < rect.width / 2 ? 'in' : 'out';
             }
         }
-        // 剧本节点已去掉输入口：拖到它上面不再接入输入侧
-        if(id && port === 'in' && isScriptPromptNode(nodes.find(n => n.id === id))){ id = ''; port = ''; }
+
         return {targetId:id, targetPort:port, hit:hitEl, dropGroupId:groupId};
     })();
     if(targetId){
@@ -11688,7 +11631,7 @@ async function finalizePendingNode(pendingNode, urls, meta, kind='image'){
     const date = new Date();
     const outputTitle = pendingNode.title || meta?.displayPrompt || meta?.promptText || '';
     const imgs = kind === 'image'
-        ? await smartGeneratedOutputItems(urls, kind, {displayName:outputTitle, nodeId:pendingNode.id, retainNames:pendingNode.retainOutputNames || pendingNode._retainOutputNames})
+        ? await smartGeneratedOutputItems(urls, kind, {displayName:outputTitle, nodeId:pendingNode.id})
         : urls.map((item, i) => {
             const url = typeof item === 'string' ? item : item?.url || '';
             const itemKind = (typeof item === 'object' && item.kind) || kind;
@@ -11704,20 +11647,17 @@ async function finalizePendingNode(pendingNode, urls, meta, kind='image'){
     pendingNode.outputKind = kind;
     if(imgs.length > 1) pendingNode.title = kind === 'video' ? 'Videos' : kind === 'audio' ? 'Audios' : kind === 'text' ? 'Texts' : 'Group';
     else pendingNode.title = kind === 'video' ? 'Video' : kind === 'audio' ? 'Audio' : kind === 'text' ? 'Text' : kind === 'file' ? 'File' : 'Image';
+    // 自动命名（2026-10-09）：提示词前缀 + 产物序号；titleManual（用户手动改名）不覆盖
+    pendingNode.title = CanvasGeneratedOutputNaming.autoNodeTitleFromNode(pendingNode, pendingNode.title);
     pendingNode.scale = mediaNodeDefaultScale(pendingNode);
     delete pendingNode.w;
     delete pendingNode.h;
     const metaTarget = pendingNode._runMetaTargetId ? nodes.find(n => n.id === pendingNode._runMetaTargetId) : pendingNode;
     if(metaTarget) attachRunMeta(metaTarget, meta);
     pendingNode.images = (pendingNode.images || []).map(img => stripImageGenerationMeta(img));
-    // 覆盖重跑保留名：结果回填后，新输出沿用第一次生图的名称（防止日期流水名覆盖）
-    const _retain = Array.isArray(pendingNode.retainOutputNames || pendingNode._retainOutputNames) ? (pendingNode.retainOutputNames || pendingNode._retainOutputNames) : [];
-    if(_retain.length){
-        pendingNode.images = (pendingNode.images || []).map((img, _i) => {
-            const kept = String(_retain[_i] || '').trim();
-            return (kept && kept !== img.name) ? {...img, name:kept, display_name:kept} : img;
-        });
-    }
+    // 2026-10-09 老王拍板：去掉覆盖重跑保留名机制 —— 画布内素材名必须与磁盘文件名一致，
+    // 重跑产物按新落盘名（MM-DD-NN）命名，历史版本进 history/ 分组。不再沿用第一次生图名。
+    delete pendingNode.retainOutputNames;
     delete pendingNode._retainOutputNames;
     selectedId = pendingNode._selectAfterRunId || pendingNode.id;
     delete pendingNode._runMetaTargetId;
@@ -12199,6 +12139,11 @@ function replaceOutputsToNodeWithHistory(node, additions, kind='image', meta=nul
     node.runTimerHidden = false;
     node.outputKind = kind;
     node.title = cascadeOutputTitle(kind, node.images.length);
+    // 自动命名（2026-10-09 补全第三条收口）：RH/API 引擎级联回填此前只给通用名，
+    // 重跑后节点标题停留在旧名。comfy（finalizePendingNode）与 supervisor
+    // （finalizeSmartPendingTask）两条路已接，这里把 cascade 路径补齐；
+    // titleManual（用户手动改名）由 helper 内部保护。autoTitlePrompt 由调用方传真实提示词。
+    node.title = CanvasGeneratedOutputNaming.autoNodeTitleFromNode(node, node.title, options.autoTitlePrompt);
     node.scale = node.images.length > 1 ? MEDIA_GROUP_DEFAULT_SCALE : MEDIA_NODE_DEFAULT_SCALE;
     delete node.w;
     delete node.h;
@@ -12449,7 +12394,7 @@ async function runCascadeStepIntoNode(sourceNode, targetNode, inputRefs, ctx=sma
                 return stripImageGenerationMeta({url, name, kind:(typeof item === 'object' && item.kind) || result.kind, generatedResult:true});
             }).filter(item => item.url);
         addSmartGenerationLog({run:{...runLog, kind:result.kind || logKind}, outputs:additions, runMs:nowMs() - runLogStart});
-        replaceOutputsToNodeWithHistory(outputNode, additions, result.kind, null, {skipShift:Boolean(ctx?.nodeId)});
+        replaceOutputsToNodeWithHistory(outputNode, additions, result.kind, null, {skipShift:Boolean(ctx?.nodeId), autoTitlePrompt:prompt});
         outputNode.runPrompt = targetPromptState.runPrompt;
         outputNode.runModelPrompt = targetPromptState.runModelPrompt;
         outputNode.runPromptRefs = targetPromptState.runPromptRefs || [];
@@ -12565,7 +12510,7 @@ async function runLoopRoundIntoSlot(loopNode, rootNode, outputSlot, loopIndex, c
                 const url = typeof item === 'string' ? item : item?.url || '';
                 return stripImageGenerationMeta({url, name:(typeof item === 'object' && item.name) || `output-${i + 1}.${ext}`, kind:(typeof item === 'object' && item.kind) || result.kind, generatedResult:true});
             }).filter(item => item.url);
-            replaceOutputsToNodeWithHistory(outputSlot, additions, result.kind, meta, {skipShift:Boolean(ctx?.nodeId)});
+            replaceOutputsToNodeWithHistory(outputSlot, additions, result.kind, meta, {skipShift:Boolean(ctx?.nodeId), autoTitlePrompt:prompt});
         }
         if(runPath?.states) {
             runPath.states[edgeKey] = 'done';
@@ -12938,6 +12883,7 @@ if(globalThis.CanvasSmartTaskSupervisor){CanvasSmartTaskSupervisor.configure({
         addConnection: (...a) => addConnection(...a),
         addSmartGenerationLog: (...a) => addSmartGenerationLog(...a),
         attachRunMeta: (...a) => attachRunMeta(...a),
+        autoNodeTitle: (...a) => CanvasGeneratedOutputNaming.autoNodeTitleFromNode(...a),
         buildComfyWorkflowJobPayload: (...a) => buildComfyWorkflowJobPayload(...a),
         clearComfyProgress: (...a) => clearComfyProgress(...a),
         clearNodeRunningState: (...a) => clearNodeRunningState(...a),
@@ -13518,8 +13464,7 @@ lastMouseWorld = screenToWorld(e);
                 const rect = nodeEl.getBoundingClientRect();
                 targetPort = (e.clientX - rect.left) < rect.width / 2 ? 'in' : 'out';
             }
-            // 剧本节点已去掉输入口：不接受新的输入连线
-            if(targetPort === 'in' && isScriptPromptNode(nodes.find(n => n.id === targetId))){ targetId = ''; targetPort = ''; }
+
             const compatible = (portDragState.fromPort === 'out' && targetPort === 'in') || (portDragState.fromPort === 'in' && targetPort === 'out');
             if(!compatible){ targetId = ''; targetPort = ''; }
         }

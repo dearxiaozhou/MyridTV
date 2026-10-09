@@ -22,6 +22,11 @@ from pathlib import Path
 import threading
 
 _COMFY_LOCALIZE_LOCK = threading.Lock()
+# 日期序号占用名缓存（按输出目录维度）：避免每次落盘都全目录 rglob。
+# 结构：{str(output_dir): {"date": "MM-DD", "used": set(已占用文件名)}}
+# 跨天自动失效重建；分配时仍有「顶层 + history/ 各一次 exists()」兜底校验，
+# 外部（手动产物/归档移动）新占用的名字不会被重复分配。
+_COMFY_NAME_CACHE = {}
 
 import comfy_flow_service
 from comfy_flow_compiler import compile_prompt as compile_comfy_prompt
@@ -194,24 +199,35 @@ def _comfy_localized_name(output_dir, prompt_id, ext=".png", file_key=""):
         # 前端每次「覆盖重跑」都会调 /api/move-to-history 把上一张产物挪进 images/history/，
         # 于是 images/ 顶层就腾出空位。原来只 exists() 顶层 → 同一个 MM-DD-NN 被反复重新分配，
         # 新图覆盖旧图、history/ 里堆出一串 10-06-01_N 重名副本（实测已堆到 _12）。
-        # 这里一次性 rglob 收集全部已占用文件名（只看子目录文件名，不解析日期，
-        # 任意来源的同名文件都算占位，顺带与手动产物互不覆盖）。
-        used_names = set()
-        try:
-            for path in output_dir.rglob("*"):
-                if path.is_file():
-                    used_names.add(path.name)
-        except Exception:
+        # 占用名缓存（2026-10-09）：冷启动/跨天时 rglob 全量建一次，之后增量维护；
+        # 分配时对候选名再做「顶层 + history/ 各一次 exists()」兜底，双保险不重号。
+        used_names = None
+        cached = _COMFY_NAME_CACHE.get(str(output_dir))
+        if isinstance(cached, dict) and cached.get("date") == date_prefix and isinstance(cached.get("used"), set):
+            used_names = cached["used"]
+        if used_names is None:
             used_names = set()
+            try:
+                for path in output_dir.rglob("*"):
+                    if path.is_file():
+                        used_names.add(path.name)
+            except Exception:
+                used_names = set()
+            _COMFY_NAME_CACHE[str(output_dir)] = {"date": date_prefix, "used": used_names}
         counter = 1
+        history_dir = output_dir / "history"
         while True:
             name = f"{date_prefix}-{counter:02d}{ext}"
             if name not in used_names:
-                break
+                # 缓存外的兜底校验：缓存建立后外部新写入/归档移动的同名文件也算占位
+                if not (output_dir / name).exists() and not (history_dir / name).exists():
+                    break
+                used_names.add(name)
             counter += 1
             if counter > 9999:
                 name = f"{date_prefix}-{uuid.uuid4().hex[:6]}{ext}"
                 break
+        used_names.add(name)
         if key:
             mapping[key] = name
             try:

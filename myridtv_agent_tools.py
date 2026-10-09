@@ -329,7 +329,7 @@ CANVAS_AGENT_TOOLS = [
         }, "required": ["query"]}}},
     {"type": "function", "function": {
         "name": "canvas_create_text_node",
-        "description": "在画布上创建文本节点(剧本、脚本、设定、方案等)。",
+        "description": "在画布上创建文本节点(设定、方案、笔记等)。",
         "parameters": {"type": "object", "properties": {
             "text": {"type": "string", "description": "文本内容"},
             "title": {"type": "string", "description": "节点标题"},

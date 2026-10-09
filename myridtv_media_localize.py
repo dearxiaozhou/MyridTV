@@ -449,10 +449,11 @@ def save_generated_remote_asset(source_url, kind="image", display_name="", canva
         safe_name = re.sub(r'\.(?:png|jpe?g|webp|gif|bmp|mp4|webm|mov|m4a|mp3|wav|aac|ogg|flac)(?:_\d+)?$', '', safe_name, flags=re.IGNORECASE)
         safe_name = safe_name.strip().strip('.') or f"{time.strftime('%m-%d')}-01"
         local_name = f"{safe_name}{ext}"
-        # 防重名：追加数字
+        # 防重名：追加数字（含 history/ 占位检查，2026-10-09 与 comfy 侧同口径——
+        # 顶层腾空但 history/ 里躺着同名旧产物时，不能把同一个名字再发一遍）
         target = output_dir / local_name
         counter = 1
-        while target.exists():
+        while target.exists() or (output_dir / "history" / target.name).exists():
             date_match = re.match(r'^(\d{2}-\d{2})-(\d{2})$', safe_name)
             next_name = f"{date_match.group(1)}-{counter + 1:02d}" if date_match else f"{safe_name}_{counter}"
             local_name = f"{next_name}{ext}"
@@ -463,7 +464,7 @@ def save_generated_remote_asset(source_url, kind="image", display_name="", canva
         counter = 1
         local_name = f"{date_prefix}-{counter:02d}{ext}"
         target = output_dir / local_name
-        while target.exists():
+        while target.exists() or (output_dir / "history" / target.name).exists():
             counter += 1
             local_name = f"{date_prefix}-{counter:02d}{ext}"
             target = output_dir / local_name

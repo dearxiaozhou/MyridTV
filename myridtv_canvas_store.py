@@ -139,6 +139,53 @@ def migrate_canvas_format(canvas_id, canvas):
     return canvas
 
 
+def _is_number(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _normalize_node(node):
+    # 节点级格式归一化（统一收口 B 档）。所有入口（前端/主通道MCP/codex/hermes）落盘均经过本函数。
+    # 只做加法与修已知畸形，绝不删合法字段、绝不改合法 smart-* type，避免误伤前端已落盘节点。
+    # 具体"统一格式值"（默认尺寸/统一标识等）后续在此追加。
+    if not isinstance(node, dict):
+        return None
+    n = dict(node)
+    if not str(n.get("id") or "").strip():
+        n["id"] = "node_" + uuid.uuid4().hex[:12]
+    # 尺寸键归一：width/height -> w/h（优先保留 w/h 原值，最后清掉 width/height）
+    if not _is_number(n.get("w")):
+        if _is_number(n.get("width")):
+            n["w"] = float(n["width"])
+    if not _is_number(n.get("h")):
+        if _is_number(n.get("height")):
+            n["h"] = float(n["height"])
+    n.pop("width", None)
+    n.pop("height", None)
+    # type 别名归一（仅动已知别名；合法 smart-* 不动；缺省兜底 smart-prompt）
+    t = str(n.get("type") or "").strip().lower()
+    TYPE_ALIASES = {
+        "note": "smart-prompt", "text": "smart-prompt", "prompt": "smart-prompt",
+        "script": "smart-prompt", "doc": "smart-prompt", "outline": "smart-prompt",
+        "image": "smart-image", "gen": "smart-image", "generation": "smart-image",
+        "video": "smart-video",
+    }
+    if t in TYPE_ALIASES:
+        n["type"] = TYPE_ALIASES[t]
+    elif not t:
+        n["type"] = "smart-prompt"
+    # text/content 互为别名（前端渲染依赖 text）
+    txt = n.get("text")
+    if not (isinstance(txt, str) and txt.strip()):
+        txt = n.get("content")
+    if isinstance(txt, str) and txt.strip():
+        n["text"] = txt
+        n["content"] = txt
+    if not _is_number(n.get("created_at")):
+        n["created_at"] = int(time.time() * 1000)
+    if "status" not in n:
+        n["status"] = "ready"
+    return n
+
 def normalize_canvas_structure(canvas_id, data):
     now_ms = int(time.time() * 1000)
     canvas = dict(data) if isinstance(data, dict) else {}
@@ -162,6 +209,9 @@ def normalize_canvas_structure(canvas_id, data):
         canvas["inputMode"] = "connections"
     canvas.setdefault("viewport", {"x": 0, "y": 0, "scale": 1})
     canvas.setdefault("settings", {})
+    # 节点级格式归一化（B 档兜底）：所有入口落盘都过此，统一格式、修已知畸形
+    raw_nodes = canvas.get("nodes") if isinstance(canvas.get("nodes"), list) else []
+    canvas["nodes"] = [n for n in (_normalize_node(x) for x in raw_nodes) if n is not None]
     return migrate_canvas_format(canvas_id, canvas)
 
 
