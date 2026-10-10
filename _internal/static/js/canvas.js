@@ -108,6 +108,7 @@ let emojiPickerCanvasId = null;
 let canvasSortMode = (() => { try { return localStorage.getItem('canvasSortMode') || 'recent'; } catch(e){ return 'recent'; } })();
 const CANVAS_COLOR_OPTIONS = ['red','orange','amber','green','teal','blue','violet','pink','slate'];
 let localCanvasDirty = false;
+let acknowledgedCanvas = null;
 let savingCanvasNow = false;
 let saveCanvasAgain = false;
 let applyingRemoteCanvas = false;
@@ -659,7 +660,20 @@ async function saveCanvas(){
             const data = await res.json().catch(() => ({}));
             const remote = data.detail?.canvas || data.canvas;
             if(localCanvasDirty || saveCanvasAgain){
-                lastCanvasUpdatedAt = Number(data.detail?.updated_at || data.updated_at || remote?.updated_at || lastCanvasUpdatedAt || 0);
+                if(!remote) throw new Error('Missing conflicting canvas');
+                const base = acknowledgedCanvas?.id === canvas.id ? acknowledgedCanvas : canvas;
+                nodes = CanvasMergeSync.mergeSmartNodeLists(nodes, remote.nodes || [],
+                    new Set((remote.deleted || []).map(t => t.id)), base.nodes || []);
+                const key = c => `${c.from}->${c.to}:${c.kind || 'flow'}`;
+                const baseKeys = new Set((base.connections || []).map(key));
+                const localKeys = new Set(connections.map(key));
+                const remoteKeys = new Set((remote.connections || []).map(key));
+                const keep = c => !baseKeys.has(key(c)) || (localKeys.has(key(c)) && remoteKeys.has(key(c)));
+                connections = CanvasMergeSync.mergeSmartConnections(connections.filter(keep), (remote.connections || []).filter(keep), new Set(nodes.map(n => n.id)));
+                canvas = {...canvas, ...remote, nodes, connections};
+                acknowledgedCanvas = JSON.parse(JSON.stringify(remote));
+                lastCanvasUpdatedAt = Number(remote.updated_at || 0);
+                render();
                 saveCanvasAgain = true;
                 setStatus('Saving...');
                 return;
@@ -672,6 +686,7 @@ async function saveCanvas(){
         const data = await res.json().catch(() => ({}));
         const localViewport = {...viewport};
         if(data.canvas) canvas = {...canvas, ...data.canvas, viewport:localViewport};
+        if(data.canvas) acknowledgedCanvas = JSON.parse(JSON.stringify(data.canvas));
         viewport = localViewport;
         canvas.updated_at = Number(canvas.updated_at || Date.now());
         lastCanvasUpdatedAt = canvas.updated_at;
@@ -1283,6 +1298,7 @@ function applyRemoteCanvasData(remote){
         const localViewport = localViewportForCanvas(canvas.id, viewport || remote.viewport || {x:0, y:0, scale:1});
         const localSelectedIds = new Set(selected);
         canvas = remote;
+        acknowledgedCanvas = JSON.parse(JSON.stringify(remote));
         canvas.logs = canvas.logs || [];
         nodes = canvas.nodes || [];
         connections = canvas.connections || [];
@@ -1379,9 +1395,6 @@ function handleCanvasUpdatedMessage(data){
     if(data.canvas_id !== canvas.id) return;
     const remoteUpdatedAt = Number(data.updated_at || 0);
     if(remoteUpdatedAt && remoteUpdatedAt <= Number(lastCanvasUpdatedAt || 0)) return;
-    clearTimeout(saveTimer);
-    saveTimer = null;
-    localCanvasDirty = false;
     clearTimeout(remoteSyncTimer);
     remoteSyncTimer = setTimeout(syncRemoteCanvasNow, savingCanvasNow ? 700 : 120);
     setStatus('Syncing...');

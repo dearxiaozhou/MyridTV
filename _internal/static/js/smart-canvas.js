@@ -1124,7 +1124,8 @@ function normalizeLegacySmartNode(node){
             delete node.w;
             delete node.h;
             if(!(node.images || []).length){
-                node.cardSize = {width:EMPTY_UPLOAD_NODE_WIDTH,height:EMPTY_UPLOAD_NODE_HEIGHT};
+                const box = nodeRatioBox(node);
+                node.cardSize = {width:box.w, height:box.h};
                 node.cardSizing = 'default';
             }
         }
@@ -2570,6 +2571,7 @@ async function canvasAgentBatchRunNodes(targets){
         }catch(e){
             node.apiRunning = false;
             node.runError = (e?.message || '生成失败').slice(0, 160);
+            restoreNodeBoxAfterFailure(node); // 失败不改尺寸：拨回按比例的默认盒，别停在占位框
             failCount += 1;
             toast(`${label}：${node.runError}`);
             render();
@@ -3797,6 +3799,47 @@ const MEDIA_GROUP_DEFAULT_SCALE = 0.8;
 const MEDIA_GROUP_THUMB_BASE = 224;
 const EMPTY_UPLOAD_NODE_WIDTH = 512;
 const EMPTY_UPLOAD_NODE_HEIGHT = 288;
+// 2026-10-10 统一节点默认尺寸口径（老王："统一尺寸，有选了比例的就按比例"）。
+// 此前一张画布上并存三套默认：空节点 512×288（EMPTY_UPLOAD）、生成占位 520×293（pendingBoxSize）、
+// MCP 文本节点 316×194 —— 同一个 16:9 的节点，手动建 / Agent 建 / 跑过一次，尺寸各不相同。
+// 现在只留一套：有选定比例 → 按比例算盒（夹在 MEDIA_BOX_MAX_W×MEDIA_BOX_MAX_H 内）；
+// 没选比例 → 空卡默认 512×288。新建 / 生成中 / 失败三态共用这一个盒，尺寸不再跳变。
+const MEDIA_BOX_MAX_W = EMPTY_UPLOAD_NODE_WIDTH;
+const MEDIA_BOX_MAX_H = 440;
+function mediaBoxForRatio(ratio){
+    if(!(Number(ratio?.w) > 0 && Number(ratio?.h) > 0)) return {w:EMPTY_UPLOAD_NODE_WIDTH, h:EMPTY_UPLOAD_NODE_HEIGHT};
+    const fit = Math.min(MEDIA_BOX_MAX_W / ratio.w, MEDIA_BOX_MAX_H / ratio.h);
+    return {w:Math.max(72, Math.round(ratio.w * fit)), h:Math.max(72, Math.round(ratio.h * fit))};
+}
+// 取「用户选定的输出比例」。没选（comfy 工作流、缺 ratio 字段）返回 null —— 不准拿默认值冒充用户选择。
+function nodeOutputRatio(s){
+    const st = s || {};
+    if(st.apiKind === 'video'){
+        const m = String(st.videoAspect || '').match(/^(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)$/);
+        return m ? {w:Number(m[1]) || 16, h:Number(m[2]) || 9} : null;
+    }
+    if(st.engine === 'comfy'){
+        if(st.comfyMode === 'text') return {w:Number(st.width) || 1024, h:Number(st.height) || 1024};
+        return null; // comfy 工作流的真实尺寸由流程内部的分辨率节点决定，面板没有比例控件
+    }
+    if(!st.ratio) return null;
+    const parsed = parseSizeValue(sizeForRun(st));
+    return (Number(parsed?.width) > 0 && Number(parsed?.height) > 0) ? {w:Number(parsed.width), h:Number(parsed.height)} : null;
+}
+function nodeRatioBox(node, s){
+    return mediaBoxForRatio(nodeOutputRatio(s || node?.runSettings));
+}
+// 生成失败/超时：把尺寸拨回「按比例的默认盒」。跑之前是它、生成中也是它，失败了就该还是它，
+// 不能停在 pending 占位框上（老王："跑图都是先选了比例的，那失败了也不应该改变尺寸"）。
+function restoreNodeBoxAfterFailure(node){
+    if(!isSmartImageNode(node) || (node.images || []).length) return false;
+    const box = nodeRatioBox(node);
+    node.w = box.w;
+    node.h = box.h;
+    node.cardSize = {width:box.w, height:box.h};
+    node.cardSizing = 'default';
+    return true;
+}
 function mediaNodeDefaultScale(node){
     if((node?.images || []).length > 1 && !Number.isFinite(Number(node?.scale))) return MEDIA_GROUP_DEFAULT_SCALE;
     return Number.isFinite(Number(node?.scale)) && Number(node.scale) > 0 ? Number(node.scale) : MEDIA_NODE_DEFAULT_SCALE;
@@ -3938,6 +3981,83 @@ function migrateLegacyAutoImageGroups(sourceNodes){
         migrated.push(...members, group);
     }
     return migrated;
+}
+// MCP/Agent image results are independent outputs. A multi-image smart-image node
+// traps them in a thumbnail grid, so each output needs its own resizable node and
+// the same smart-group container created by the manual Group action.
+function materializeAgentImageGroups(sourceNodes){
+    const result = [...(sourceNodes || [])];
+    let changed = false;
+    const supportedOrigins = new Set(['mcp', 'mcp_update', 'agent_tool_generation']);
+    const candidates = result.filter(node => node?.type === 'smart-image'
+        && supportedOrigins.has(node.__origin) && Array.isArray(node.images) && node.images.length > 1
+        && !node.isHistoryGroup && !node.historyFor && node.groupLayout?.mode !== 'preserve');
+    for(const source of candidates){
+        const originalImages = source.images.filter(image => image?.url);
+        if(originalImages.length < 2) continue;
+        const existingGroup = result.find(node => node.type === 'smart-group' && node.mcpGroupSourceId === source.id);
+        const existingMembers = existingGroup
+            ? (existingGroup.memberIds || []).map(id => result.find(node => node.id === id)).filter(Boolean)
+            : [];
+        const knownUrls = new Set(existingMembers.filter(node => node.id !== source.id)
+            .flatMap(node => (node.images || []).map(image => image?.url).filter(Boolean)));
+        const additionalImages = originalImages.slice(1).filter(image => !knownUrls.has(image.url));
+        const beforeCount = originalImages.length;
+        source.images = [originalImages[0]];
+        changed = true;
+        if(!additionalImages.length) continue;
+        const originalWidth = Number(source.mcpGroupCellWidth || source.w || source.cardSize?.width || 520);
+        const cellWidth = Math.max(180, Math.min(520, Math.round(originalWidth / Math.min(4, beforeCount))));
+        const cellHeight = Math.max(120, Math.round(Number(source.h || source.cardSize?.height || 300)));
+        source.mcpGroupCellWidth = cellWidth;
+        const firstSize = imageSizeWithinBox(source.images[0], cellWidth, cellHeight);
+        if(!existingGroup || !(Number(source.w) > 24 && Number(source.h) > 24)){
+            source.w = firstSize.width;
+            source.h = firstSize.height;
+            source.cardSize = {width:firstSize.width, height:firstSize.height};
+            source.cardSizing = 'media';
+        }
+        const members = existingGroup ? [...existingMembers] : [source];
+        if(!members.some(node => node.id === source.id)) members.unshift(source);
+        const anchorX = Number(source.x) || 0;
+        additionalImages.forEach(image => {
+            const size = imageSizeWithinBox(image, cellWidth, cellHeight);
+            const rows = members.map(member => nodeRect(member));
+            const nextX = members.length % 4 === 0
+                ? anchorX : Math.max(...rows.map(rect => rect.x + rect.width)) + 12;
+            const nextY = members.length % 4 === 0
+                ? Math.max(...rows.map(rect => rect.y + rect.height)) + 12
+                : Math.max(...rows.map(rect => rect.y));
+            const member = {
+                id:uid('smart'), type:'smart-image',
+                title:`${source.title || 'Image'} · ${members.length + 1}`,
+                x:Math.round(nextX), y:Math.round(nextY),
+                w:size.width, h:size.height,
+                cardSize:{width:size.width, height:size.height}, cardSizing:'media',
+                images:[image], scale:1, status:'ready', role:'media',
+                created_at:Number(source.created_at) || Date.now(),
+                __origin:'mcp_output', mcpGroupSourceId:source.id
+            };
+            members.push(member);
+            result.push(member);
+        });
+        const measured = CanvasNodeLayoutController.createCanvasGroupForNodes(members, {
+            id:existingGroup?.id, title:existingGroup?.title || source.title || 'Group',
+            created_at:existingGroup?.created_at || source.created_at,
+            origin:'mcp', addToStore:false
+        });
+        if(existingGroup){
+            existingGroup.memberIds = members.map(node => node.id);
+            existingGroup.x = measured.x; existingGroup.y = measured.y;
+            existingGroup.w = measured.w; existingGroup.h = measured.h;
+        } else {
+            measured.mcpGroupSourceId = source.id;
+            source.mcpGroupId = measured.id;
+            result.push(measured);
+        }
+    }
+    result.mcpGroupChanged = changed;
+    return result;
 }
 function singleImageLayout(image, node, scale){
     const explicitW = Number(node?.w);
@@ -4101,7 +4221,17 @@ function syncNodeCardToSpec(node){
     return true;
 }
 function imageLayout(images, scale=1, node=null){
-    const size = node?.cardSize;
+    // 2026-10-10：Agent/MCP 建的生成节点没有 cardSize，成功后按图片自然尺寸落 520×293，
+    // 跟手动节点（有 cardSize）的 512×288 差一截，产物落地瞬间还会"跳一下"。
+    // 生成产物必然等于面板选的比例，所以：没 cardSize + 没被手动改过尺寸 + 单张生成产物
+    // → 直接套按比例默认盒，跟生成中 / 失败态对齐。上传图、手动改过的节点一律不碰。
+    const nodeImages = node?.images || images || [];
+    const size = node?.cardSize
+        || (nodeImages.length === 1 && nodeImages[0]?.generatedResult
+            && !(Number(node?.w) > 24 && Number(node?.h) > 24)
+            && nodeOutputRatio(node?.runSettings)
+            ? (b => ({width:b.w, height:b.h}))(nodeRatioBox(node))
+            : null);
     const workflow = node?.runSettings?.engine === 'comfy';
     if(node?.type === 'smart-image' && (!workflow || (!images?.length && !node.pending)) && Number(size?.width) > 24 && Number(size?.height) > 24){
         return intrinsicImageLayout(images, scale, {...node, w:size.width, h:size.height});
@@ -4133,11 +4263,12 @@ function intrinsicImageLayout(images, scale=1, node=null){
     if(count === 0){
         const explicitW = Number(node?.w);
         const explicitH = Number(node?.h);
-        // comfyStatus queued/running 也按 pending 档取尺寸：这些节点（级联槽位等）可能没有
-        // pending 标志，若落进 empty 档会跟其它状态尺寸不一致，交互中看起来「窗口忽大忽小」。
-        const pending = Number(node?.pending) > 0 || Boolean(node?.queued) || node?.comfyStatus === 'queued' || node?.comfyStatus === 'running';
-        const fallbackW = pending ? 260 * s : EMPTY_UPLOAD_NODE_WIDTH;
-        const fallbackH = pending ? 180 * s : EMPTY_UPLOAD_NODE_HEIGHT;
+        // 2026-10-10 统一：pending 档原本是 260*s×180*s（16:9 输出下 = 520×360），跟空卡的
+        // 512×288 又不是一回事，节点一跑就"忽大忽小"。现在空态 / 生成中共用同一个默认盒：
+        // 有选比例就按比例（pendingBoxSize 也是这个盒，两者天然相等），没选就 512×288。
+        const box = nodeRatioBox(node);
+        const fallbackW = box.w;
+        const fallbackH = box.h;
         return {
             cols:1,
             rows:1,
@@ -6076,6 +6207,13 @@ let canvasSyncTimer = null;
 let canvasMetaPollTimer = null;
 // 画布多端合并/资产库同步带外移 canvas-merge-sync.js（第二十一刀）。8 写入态走 setter，节点数组写源仍在主文件。
 if(globalThis.CanvasMergeSync){CanvasMergeSync.configure({
+        beforeMerge: () => savePromptDraftForCurrent(),
+        afterMerge: () => {
+            activeComposerSubject = null;
+            lastComposerNodeId = '';
+            const subject = selectedNode();
+            if(isSmartImageNode(subject)) loadPromptDraft(subject);
+        },
         activeAssetCategory: (...a) => activeAssetCategory(...a),
         assetCategories: (...a) => assetCategories(...a),
         assetLibraries: (...a) => assetLibraries(...a),
@@ -6998,6 +7136,7 @@ async function loadCanvas(){
         if(!res.ok) return;
         const data = await res.json();
         canvas = data.canvas;
+        CanvasMergeSync.rememberServerCanvas({...canvas, nodes:(canvas.nodes || []).map(normalizeLegacySmartNode).filter(Boolean)});
         // ③ 先看看本地有没有比服务端更新的草稿（崩溃/断网时的未同步改动）
         try { await restoreCanvasDraftIfNewer(data.canvas); } catch(e) {}
         // Phase 8：按 canvasId 载入持久产物（Sidebar 不是全局文件列表）
@@ -7016,8 +7155,8 @@ async function loadCanvas(){
         // Phase 4：载入即剔除墓碑节点（防御后端历史数据 / 多端竞态残留）
         const loadDead = nodeStore.deletedIds(canvas);
         const liveNodes = loadDead.size ? cleanedCanvas.nodes.filter(n => !loadDead.has(n.id)) : cleanedCanvas.nodes;
-        nodes = migrateLegacyAutoImageGroups(liveNodes);
-        const migratedLegacyGroups = nodes.length !== liveNodes.length;
+        nodes = materializeAgentImageGroups(migrateLegacyAutoImageGroups(liveNodes));
+        const migratedLegacyGroups = nodes.length !== liveNodes.length || nodes.mcpGroupChanged;
         nodes.forEach(n => {
             const pendingTasks = smartPendingTasks(n);
             if(pendingTasks.length){
@@ -7161,14 +7300,15 @@ async function saveCanvas(){
             const data = await res.json();
             if(data?.ok === false) throw new Error(data.detail || '服务器没有接受画布保存');
             if(data.canvas && data.canvas.updated_at) canvas.updated_at = data.canvas.updated_at;
+            // Remember exactly what was acknowledged, not edits made while PUT was in flight.
+            CanvasMergeSync.rememberServerCanvas({...data.canvas, nodes:(data.canvas?.nodes || payload.nodes).map(normalizeLegacySmartNode).filter(Boolean)});
             // 同步成功：草稿已经变成服务端内容，清掉（并取消排队中的写入，避免又被写回一份）
             canvasDraftWriter.cancel();
             clearCanvasDraft();
             canvasSaveRecovery.reset();
             saved = true;
         } else if(res.status === 409) {
-            // 冲突：别人先保存了。合并对方的状态（节点 id 合并、图片取并集，谁都不丢），
-            // 然后用对方最新的 updated_at 作为基底重存，把合并结果落盘——而不是直接覆盖对方。
+            // Rebase only local changes against the acknowledged server baseline.
             const data = await res.json().catch(() => ({}));
             const serverCanvas = data.canvas || data.detail?.canvas;
             if(serverCanvas){
@@ -7257,13 +7397,15 @@ function createNode(x, y, images=[], options={}){
     const nameTitle = nodeImages.length === 1 ? CanvasGeneratedOutputNaming.mediaNameStem(nodeImages[0]?.name) : '';
     const node = {id:uid('smart'), type:'smart-image', x, y, title:nodeImages.length > 1 ? 'Group' : (nameTitle || (nodeImages.length ? singleTitle : tr('smart.createImportNode'))), images:nodeImages, created_at:Date.now(), __origin:'user_manual', status:'ready', role:'media'};
     node.scale = nodeImages.length > 1 ? MEDIA_GROUP_DEFAULT_SCALE : mediaNodeDefaultScale(node);
-    if(!nodeImages.length){
-        node.cardSize = {width:EMPTY_UPLOAD_NODE_WIDTH, height:EMPTY_UPLOAD_NODE_HEIGHT};
-        node.cardSizing = 'default';
-    }
     inheritNodeMetaFromImage(node);
     node.runSettings = settingsForStorage({...smartSettingsForNode(node), promptH:93});
     if(!nodeImages.length){ node.runSettings.ratio = 'wide'; node.runSettings.videoAspect = '16:9'; }
+    // 空节点也走统一的按比例默认盒（宽幅 16:9 → 512×288），与 Agent/MCP 建的生成节点同尺寸。
+    if(!nodeImages.length){
+        const box = nodeRatioBox(node);
+        node.cardSize = {width:box.w, height:box.h};
+        node.cardSizing = 'default';
+    }
     nodeStore.addNode(node, 'user_manual');
     if(options.select !== false) selectedId = node.id;
     render();
@@ -8314,6 +8456,11 @@ function hideRunTimerForNode(){return CanvasGeneratedOutputNaming.hideRunTimerFo
 
 function refreshRunTimerPills(){return CanvasGeneratedOutputNaming.refreshRunTimerPills.apply(null, arguments);}
 function render(){
+    const materializedNodes = materializeAgentImageGroups(nodes);
+    if(materializedNodes.mcpGroupChanged){
+        nodes = materializedNodes;
+        scheduleSave();
+    }
     syncCanvasInputModeUi();
     if(canvasObjectRefPickerOpen) renderCanvasObjectRefPicker();
     const composerEl = composer;
@@ -10697,12 +10844,14 @@ function displayBoxFromNaturalSize(size){
     return {w:layout.width, h:layout.height};
 }
 function pendingBaseBoxSize(options={}){
+    // 2026-10-10：占位框走统一的按比例默认盒（此前 displayBoxFromNaturalSize 把 16:9 夹成
+    // 520×293，与空卡的 512×288 差一点点，看着就像"两套尺寸"）。
     const requestSize = explicitRequestOutputSizeForPending();
-    if(requestSize) return displayBoxFromNaturalSize(requestSize);
+    if(requestSize) return mediaBoxForRatio(requestSize);
     const sourceSize = pendingSourceBoxSize(options);
     if(sourceSize?.display) return {w:sourceSize.w, h:sourceSize.h};
-    if(sourceSize) return displayBoxFromNaturalSize(sourceSize);
-    return displayBoxFromNaturalSize(expectedOutputSize());
+    if(sourceSize) return mediaBoxForRatio(sourceSize);
+    return mediaBoxForRatio(expectedOutputSize());
 }
 function pendingBoxSize(count, options={}){
     const base = pendingBaseBoxSize(options);
@@ -12902,6 +13051,7 @@ if(globalThis.CanvasSmartTaskSupervisor){CanvasSmartTaskSupervisor.configure({
         nowMs: (...a) => nowMs(...a),
         render: (...a) => render(...a),
         replaceOutputsToNodeWithHistory: (...a) => replaceOutputsToNodeWithHistory(...a),
+        restoreNodeBoxAfterFailure: (...a) => restoreNodeBoxAfterFailure(...a),
         resultMediaUrls: (...a) => resultMediaUrls(...a),
         scheduleSave: (...a) => scheduleSave(...a),
         smartGeneratedOutputItems: (...a) => smartGeneratedOutputItems(...a),
@@ -13711,6 +13861,11 @@ shell.addEventListener('wheel', e => {
         }
         return;
     }
+    // 2026-10-10 20:28（老王反馈：LLM 节点里滚轮翻不动提示词）：节点内的文本滚动区
+    // （.prompt-node-text/.loop-smart-text/.smart-table-wrap/textarea/[contenteditable]）
+    // 不在 wheel-exclude 里，会掉进下面的缩放分支——preventDefault 吃掉原生滚动，画布反而缩放。
+    // 这里放行 wheel-scrollable 白名单，节点正文自己消化滚轮；滚到头也不链回画布缩放。
+    if(isCanvasWheelScrollableOverlay(e.target)) return;
     e.preventDefault();
     e.stopPropagation();
     e.__smartCanvasWheelHandled = true;

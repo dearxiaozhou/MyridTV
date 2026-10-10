@@ -7,6 +7,38 @@
 
     function D(name){return typeof deps[name] === 'function' ? deps[name]() : deps[name];}
 
+// Keep an immutable server baseline; live nodes are mutated by editors and jobs.
+let serverBaseline = null;
+function rememberServerCanvas(value){
+    serverBaseline = value ? JSON.parse(JSON.stringify(value)) : null;
+}
+function sameValue(a, b){return JSON.stringify(a) === JSON.stringify(b);}
+function mergeChangedMedia(local=[], remote=[], base=[]){
+    const keys = items => new Set(items.flatMap(global.CanvasGenerationResultModel.mediaIdentityKeys));
+    const baseKeys = keys(base), localKeys = keys(local), remoteKeys = keys(remote);
+    const alive = item => global.CanvasGenerationResultModel.mediaIdentityKeys(item).every(key =>
+        !baseKeys.has(key) || (localKeys.has(key) && remoteKeys.has(key)));
+    return mergeSmartImageLists(remote.filter(alive), local.filter(alive));
+}
+function mergeChangedNode(local, remote, base){
+    if(!base) return mergeSmartNode(local, remote);
+    const merged = {...remote};
+    // Remote wins a same-field conflict. Unrelated unsaved local edits survive.
+    for(const key of new Set([...Object.keys(base), ...Object.keys(local)])){
+        if(sameValue(remote[key], base[key]) && !sameValue(local[key], base[key])){
+            if(key in local) merged[key] = local[key]; else delete merged[key];
+        }
+    }
+    if(!sameValue(local.images, base.images) && !sameValue(remote.images, base.images)){
+        const localRun = Number(local.runAt || local.runStartedAt || 0);
+        const remoteRun = Number(remote.runAt || remote.runStartedAt || 0);
+        merged.images = localRun && remoteRun && localRun !== remoteRun
+            ? (localRun > remoteRun ? local.images : remote.images)
+            : mergeChangedMedia(local.images || [], remote.images || [], base.images || []);
+    }
+    return merged;
+}
+
 function mergeSmartImageLists(localImgs, remoteImgs){
     return global.CanvasGenerationResultModel.uniqueMediaItems([...(localImgs || []), ...(remoteImgs || [])]);
 }
@@ -58,22 +90,40 @@ function mergeSmartNode(local, remote){
     }
     return merged;
 }
-function mergeSmartNodeLists(localNodes, remoteNodes, tombstoned){
+function mergeSmartNodeLists(localNodes, remoteNodes, tombstoned, baseNodes){
     const dead = (tombstoned instanceof Set) ? tombstoned : new Set(tombstoned || []);
     const localById = new Map((localNodes || []).map(n => [n.id, n]));
     const remoteById = new Map((remoteNodes || []).map(n => [n.id, n]));
+    const baseById = new Map((baseNodes || []).map(n => [n.id, n]));
     const order = [];
     const seen = new Set();
     (localNodes || []).forEach(n => { if(!seen.has(n.id)){ seen.add(n.id); order.push(n.id); } });
     (remoteNodes || []).forEach(n => { if(!seen.has(n.id)){ seen.add(n.id); order.push(n.id); } });
-    return order.map(id => {
+    const mergedNodes = order.map(id => {
         if(dead.has(id)) return null;           // Phase 4：有墓碑 = 任一端已显式删除，双向剔除（修 never delete 复活 bug）
         const local = localById.get(id);
         const remote = remoteById.get(id);
+        const base = baseById.get(id);
+        if(base && (!local || !remote)) return null;
         if(local && !remote) return local;     // 仅本地存在且无墓碑：保留（我新建的节点，不丢结果）
         if(remote && !local) return remote;     // 仅对方存在且无墓碑：加入对方新建的节点
-        return mergeSmartNode(local, remote);
+        return mergeChangedNode(local, remote, base);
     }).filter(Boolean);
+    // A generated image moved into a real smart-group member must not reappear in
+    // the source node when a stale canvas tab unions local and remote image lists.
+    const movedBySource = new Map();
+    mergedNodes.forEach(node => {
+        if(node.__origin !== 'mcp_output' || !node.mcpGroupSourceId) return;
+        const moved = movedBySource.get(node.mcpGroupSourceId) || new Set();
+        (node.images || []).forEach(image => { if(image?.url) moved.add(image.url); });
+        movedBySource.set(node.mcpGroupSourceId, moved);
+    });
+    mergedNodes.forEach(node => {
+        if(!node.mcpGroupId || !movedBySource.has(node.id)) return;
+        const moved = movedBySource.get(node.id);
+        node.images = (node.images || []).filter(image => !moved.has(image?.url));
+    });
+    return mergedNodes;
 }
 function mergeSmartConnections(localConns, remoteConns, nodeIds){
     const out = [];
@@ -95,6 +145,9 @@ function pruneLegacyDirectorNodes(nodeList, connectionList){
 }
 function applyMergedServerCanvas(serverCanvas){
     if(!serverCanvas || !D("canvas")) return false;
+    if(serverCanvas.id && serverCanvas.id !== D("canvas").id) return false;
+    if(Number(serverCanvas.updated_at || 0) < Number(D("canvas").updated_at || 0)) return false;
+    deps.beforeMerge?.();
     const cleanedRemote = pruneLegacyDirectorNodes(
         (Array.isArray(serverCanvas.nodes) ? serverCanvas.nodes : []).map(D("normalizeLegacySmartNode")).filter(Boolean),
         serverCanvas.connections
@@ -107,18 +160,27 @@ function applyMergedServerCanvas(serverCanvas){
         if(!Array.isArray(D("canvas").deleted)) D("canvas").deleted = [];
         remoteTombs.forEach(t => { if(t && t.id && !localDead.has(t.id)) D("canvas").deleted.push(t); });
     }
-    const mergedNodes = mergeSmartNodeLists(D("nodes"), remoteNodes, D("nodeStore").deletedIds(D("canvas")));
+    const baseline = serverBaseline?.id === D("canvas").id ? serverBaseline : null;
+    const mergedNodes = mergeSmartNodeLists(D("nodes"), remoteNodes, D("nodeStore").deletedIds(D("canvas")), baseline?.nodes);
     const nodeIds = new Set(mergedNodes.map(n => n.id));
     deps.setNodes(mergedNodes);
-    D("canvas").connections = mergeSmartConnections(D("canvas").connections, cleanedRemote.connections, nodeIds);
+    const connectionKey = c => `${c.from}->${c.to}:${c.kind || 'flow'}`;
+    const baseConnections = new Set((baseline?.connections || []).map(connectionKey));
+    const localConnections = D("canvas").connections || [];
+    const localKeys = new Set(localConnections.map(connectionKey));
+    const remoteKeys = new Set(cleanedRemote.connections.map(connectionKey));
+    const keepConnection = c => !baseConnections.has(connectionKey(c)) || (localKeys.has(connectionKey(c)) && remoteKeys.has(connectionKey(c)));
+    D("canvas").connections = mergeSmartConnections(localConnections.filter(keepConnection), cleanedRemote.connections.filter(keepConnection), nodeIds);
     D("canvas").logs = mergeSmartLogLists(D("canvas").logs, serverCanvas.logs);
     D("canvas").updated_at = Number(serverCanvas.updated_at || D("canvas").updated_at || 0);
+    rememberServerCanvas({...serverCanvas, nodes:remoteNodes, connections:cleanedRemote.connections});
     if(D("canvas").title !== serverCanvas.title && serverCanvas.title){
         D("canvas").title = serverCanvas.title;
         const titleEl = document.getElementById('smartTitle');
         if(titleEl) titleEl.textContent = D("canvas").title;
         if(typeof deps.updateCanvasTitleDisplay === 'function') deps.updateCanvasTitleDisplay();
     }
+    deps.afterMerge?.();
     deps.render();
     deps.refreshSmartLogPanel();
     if(typeof deps.refreshConnectionLayer === 'function') deps.refreshConnectionLayer();
@@ -224,6 +286,8 @@ function setAssetLibraryFromResponse(data, options={}){
 
     global.CanvasMergeSync = {
         configure,
+        rememberServerCanvas,
+        mergeChangedNode,
         mergeSmartImageLists,
         mergeSmartLogLists,
         smartNodeInFlight,

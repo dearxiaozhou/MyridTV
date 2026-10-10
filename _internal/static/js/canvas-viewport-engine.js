@@ -192,7 +192,7 @@
 
     function isCanvasWheelScrollableOverlay(target) {
         if (typeof CanvasOverlayRegistry !== 'undefined') return CanvasOverlayRegistry.isOverlay(target, 'wheel-scrollable');
-        return !!target?.closest?.('.asset-panel,.asset-grid,.style-panel,.style-grid,.canvas-agent-panel,.canvas-agent-messages,.prompt-template-panel,.prompt-template-list,.prompt-template-preview-content,.mention-picker,.smart-table-wrap,.prompt-node-text,.loop-smart-text,.loop-smart-upstream-text,textarea,[contenteditable="true"]');
+        return !!target?.closest?.('.smart-popover,.asset-panel,.asset-grid,.style-panel,.style-grid,.canvas-agent-panel,.canvas-agent-messages,.prompt-template-panel,.prompt-template-list,.prompt-template-preview-content,.mention-picker,.smart-table-wrap,.prompt-node-text,.loop-smart-text,.loop-smart-upstream-text,textarea,[contenteditable="true"]');
     }
 
     // ===== 页面根滚动锁（画布吞滚轮时防止整页被滚走）=====

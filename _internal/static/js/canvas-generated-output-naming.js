@@ -97,19 +97,59 @@ async function smartGeneratedOutputItems(items, kind='image', options={}){
     });
     return named.map(item => deps.stripImageGenerationMeta(item));
 }
-function promptTitleStem(prompt, maxLen=16){
-    const firstLine = String(prompt || '').split(/\r?\n/).map(s => s.trim()).find(Boolean) || '';
-    const cleaned = firstLine
-        .replace(/[\\/:*?"<>|]+/g, ' ')
-        .replace(/[\s，。；：、！！？？""''（）()\[\]【】-]+$/g, '')
-        .trim();
-    return cleaned ? cleaned.slice(0, maxLen).trim() : '';
+// 2026-10-10 老王定标题口径：只取提示词**前 6 个字以内**；这 6 字窗口里一旦遇到断句标点，
+// 就断在该标点之前（标点越靠前标题越短）。此前硬切 16 字会切出读不通的半句话，
+// 标题里还缝过日期尾巴，两头不靠。
+function PROMPT_BREAK_CHAR(ch){
+    return /[：:，,。;；、！!？?~～｜|·—…]/.test(ch);
+}
+// 2026-10-10 补充（老王拍板）：真实语料里提示词开头常是套话前缀，直接取前 6 字会拿到
+// 一堆「角色描述」「[BASE」这种同名废话。先剥这类前缀，再走下面的 6 字取词。
+const PROMPT_LEAD_NOISE = [
+    /^\s*[\[(（][^\])）]{0,24}[\])）]\s*/,                                   // [BASE] / (风格)
+    /^\s*[^\s：:\n]{1,8}(描述|设定|说明|内容|需求|要求|标签|参考|规格|提示词)[：:]\s*/,  // 角色描述：/ 场景设定：
+    /^\s*(超写实次世代3D渲染|超写实|超高清8K杰作|高清8K|电影级写实CG|电影级写实|超高品质|最佳画质|高质量|杰作|masterpiece|ultra detailed|best quality|8k|4k)[,，、：:\s]+/i
+];
+function stripPromptLeadNoise(line){
+    for(let round = 0; round < 3; round++){
+        let hit = false;
+        for(const re of PROMPT_LEAD_NOISE){
+            const next = line.replace(re, '');
+            if(next === line) continue;
+            // 剥成独字宁可不剥；但允许剥空（上层会顺延到下一行，如 [BASE]\n<正文>）
+            if(next.trim().length === 1) continue;
+            line = next; hit = true;
+        }
+        if(!hit) break;
+    }
+    return line.trim();
+}
+function promptTitleStem(prompt, maxLen=6){
+    // 逐行剥离前缀后取第一个还有内容的行（[BASE]\n<正文> 这种首行会被剥空，要落到第二行）
+    let cleaned = '';
+    const lines = String(prompt || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    for(const raw of lines){
+        const candidate = stripPromptLeadNoise(raw.replace(/[\\/:*?"<>|]+/g, ' ')).trim();
+        if(candidate.length >= 2){ cleaned = candidate; break; }
+        if(!cleaned) cleaned = candidate;
+    }
+    if(!cleaned) return '';
+    // 断句优先：在 maxLen 窗口内命中第一个标点就取其之前的内容（读得通），
+    // 标点更靠前时天然更短；一个标点都没有才取满 maxLen 字。
+    let out = null;
+    for(let i = 0; i < Math.min(maxLen, cleaned.length); i++){
+        if(PROMPT_BREAK_CHAR(cleaned[i])){ out = cleaned.slice(0, i); break; }
+    }
+    if(out === null) out = cleaned.slice(0, maxLen);
+    out = out.replace(/[\s，。；：、！？""''（）()\[\]【】,;:!?~\-]+$/g, '').trim();
+    return out ? out.slice(0, maxLen).trim() : '';
 }
 function mediaNameStem(name, maxLen=30){
     const stem = String(name || '').replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|]+/g, ' ').trim();
     return stem ? stem.slice(0, maxLen).trim() : '';
 }
-// 生成成功后的节点自动命名：提示词前缀 + 首个产物文件名序号（如 苏焰特写_10-09-03）。
+// 生成成功后的节点自动命名：提示词前 6 字（归档档案号 MM-DD-NN 只活在 img.name/磁盘文件名里，
+// 不再拼进标题——2026-10-10 老王：标题要短、要给人看）。
 // 两类节点永不覆盖：①用户手动改过名（titleManual）；②Agent 创建/管理的节点
 // （id 前缀 agent_ 或 __origin 以 agent_ 开头）——Agent 卡的标题带验收状态等语义，
 // 重跑后被提示词截短名顶掉会破坏 Agent 的管理流（2026-10-09 老王要求跳过）。
@@ -125,9 +165,8 @@ function autoNodeTitleFromNode(node, fallback, promptOverride){
     if(isAgentManagedNode(node)) return node.title || fallback;
     const stem = promptTitleStem(promptOverride || node.runPrompt || node.promptDraftText || (node.runSettings && node.runSettings.prompt) || '');
     if(!stem) return fallback;
-    const firstNamed = (node.images || []).find(img => img && img.name);
-    const seq = firstNamed ? mediaNameStem(firstNamed.name, 20) : '';
-    return seq ? `${stem}_${seq}` : stem;
+    // 不拼日期尾巴：同提示词重跑时标题稳定不变，档案号去 img.name 查即可
+    return stem;
 }
 function formatRunDuration(ms){
     const total = Math.max(0, Math.floor(Number(ms || 0) / 1000));

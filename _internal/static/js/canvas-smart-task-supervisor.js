@@ -380,6 +380,8 @@ async function finalizeSmartPendingTask(node, taskId, images, kind='image'){
             delete node.runError;
         } else {
             node.runError = '任务完成但没有写入图片，已保留任务 ID，可重新恢复。';
+            // 2026-10-10：失败不改尺寸 —— 拨回按比例的默认盒，别让节点停在生成中的占位框上
+            if(deps.restoreNodeBoxAfterFailure) deps.restoreNodeBoxAfterFailure(node);
         }
     }
 }
@@ -433,6 +435,8 @@ async function resumeSmartPendingNode(node){
                 if(!(node.images || []).length){
                     rememberSmartTaskIds(node, [task.taskId]);
                     node.runError = e.message || tr('smart.errRunFailed');
+                    // 2026-10-10：同上，失败/超时不改尺寸
+                    if(deps.restoreNodeBoxAfterFailure) deps.restoreNodeBoxAfterFailure(node);
                 }
             }
             failures.push(e);
