@@ -12,11 +12,13 @@ INDEPENDENT_DOC_TYPES 单例与常量归本模块，主文件留别名再导出�
 主文件对块外仍调用的 24 函数留同名薄代理，调用点不改。
 """
 import hashlib
+import functools
 import json
 import re
 import secrets
 import shutil
 import time
+import threading
 import uuid
 from pathlib import Path
 
@@ -175,9 +177,9 @@ def _normalize_node(node):
         n["type"] = "smart-prompt"
     # text/content 互为别名（前端渲染依赖 text）
     txt = n.get("text")
-    if not (isinstance(txt, str) and txt.strip()):
+    if not isinstance(txt, str):
         txt = n.get("content")
-    if isinstance(txt, str) and txt.strip():
+    if isinstance(txt, str):
         n["text"] = txt
         n["content"] = txt
     if not _is_number(n.get("created_at")):
@@ -669,18 +671,48 @@ def create_canvas_record(payload=None):
     return canvas
 
 
+_canvas_save_lock = threading.RLock()
+
+
+def _serialized_canvas_save(func):
+    @functools.wraps(func)
+    def wrapped(*args, **kwargs):
+        # The revision check and write must be one operation across HTTP threads.
+        with _canvas_save_lock:
+            return func(*args, **kwargs)
+    return wrapped
+
+
+@_serialized_canvas_save
 def save_canvas_record(canvas_id, payload=None):
     payload = payload if isinstance(payload, dict) else {}
     current = read_canvas_record(canvas_id, include_deleted=True)
     if current.get("deleted_at"):
         raise ApiError(409, "目标画布已在回收站，不能保存")
-    base_updated_at = int(parse_number(payload.get("base_updated_at"), 0) or 0)
+    base_updated_at = int(parse_number(payload.get("base_updated_at", payload.get("updated_at")), 0) or 0)
     current_updated_at = int(current.get("updated_at") or 0)
     if base_updated_at and current_updated_at and base_updated_at < current_updated_at:
         raise CanvasConflictError(current)
 
+    # Only an explicit restoration at the current revision may clear tombstones.
+    restore_ids = payload.get("restore_node_ids")
+    if restore_ids is not None:
+        if not isinstance(restore_ids, list) or base_updated_at != current_updated_at:
+            raise CanvasConflictError(current)
+        incoming_ids = {str(n.get("id")) for n in payload.get("nodes", []) if isinstance(n, dict)}
+        if any(not isinstance(nid, str) or nid not in incoming_ids for nid in restore_ids):
+            raise ApiError(400, "restore_node_ids 必须引用恢复内容中的节点")
+        restore_ids = set(restore_ids)
+        current = {**current, "deleted": [t for t in current.get("deleted", []) if t.get("id") not in restore_ids]}
+        payload = {**payload, "deleted": [t for t in payload.get("deleted", []) if t.get("id") not in restore_ids]}
+
     kind = default_canvas_kind({**current, **payload})
-    now_ms = int(time.time() * 1000)
+    now_ms = max(int(time.time() * 1000), current_updated_at + 1)
+    removed = []
+    if isinstance(payload.get("nodes"), list):
+        incoming_ids = {str(n.get("id")) for n in payload["nodes"] if isinstance(n, dict)}
+        removed = [{"id": n["id"], "at": now_ms, "by": str(payload.get("client_id") or "api")}
+                   for n in current.get("nodes", []) if n.get("id") and str(n["id"]) not in incoming_ids]
     saved = normalize_canvas_structure(canvas_id, {
         **current,
         "title": str(payload.get("title") or current.get("title") or default_canvas_title(kind)).strip() or default_canvas_title(kind),
@@ -694,8 +726,8 @@ def save_canvas_record(canvas_id, payload=None):
         "logs": _merge_canvas_logs(current.get("logs"), payload.get("logs")),
         "viewport": payload.get("viewport") if isinstance(payload.get("viewport"), dict) else dict(current.get("viewport") or {"x": 0, "y": 0, "scale": 1}),
         "settings": payload.get("settings") if isinstance(payload.get("settings"), dict) else dict(current.get("settings") or {}),
-        "deleted": _merge_node_tombstones(current.get("deleted"), payload.get("deleted")),
-        "artifacts": _merge_artifacts(current.get("artifacts"), payload.get("artifacts")),
+        "deleted": _merge_node_tombstones(current.get("deleted"), payload.get("deleted"), removed),
+        "artifacts": (list(payload.get("artifacts") or []) if restore_ids is not None else _merge_artifacts(current.get("artifacts"), payload.get("artifacts"))),
         "inputMode": (payload.get("inputMode") if payload.get("inputMode") in ("connections", "objects")
                       else (current.get("inputMode") if current.get("inputMode") in ("connections", "objects") else "connections")),
         "updated_at": now_ms,

@@ -494,7 +494,7 @@ def _agent_merge_payload_refs_into_tool_args(name, args, payload):
         canvas_id = str((safe_args.get("canvas_id") or (payload or {}).get("canvas_id") or "")).strip()
         if canvas_id:
             safe_args["canvas_id"] = canvas_id
-    if name not in {"canvas_create_generation_node", "canvas_generate_images"}:
+    if name not in {"canvas_create_generation_node", "canvas_generate_images", "canvas_create_video_node"}:
         return safe_args
     explicit_refs = safe_args.get("reference_image_urls") or safe_args.get("reference_images") or []
     explicit_refs = _agent_normalize_reference_items(explicit_refs)

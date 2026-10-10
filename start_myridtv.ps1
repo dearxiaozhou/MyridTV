@@ -274,6 +274,8 @@ if (Test-Path -LiteralPath $UpgradeHelperScript) {
             (Join-Path $AppDir 'myridtv_runninghub_build.py'),
             (Join-Path $AppDir 'myridtv_task_console.py'),
             (Join-Path $AppDir 'myridtv_mcp.py'),
+            (Join-Path $AppDir 'myridtv_mcp_contract.py'),
+            (Join-Path $AppDir 'myridtv_mcp_client.py'),
             (Join-Path $AppDir 'myridtv_chat.py'),
             (Join-Path $AppDir 'myridtv_asset_resolver.py'),
             (Join-Path $AppDir 'myridtv_rh_taskflow.py'),

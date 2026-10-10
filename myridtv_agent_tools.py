@@ -354,7 +354,7 @@ CANVAS_AGENT_TOOLS = [
         }, "required": ["prompt"]}}},
     {"type": "function", "function": {
         "name": "canvas_generate_images",
-        "description": "（通常不需要）立即生成图片并回填节点，会阻塞等待任务完成。仅在用户明确要求马上出图时才使用；常规流程用 canvas_create_generation_node 建好节点后由用户在画布上点执行按钮生成。",
+        "description": "提交图片生成任务并回填节点。通常立即返回 task_id；ComfyUI 工作流可能同步完成。按需使用 canvas_check_generation 查询状态，不要高频轮询。常规流程也可先创建生成节点供用户执行。",
         "parameters": {"type": "object", "properties": {
             "prompt": {"type": "string", "description": "图片生成提示词"},
             "node_id": {"type": "string", "description": "已创建的生成节点 id(用 canvas_create_generation_node 得到)"},

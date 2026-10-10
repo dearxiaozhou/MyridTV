@@ -1737,6 +1737,8 @@ class Handler(BaseHTTPRequestHandler):
             "ok": True,
             "pid": os.getpid(),
             "version": STATIC_VERSION,
+            "software_version": (APP_DIR / "VERSION").read_text(encoding="utf-8").strip(),
+            "mcp_api_version": "0.3.0",
             "host": str(PROXY_CONFIG.get("host") or "127.0.0.1"),
             "port": PORT,
             "app_base": APP_BASE,
@@ -2765,7 +2767,7 @@ class Handler(BaseHTTPRequestHandler):
                 if method == "initialize":
                     self._send(200, {"jsonrpc": "2.0", "id": req_id, "result": {
                         "protocolVersion": "2024-11-05", "capabilities": {"tools": {}},
-                        "serverInfo": {"name": "myridtv-canvas", "version": "0.2.0"},
+                        "serverInfo": {"name": "myridtv-canvas", "version": (APP_DIR / "VERSION").read_text(encoding="utf-8").strip().lstrip("V")},
                     }})
                 elif method == "tools/list":
                     tools = [{"name": name, **defn} for name, defn in MCP_TOOLS.items()]
@@ -2778,13 +2780,14 @@ class Handler(BaseHTTPRequestHandler):
                     else:
                         try:
                             result = _mcp_handle(name, args)
-                            if "error" in result:
-                                self._send(200, {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": result["error"]}})
+                            if result.get("error") or result.get("ok") is False:
+                                self._send(200, {"jsonrpc": "2.0", "id": req_id, "result": {
+                                    "isError": True, "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}]}})
                             else:
                                 # 兼容两种返回格式：{"result": ...} 或 _agent_tool_* 直接返回的 {ok: ..., ...}
                                 payload = result.get("result", result)
                                 txt = json.dumps(payload, ensure_ascii=False)
-                                self._send(200, {"jsonrpc": "2.0", "id": req_id, "result": {"content": [{"type": "text", "text": txt}]}})
+                                self._send(200, {"jsonrpc": "2.0", "id": req_id, "result": {"isError": False, "content": [{"type": "text", "text": txt}]}})
                         except Exception as e:
                             self._send(200, {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(e)}})
                 elif method == "notifications/initialized":
@@ -2918,7 +2921,7 @@ class Handler(BaseHTTPRequestHandler):
                         (_key[0] == "workflow" and workflow_route == _key[1])
                         or (_key[0] == "canvas" and canvas_route == _key[1]))):
                     getattr(self, _m)(payload, request_path, canvas_route, canvas_id, workflow_route, workflow_name)
-                    break
+                    return
             self._send(404, {"detail": "not found"})
         except CanvasConflictError as exc:
             self._send(exc.status, {"detail": exc.detail, "canvas": exc.current_canvas})

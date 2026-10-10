@@ -117,6 +117,168 @@ def _agent_tool_create_generation_node(args, preset=None):
     return {"ok": True, "node_id": nid, "canvas_id": cid, "save_ok": save.get("ok", save.get("canvas") is not None), "deduped": deduped}
 
 
+
+def _agent_video_run_settings(args, canvas=None, cid=""):
+    """构建视频节点的存储 runSettings（apiKind=video + video* 字段），对齐 _agent_run_settings_for_storage 结构。"""
+    inherited = {}
+    rs = myridtv_agent_state._agent_last_generation_run_settings(canvas, cid) or {}
+    if isinstance(rs, dict):
+        inherited = {
+            "videoProvider": str(rs.get("videoProvider") or "").strip(),
+            "videoModel": str(rs.get("videoModel") or "").strip(),
+            "videoDuration": rs.get("videoDuration"),
+            "videoAspect": str(rs.get("videoAspect") or "").strip() or "16:9",
+            "videoResolution": str(rs.get("videoResolution") or "").strip(),
+        }
+    provider_id = str(args.get("provider_id") or inherited.get("videoProvider") or "volcengine").strip()
+    model = str(args.get("model") or args.get("video_model") or inherited.get("videoModel") or "").strip()
+    duration = args.get("duration") or inherited.get("videoDuration") or 5
+    aspect = str(args.get("video_aspect") or args.get("aspect_ratio") or inherited.get("videoAspect") or "16:9").strip()
+    resolution = str(args.get("video_resolution") or args.get("resolution") or inherited.get("videoResolution") or "").strip()
+    base = myridtv_agent_state._agent_run_settings_for_storage({
+        "provider_id": provider_id,
+        "model": model,
+        "aspectRatio": aspect,
+        "resolution": resolution or "1080p",
+        "quality": str(args.get("quality") or "high").strip(),
+        "n": args.get("count") or 1,
+    })
+    base["apiKind"] = "video"
+    base["videoProvider"] = provider_id
+    base["videoModel"] = model
+    base["videoDuration"] = int(duration) if str(duration).isdigit() else 5
+    base["videoAspect"] = aspect
+    base["videoResolution"] = resolution
+    base["videoGenerateAudio"] = bool(args.get("generate_audio"))
+    base["videoWatermark"] = bool(args.get("watermark"))
+    base["videoEnhancePrompt"] = bool(args.get("enhance_prompt"))
+    base["videoEnableUpsample"] = bool(args.get("enable_upsample"))
+    base["videoCameraFixed"] = bool(args.get("camera_fixed"))
+    base["videoReferenceMode"] = str(args.get("reference_mode") or "mixed").strip()
+    return base
+
+
+def _agent_tool_create_video_node(args, preset=None):
+    """创建视频生成节点(统一 MCP 接口)：type=smart-image, outputKind=video, runSettings.apiKind=video。
+    可选 submit=true 创建后立即并行提交视频生成任务(异步返回 task_id, 结果自动回填节点)。"""
+    prompt = str(args.get("prompt") or "").strip()
+    if not prompt:
+        return {"ok": False, "error": "prompt 必填"}
+    cid, canvas = myridtv_agent_state._agent_get_canvas(str(args.get("canvas_id") or ""))
+    settings = _agent_video_run_settings(args, canvas=canvas, cid=cid)
+    node_x, node_y = myridtv_agent_state._agent_find_empty_position(canvas, args.get("x"), args.get("y"), 320, 420,
+        category=myridtv_agent_state._agent_category_from_title(args.get("title")), node_type="smart-image")
+    refs = myridtv_agent_state._agent_normalize_reference_items(args.get("reference_image_urls") or args.get("reference_videos") or args.get("reference_images") or [])
+    ref_node_ids = []
+    run_refs = []
+    for ref in refs:
+        url = str((ref or {}).get("url") or "").strip()
+        if not url:
+            continue
+        node_id = str((ref or {}).get("nodeId") or "").strip()
+        run_refs.append({
+            "url": url,
+            "name": str((ref or {}).get("name") or "素材{}".format(len(run_refs) + 1)).strip() or "素材{}".format(len(run_refs) + 1),
+            "sourceName": str((ref or {}).get("sourceName") or "").strip(),
+            "nodeId": node_id,
+            "imageIndex": int(parse_number((ref or {}).get("imageIndex"), 0) or 0),
+            "kind": str((ref or {}).get("kind") or "image").strip() or "image",
+        })
+        if node_id:
+            ref_node_ids.append(node_id)
+    prompt_with_refs = prompt
+    for r in run_refs:
+        token = "@" + str(r.get("name") or "").strip()
+        if token and token not in prompt_with_refs:
+            prompt_with_refs += " 参考{}生成".format(token)
+    node = {
+        "id": "agent_" + uuid.uuid4().hex[:12],
+        "type": "smart-image",
+        "outputKind": "video",
+        "title": str(args.get("title") or "Agent 视频").strip(),
+        "promptDraftText": prompt_with_refs,
+        "promptDraftHtml": myridtv_agent_state._agent_html_escape(prompt_with_refs),
+        "promptDraftTouched": True,
+        "runPrompt": prompt_with_refs,
+        "runPromptRefs": run_refs,
+        "runInputRefs": run_refs,
+        "inputNodeIds": list(dict.fromkeys(ref_node_ids)),
+        "runSettings": settings,
+        "images": [],
+        "x": node_x, "y": node_y,
+        "created_at": int(time.time() * 1000),
+        "__origin": "agent_tool_video",
+        "status": "pending",
+        "role": "generation",
+    }
+    ok, nid, deduped = myridtv_agent_artifact._agent_prepare_node_for_canvas(cid, canvas, node, "agent_tool_video", args)
+    if not ok:
+        return {"ok": False, "error": nid}
+    if not deduped:
+        if not isinstance(canvas.get("nodes"), list):
+            canvas["nodes"] = []
+        canvas["nodes"].append(node)
+    if ref_node_ids:
+        connections = canvas.get("connections")
+        if not isinstance(connections, list):
+            connections = []
+            canvas["connections"] = connections
+        for rid in dict.fromkeys(ref_node_ids):
+            if rid != nid and not any(c.get("from") == rid and c.get("to") == nid and c.get("kind") == "input" for c in connections):
+                connections.append({"from": rid, "to": nid, "kind": "input"})
+    save = myridtv_agent_state._agent_http("PUT", "/api/canvases/{0}".format(urllib.parse.quote(cid)), canvas, timeout=30)
+    result = {"ok": True, "node_id": nid, "canvas_id": cid,
+              "save_ok": save.get("ok", save.get("canvas") is not None), "deduped": deduped, "submitted": False}
+    if args.get("submit"):
+        sub = _agent_submit_video({**args, "canvas_id": cid, "node_id": nid}, preset)
+        if not sub.get("ok"):
+            result["submit_error"] = sub.get("error")
+        else:
+            _agent_add_pending_task_to_node(cid, nid, sub["task_id"], "video")
+            result["submitted"] = True
+            result["task_id"] = sub["task_id"]
+            result["status"] = "running"
+            result["message"] = "视频任务已提交, 生成完成后会自动回填到画布节点。无需轮询等待。"
+    return result
+
+
+def _agent_submit_video(args, preset=None):
+    """提交视频生成任务(异步)。对齐图片路径: POST /api/canvas-video, 后端返回 task_id 并自动轮询落盘。"""
+    prompt = str(args.get("prompt") or "").strip()
+    if not prompt:
+        return {"ok": False, "error": "prompt 必填"}
+    cid = str(args.get("canvas_id") or "").strip() or myridtv_agent_state._agent_latest_canvas_id()
+    nid = str(args.get("node_id") or "").strip()
+    settings = _agent_video_run_settings(args, cid=cid)
+    model = settings.get("videoModel") or str(args.get("model") or "").strip()
+    if not model:
+        return {"ok": False, "error": "videoModel 必填(视频生成需指定火山视频模型, 如 seedance-1-5-pro)"}
+    refs = myridtv_agent_state._agent_normalize_reference_items(args.get("reference_image_urls") or args.get("reference_videos") or args.get("reference_images") or [])
+    img_urls = [str((r or {}).get("url") or "").strip() for r in refs if str((r or {}).get("url") or "").strip() and str((r or {}).get("kind") or "image").strip() != "video"]
+    vid_urls = [str((r or {}).get("url") or "").strip() for r in refs if str((r or {}).get("url") or "").strip() and str((r or {}).get("kind") or "image").strip() == "video"]
+    payload = {
+        "provider_id": settings.get("videoProvider") or "volcengine",
+        "model": model,
+        "prompt": prompt,
+        "duration": settings.get("videoDuration"),
+        "aspect_ratio": settings.get("videoAspect"),
+        "resolution": settings.get("videoResolution") or "",
+        "generate_audio": settings.get("videoGenerateAudio"),
+        "watermark": settings.get("videoWatermark"),
+        "enhance_prompt": settings.get("videoEnhancePrompt"),
+        "reference_mode": settings.get("videoReferenceMode") or "mixed",
+        "images": img_urls,
+        "videos": vid_urls,
+        "canvas_id": cid,
+        "canvas_title": str(args.get("canvas_title") or myridtv_volcengine._volcengine_canvas_title_for_output(cid)).strip(),
+        "node_id": nid,
+    }
+    resp = myridtv_agent_state._agent_http("POST", "/api/canvas-video", payload, timeout=30)
+    task_id = str(resp.get("task_id") or "").strip()
+    if not task_id:
+        return {"ok": False, "error": "提交视频生成失败: {}".format(resp)}
+    return {"ok": True, "task_id": task_id, "status": "running", "canvas_id": cid, "node_id": nid}
+
 def _agent_extract_image_urls(task_state):
     result = task_state.get("result") if isinstance(task_state, dict) else None
     if not isinstance(result, dict):
@@ -379,6 +541,8 @@ def _agent_tool_generate_images(args, preset=None):
                 args = {**args, "node_title": str(node.get("title") or "").strip()}
         except Exception:
             pass
+    # Newly-created nodes must also bind the submitted task to the explicit target.
+    args = {**args, "canvas_id": cid, "node_id": node_id}
     sub = _agent_submit_generation(args, preset)
     if not sub.get("ok"):
         return sub
