@@ -241,7 +241,12 @@ function nodeBodyHtml(node, layout){
     // A generation clears its output list before the result arrives. Keep that state
     // in the loading branch instead of rendering the saved prompt as an empty node.
     const isGeneratingImage = Boolean(node.pending || node.queued || node.jimengPending?.submitId);
-    if((node.type === 'smart-image' || !node.type) && !(node.images || []).length && !isGeneratingImage && (node.prompt || node.content)) return smartImageMetaBodyHtml(node);
+    // 2026-10-12：跑过但被中断/失败的生成节点（有运行痕迹、无图、无 pending）不许落进「说明/提示词」meta 卡
+    // —— 视频节点的草稿在 promptDraftText、meta 卡绑 node.prompt，落进去必然是空提示词框的伪装说明卡。
+    // 按拍板（10-10 01:00「图片节点失败了就是失败的图片节点」/ 01:21「不加提示 UI」）回落到普通空图片节点形态。
+    // 只拦有运行痕迹的（runStartedAt/runAt/comfyPromptId/comfyRunToken/lastTaskIds），没跑过的带说明节点维持 meta 卡不变。
+    const hasRunEvidence = Boolean(node.runStartedAt || node.runAt || node.comfyPromptId || node.comfyRunToken || (Array.isArray(node.lastTaskIds) && node.lastTaskIds.length));
+    if((node.type === 'smart-image' || !node.type) && !(node.images || []).length && !isGeneratingImage && (node.prompt || node.content) && !hasRunEvidence) return smartImageMetaBodyHtml(node);
     if(node.type === 'smart-prompt') return deps.promptNodeBodyHtml(node);
     if(node.type === 'smart-loop') return smartLoopBodyHtml(node);
     const imgs = (node.images || []).map(D("imageForDisplay"));
