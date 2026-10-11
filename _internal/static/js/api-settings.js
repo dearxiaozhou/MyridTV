@@ -795,8 +795,11 @@ function isRunningHubProvider(item){
   if(proto) return proto === 'runninghub';
   return String(item.id || '').trim() === 'runninghub';
 }
+// 2026-10-11 改为协议驱动：只要协议是 runninghub（含 id 为 runninghub 的兜底）就按 RunningHub 平台处理。
+// 这样在「协议」下拉选 runninghub 时，即使自定义平台 id 不是 runninghub，两个 KEY 输入框与工作流页也会调出来。
+// 原语义（仅 id==='runninghub'）会让“选协议不出现 RunningHub 专属 UI”的 BUG 持续存在。
 function isBuiltinRunningHubProvider(item){
-  return Boolean(item) && String(item.id || '').trim() === 'runninghub';
+  return isRunningHubProvider(item);
 }
 function unique(values){
   const seen = new Set();
