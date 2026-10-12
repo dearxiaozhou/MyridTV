@@ -581,41 +581,59 @@ def _volcengine_canvas_title_for_output(canvas_id):
 
 def submit_volcengine_canvas_video_task(payload):
     provider_id = (payload or {}).get("provider_id") or "volcengine"
-    provider = volcengine_provider_config(provider_id)
-    base_url = volcengine_base_url(provider)
-    api_key = _r_volcengine_ark_api_key()
-    body = volcengine_canvas_video_body(payload)
-    append_log(
-        _log_file(),
-        "volcengine video submit model="
-        + str(body.get("model") or "")
-        + " content="
-        + json.dumps(volcengine_content_debug_summary(body.get("content")), ensure_ascii=False),
-    )
-    try:
-        submit = myridtv_http.request_json(f"{base_url}/contents/generations/tasks", "POST", body, headers={"Authorization": f"Bearer {api_key}"}, timeout=180)
-    except Exception as exc:
-        raise RuntimeError(volcengine_user_error_message(exc)) from exc
-    provider_task_id = volcengine_extract_task_id(submit)
-    if not provider_task_id:
-        raise RuntimeError(f"火山视频任务提交失败，未返回任务 ID：{submit}")
     local_task_id = "volc_" + uuid.uuid4().hex
+    now = time.time()
+    # 提交前先注册任务（参照语音任务 _post2_api_canvas_audio 模式）：provider 查找、api_key、
+    # body 构建、上游提交任何一步失败，任务控制台都能看到一条 failed 记录和原因，不再石沉大海。
     myridtv_task_state.set_task_state(local_task_id, {
         "status": "running",
         "persistent": True,
         "backend": "volcengine-ark",
         "provider_id": provider_id,
-        "provider_task_id": provider_task_id,
-        "submit": submit,
-        "created_at": time.time(),
+        "provider_task_id": "",
+        "created_at": now,
+        "checked_at": now,
+        "can_stop": False,
+        "source": "画布节点执行",
         "canvas_id": str((payload or {}).get("canvas_id") or ""),
         "canvas_title": str((payload or {}).get("canvas_title") or _volcengine_canvas_title_for_output((payload or {}).get("canvas_id"))),
-        "model": str(body.get("model") or ""),
+        "node_title": str((payload or {}).get("node_title") or "视频生成"),
+        "model": "",
         "resolution": str((payload or {}).get("resolution") or ""),
         "count": (payload or {}).get("count") or 1,
-        "mode": ("i2v" if (isinstance(body.get("content"), list) and body.get("content") and (body["content"][0].get("image_url") or body["content"][0].get("image"))) else "t2v"),
+        "mode": "t2v",
         "node_id": str((payload or {}).get("node_id") or "").strip(),
     }, persistent=True)
+    try:
+        provider = volcengine_provider_config(provider_id)
+        base_url = volcengine_base_url(provider)
+        api_key = _r_volcengine_ark_api_key()
+        body = volcengine_canvas_video_body(payload)
+        append_log(
+            _log_file(),
+            "volcengine video submit model="
+            + str(body.get("model") or "")
+            + " content="
+            + json.dumps(volcengine_content_debug_summary(body.get("content")), ensure_ascii=False),
+        )
+        try:
+            submit = myridtv_http.request_json(f"{base_url}/contents/generations/tasks", "POST", body, headers={"Authorization": f"Bearer {api_key}"}, timeout=180)
+        except Exception as exc:
+            raise RuntimeError(volcengine_user_error_message(exc)) from exc
+        provider_task_id = volcengine_extract_task_id(submit)
+        if not provider_task_id:
+            raise RuntimeError(f"火山视频任务提交失败，未返回任务 ID：{submit}")
+    except Exception as exc:
+        detail = volcengine_user_error_message(exc) or f"火山视频任务提交失败：{exc}"
+        myridtv_task_state.update_task_state(local_task_id, status="failed", error=detail, completed_at=time.time(), checked_at=time.time())
+        append_log(_log_file(), f"volcengine video submit failed local_task_id={local_task_id} error={detail}")
+        raise
+    myridtv_task_state.update_task_state(local_task_id, **{
+        "provider_task_id": provider_task_id,
+        "submit": submit,
+        "model": str(body.get("model") or ""),
+        "mode": ("i2v" if (isinstance(body.get("content"), list) and body.get("content") and (body["content"][0].get("image_url") or body["content"][0].get("image"))) else "t2v"),
+    })
     append_log(_log_file(), f"volcengine video task submitted local_task_id={local_task_id} provider_task_id={provider_task_id}")
     threading.Thread(target=poll_volcengine_video_task, args=(local_task_id,), daemon=True).start()
     return {"ok": True, "task_id": local_task_id, "provider_task_id": provider_task_id, "status": "running", "backend": "volcengine-ark"}

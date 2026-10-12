@@ -385,6 +385,23 @@ function bindSmartAudioPlayers(root=D("world")){
         [toggle, waveform].forEach(control => {
             ['mousedown','pointerdown','dblclick'].forEach(type => control.addEventListener(type, event => event.stopPropagation()));
         });
+        // 音频首载静默失败自愈：Chromium 媒体栈（FFmpegDemuxer）首次打开失败后不会自动重试，
+        // 错误态永久固化（实测 errCode 4 + DEMUXER_ERROR_COULD_NOT_OPEN，手动 reload 立即恢复）。
+        // 这里做最多 3 次递增延迟重试，第 2 次起加 cache-buster；只换 src 不动其余状态。
+        let audioRetry = 0;
+        const audioSrcOriginal = media.getAttribute('src') || media.dataset.url || '';
+        const retryAudioLoad = () => {
+            if(audioRetry >= 3 || !card.isConnected || !audioSrcOriginal) return;
+            audioRetry += 1;
+            const bust = audioRetry > 1 ? (audioSrcOriginal.includes('?') ? '&' : '?') + '_rt=' + Date.now() : '';
+            setTimeout(() => {
+                if(!card.isConnected) return;
+                media.src = audioSrcOriginal + bust;
+                media.load();
+            }, 350 * audioRetry);
+        };
+        media.addEventListener('error', retryAudioLoad);
+        if(media.error) retryAudioLoad();
         ['loadedmetadata','durationchange','timeupdate','play','pause','ended'].forEach(type => media.addEventListener(type, update));
         update();
         // 仅在此处（绑定时）渲染一次本批次新增图标，播放期间的 update 不再扫描全文档
