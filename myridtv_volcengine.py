@@ -647,6 +647,12 @@ def volcengine_plan_chat_models(extra=None):
 
 
 def volcengine_fetch_models(payload):
+    # Custom Ark / plan platforms must discover their own catalog, never inherit
+    # a built-in plan list or the native platform's credentials.
+    if str(payload.get("provider_id") or "") not in ("", "volcengine"):
+        result = openai_probe_payload(payload, "fetch")
+        result["protocol"] = "volcengine"
+        return result
     base_url = str(payload.get("base_url") or "").strip().rstrip("/")
     api_key = str(payload.get("api_key") or "").strip()
     # Fallback: read from env file if not provided in payload
@@ -701,7 +707,7 @@ def is_volcengine_request(payload):
     return protocol == "volcengine" or provider_id == "volcengine" or "volces.com" in base_url
 
 
-def openai_probe_payload(payload, action="test"):
+def openai_probe_payload(payload, action="test", request_json=None):
     """自定义 OpenAI 兼容平台：本地(:3107)直接探 {base_url}/models，不再转发 :3000 内部服务。"""
     payload = payload if isinstance(payload, dict) else {}
     base_url = str(payload.get("base_url") or "").strip().rstrip("/")
@@ -712,7 +718,7 @@ def openai_probe_payload(payload, action="test"):
             api_key = _r_read_chat_key(provider_id) or ""
         except Exception:
             api_key = ""
-    empty = {"all": [], "image_models": [], "video_models": [], "chat_models": [], "model_count": 0, "total": 0}
+    empty = {"all": [], "image_models": [], "video_models": [], "chat_models": [], "audio_models": [], "model_count": 0, "total": 0}
     if not base_url:
         return {"ok": False, "protocol": "openai", "status": 0, "status_code": 0,
                 "source": "openai-models", "message": "请先填写请求地址", "detail": "缺少请求地址", **empty}
@@ -723,7 +729,7 @@ def openai_probe_payload(payload, action="test"):
     last_error = None
     for url in urls:
         try:
-            data = myridtv_http.request_json(url, "GET", headers={"Authorization": f"Bearer {api_key}"} if api_key else {}, timeout=30)
+            data = (request_json or myridtv_http.request_json)(url, "GET", headers={"Authorization": f"Bearer {api_key}"} if api_key else {}, timeout=30)
             break
         except Exception as exc:
             last_error = exc
@@ -731,11 +737,16 @@ def openai_probe_payload(payload, action="test"):
         msg = f"请求失败: {last_error}"
         return {"ok": False, "protocol": "openai", "status": 0, "status_code": 0,
                 "source": "openai-models", "message": msg, "detail": msg, **empty}
+    if not isinstance(data, dict) or not isinstance(data.get("data"), list):
+        return {"ok": False, "protocol": "openai", "status": 502, "status_code": 502,
+                "message": "上游未返回有效模型列表，请检查地址；也可手动填写模型 ID", **empty}
     raw_models = data.get("data") or []
     all_models = unique_strings([str(m.get("id") or "").strip() for m in raw_models if isinstance(m, dict) and str(m.get("id") or "").strip()])
     image_models = [m for m in all_models if re.search(r"image|seedream|seededit|t2i|i2i|flux|sd3|dalle", m, re.I)]
     video_models = [m for m in all_models if re.search(r"video|seedance|t2v|i2v|kling", m, re.I) and m not in image_models]
-    chat_models = [m for m in all_models if m not in image_models and m not in video_models]
+    audio_models = [m for m in all_models if re.search(r"audio|tts|asr|speech|voice|whisper|music", m, re.I)
+                    and m not in image_models and m not in video_models]
+    chat_models = [m for m in all_models if m not in image_models and m not in video_models and m not in audio_models]
     result = {
         "ok": True,
         "protocol": "openai",
@@ -746,6 +757,7 @@ def openai_probe_payload(payload, action="test"):
         "image_models": image_models,
         "video_models": video_models,
         "chat_models": chat_models,
+        "audio_models": audio_models,
         "total": len(all_models),
         "model_count": len(all_models),
     }

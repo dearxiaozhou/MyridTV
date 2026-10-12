@@ -136,16 +136,6 @@ def ensure_api_provider_models(providers):
                 elif not current:
                     # 内置清单只在用户列表为空时兜底；非空一律以用户保存的为准（删掉的模型不再复活）
                     provider[key] = list(fallback_list)
-    # 小米 MiMo 不再凭空注入：出厂只给 RunningHub 与火山引擎，MiMo 由用户自行添加。
-    # 原先这里会在找不到时new 一个并 append，导致用户删掉后下次启动又被塞回来。
-    mimo = next((p for p in providers if str(p.get("id") or "").lower() == "mimo" or "xiaomimimo.com" in str(p.get("base_url") or "").lower()), None)
-    if mimo is not None:
-        if "audio_models" not in mimo:
-            mimo["audio_models"] = ["mimo-v2.5-tts-voicedesign", "mimo-v2.5-tts", "mimo-v2.5-tts-voiceclone"]
-        names = mimo.setdefault("model_display_names", {})
-        for model, label in (("mimo-v2.5-tts-voicedesign", "MiMo 音色设计"), ("mimo-v2.5-tts", "MiMo 预置音色"), ("mimo-v2.5-tts-voiceclone", "MiMo 音色复刻")):
-            if model in mimo.get("audio_models", []):
-                names.setdefault(model, label)
     return providers
 
 
@@ -304,8 +294,6 @@ def sanitize_api_provider_record(record):
         if isinstance(value, list):
             continue
         safe[key] = []
-    if "audio_models" not in record and (provider_id.lower() == "mimo" or "xiaomimimo.com" in str(record.get("base_url") or "").lower()):
-        safe["audio_models"] = ["mimo-v2.5-tts-voicedesign", "mimo-v2.5-tts", "mimo-v2.5-tts-voiceclone"]
     if provider_id != "runninghub":
         safe["rh_apps"] = []
         safe["rh_workflows"] = []

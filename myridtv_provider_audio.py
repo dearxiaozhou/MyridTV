@@ -83,22 +83,10 @@ def request_json(url, method="GET", payload=None, headers=None, timeout=30):
 
 
 def probe(payload):
-    pid = str(payload.get("provider_id") or "")
-    key = str(payload.get("api_key") or myridtv_env.read_env_values().get(myridtv_env.provider_key_env_name(pid)) or "").strip()
-    if not key:
-        return {"ok":False, "status":400, "protocol":"openai", "message":"请先填写并保存 MiMo API Key"}
-    base = str(payload.get("base_url") or "https://api.xiaomimimo.com/v1").rstrip("/")
-    try:
-        result = request_json(base + "/models", headers={"Authorization":"Bearer " + key})
-        all_models = [str(m.get("id")) for m in result.get("data", []) if isinstance(m, dict) and m.get("id")]
-        return {"ok":True, "status":200, "protocol":"openai", "all":all_models or list(MODELS),
-                "audio_models":list(MODELS), "image_models":[], "video_models":[],
-                "chat_models":[m for m in all_models if "tts" not in m and "asr" not in m],
-                "model_count":len(all_models), "total":len(all_models), "message":"MiMo 连接已验证；音频模型已预置，语音效果需生成后确认"}
-    except Exception as exc:
-        code = getattr(exc.__cause__, "code", 0)
-        message = "MiMo 密钥无效或权限不足" if code in (401,403) else "无法连接 MiMo，请检查请求地址和网络"
-        return {"ok":False, "status":code, "protocol":"openai", "message":message}
+    # Share discovery and classification with every custom compatible provider.
+    # Retain only the transport workaround required by this host.
+    import myridtv_volcengine
+    return myridtv_volcengine.openai_probe_payload(payload, request_json=request_json)
 
 
 def mp3_duration(raw):
@@ -172,8 +160,8 @@ def build_request(payload):
     if not isinstance(payload, dict):
         raise AudioError("语音参数必须是对象")
     model = str(payload.get("model") or MODELS[0]).strip()
-    if model not in MODELS:
-        raise AudioError("请选择 MiMo 音色设计、预置音色或音色复刻模型")
+    if not model:
+        raise AudioError("请选择已配置的语音模型")
     format = str(payload.get("format") or "wav").lower()
     if format not in FORMATS:
         raise AudioError("输出格式请选择 WAV 或 MP3")

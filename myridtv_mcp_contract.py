@@ -66,7 +66,7 @@ def _load_record(kind, record_id, cid):
 def _summary(node):
     return {**{k: copy.deepcopy(node[k]) for k in
                ("id", "type", "title", "label", "x", "y", "w", "h", "status",
-                "images", "pendingTasks", "runSettings", "inputNodeIds") if k in node},
+                "images", "pendingTasks", "runSettings", "inputNodeIds", "flowLayout") if k in node},
             "text_preview": str(next((node[k] for k in
                 ("text", "content", "promptDraftText", "runPrompt") if node.get(k)), ""))[:500]}
 
@@ -178,6 +178,9 @@ def _snapshot(name, args):
 
 
 def _dispatch(name, args, legacy, fetch):
+    if name in ('canvas_upsert_flow','canvas_layout_flow'):
+        import myridtv_flow_mcp
+        return myridtv_flow_mcp.upsert(args)
     if name == "canvas_batch_operations":
         return _batch(args)
     if name == "canvas_undo_batch":
@@ -278,6 +281,21 @@ def install(registry, legacy, fetch):
         registry[name] = {"description": description, "inputSchema": {
             "type": "object", "properties": properties or {}, "required": required or []}}
     string = {"type": "string"}
+    node_properties = {key:string for key in ('id','type','title','text','content','prompt','parent_id','parentId',
+                                            'provider_id','model','size','aspect_ratio','resolution','quality')}
+    node_properties.update(width={'type':'number','minimum':28,'maximum':20000},
+                           height={'type':'number','minimum':28,'maximum':20000},
+                           branch_order={'type':'number'},branchOrder={'type':'number'},locked={'type':'boolean'},
+                           depends_on={'type':'array','items':string},images={'type':'array','items':{'type':'object'}},
+                           count={'type':'integer','minimum':1},reference_image_urls={'type':'array','items':string})
+    flow_properties = {'workflow_id':string,'layout':{'type':'string','enum':['tree_lr']},
+                       'nodes':{'type':'array','maxItems':100,'items':{'type':'object','properties':node_properties,'required':['id'],'additionalProperties':False}},
+                       'edges':{'type':'array','maxItems':300,'items':{'type':'object','properties':{
+                           'from':string,'to':string,'kind':{'type':'string','enum':['input','flow']},'label':string},
+                           'required':['from','to'],'additionalProperties':False}}}
+    add('canvas_upsert_flow', '按稳定 ID 批量创建/更新工作流并原子保存。layout 默认 tree_lr，自动左到右按真实尺寸布局，禁止 x/y；节点 parent_id/depends_on 或 edges 表达真实多输入 DAG，branch_order 控制分支顺序。锁定节点保留位置，其他工作流不移动。可在 edges 引用画布已有共享资产，无需重复创建。增量调用只需新增/更新节点和连线；省略节点不会删除。生成节点需 prompt，文本节点需 text。尺寸变化保存后自动重排当前工作流。', flow_properties, ['workflow_id','nodes'])
+    add('canvas_layout_flow', '重新布局一个已有工作流（例如生成结果尺寸变化后）；保留锁定及无关节点。',
+        {'workflow_id':string,'layout':{'type':'string','enum':['tree_lr']}},['workflow_id'])
     add("canvas_get_node", "读取一个节点的完整正文、图片、运行参数和待处理任务", {"node_id": string}, ["node_id"])
     add("canvas_check_generation", "查询生图任务的状态和结果；不存在或不属于指定画布时明确报错。按需查询，避免高频轮询。",
         {"task_id": string, "node_id": string}, ["task_id"])

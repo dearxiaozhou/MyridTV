@@ -734,6 +734,10 @@ def save_canvas_record(canvas_id, payload=None):
     })
     saved.pop("deleted_at", None)
     _drop_tombstoned_nodes(saved)
+    # Opt-in workflows share one layout authority for MCP, Agent outputs and UI size saves.
+    import myridtv_flow_layout
+    if restore_ids is None:
+        myridtv_flow_layout.relayout_changed(current, saved)
     write_json_file(canvas_file_path(canvas_id), saved)
     return saved
 

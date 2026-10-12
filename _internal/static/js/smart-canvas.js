@@ -3851,8 +3851,9 @@ function createImageNodeAt(point, images=[], options={}){
 const AUTO_IMPORT_GROUP_CELL = 180;
 const AUTO_IMPORT_GROUP_GAP = 10;
 function imageSizeWithinBox(image, width, height){
-    const naturalW = Number(image?.natural_w || image?.width || 0);
-    const naturalH = Number(image?.natural_h || image?.height || 0);
+    const natural = knownImageNaturalSize(image, true);
+    const naturalW = Number(natural?.w || 0);
+    const naturalH = Number(natural?.h || 0);
     if(!(naturalW > 0 && naturalH > 0)) return {width:Math.round(width), height:Math.round(height), known:false};
     const fit = Math.min(width / naturalW, height / naturalH);
     return {
@@ -3988,7 +3989,7 @@ function migrateLegacyAutoImageGroups(sourceNodes){
 function materializeAgentImageGroups(sourceNodes){
     const result = [...(sourceNodes || [])];
     let changed = false;
-    const supportedOrigins = new Set(['mcp', 'mcp_update', 'agent_tool_generation']);
+    const supportedOrigins = new Set(['mcp', 'mcp_update', 'agent_tool_generation', 'mcp_flow']);
     const candidates = result.filter(node => node?.type === 'smart-image'
         && supportedOrigins.has(node.__origin) && Array.isArray(node.images) && node.images.length > 1
         && !node.isHistoryGroup && !node.historyFor && node.groupLayout?.mode !== 'preserve');
@@ -4006,16 +4007,16 @@ function materializeAgentImageGroups(sourceNodes){
         source.images = [originalImages[0]];
         changed = true;
         if(!additionalImages.length) continue;
-        const originalWidth = Number(source.mcpGroupCellWidth || source.w || source.cardSize?.width || 520);
-        const cellWidth = Math.max(180, Math.min(520, Math.round(originalWidth / Math.min(4, beforeCount))));
+        const originalWidth = Number(source.w || source.cardSize?.width || 520);
+        const cellWidth = Number(source.mcpGroupCellWidth) || Math.max(180, Math.min(520, Math.round(originalWidth / Math.min(4, beforeCount))));
         const cellHeight = Math.max(120, Math.round(Number(source.h || source.cardSize?.height || 300)));
         source.mcpGroupCellWidth = cellWidth;
         const firstSize = imageSizeWithinBox(source.images[0], cellWidth, cellHeight);
-        if(!existingGroup || !(Number(source.w) > 24 && Number(source.h) > 24)){
+        if(source.cardSizing !== 'manual' && (!existingGroup || !(Number(source.w) > 24 && Number(source.h) > 24))){
             source.w = firstSize.width;
             source.h = firstSize.height;
             source.cardSize = {width:firstSize.width, height:firstSize.height};
-            source.cardSizing = 'media';
+            source.cardSizing = 'intrinsic';
         }
         const members = existingGroup ? [...existingMembers] : [source];
         if(!members.some(node => node.id === source.id)) members.unshift(source);
@@ -4033,7 +4034,7 @@ function materializeAgentImageGroups(sourceNodes){
                 title:`${source.title || 'Image'} · ${members.length + 1}`,
                 x:Math.round(nextX), y:Math.round(nextY),
                 w:size.width, h:size.height,
-                cardSize:{width:size.width, height:size.height}, cardSizing:'media',
+                cardSize:{width:size.width, height:size.height}, cardSizing:'intrinsic',
                 images:[image], scale:1, status:'ready', role:'media',
                 created_at:Number(source.created_at) || Date.now(),
                 __origin:'mcp_output', mcpGroupSourceId:source.id
@@ -4054,6 +4055,42 @@ function materializeAgentImageGroups(sourceNodes){
             measured.mcpGroupSourceId = source.id;
             source.mcpGroupId = measured.id;
             result.push(measured);
+        }
+    }
+    // Existing saved groups need the same reconciliation as newly split results.
+    // Metadata may arrive after grouping or a server merge may contain old cardSize.
+    for(const group of result.filter(node => node.type === 'smart-group' && node.mcpGroupSourceId)){
+        const members = (group.memberIds || []).map(id => result.find(node => node.id === id)).filter(Boolean);
+        let resized = false;
+        for(const member of members){
+            const image = member.images?.length === 1 ? member.images[0] : null;
+            const natural = knownImageNaturalSize(image, false);
+            if(natural && reconcileSingleImageAspect(member, image, natural.w, natural.h, true)) resized = true;
+        }
+        if(resized || group.intrinsicLayoutVersion !== 1){
+            // Old provisional cells can overlap after their real dimensions arrive.
+            // Only move automatic cards that actually intersect an earlier member.
+            const placed = [];
+            for(const member of [...members].sort((a,b) => a.y-b.y || a.x-b.x)){
+                if(member.cardSizing !== 'manual'){
+                    for(const previous of placed){
+                        const a = nodeRect(member), b = nodeRect(previous);
+                        if(a.y < b.y+b.height && a.y+a.height > b.y && a.x < b.x+b.width && a.x+a.width > b.x){
+                            member.x = Math.round(b.x+b.width+12);
+                            changed = true;
+                        }
+                    }
+                }
+                placed.push(member);
+            }
+            if(group.intrinsicLayoutVersion !== 1){group.intrinsicLayoutVersion = 1;changed = true;}
+        }
+        if(members.length){
+            const bounds = CanvasNodeLayoutController.createCanvasGroupForNodes(members, {addToStore:false});
+            if(resized || ['x','y','w','h'].some(key => group[key] !== bounds[key])){
+                group.x = bounds.x;group.y = bounds.y;group.w = bounds.w;group.h = bounds.h;
+                changed = true;
+            }
         }
     }
     result.mcpGroupChanged = changed;
@@ -7258,6 +7295,10 @@ function buildCanvasStoragePayload(){
     nodes.forEach(node => {
         node.images = (node.images || []).map(img => mediaItemForStorage(stripImageGenerationMeta(img)));
         if(node.runSettings) node.runSettings = settingsForStorage(node.runSettings);
+        if(node.flowLayout?.layout === 'tree_lr'){
+            const rect = nodeRect(node);
+            node.flowLayout.measuredSize = {width:rect.width, height:rect.height};
+        }
     });
     canvas.nodes = nodes.filter(n => !n.__preview);
     canvas.settings = settingsForStorage(canvasDefaultSmartSettings || initialSmartSettings);
@@ -7300,6 +7341,20 @@ async function saveCanvas(){
             const data = await res.json();
             if(data?.ok === false) throw new Error(data.detail || '服务器没有接受画布保存');
             if(data.canvas && data.canvas.updated_at) canvas.updated_at = data.canvas.updated_at;
+            // The server may reflow opt-in workflows after actual card measurements.
+            // Only acknowledge positions whose local coordinates are still unchanged.
+            if(data.canvas?.nodes?.some(node => node.flowLayout?.layout === 'tree_lr') && !dragState && !resizeState){
+                const sent = new Map(payload.nodes.map(node => [node.id,node]));
+                const acknowledged = new Map(data.canvas.nodes.map(node => [node.id,node]));
+                let moved = false;
+                nodes.forEach(node => {
+                    const old = sent.get(node.id), next = acknowledged.get(node.id);
+                    if(old && next && node.x === old.x && node.y === old.y && (node.x !== next.x || node.y !== next.y)){
+                        node.x = next.x;node.y = next.y;moved = true;
+                    }
+                });
+                if(moved) render();
+            }
             // Remember exactly what was acknowledged, not edits made while PUT was in flight.
             CanvasMergeSync.rememberServerCanvas({...data.canvas, nodes:(data.canvas?.nodes || payload.nodes).map(normalizeLegacySmartNode).filter(Boolean)});
             // 同步成功：草稿已经变成服务端内容，清掉（并取消排队中的写入，避免又被写回一份）
@@ -7659,15 +7714,23 @@ function mediaItemUrlMatches(item, url){
 function imageResolutionCacheKey(img){
     return JSON.stringify([localAssetUrlForImageInfo(img), img?.generationTaskId || '', img?.source_url || img?.sourceUrl || '']);
 }
-function reconcileSingleImageAspect(owner, item, width, height){
+function reconcileSingleImageAspect(owner, item, width, height, intrinsicGroupMember=false){
     if(!owner || (owner.images || []).length !== 1 || owner.images[0] !== item || owner.groupLayout?.mode === 'preserve') return false;
+    if(owner.cardSizing === 'manual') return false;
     const displayW = Number(owner.w), displayH = Number(owner.h);
     if(!(displayW > 24 && displayH > 24)) return false;
     const ratio = width / height;
-    if(Math.abs(displayW / displayH - ratio) / ratio < 0.01) return false;
-    const longSide = Math.max(displayW, displayH);
-    owner.w = Math.round(ratio >= 1 ? longSide : longSide * ratio);
-    owner.h = Math.round(ratio >= 1 ? longSide / ratio : longSide);
+    const autoGroup = intrinsicGroupMember || Boolean(owner.mcpGroupId || owner.mcpGroupSourceId);
+    if(!autoGroup && Math.abs(displayW / displayH - ratio) / ratio < 0.01) return false;
+    const longSide = Math.max(displayW, displayH, autoGroup ? Number(owner.cardSize?.width) || 0 : 0, autoGroup ? Number(owner.cardSize?.height) || 0 : 0);
+    const w = Math.round(ratio >= 1 ? longSide : longSide * ratio);
+    const h = Math.round(ratio >= 1 ? longSide / ratio : longSide);
+    if(autoGroup && owner.w === w && owner.h === h && owner.cardSize?.width === w && owner.cardSize?.height === h && owner.cardSizing === 'intrinsic') return false;
+    owner.w = w;owner.h = h;
+    if(autoGroup){
+        owner.cardSize = {width:w, height:h};
+        owner.cardSizing = 'intrinsic';
+    }
     return true;
 }
 function queueImageResolutionRerender(){
@@ -8646,6 +8709,7 @@ function measureSmartNodeImages(){
                 node.w = layout.width;
                 node.h = layout.height;
             }
+            reconcileSingleImageAspect(node, image, w, h);
             scheduleImageMeasureRender();
             scheduleSave();
         };
@@ -13364,6 +13428,8 @@ if (typeof CanvasInteractionMachine !== 'undefined') {
             const node = nodes.find(n => n.id === resizeState.id);
             if(node){
                 node.w = resizeState.startW; node.h = resizeState.startH; node.scale = 1;
+                if(resizeState.startCardSizing === undefined) delete node.cardSizing;
+                else node.cardSizing = resizeState.startCardSizing;
                 if(node.cardSize) node.cardSize = {width:node.w, height:node.h};
                 discardPendingUndo();
                 render();
@@ -13709,7 +13775,7 @@ lastMouseWorld = screenToWorld(e);
         node.scale = 1;
         if(node.type === 'smart-image'){
             node.cardSize = {width:node.w, height:node.h};
-            node.cardSizing = node.cardSizing || 'media';
+            node.cardSizing = 'manual';
         }
         updateNodeElementDuringResize(node);
         return;

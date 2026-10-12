@@ -818,10 +818,33 @@ function providerModelValueOptions(item, kind, currentValue){
   }
   return unique([String(currentValue || '').trim(), ...((item?.[key]) || [])]).filter(Boolean);
 }
+const manualModelRows = new Map();
+function modelRowKey(kind, index){return `${provider()?.id || ''}/${kind}/${index}`;}
+function changeModelValueControl(kind, index, select){
+  if(select.selectedOptions[0]?.dataset.manualModel === 'true'){
+    manualModelRows.set(modelRowKey(kind, index), provider()?.[providerKeyOfKind(kind)]?.[index] || '');
+    renderModels(kind);
+    const input = document.querySelector(`[data-manual-model-kind="${kind}"][data-manual-model-index="${index}"]`);
+    input?.focus();input?.select();
+  } else updateModel(kind, index, select.value);
+}
+function finishManualModel(kind, index, cancel=false){
+  const key = modelRowKey(kind, index);
+  if(cancel && manualModelRows.has(key)) updateModel(kind, index, manualModelRows.get(key));
+  manualModelRows.delete(key);
+  renderModels(kind);
+}
 function renderModelValueControl(item, kind, index, model){
   const modelKindLabel = kind === 'audio' ? '音频模型' : tr(kind === 'image' ? 'api.imageModels' : kind === 'video' ? 'api.videoModels' : 'api.chatModels');
   const accessibleLabel = `${modelKindLabel} ${index + 1}`;
   const currentValue = String(model || '').trim();
+  if(providerSupportsModelProtocol(item)){
+    if(!currentValue || manualModelRows.has(modelRowKey(kind, index))){
+      return `<input class="model-value-input" aria-label="${escapeAttr(accessibleLabel)}" data-manual-model-kind="${kind}" data-manual-model-index="${index}" value="${escapeAttr(currentValue)}" placeholder="输入模型 ID，回车确认" oninput="updateModel('${kind}', ${index}, this.value)" onblur="finishManualModel('${kind}', ${index})" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}else if(event.key==='Escape'){event.preventDefault();finishManualModel('${kind}', ${index}, true)}">`;
+    }
+    const choices = unique([currentValue, ...(item?.[providerAvailableModelKey(kind)] || []), ...(item?.[providerKeyOfKind(kind)] || [])]);
+    return `<select class="model-value-input mod-sel" aria-label="${escapeAttr(accessibleLabel)}" onchange="changeModelValueControl('${kind}', ${index}, this)">${choices.map(id => `<option value="${escapeAttr(id)}" ${id === currentValue ? 'selected' : ''}>${escapeHtml(id)}</option>`).join('')}<option value="" data-manual-model="true">手动输入模型 ID…</option></select>`;
+  }
   let options;
   if(isRunningHubProvider(item) && RH_MODEL_ALIASES?.getRhModelValueOptions){
     options = RH_MODEL_ALIASES.getRhModelValueOptions(item?.[providerAvailableModelKey(kind)] || item?.[providerKeyOfKind(kind)] || [], currentValue);
@@ -3138,6 +3161,7 @@ async function testConnection(){
                 image: new Set(data.image_models || []),
                 chat: new Set(data.chat_models || []),
                 video: new Set(data.video_models || []),
+                audio: new Set(data.audio_models || []),
             };
             // 拉取到的模型只进「选择模型」浮层候选（lastFetched*），不合并进已配置列表——
             // 配置列表只由用户在浮层勾选「应用」后写入（applyModelPicker）
@@ -3217,22 +3241,18 @@ async function fetchModels(){
  if(!r.ok) throw new Error((await r.json()).detail || (tr('api.urlInvalid') || '拉取失败'));
  return r.json();
  });
- if(data.audio_models?.length && /xiaomimimo\.com/.test(item.base_url || '')){
-     item.available_audio_models = unique(data.audio_models);
-     activeModelTab = 'audio';
-     renderModels('audio');
-     setStatus(data.ok ? 'MiMo 连接已验证，音频模型已预置；保存后可回到画布生成语音。' : (data.message || 'MiMo 连接未通过'));
-     return;
- }
+ if(data.ok === false) throw new Error(data.message || data.detail || '上游未返回模型列表');
  lastFetchedAll = data.all || [];
  lastFetchedSuggestion = {
  image: new Set(data.image_models || []),
  chat: new Set(data.chat_models || []),
  video: new Set(data.video_models || []),
+ audio: new Set(data.audio_models || []),
  };
  item.available_image_models = unique(data.image_models || []);
  item.available_chat_models = unique(data.chat_models || []);
  item.available_video_models = unique(data.video_models || []);
+ item.available_audio_models = unique(data.audio_models || []);
  const detectedProtocol = String(data.protocol || '').toLowerCase();
  if(detectedProtocol && detectedProtocol !== String(protocolInput?.value || '').toLowerCase()){
  applyDetectedProtocol(detectedProtocol);
@@ -3252,7 +3272,7 @@ async function fetchModels(){
     lastFetchedAll = [];
     lastFetchedSuggestion = null;
     alert('拉取失败：' + (e.message || e));
-    setStatus('拉取失败');
+    setStatus('拉取失败：' + (e.message || e) + '；仍可用各分类的 + 手动填写模型 ID，原有配置已保留。');
  } finally {
  if(btn){
  btn.disabled = false;
@@ -3266,33 +3286,9 @@ async function fetchModels(){
 let pickerState = { category: {}, selected: {} };
 let pickerVisibleIds = [];
 function openModelPicker(){
-    const item = provider();
-    if(!item || !lastFetchedAll.length){ alert('没有拉取到模型'); return; }
-    const existing = { image: new Set(item.image_models||[]), chat: new Set(item.chat_models||[]), video: new Set(item.video_models||[]) };
-    const allIds = new Set([...lastFetchedAll, ...(item.image_models||[]), ...(item.chat_models||[]), ...(item.video_models||[])]);
-    pickerState = { category: {}, selected: {} };
-    allIds.forEach(id => {
-        // 类别归属：用户已配置 > 关键字建议 > 默认 chat
-        let cat;
-        if(existing.image.has(id)) cat = 'image';
-        else if(existing.video.has(id)) cat = 'video';
-        else if(existing.chat.has(id)) cat = 'chat';
-        else if(lastFetchedSuggestion?.image?.has(id)) cat = 'image';
-        else if(lastFetchedSuggestion?.video?.has(id)) cat = 'video';
-        else cat = 'chat';
-        pickerState.category[id] = cat;
-        // 默认勾选状态：已在用户配置里的 = 勾选；新拉的 = 不勾选（让用户主动选）
-        pickerState.selected[id] = existing.image.has(id) || existing.chat.has(id) || existing.video.has(id);
-    });
-    // 默认 tab 切回「全部」
-    document.querySelectorAll('.picker-cat-tab').forEach(t => t.classList.toggle('active', t.dataset.cat === 'all'));
-    document.getElementById('modelPickerOverlay').style.display = 'flex';
-    renderModelPicker();
-}
-function openModelPicker(){
  const item = provider();
  if(!item || !lastFetchedAll.length){ alert('没有拉取到模型'); return; }
- const existing = { image: new Set(item.image_models||[]), chat: new Set(item.chat_models||[]), video: new Set(item.video_models||[]) };
+ const existing = { image: new Set(item.image_models||[]), chat: new Set(item.chat_models||[]), video: new Set(item.video_models||[]), audio:new Set(item.audio_models||[]) };
  const built = typeof apiSettingsPickerHelper?.buildModelPickerState === 'function'
    ? apiSettingsPickerHelper.buildModelPickerState(
        lastFetchedAll,
@@ -3300,6 +3296,7 @@ function openModelPicker(){
          image:[...existing.image],
          chat:[...existing.chat],
          video:[...existing.video],
+         audio:[...existing.audio],
        },
        lastFetchedSuggestion || {},
      )
@@ -3315,8 +3312,8 @@ function renderModelPicker(){
     const currentTab = document.querySelector('.picker-cat-tab.active')?.dataset.cat || 'all';
     const ids = Object.keys(pickerState.category).sort();
     // 各分类总数 / 已选数
-    const totals = { all: ids.length, image:0, chat:0, video:0 };
-    const selecteds = { all:0, image:0, chat:0, video:0 };
+    const totals = { all: ids.length, image:0, chat:0, video:0, audio:0 };
+    const selecteds = { all:0, image:0, chat:0, video:0, audio:0 };
     ids.forEach(id => {
         const cat = pickerState.category[id];
         totals[cat]++;
@@ -3343,6 +3340,7 @@ function renderModelPicker(){
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                 </div>
                 <div class="picker-model-name" title="${escapeAttr(id)}">${escapeHtml(id)}</div>
+                <select class="model-protocol-select" aria-label="${escapeAttr(id)} 模型分类" onclick="event.stopPropagation()" onchange="setPickerCategoryByIndex(${index}, this.value)">${[['image','生图'],['chat','LLM'],['video','视频'],['audio','音频']].map(([cat,label]) => `<option value="${cat}" ${pickerState.category[id] === cat ? 'selected' : ''}>${label}</option>`).join('')}</select>
             </div>
         `;
     }).join('');
@@ -3351,14 +3349,22 @@ function renderModelPicker(){
     const sumImage = document.getElementById('sumImage');
     const sumChat = document.getElementById('sumChat');
     const sumVideo = document.getElementById('sumVideo');
+    const sumAudio = document.getElementById('sumAudio');
     const sumUnsel = document.getElementById('sumUnsel');
     if(sumImage){ sumImage.textContent = `生图 ${selecteds.image}`; sumImage.classList.toggle('picker-sum-chip-empty', selecteds.image === 0); }
     if(sumChat){ sumChat.textContent = `LLM ${selecteds.chat}`; sumChat.classList.toggle('picker-sum-chip-empty', selecteds.chat === 0); }
     if(sumVideo){ sumVideo.textContent = `视频 ${selecteds.video}`; sumVideo.classList.toggle('picker-sum-chip-empty', selecteds.video === 0); }
+    if(sumAudio){ sumAudio.textContent = `音频 ${selecteds.audio}`; sumAudio.classList.toggle('picker-sum-chip-empty', selecteds.audio === 0); }
     if(sumUnsel){ sumUnsel.textContent = `未选 ${totals.all - selecteds.all}`; }
 }
 function togglePickerRow(id){
     pickerState.selected[id] = !pickerState.selected[id];
+    renderModelPicker();
+}
+function setPickerCategoryByIndex(index, category){
+    const id = pickerVisibleIds[index];
+    if(!id || !['image','chat','video','audio'].includes(category)) return;
+    pickerState.category[id] = category;
     renderModelPicker();
 }
 function togglePickerRowByIndex(index){
@@ -3372,19 +3378,21 @@ function selectPickerCat(cat){
 }
 function applyModelPicker(){
     const item = provider(); if(!item) return;
-    const image = [], chat = [], video = [];
+    const image = [], chat = [], video = [], audio = [];
     Object.entries(pickerState.selected).forEach(([id, sel]) => {
         if(!sel) return;
         const cat = pickerState.category[id];
         if(cat === 'image') image.push(id);
         else if(cat === 'video') video.push(id);
+        else if(cat === 'audio') audio.push(id);
         else chat.push(id);
     });
     item.image_models = image;
     item.chat_models = chat;
     item.video_models = video;
-    renderModels('image'); renderModels('chat'); renderModels('video');
-    setStatus(`已应用 · 生图 ${image.length} / LLM ${chat.length} / 视频 ${video.length}，点保存生效`);
+    item.audio_models = audio;
+    renderModels('image'); renderModels('chat'); renderModels('video'); renderModels('audio');
+    setStatus(`已应用 · 生图 ${image.length} / LLM ${chat.length} / 视频 ${video.length} / 音频 ${audio.length}，点保存生效`);
     closeModelPicker();
 }
 async function saveKeyOnly(){
@@ -3756,7 +3764,7 @@ async function loadProviders(){
         ...item,
         model_display_names:(item?.model_display_names && typeof item.model_display_names === 'object') ? {...item.model_display_names} : {}
       };
-      if(typeof apiSettingsProviderRepair?.repairProviderModelListsFromDisplayNames === 'function'){
+      if(!providerSupportsModelProtocol(next) && typeof apiSettingsProviderRepair?.repairProviderModelListsFromDisplayNames === 'function'){
         apiSettingsProviderRepair.repairProviderModelListsFromDisplayNames(next);
       }
       repairProviderRhModelAliases(next);

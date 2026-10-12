@@ -103,14 +103,18 @@ class SpeechTests(unittest.TestCase):
             with self.assertRaises(ValueError):audio.mp3_duration(broken)
 
     def test_rejects_empty_unsupported_and_invalid_voice(self):
-        for payload in [{"text":""}, {"text":"hi", "style":""}, {"text":"hi", "model":"unknown"},
+        for payload in [{"text":""}, {"text":"hi", "style":""},
                         {"text":"hi", "model":"mimo-v2.5-tts", "voice":"unknown"}]:
             with self.subTest(payload=payload), self.assertRaises(audio.AudioError):
                 audio.build_request(payload)
 
-    def test_existing_mimo_migrates_without_duplicate_or_image_models(self):
+    def test_new_user_configured_model_is_not_blocked_by_builtin_allowlist(self):
+        body=audio.build_request({'model':'mimo-future-tts','text':'你好'})
+        self.assertEqual(body['model'],'mimo-future-tts')
+
+    def test_custom_mimo_models_are_user_owned_without_injection(self):
         p = provider.sanitize_api_provider_record({"id":"custom-mimo", "base_url":"https://api.xiaomimimo.com/v1"})
-        self.assertEqual(p["audio_models"], list(audio.MODELS))
+        self.assertEqual(p["audio_models"], [])
         self.assertEqual(p["image_models"], [])
         saved = provider.sanitize_api_provider_record({**p, "audio_models":[audio.MODELS[1]]})
         self.assertEqual(saved["audio_models"], [audio.MODELS[1]])

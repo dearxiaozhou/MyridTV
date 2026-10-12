@@ -7,7 +7,8 @@
     const voices = ['mimo_default','冰糖','茉莉','苏打','白桦','Mia','Chloe','Milo','Dean'];
     const e = value => deps.escapeHtml(String(value ?? ''));
     function configure(options){deps = options;}
-    function providers(){return deps.getProviders().filter(p => p.enabled !== false && (p.audio_models || []).some(m => modes[m]));}
+    function providers(){return deps.getProviders().filter(p => p.enabled !== false && (p.audio_models || []).length);}
+    function modelFor(node, provider){return node.speechModel || provider?.audio_models?.[0] || '';}
     function sources(node){
         const ids = new Set(deps.getConnections().filter(c => c.to === node.id).map(c => c.from));
         return deps.getNodes().filter(n => ids.has(n.id) && (n.type === 'smart-prompt' || n.text || n.content || n.prompt));
@@ -28,7 +29,8 @@
         const list = providers();
         const pid = node.speechProvider || list[0]?.id || '';
         const provider = list.find(p => p.id === pid);
-        const model = node.speechModel || 'mimo-v2.5-tts-voicedesign';
+        const model = modelFor(node, provider);
+        const modelOptions = provider?.audio_models || [];
         const design = model === 'mimo-v2.5-tts-voicedesign';
         const clone = model === 'mimo-v2.5-tts-voiceclone';
         const busy = active.has(node.id);
@@ -41,7 +43,7 @@
         };
         return `<div class="speech-card">
             <div class="speech-heading">语音生成</div>
-            <div class="speech-workspace"><div class="speech-design"><div class="speech-controls"><label>平台<select data-speech="speechProvider" aria-label="语音平台" ${busy ? 'disabled' : ''}><option value="">请选择平台</option>${pid && !provider ? `<option value="${e(pid)}" selected>平台不可用</option>` : ''}${list.map(p => `<option value="${e(p.id)}" ${pid === p.id ? 'selected' : ''}>${e(p.name || p.id)}</option>`).join('')}</select></label><label>生成方式<select data-speech="speechModel" aria-label="语音生成方式" ${busy ? 'disabled' : ''}>${Object.entries(modes).map(([id,label]) => `<option value="${id}" ${model === id ? 'selected' : ''} ${provider && !(provider.audio_models || []).includes(id) ? 'disabled' : ''}>${label}</option>`).join('')}</select></label></div>
+            <div class="speech-workspace"><div class="speech-design"><div class="speech-controls"><label>平台<select data-speech="speechProvider" aria-label="语音平台" ${busy ? 'disabled' : ''}><option value="">请选择平台</option>${pid && !provider ? `<option value="${e(pid)}" selected>平台不可用</option>` : ''}${list.map(p => `<option value="${e(p.id)}" ${pid === p.id ? 'selected' : ''}>${e(p.name || p.id)}</option>`).join('')}</select></label><label>生成方式<select data-speech="speechModel" aria-label="语音生成方式" ${busy ? 'disabled' : ''}>${model && !modelOptions.includes(model) ? `<option value="${e(model)}" selected disabled>模型未配置：${e(model)}</option>` : ''}${modelOptions.map(id => `<option value="${e(id)}" ${model === id ? 'selected' : ''}>${e(provider?.model_display_names?.[id] || modes[id] || id)}</option>`).join('')}</select></label></div>
             ${!design && !clone ? `<label class="speech-field">预置音色<select data-speech="speechVoice" aria-label="预置音色" ${busy ? 'disabled' : ''}>${voices.map(v => `<option value="${e(v)}" ${(node.speechVoice || 'mimo_default') === v ? 'selected' : ''}>${v === 'mimo_default' ? 'MiMo 默认' : e(v)}</option>`).join('')}</select></label>` : ''}
             <div class="speech-controls">${select('speechFormat','输出格式',[['wav','WAV'],['mp3','MP3']])}${design ? select('speechOptimize','台词处理',[['','原文朗读'],['true','智能优化 / 自动写词']]) : !clone ? select('speechSinging','表演模式',[['','说话'],['true','唱歌']]) : ''}</div>
 
@@ -164,6 +166,10 @@
             input.addEventListener(input.tagName === 'TEXTAREA' ? 'input' : 'change', () => {
                 node = current();
                 node[input.dataset.speech] = input.value;
+                if(input.dataset.speech === 'speechProvider'){
+                    const selected = providers().find(p => p.id === input.value);
+                    if(!(selected?.audio_models || []).includes(node.speechModel)) node.speechModel = selected?.audio_models?.[0] || '';
+                }
                 delete node.speechError;
                 deps.scheduleSave();
                 if(input.tagName !== 'TEXTAREA') deps.render();
@@ -214,7 +220,9 @@
             const provider = providers().find(p => p.id === (node.speechProvider || providers()[0]?.id));
             if(!provider) throw new Error('请在 API 设置中配置并启用 MiMo 音频模型');
             node.speechProvider = provider.id;
-            const model = node.speechModel || 'mimo-v2.5-tts-voicedesign';
+            const model = modelFor(node, provider);
+            if(!(provider.audio_models || []).includes(model)) throw new Error('此模型已从平台配置移除，请重新选择语音模型');
+            node.speechModel = model;
             const text = value(node, 'speechText'), style = value(node, 'speechStyle');
             const optimize = model === 'mimo-v2.5-tts-voicedesign' && String(node.speechOptimize)==='true';
             if(!text && !optimize) throw new Error('请填写朗读文本，或连接并选择上游文本');

@@ -132,6 +132,11 @@
             node.w = Math.max(28, Math.round(reference.width));
             node.h = Math.max(28, Math.round(reference.height));
             node.scale = 1;
+            // Fixed media cards render from cardSize before w/h, just like manual resize.
+            if(node.type === 'smart-image'){
+                node.cardSize = {width:node.w, height:node.h};
+                node.cardSizing = 'manual';
+            }
         });
         ctx.render();ctx.scheduleSave();ctx.toast('已统一尺寸');
         return true;

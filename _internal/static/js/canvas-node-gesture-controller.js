@@ -317,6 +317,7 @@
                 startY:event.clientY,
                 startW:rect.width,
                 startH:rect.height,
+                startCardSizing:node.cardSizing,
                 aspect:rect.width / Math.max(1, rect.height)
             });
             global.CanvasInteractionMachine?.begin('resizing');
