@@ -328,6 +328,7 @@ async function pollSmartCanvasTask(taskId){
 }
 async function finalizeSmartPendingTask(node, taskId, images, kind='image'){
     if(!node || !taskId) return;
+    deps.preserveNodeCardForRun(node);
     rememberSmartTaskIds(node, [taskId]);
     node.pendingTasks = smartPendingTasks(node).filter(task => task.taskId !== taskId);
     node.pending = Math.max(0, Number(node.pending || 0) - 1);
@@ -374,9 +375,6 @@ async function finalizeSmartPendingTask(node, taskId, images, kind='image'){
             // 自动命名（2026-10-09）：提示词前缀 + 产物序号；用户手动改过名（titleManual）不覆盖
             const fallbackTitle = node.images.length > 1 ? (kind === 'video' ? 'Videos' : kind === 'audio' ? 'Audios' : kind === 'text' ? 'Texts' : 'Group') : (kind === 'video' ? 'Video' : kind === 'audio' ? 'Audio' : kind === 'text' ? 'Text' : 'Image');
             node.title = deps.autoNodeTitle ? deps.autoNodeTitle(node, fallbackTitle) : fallbackTitle;
-            node.scale = deps.mediaNodeDefaultScale(node);
-            delete node.w;
-            delete node.h;
             delete node.runError;
         } else {
             node.runError = '任务完成但没有写入图片，已保留任务 ID，可重新恢复。';

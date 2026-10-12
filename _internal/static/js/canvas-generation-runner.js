@@ -80,7 +80,9 @@ async function runGeneration(){
         delete pendingNode.runFinishedAt;
         delete pendingNode.runElapsedMs;
         pendingNode.runTimerHidden = false;
-        const pendingBox = deps.pendingBoxSize(pendingNode.pending, {sourceNode:node, refs});
+        const pendingBox = pendingNode.cardSize
+            ? {w:pendingNode.cardSize.width, h:pendingNode.cardSize.height}
+            : deps.pendingBoxSize(pendingNode.pending, {sourceNode:node, refs});
         pendingNode.w = pendingBox.w;
         pendingNode.h = pendingBox.h;
         deps.attachRunMeta(pendingNode, pendingMeta);
@@ -208,8 +210,7 @@ async function runGeneration(){
             pendingNode.pending = 0;
             pendingNode.running = false;
             if(!(pendingNode.images || []).length){
-                delete pendingNode.w;
-                delete pendingNode.h;
+                deps.preserveNodeCardForRun(pendingNode);
             }
         }
         if(extracted) deps.restoreFromExtraction(node, extracted);

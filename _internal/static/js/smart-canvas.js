@@ -3833,11 +3833,11 @@ function nodeRatioBox(node, s){
 // 不能停在 pending 占位框上（老王："跑图都是先选了比例的，那失败了也不应该改变尺寸"）。
 function restoreNodeBoxAfterFailure(node){
     if(!isSmartImageNode(node) || (node.images || []).length) return false;
-    const box = nodeRatioBox(node);
+    const box = node.cardSize ? {w:node.cardSize.width, h:node.cardSize.height} : nodeRatioBox(node);
     node.w = box.w;
     node.h = box.h;
     node.cardSize = {width:box.w, height:box.h};
-    node.cardSizing = 'default';
+    node.cardSizing = node.cardSizing || 'default';
     return true;
 }
 function mediaNodeDefaultScale(node){
@@ -4012,7 +4012,7 @@ function materializeAgentImageGroups(sourceNodes){
         const cellHeight = Math.max(120, Math.round(Number(source.h || source.cardSize?.height || 300)));
         source.mcpGroupCellWidth = cellWidth;
         const firstSize = imageSizeWithinBox(source.images[0], cellWidth, cellHeight);
-        if(source.cardSizing !== 'manual' && (!existingGroup || !(Number(source.w) > 24 && Number(source.h) > 24))){
+        if(!source.generationFrameLocked && source.cardSizing !== 'manual' && (!existingGroup || !(Number(source.w) > 24 && Number(source.h) > 24))){
             source.w = firstSize.width;
             source.h = firstSize.height;
             source.cardSize = {width:firstSize.width, height:firstSize.height};
@@ -4229,12 +4229,14 @@ function nodeCardSpecKey(s){
     return JSON.stringify([s.engine,s.apiKind,s.ratio,s.videoAspect,s.resolution,s.customRatio,s.customSize]);
 }
 function preserveNodeCardForRun(node, s=node?.runSettings || {}){
-    if(!isSmartImageNode(node) || s.engine === 'comfy' || s.engine === 'blender') return;
-    if(!node.cardSize){
-        const layout = imageLayout(node.images || [], nodeScale(node), node);
-        node.cardSize = {width:layout.width,height:layout.height};
-        node.cardSizing = 'media';
-    }
+    if(!isSmartImageNode(node) || isCanvasGroupNode(node) || node.type === 'smart-speech') return;
+    // Capture the displayed box before outputs/pending state change, for every engine.
+    const layout = imageLayout(node.images || [], nodeScale(node), node);
+    node.cardSize = {width:layout.width, height:layout.height};
+    node.cardSizing = node.cardSizing || 'media';
+    node.generationFrameLocked = true;
+    node.w = layout.width;
+    node.h = layout.height;
 }
 function syncNodeCardToSpec(node){
     const s = node?.runSettings || {};
@@ -4269,8 +4271,7 @@ function imageLayout(images, scale=1, node=null){
             && nodeOutputRatio(node?.runSettings)
             ? (b => ({width:b.w, height:b.h}))(nodeRatioBox(node))
             : null);
-    const workflow = node?.runSettings?.engine === 'comfy';
-    if(node?.type === 'smart-image' && (!workflow || (!images?.length && !node.pending)) && Number(size?.width) > 24 && Number(size?.height) > 24){
+    if(node?.type === 'smart-image' && Number(size?.width) > 24 && Number(size?.height) > 24){
         return intrinsicImageLayout(images, scale, {...node, w:size.width, h:size.height});
     }
     return intrinsicImageLayout(images, scale, node);
@@ -7716,7 +7717,7 @@ function imageResolutionCacheKey(img){
 }
 function reconcileSingleImageAspect(owner, item, width, height, intrinsicGroupMember=false){
     if(!owner || (owner.images || []).length !== 1 || owner.images[0] !== item || owner.groupLayout?.mode === 'preserve') return false;
-    if(owner.cardSizing === 'manual') return false;
+    if(owner.cardSizing === 'manual' || owner.generationFrameLocked) return false;
     const displayW = Number(owner.w), displayH = Number(owner.h);
     if(!(displayW > 24 && displayH > 24)) return false;
     const ratio = width / height;
@@ -10908,6 +10909,10 @@ function displayBoxFromNaturalSize(size){
     return {w:layout.width, h:layout.height};
 }
 function pendingBaseBoxSize(options={}){
+    const savedCard = options.sourceNode?.cardSize;
+    if(Number(savedCard?.width) > 24 && Number(savedCard?.height) > 24){
+        return {w:Math.round(savedCard.width), h:Math.round(savedCard.height)};
+    }
     // 2026-10-10：占位框走统一的按比例默认盒（此前 displayBoxFromNaturalSize 把 16:9 夹成
     // 520×293，与空卡的 512×288 差一点点，看着就像"两套尺寸"）。
     const requestSize = explicitRequestOutputSizeForPending();
@@ -11839,6 +11844,7 @@ function extractCurrentImagesToSource(node, meta=null){
 }
 async function finalizePendingNode(pendingNode, urls, meta, kind='image'){
     if(!pendingNode) return;
+    preserveNodeCardForRun(pendingNode);
     urls = CanvasGenerationResultModel.uniqueMediaItems(urls);
     const ext = kind === 'video' ? 'mp4' : kind === 'audio' ? 'mp3' : kind === 'text' ? 'txt' : 'png';
     const date = new Date();
@@ -11862,9 +11868,6 @@ async function finalizePendingNode(pendingNode, urls, meta, kind='image'){
     else pendingNode.title = kind === 'video' ? 'Video' : kind === 'audio' ? 'Audio' : kind === 'text' ? 'Text' : kind === 'file' ? 'File' : 'Image';
     // 自动命名（2026-10-09）：提示词前缀 + 产物序号；titleManual（用户手动改名）不覆盖
     pendingNode.title = CanvasGeneratedOutputNaming.autoNodeTitleFromNode(pendingNode, pendingNode.title);
-    pendingNode.scale = mediaNodeDefaultScale(pendingNode);
-    delete pendingNode.w;
-    delete pendingNode.h;
     const metaTarget = pendingNode._runMetaTargetId ? nodes.find(n => n.id === pendingNode._runMetaTargetId) : pendingNode;
     if(metaTarget) attachRunMeta(metaTarget, meta);
     pendingNode.images = (pendingNode.images || []).map(img => stripImageGenerationMeta(img));
@@ -11900,6 +11903,7 @@ function restoreSourceVisualState(node, state){
 }
 function finishLoopTargetPreviewState(node){
     if(!node) return;
+    preserveNodeCardForRun(node);
     node.pending = 0;
     node.running = false;
     node.queued = false;
@@ -11910,10 +11914,7 @@ function finishLoopTargetPreviewState(node){
     node.runTimerHidden = false;
     if((node.images || []).some(img => img?.url)){
         node.title = node.images.length > 1 ? 'Group' : 'Image';
-        node.scale = node.images.length > 1 ? MEDIA_GROUP_DEFAULT_SCALE : MEDIA_NODE_DEFAULT_SCALE;
         node.outputKind = mediaKindForUrls(node.images || [], (node.images || []).some(isVideoMediaItem) ? 'video' : 'image');
-        delete node.w;
-        delete node.h;
     }
 }
 function refsForDirectLoopRound(loopNode, loopIndex, total){
@@ -11928,6 +11929,7 @@ function refsForDirectLoopRound(loopNode, loopIndex, total){
 }
 function showDirectLoopRoundPreview(loopNode, target, refs, loopIndex, total){
     if(!loopNode?.imageInput || !isSmartImageNode(target)) return false;
+    preserveNodeCardForRun(target);
     const cleanRefs = (refs || []).filter(ref => ref?.url);
     if(!cleanRefs.length) return false;
     const preview = cleanRefs.map((ref, index) => stripImageGenerationMeta({
@@ -11954,10 +11956,7 @@ function showDirectLoopRoundPreview(loopNode, target, refs, loopIndex, total){
         kind:ref.kind || ''
     })).filter(ref => ref.url);
     target.outputKind = mediaKindForUrls(preview, preview.some(isVideoMediaItem) ? 'video' : 'image');
-    target.scale = preview.length > 1 ? MEDIA_GROUP_DEFAULT_SCALE : MEDIA_NODE_DEFAULT_SCALE;
     target.title = total > 1 ? `Image ${loopIndex}/${total}` : (target.title || 'Image');
-    delete target.w;
-    delete target.h;
     render();
     return true;
 }
@@ -12328,6 +12327,7 @@ function historyGroupForNode(){return CanvasHistoryArchiveGroup.historyGroupForN
 function ensureHistoryGroupForNode(){return CanvasHistoryArchiveGroup.ensureHistoryGroupForNode.apply(null, arguments);}
 function replaceOutputsToNodeWithHistory(node, additions, kind='image', meta=null, options={}){
     if(!node || !additions?.length) return [];
+    preserveNodeCardForRun(node);
     const beforeRight = (Number(node.x) || 0) + nodeRect(node).width;
     const existing = cleanHistoryImages(node.images || []);
     const next = cleanHistoryImages(additions);
@@ -12357,9 +12357,6 @@ function replaceOutputsToNodeWithHistory(node, additions, kind='image', meta=nul
     // （finalizeSmartPendingTask）两条路已接，这里把 cascade 路径补齐；
     // titleManual（用户手动改名）由 helper 内部保护。autoTitlePrompt 由调用方传真实提示词。
     node.title = CanvasGeneratedOutputNaming.autoNodeTitleFromNode(node, node.title, options.autoTitlePrompt);
-    node.scale = node.images.length > 1 ? MEDIA_GROUP_DEFAULT_SCALE : MEDIA_NODE_DEFAULT_SCALE;
-    delete node.w;
-    delete node.h;
     if(meta) attachRunMeta(node, meta);
     const afterRight = (Number(node.x) || 0) + nodeRect(node).width;
     const skipShift = options.skipShift || Boolean(smartLoopContext?.nodeId);
@@ -12369,6 +12366,7 @@ function replaceOutputsToNodeWithHistory(node, additions, kind='image', meta=nul
 }
 function appendOutputsToNode(node, additions, kind='image', options={}){
     if(!node || !additions?.length) return [];
+    preserveNodeCardForRun(node);
     const beforeRight = (Number(node.x) || 0) + nodeRect(node).width;
     const existing = (node.images || []).filter(img => img?.url).map(img => stripImageGenerationMeta(img));
     const next = additions.map(img => stripImageGenerationMeta({...img}));
@@ -12381,8 +12379,6 @@ function appendOutputsToNode(node, additions, kind='image', options={}){
     node.runTimerHidden = false;
     node.outputKind = kind;
     node.title = node.images.length > 1 ? (kind === 'video' ? 'Videos' : kind === 'audio' ? 'Audios' : kind === 'text' ? 'Texts' : 'Group') : (kind === 'video' ? 'Video' : kind === 'audio' ? 'Audio' : kind === 'text' ? 'Text' : kind === 'file' ? 'File' : 'Image');
-    delete node.w;
-    delete node.h;
     const afterRight = (Number(node.x) || 0) + nodeRect(node).width;
     const skipShift = options.skipShift || Boolean(smartLoopContext?.nodeId);
     if(!skipShift) pushRightSideNodes(node, afterRight - beforeRight + 36);
@@ -13093,6 +13089,7 @@ if(globalThis.CanvasComfyJobSubmitter){CanvasComfyJobSubmitter.configure({
 function submitComfyWorkflowJob(){return CanvasComfyJobSubmitter.submitComfyWorkflowJob.apply(null, arguments);}
 // Comfy/即梦任务监督域外移 canvas-smart-task-supervisor.js（第二刀），此处留注入与薄代理。
 if(globalThis.CanvasSmartTaskSupervisor){CanvasSmartTaskSupervisor.configure({
+        preserveNodeCardForRun: (...a) => preserveNodeCardForRun(...a),
         addConnection: (...a) => addConnection(...a),
         addSmartGenerationLog: (...a) => addSmartGenerationLog(...a),
         attachRunMeta: (...a) => attachRunMeta(...a),
