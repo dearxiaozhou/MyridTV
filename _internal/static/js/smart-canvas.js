@@ -5774,24 +5774,14 @@ function syncVideoSpecControl(){
 }
 function closeAllSmartPopovers(){
     document.querySelectorAll('.smart-control.pinned').forEach(c => {
-        c.classList.remove('pinned');
-        const trigger = c.querySelector(':scope > .smart-pill[aria-expanded]');
-        if(trigger) trigger.setAttribute('aria-expanded', 'false');
+        CanvasParamEvents.setPopoverOpen(c, false);
     });
     document.querySelectorAll('.loop-number-control.pinned').forEach(c => c.classList.remove('pinned'));
 }
 function bindComposerReferenceModeControl(){
     if(!composerReferenceModeSlot) return;
     composerReferenceModeSlot.querySelectorAll('.smart-control > .smart-pill').forEach(pill => {
-        pill.onclick = event => {
-            event.preventDefault();
-            event.stopPropagation();
-            const ctrl = pill.parentElement;
-            const wasPinned = ctrl.classList.contains('pinned');
-            closeAllSmartPopovers();
-            if(wasPinned && ctrl.contains(document.activeElement)) document.activeElement.blur();
-            if(!wasPinned) ctrl.classList.add('pinned');
-        };
+        CanvasParamEvents.bindPopoverTrigger(pill);
     });
     composerReferenceModeSlot.querySelectorAll('[data-smart-param]').forEach(btn => {
         btn.onclick = event => {
@@ -8013,11 +8003,14 @@ function restoreMediaPlaybackStates(states){
 }
 function smartRunTaskLabel(run){
     const s = run?.settings || {};
-    if(run?.kind === 'audio') return s.model || 'MiMo 语音';
-    if(run?.kind === 'video') return s.videoModel || 'Video';
+    // 2026-10-13：comfy 引擎必须优先于 kind 判定。此前 kind==='video' 排在前面，
+    // 导致 ComfyUI 工作流跑视频时模型标签取节点设置里的 videoModel（doubao-seedance-2-0），
+    // 日志里 ComfyUI 任务全被贴成火山视频模型。工作流任务的"模型"就是工作流本身。
     if(s.engine === 'comfy'){
         return s.comfyWorkflow || 'ComfyUI';
     }
+    if(run?.kind === 'audio') return s.model || 'MiMo 语音';
+    if(run?.kind === 'video') return s.videoModel || 'Video';
     return providerModelDisplayName(s.provider_id || s.providerId || s.provider || '', s.model || '') || 'API Image';
 }
 function outputUrlLooksVideo(url){

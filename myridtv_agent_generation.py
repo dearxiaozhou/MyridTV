@@ -279,6 +279,25 @@ def _agent_submit_video(args, preset=None):
         return {"ok": False, "error": "提交视频生成失败: {}".format(resp)}
     return {"ok": True, "task_id": task_id, "status": "running", "canvas_id": cid, "node_id": nid}
 
+def _agent_extract_task_outputs(task_state):
+    """任务产出 URL 列表：图片 + 视频都要（视频任务此前被漏掉，日志里只剩图片记录）。"""
+    result = task_state.get("result") if isinstance(task_state, dict) else None
+    if not isinstance(result, dict):
+        return []
+    urls = []
+    for img in result.get("images") or []:
+        if isinstance(img, str):
+            urls.append(img)
+        elif isinstance(img, dict) and img.get("url"):
+            urls.append(img["url"])
+    for vid in result.get("videos") or []:
+        if isinstance(vid, str):
+            urls.append(vid)
+        elif isinstance(vid, dict) and vid.get("url"):
+            urls.append(vid["url"])
+    return urls
+
+
 def _agent_extract_image_urls(task_state):
     result = task_state.get("result") if isinstance(task_state, dict) else None
     if not isinstance(result, dict):
@@ -292,6 +311,25 @@ def _agent_extract_image_urls(task_state):
     return urls
 
 
+def _agent_task_log_kind(state):
+    """任务种类：video / audio / image（供日志缩略图分类）。"""
+    mode = str(state.get("mode") or "").strip().lower()
+    if mode in ("t2v", "i2v"):
+        return "video"
+    if str(state.get("backend") or "") == "provider-audio":
+        return "audio"
+    result = state.get("result") if isinstance(state, dict) else None
+    if isinstance(result, dict) and (result.get("videos") or []):
+        return "video"
+    if isinstance(result, dict) and (result.get("audios") or []):
+        return "audio"
+    return "image"
+
+
+# 前端手动创建的节点 origin：这些跑任务的日志由前端 runner 自己写，后端不补录，避免双写
+_MANUAL_NODE_ORIGINS = {"", "user_manual", "artifact_sidebar"}
+
+
 def record_agent_generation_task_log(task_id, state):
     """Persist an Agent API result even when no canvas tab is polling the task."""
     cid = str(state.get("canvas_id") or "").strip()
@@ -299,7 +337,7 @@ def record_agent_generation_task_log(task_id, state):
     status = str(state.get("status") or "").strip()
     if not cid or not nid or status not in ("succeeded", "failed"):
         return
-    outputs = _agent_extract_image_urls(state)
+    outputs = _agent_extract_task_outputs(state)
     if status == "succeeded" and not outputs:
         return
     for _ in range(4):
@@ -308,7 +346,10 @@ def record_agent_generation_task_log(task_id, state):
         if not isinstance(canvas, dict):
             return
         node = next((n for n in (canvas.get("nodes") or []) if isinstance(n, dict) and str(n.get("id") or "") == nid), None)
-        if node and node.get("__origin") != "agent_tool_generation":
+        # 2026-10-13：门从"仅 agent_tool_generation"放宽为"排除前端手动节点"——
+        # Agent/MCP 建的节点（mcp/mcp_update/agent_batch/agent_tool_video/mutation_manager…）
+        # 此前全被漏掉，表现为画布日志里没有 Agent 生图记录。
+        if node and str(node.get("__origin") or "") in _MANUAL_NODE_ORIGINS:
             return
         if not node and not nid.startswith("agent_"):
             return
@@ -316,6 +357,18 @@ def record_agent_generation_task_log(task_id, state):
         logs = canvas.get("logs") if isinstance(canvas.get("logs"), list) else []
         if any(isinstance(log, dict) and (log.get("taskId") == task_id or log.get("id") == "log_" + task_id) for log in logs):
             return
+        # 防双写：前端 runner 对同一任务也会写日志（其条目不带 taskId）。
+        # 成功任务按产出 URL 重合判重；失败任务按错误文案判重。
+        output_set = {str(u) for u in outputs}
+        error_text = str(state.get("error") or "") if status == "failed" else ""
+        for log in logs:
+            if not isinstance(log, dict):
+                continue
+            logged_outputs = log.get("outputs") or []
+            if isinstance(logged_outputs, list) and output_set and any(str(u) in output_set for u in logged_outputs):
+                return
+            if error_text and str(log.get("error") or "") == error_text:
+                return
         run_settings = node.get("runSettings") if isinstance(node.get("runSettings"), dict) else {}
         created = float(state.get("created_at") or time.time())
         completed = float(state.get("completed_at") or time.time())
@@ -324,6 +377,7 @@ def record_agent_generation_task_log(task_id, state):
             "taskId": task_id,
             "createdAt": int(completed * 1000),
             "status": "success" if status == "succeeded" else "failed",
+            "kind": _agent_task_log_kind(state),
             "platform": "RH-API" if state.get("provider_id") == "runninghub" else str(state.get("provider_id") or "API"),
             "nodeType": node.get("type") or "smart-image",
             "model": str(state.get("model") or run_settings.get("model") or "API Image"),
@@ -332,7 +386,7 @@ def record_agent_generation_task_log(task_id, state):
             "outputs": outputs,
             "refs": node.get("runPromptRefs") or [],
             "runMs": max(0, int((completed - created) * 1000)),
-            "error": str(state.get("error") or "") if status == "failed" else "",
+            "error": error_text,
         }
         saved = myridtv_agent_state._agent_http("PUT", "/api/canvases/{}".format(urllib.parse.quote(cid)),
                                               {"logs": [entry] + logs, "base_updated_at": canvas.get("updated_at")}, timeout=30)
