@@ -10695,7 +10695,7 @@ function renderInputThumbsRow(node){
     if(window.lucide) lucide.createIcons();
 }
 // ===== 无线引用（引用结果）：选择器 =====
-let canvasObjectRefPickerOpen = false;
+var canvasObjectRefPickerOpen = false;  // 2026-10-15: must hoist - render() runs at line 237, before this let would initialize (TDZ ReferenceError killed every ui_baseline case).
 let canvasObjectRefConsumerId = '';
 let canvasObjectRefQuery = '';
 let canvasObjectRefKind = 'all';
