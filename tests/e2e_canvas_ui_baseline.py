@@ -47,7 +47,17 @@ def run():
                         route.fulfill(json={'ok': True})
                     else:
                         route.continue_()
-                page.route('**/*', route_request)
+                # Static assets must NOT pass through the Python route handler: a cold canvas
+                # pulls 130+ scripts, each paying a round trip to the test process. On a slow
+                # runner the browser gives up waiting, the request fails with no status, the
+                # module never assigns its global and the entry script aborts mid-file (which
+                # is what produced the random "CanvasXxxController is not defined" errors).
+                def needs_intercept(url):
+                    path = urlsplit(url).path
+                    if path == '/static/app_config.json':
+                        return True
+                    return not (url.startswith(BASE + '/') and path.startswith('/static/'))
+                page.route(needs_intercept, route_request)
                 try:
                     # 'networkidle' is unreliable while every request goes through the Python
                     # route handler: a short lull between queued script requests reads as idle
