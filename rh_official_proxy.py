@@ -3025,6 +3025,17 @@ class Handler(BaseHTTPRequestHandler):
         return
 
 
+class CanvasProxyServer(ThreadingHTTPServer):
+    # A cold canvas page pulls 130+ static files over HTTP/1.0, so every asset opens
+    # its own connection. The socketserver default backlog of 5 drops the overflow,
+    # which surfaced as random "CanvasXxxController is not defined" on slower machines
+    # (GitHub runners): the script never arrived, the entry script aborted mid-file and
+    # every later `let` stayed in its temporal dead zone.
+    daemon_threads = True
+    allow_reuse_address = True
+    request_queue_size = 128
+
+
 if __name__ == "__main__":
     append_log(LOG_FILE, f"proxy starting pid={os.getpid()} version={STATIC_VERSION} app_base={APP_BASE} port={PORT}")
     patch_static_versions_once()
@@ -3033,4 +3044,4 @@ if __name__ == "__main__":
     _start_window_fix()
     # 启动 Canvas MCP 端点（内置于主服务）
     print(f"[canvas-mcp] embedded at http://127.0.0.1:{PORT}/mcp")
-    ThreadingHTTPServer((str(PROXY_CONFIG.get("host") or "127.0.0.1"), PORT), Handler).serve_forever()
+    CanvasProxyServer((str(PROXY_CONFIG.get("host") or "127.0.0.1"), PORT), Handler).serve_forever()
