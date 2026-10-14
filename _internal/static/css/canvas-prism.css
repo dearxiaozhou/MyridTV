@@ -354,8 +354,8 @@ margin-top: 8px;
   font-weight: 780;
 }
 
-.prism-canvas-hero-pill::before,
 .prism-canvas-mode-pill::before {
+  /* 2026-10-14: 主页「后端」胶囊去掉前置状态点（老王指示），mode-pill 的点保留 */
   content: "";
   width: 8px;
   height: 8px;

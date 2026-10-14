@@ -883,3 +883,11 @@ html.studio-theme-dark .prompt-node-llm .shared-native-select-trigger {
 .image-node.multi-image-node.selected {
   box-shadow:0 0 0 1px var(--x-selected-line), 0 14px 36px var(--shadow);
 }
+
+/* Homepage backend address: neutral copy action with a visible inset focus/hover edge. */
+html body.prism-canvas-page #gateBackendInfo:is(:hover, :focus-visible) {
+  color:var(--x-text) !important;
+  background:var(--x-hover-bg) !important;
+  box-shadow:inset 0 0 0 1px var(--x-selected-line) !important;
+  border-radius:6px;
+}
