@@ -8,6 +8,21 @@ import urllib.request
 _ids = itertools.count(1)
 
 
+def _probe_backend(start=3107, end=3130):
+    # The launcher moves the backend off 3107 whenever that port cannot bind, so a
+    # dead default must never be the last word: ask the live ports who is serving.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    for port in range(start, end):
+        try:
+            with opener.open(f"http://127.0.0.1:{port}/health", timeout=0.6) as response:
+                data = json.loads(response.read().decode("utf-8"))
+        except (OSError, ValueError, TypeError):
+            continue
+        if isinstance(data, dict) and data.get("ok"):
+            return f"http://127.0.0.1:{port}"
+    return None
+
+
 def backend_base(config_file=None):
     override = os.environ.get('MYRIDTV_MCP_BASE', '').strip()
     if override:
@@ -23,7 +38,7 @@ def backend_base(config_file=None):
             return f"http://{proxy.get('host') or '127.0.0.1'}:{int(proxy['port'])}"
     except (OSError, ValueError, TypeError):
         pass
-    return 'http://127.0.0.1:3107'
+    return _probe_backend() or 'http://127.0.0.1:3107'
 
 
 def post(method, params=None):
