@@ -44,15 +44,18 @@ def run():
                         route.continue_()
                 page.route('**/*', route_request)
                 try:
-                    page.goto(BASE + '/smart-canvas.html', wait_until='networkidle')
+                    # 'networkidle' is unreliable while every request goes through the Python
+                    # route handler: a short lull between queued script requests reads as idle
+                    # and goto() returns while the entry script is still executing. That is why
+                    # slow runners saw "settings/viewport is not defined" - the top-level lets
+                    # were still in their temporal dead zone. Wait for load + readyState instead.
+                    page.goto(BASE + '/smart-canvas.html', wait_until='load')
                     # render() is a hoisted function declaration, so it already exists the moment
-                    # the 17.5k-line entry script starts executing. On slow runners the top-level
-                    # `let settings` is still in its temporal dead zone at that point and every
-                    # later evaluate() dies with "settings is not defined". Wait for a real boot
-                    # signal (the top-level let actually initialized) instead of a hoisted name.
+                    # the 17.5k-line entry script starts executing; it proves nothing. Require the
+                    # top-level lets themselves (typeof throws inside the TDZ, hence try/catch).
                     page.wait_for_function(
-                        "typeof CanvasParamEvents === 'object' && typeof render === 'function' && "
-                        "(() => { try { return typeof settings === 'object'; } catch (e) { return false; } })()"
+                        "document.readyState === 'complete' && typeof CanvasParamEvents === 'object' && typeof render === 'function' && "
+                        "(() => { try { return typeof settings === 'object' && typeof viewport === 'object'; } catch (e) { return false; } })()"
                     )
                     page.evaluate("""() => {
                         settings.engine = 'api'; settings.apiKind = 'video';
