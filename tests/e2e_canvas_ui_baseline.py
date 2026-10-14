@@ -45,7 +45,15 @@ def run():
                 page.route('**/*', route_request)
                 try:
                     page.goto(BASE + '/smart-canvas.html', wait_until='networkidle')
-                    page.wait_for_function("typeof CanvasParamEvents === 'object' && typeof render === 'function'")
+                    # render() is a hoisted function declaration, so it already exists the moment
+                    # the 17.5k-line entry script starts executing. On slow runners the top-level
+                    # `let settings` is still in its temporal dead zone at that point and every
+                    # later evaluate() dies with "settings is not defined". Wait for a real boot
+                    # signal (the top-level let actually initialized) instead of a hoisted name.
+                    page.wait_for_function(
+                        "typeof CanvasParamEvents === 'object' && typeof render === 'function' && "
+                        "(() => { try { return typeof settings === 'object'; } catch (e) { return false; } })()"
+                    )
                     page.evaluate("""() => {
                         settings.engine = 'api'; settings.apiKind = 'video';
                         canvas = {id:'ui-fixture',title:'UI state fixture',nodes:[],connections:[],settings:{},logs:[]};
