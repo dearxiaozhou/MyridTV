@@ -68,8 +68,15 @@ def run():
                     # render() is a hoisted function declaration, so it already exists the moment
                     # the 17.5k-line entry script starts executing; it proves nothing. Require the
                     # top-level lets themselves (typeof throws inside the TDZ, hence try/catch).
+                    # window.onload only *starts* the async boot chain (loadConfig ->
+                    # loadAssetLibrary -> loadCanvas -> render). Injecting the fixture before
+                    # it finishes means loadCanvas overwrites settings/canvas afterwards, and
+                    # on a slow runner that is exactly what happens: the page is fully loaded
+                    # and every module is defined, yet the composer renders an empty
+                    # reference-mode slot. Wait for the explicit boot flag.
                     page.wait_for_function(
-                        "document.readyState === 'complete' && typeof CanvasParamEvents === 'object' && typeof render === 'function' && "
+                        "window.__smartCanvasBooted === true && document.readyState === 'complete' && "
+                        "typeof CanvasParamEvents === 'object' && typeof render === 'function' && "
                         "(() => { try { return typeof settings === 'object' && typeof viewport === 'object'; } catch (e) { return false; } })()"
                     )
                     page.evaluate("""() => {

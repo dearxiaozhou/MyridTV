@@ -14790,6 +14790,10 @@ window.onload = async () => {
     refreshCanvasAgentConfig().catch(() => {});
     syncApiKindToggleVisibility();
     render();
+    // Boot signal: window.onload only *starts* this async chain, so state injected
+    // right after the load event races loadConfig/loadCanvas and gets overwritten.
+    // Tests and automation wait for this flag instead.
+    window.__smartCanvasBooted = true;
 };
 
 
