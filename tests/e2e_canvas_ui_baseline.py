@@ -13,6 +13,10 @@ OUT = Path(os.environ.get('MYRIDTV_UI_ARTIFACTS', '_verification/ui-baseline'))
 
 def run():
     OUT.mkdir(parents=True, exist_ok=True)
+    # GitHub runners are several times slower than a dev box. Playwright's 5s
+    # assertion default passes locally and then times out there on ordinary
+    # render/sync latency, which reads as "the UI never rendered".
+    expect.set_options(timeout=20000)
     results = []
     with sync_playwright() as p:
         executable = os.environ.get('MYRIDTV_TEST_BROWSER')
@@ -25,6 +29,7 @@ def run():
             for width in (1100, 1680):
                 label = f'{theme}-{width}'
                 context = browser.new_context(viewport={'width': width, 'height': 900})
+                context.set_default_timeout(20000)
                 context.add_init_script(f"localStorage.setItem('studio_theme', '{theme}'); localStorage.setItem('studio_ui_scale_mode', '100');")
                 page = context.new_page()
                 errors = []
