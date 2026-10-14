@@ -42,9 +42,7 @@
         const copy = cloneNode(source, dx, dy);
         ctx.nodeStore.addNode(copy, 'user_manual');
         duplicateConnections(source.id, copy.id);
-        ctx.setSelectedId(copy.id);
-        ctx.setSelectedIds([]);
-        ctx.setSelectedImage({nodeId:'', index:-1});
+        ctx.setSelection({primaryId:copy.id, ids:[], image:{nodeId:'', index:-1}}, 'duplicate-node');
         ctx.bringNodesToFront(copy.id);
         ctx.render();
         ctx.scheduleSave();
@@ -99,9 +97,7 @@
         })).filter(conn => conn.from && conn.to && conn.from !== conn.to);
         canvas.connections = [...(canvas.connections || []), ...newConnections];
         ctx.nodeStore.addNodes(copies, 'user_manual');
-        ctx.setSelectedId(copies.length === 1 ? copies[0].id : '');
-        ctx.setSelectedIds(copies.length > 1 ? copies.map(node => node.id) : []);
-        ctx.setSelectedImage({nodeId:'', index:-1});
+        ctx.setSelection({primaryId:copies.length === 1 ? copies[0].id : '', ids:copies.length > 1 ? copies.map(node => node.id) : [], image:{nodeId:'', index:-1}}, 'paste-nodes');
         ctx.render();
         ctx.scheduleSave();
         return copies;
@@ -130,9 +126,7 @@
         const canvas = ctx.getCanvas();
         if(canvas) canvas.connections = [...(canvas.connections || []), ...newConnections];
         ctx.nodeStore.addNodes(copies, 'user_manual');
-        ctx.setSelectedId('');
-        ctx.setSelectedIds([]);
-        ctx.setSelectedImage({nodeId:'', index:-1});
+        ctx.setSelection({primaryId:'', ids:[], image:{nodeId:'', index:-1}}, 'duplicate-for-drag');
         const dragCopy = copies.find(copy => copy.id === idMap.get(node.id)) || copies[0];
         ctx.render();
         ctx.scheduleSave();

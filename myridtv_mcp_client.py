@@ -2,16 +2,34 @@
 import itertools
 import json
 import os
+from pathlib import Path
 import urllib.request
 
-BACKEND = os.environ.get("MYRIDTV_MCP_BASE", "http://127.0.0.1:3107").rstrip("/")
 _ids = itertools.count(1)
+
+
+def backend_base(config_file=None):
+    override = os.environ.get('MYRIDTV_MCP_BASE', '').strip()
+    if override:
+        return override.rstrip('/')
+    path = Path(config_file) if config_file else Path(__file__).resolve().parent / '_internal/data/app_config.json'
+    try:
+        config = json.loads(path.read_text(encoding='utf-8-sig'))
+        proxy = config.get('proxy') if isinstance(config, dict) else {}
+        proxy = proxy if isinstance(proxy, dict) else {}
+        if proxy.get('base_url'):
+            return str(proxy['base_url']).rstrip('/')
+        if proxy.get('port'):
+            return f"http://{proxy.get('host') or '127.0.0.1'}:{int(proxy['port'])}"
+    except (OSError, ValueError, TypeError):
+        pass
+    return 'http://127.0.0.1:3107'
 
 
 def post(method, params=None):
     body = json.dumps({"jsonrpc": "2.0", "id": next(_ids), "method": method,
                        "params": params or {}}, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(BACKEND + "/mcp", data=body, method="POST",
+    req = urllib.request.Request(backend_base() + "/mcp", data=body, method="POST",
                                  headers={"Content-Type": "application/json"})
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     # Vision/workflow tools can exceed ten seconds. A timeout is an unknown outcome;

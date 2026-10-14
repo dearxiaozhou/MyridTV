@@ -44,6 +44,39 @@ _r_output_asset_kind_for_name = None
 _r_output_asset_subdir_for_kind = None
 _r_request_multipart_json = None
 _r_resolve_user_asset_path = None
+_upload_image_lock = threading.Lock()
+
+
+def _matching_upload_image(directory, saved_name, data, original_name=""):
+    """Match only this canvas's same-name collision family, never another scope."""
+    stem = re.sub(r"-\d+$", "", Path(saved_name).stem) or Path(saved_name).stem
+    family = re.compile(re.escape(stem) + r"(?:-\d+|-[0-9a-f]{6})?" + re.escape(Path(saved_name).suffix), re.I)
+    exact = directory / saved_name
+    original_basename = str(original_name).replace('\\', '/').rsplit('/', 1)[-1]
+    originals = [directory / original_basename] if original_basename not in ('', '.', '..', saved_name) else []
+    candidates = [exact] + originals + sorted(
+        (p for p in directory.iterdir() if p.name != saved_name and family.fullmatch(p.name)),
+        key=lambda p: p.name,
+    )
+    view = memoryview(data)
+    for candidate in candidates:
+        try:
+            if candidate.resolve().parent != directory.resolve() or not candidate.is_file():
+                continue
+            if candidate.stat().st_size != len(data):
+                continue
+            with candidate.open('rb') as existing:
+                offset = 0
+                while offset < len(data):
+                    chunk = existing.read(min(1024 * 1024, len(data) - offset))
+                    if not chunk or chunk != view[offset:offset + len(chunk)]:
+                        break
+                    offset += len(chunk)
+                if offset == len(data) and not existing.read(1):
+                    return candidate.name
+        except OSError:
+            continue
+    return None
 
 
 def configure(user_data_dir, root, assets_dir, log_file_getter,
@@ -306,8 +339,16 @@ def save_uploaded_file(file_info, target_dir=None, url_prefix=None, kind_subdir=
         directory = directory / subdir
         prefix = f"{prefix}/{urllib.parse.quote(subdir)}"
     directory.mkdir(parents=True, exist_ok=True)
-    saved_name = unique_saved_name(directory, upload_saved_name(original_name, ext))
-    (directory / saved_name).write_bytes(data)
+    desired_name = upload_saved_name(original_name, ext)
+    reused = False
+    # Canvas image imports are idempotent. Multipart exposes a basename, not
+    # a trusted source path, so confirm the bytes before reusing a local file.
+    with _upload_image_lock:
+        match = _matching_upload_image(directory, desired_name, data, original_name) if target_dir and kind_subdir and kind == 'image' else None
+        saved_name = match or unique_saved_name(directory, desired_name)
+        reused = match is not None
+        if not reused:
+            (directory / saved_name).write_bytes(data)
     transcode_note = ""
     if kind == "video":
         # 就地确保可被 WebView2 播放：探测到 HEVC 等解不了的编码就用 ffmpeg 转 H.264。
@@ -330,6 +371,7 @@ def save_uploaded_file(file_info, target_dir=None, url_prefix=None, kind_subdir=
         "content_type": content_type,
         "transcoded": bool(transcode_note),
         "transcode_note": transcode_note,
+        "reused": reused,
     }
 
 

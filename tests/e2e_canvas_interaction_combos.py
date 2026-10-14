@@ -240,7 +240,18 @@ def main():
                               f"节点宽 {node_w_before} -> {node_w_after}")
 
         # 对照组：在画布空白处滚轮 → 应该缩放（证明 wheel 链路本身活着）
-        page.mouse.move(1200, 850)
+        # The clamped editor can legitimately cover the old fixed coordinate.
+        # Hit-test an actual empty canvas point before exercising real wheel input.
+        blank = page.evaluate("""() => {
+            for(let y=120; y<innerHeight-100; y+=80){
+                for(let x=innerWidth-40; x>100; x-=100){
+                    const hit=document.elementFromPoint(x,y);
+                    if(hit && (hit.id==='shell' || hit.id==='world')) return {x,y};
+                }
+            }
+            throw new Error('No empty canvas point available for wheel control');
+        }""")
+        page.mouse.move(blank['x'], blank['y'])
         page.mouse.wheel(0, -240)
         page.wait_for_timeout(700)
         node_w_ctrl = rect(".image-node[data-id='n_comfy1']")["w"]

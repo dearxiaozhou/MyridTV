@@ -217,6 +217,8 @@
     async function cancelComfyJob(node){
         if(!node) return false;
         const jobId = String(node.comfyJobId || '');
+        const attempt = node.generationAttemptId;
+        if(attempt) global.CanvasGenerationLifecycle.finish(node,attempt,'cancelled');
         // Invalidate the in-flight submit/poll promise before clearing visible job state.
         // A fast retry must not let the cancelled run clear the new run's state.
         delete node.comfyRunToken;
@@ -229,12 +231,14 @@
                     method:'POST',
                     headers:{'Content-Type':'application/json'}
                 }).catch(()=>null);
+                if(attempt && !global.CanvasGenerationLifecycle.owns(node,attempt)) return true;
                 await fetch(deps.proxyUrl(`/api/comfyui/jobs/${encodeURIComponent(jobId)}/interrupt`), {
                     method:'POST',
                     headers:{'Content-Type':'application/json'}
                 }).catch(()=>null);
             } catch(e){ /* 后端暂无 cancel 接口也能清前端态 */ }
         }
+        if(attempt && !global.CanvasGenerationLifecycle.owns(node,attempt)) return true;
         clearComfyProgressExceptStatus(node);
         delete node.comfyStatus;
         node.pending = 0;
@@ -290,6 +294,8 @@
     async function syncComfyJobStatusOnce(node){
         // queued 也要管：否则任务停在排队阶段、promise 链又断了时，没人把它推进到 running/收尾
         if(!node || !node.comfyJobId || !['running', 'queued'].includes(node.comfyStatus)) return false;
+        const jobId = node.comfyJobId, attempt = node.generationAttemptId;
+        const isCurrent = () => node.comfyJobId === jobId && (!attempt || global.CanvasGenerationLifecycle.isCurrent(node,attempt));
         let job;
         try {
             job = await fetch(deps.proxyUrl(`/api/comfyui/jobs/${encodeURIComponent(node.comfyJobId)}`), {cache:'no-store'}).then(async r => {
@@ -297,6 +303,7 @@
                 return r.json();
             });
         } catch(e) {
+            if(!isCurrent()) return false;
             // 拉取失败先计数，不立刻清 —— 后端瞬时抖动 / 重启间隙不该把「还在跑」的任务误清成已结束，
             // 否则按钮会假回弹、产出也永远补不回来。连续失败 3 次（约 6s）才认定任务记录真丢了。
             node.comfySupervisorMiss = (Number(node.comfySupervisorMiss || 0)) + 1;
@@ -309,6 +316,7 @@
             deps.render(); deps.scheduleSave();
             return true;
         }
+        if(!isCurrent()) return false;
         delete node.comfySupervisorMiss;
         let st = job.status || node.comfyStatus;
         // 后端兜底：状态被迟到的 WS 消息翻回 running，但 error + finished_at 已经落地 → 按失败收尾
@@ -332,9 +340,10 @@
             const kind = (job.videos && job.videos.length) ? 'video' : 'image';
             // 仅当节点还没产出时回填（避免和正常轮询的 finalize 重复）
             if(urls.length && !(node.images || []).length){
-                try { await deps.finalizePendingNode(node, urls, {prompt:node.promptDraftText || node.runPrompt || '', displayPrompt:node.promptDraftText || node.runPrompt || '', settings:node.runSettings, createdAt:node.runAt || node.runStartedAt}, kind); }
+                try { await deps.finalizePendingNode(node, urls, {prompt:node.promptDraftText || node.runPrompt || '', displayPrompt:node.promptDraftText || node.runPrompt || '', settings:node.runSettings, createdAt:node.runAt || node.runStartedAt, generationAttemptId:attempt}, kind); }
                 catch(_) { /* 产出回填失败也不阻塞清态 */ }
             }
+            if(!isCurrent()) return false;
             clearComfyProgress(node);
             deps.clearNodeRunningState(node);
             deps.syncRunButtonAvailability(node);

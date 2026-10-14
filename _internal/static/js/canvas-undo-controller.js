@@ -55,9 +55,7 @@
                 canvas.connections = value.connections;
                 canvas.inputMode = value.inputMode;
             }
-            ctx.setSelectedId(value.selectedId);
-            ctx.setSelectedIds(value.selectedIds);
-            ctx.setSelectedImage(value.selectedImage);
+            ctx.setSelection({primaryId:value.selectedId, ids:value.selectedIds, image:value.selectedImage}, 'undo');
             ctx.clearComposerSelection();
             ctx.render();
             ctx.scheduleSave();

@@ -252,9 +252,8 @@ const nodeStore = (function(){
              tombstone: tombstone, untombstone: untombstone, deletedIds: deletedIds };
 })();
 
-let selectedId = '';
-let selectedIds = [];
-let selectedImage = {nodeId:'', index:-1};
+const canvasUiState = CanvasUiState.create();
+canvasUiState.installLegacyAliases(globalThis);
 let frontNodeIds = [];
 let dragState = null;
 let loopInsertPreview = null;
@@ -576,15 +575,17 @@ const APP_RUNTIME_CONFIG_DEFAULTS = {
 let appRuntimeConfig = APP_RUNTIME_CONFIG_DEFAULTS;
 let appRuntimeConfigLoaded = false;
 let RH_OFFICIAL_PROXY_BASE = APP_RUNTIME_CONFIG_DEFAULTS.proxy.base_url;
-// B1/L1 状态快照访问器（只读注册表，行为中性）：12 个核心顶层态统一 getter 入口，写仍走原路径。
+// Read-only registry: transient UI snapshots come from their dedicated owner;
+// canvas content, providers and task domains retain their existing getters.
 if(globalThis.CanvasStateHub){CanvasStateHub.configure({
         nodes: () => nodes,
         settings: () => settings,
         canvas: () => canvas,
         canvasId: () => canvasId,
-        selectedId: () => selectedId,
-        selectedIds: () => selectedIds,
-        selectedImage: () => selectedImage,
+        ui: () => canvasUiState.snapshot(),
+        selectedId: () => canvasUiState.selection.primaryId,
+        selectedIds: () => canvasUiState.selection.ids,
+        selectedImage: () => canvasUiState.selection.image,
         apiProviders: () => apiProviders,
         runningHubWorkflowCache: () => runningHubWorkflowCache,
         comfyWorkflows: () => comfyWorkflows,
@@ -977,7 +978,7 @@ function setCanvasInputMode(mode, opts={}){
         if(targets.length){
             targets.forEach(n => { n.canvasSetEnabled = true; });
             const merged = Array.from(new Set([...selectedNodeIds(), ...targets.map(n => n.id)]));
-            selectedIds = merged;
+            canvasUiState.patchSelection({ids: merged}, 'selectedIds');
             syncSelectionUi();
         }
     } else {
@@ -1224,14 +1225,14 @@ function smartSettingsForNode(node){
     return withOutpaintDisplaySettings(node, base);
 }
 function activeSettingsSubject(){
-    const active = activeComposerSubject?.id
-        ? (nodes.find(n => n.id === activeComposerSubject.id) || activeComposerSubject)
+    const active = canvasUiState.editor.subject?.id
+        ? (nodes.find(n => n.id === canvasUiState.editor.subject.id) || canvasUiState.editor.subject)
         : selectedNode();
     return isSmartImageNode(active) ? active : null;
 }
 function activeComposerNode(){
-    if(!lastComposerNodeId) return null;
-    const id = String(lastComposerNodeId).split(':')[0] || '';
+    if(!canvasUiState.editor.key) return null;
+    const id = String(canvasUiState.editor.key).split(':')[0] || '';
     const node = nodes.find(n => n.id === id);
     return isSmartImageNode(node) ? node : null;
 }
@@ -1287,9 +1288,9 @@ function clearPromptInput(options={}){
     }
     promptInput.textContent = '';
     closeMentionPicker();
-    if(activeComposerSubject){
-        activeComposerSubject.promptDraftHtml = '';
-        activeComposerSubject.promptDraftText = '';
+    if(canvasUiState.editor.subject){
+        canvasUiState.editor.subject.promptDraftHtml = '';
+        canvasUiState.editor.subject.promptDraftText = '';
     }
 }
 function applyTheme(theme){
@@ -1398,7 +1399,7 @@ function bringNodesToFront(ids=[]){
     return Boolean(frontNodeIds.length);
 }
 function bringNodeSelectionToFront(nodeId=''){
-    const ids = selectedIds.includes(nodeId) ? selectedIds.slice() : [nodeId];
+    const ids = canvasUiState.selection.ids.includes(nodeId) ? canvasUiState.selection.ids.slice() : [nodeId];
     return bringNodesToFront(ids);
 }
 function selectedLayoutNodes(){
@@ -1484,7 +1485,7 @@ if(globalThis.CanvasAgentReferenceIntake){CanvasAgentReferenceIntake.configure({
         canvasAgentPanel: () => canvasAgentPanel,
         canvasAgentRefsState: () => canvasAgentRefsState,
         nodes: () => nodes,
-        selectedImage: () => selectedImage,
+        selectedImage: () => canvasUiState.selection.image,
         visibleReferenceImagesFor: () => visibleReferenceImagesFor
 });}
 function collectCanvasAgentSelectedResources(){return CanvasAgentReferenceIntake.collectCanvasAgentSelectedResources.apply(null, arguments);}
@@ -2333,8 +2334,8 @@ function canvasAgentCreateBrainstormNodes(candidates=[], chosenTitle=''){
         created.push(node);
     });
     if(created.length){
-        selectedIds = created.map(n => n.id);
-        selectedId = created.length === 1 ? created[0].id : '';
+        canvasUiState.patchSelection({ids: created.map(n => n.id)}, 'selectedIds');
+        canvasUiState.patchSelection({primaryId: created.length === 1 ? created[0].id : ''}, 'selectedId');
         render();
     }
     return created;
@@ -2472,8 +2473,8 @@ function canvasAgentLocateMessageNode(messageId){
     const r = nodeRect(target);
     if(r){
         centerViewportOnWorldPoint({x: r.x + r.width / 2, y: r.y + r.height / 2});
-        selectedId = target.id;
-        selectedIds = [target.id];
+        canvasUiState.patchSelection({primaryId: target.id}, 'selectedId');
+        canvasUiState.patchSelection({ids: [target.id]}, 'selectedIds');
         render();
         toast(`已定位到节点：${target.title || target.id}`);
     }
@@ -2492,8 +2493,8 @@ function canvasAgentLocateSpecificNode(nodeId='', messageId=''){
     const r = nodeRect(target);
     if(r){
         centerViewportOnWorldPoint({x: r.x + r.width / 2, y: r.y + r.height / 2});
-        selectedId = target.id;
-        selectedIds = [target.id];
+        canvasUiState.patchSelection({primaryId: target.id}, 'selectedId');
+        canvasUiState.patchSelection({ids: [target.id]}, 'selectedIds');
         render();
         toast(`已定位到节点：${target.title || target.id}`);
     }
@@ -2581,8 +2582,8 @@ async function canvasAgentBatchRunNodes(targets){
     // comfy / runninghub / 无自身提示词的节点：回退到逐个 runGeneration（这些引擎的提交流程依赖 composer 状态）
     for(const node of otherNodes){
         try{
-            selectedId = node.id;
-            selectedIds = [node.id];
+            canvasUiState.patchSelection({primaryId: node.id}, 'selectedId');
+            canvasUiState.patchSelection({ids: [node.id]}, 'selectedIds');
             render();
             await runGeneration();
             if((node.images || []).some(img => img?.generatedResult)) okCount += 1;
@@ -2745,8 +2746,8 @@ async function executeCanvasAgentActionPlan(plan){
     if(plan.connectSequential){
         for(let i = 1; i < created.length; i += 1) connectInputNode(created[i - 1].node.id, created[i].node.id);
     }
-    selectedIds = created.map(item => item.node.id);
-    selectedId = selectedIds.length === 1 ? selectedIds[0] : '';
+    canvasUiState.patchSelection({ids: created.map(item => item.node.id)}, 'selectedIds');
+    canvasUiState.patchSelection({primaryId: canvasUiState.selection.ids.length === 1 ? canvasUiState.selection.ids[0] : ''}, 'selectedId');
     render();
     scheduleSave();
     const imageNodes = created.filter(item => item.step.type === 'create_image_node');
@@ -2879,9 +2880,9 @@ function useCanvasAgentReply(text=canvasAgentLastReply, refs=canvasAgentLastRepl
         return;
     }
     const node = createImageNodeAt(viewportCenter(), [], {select:true});
-    selectedId = node.id;
-    selectedIds = [];
-    selectedImage = {nodeId:'', index:-1};
+    canvasUiState.patchSelection({primaryId: node.id}, 'selectedId');
+    canvasUiState.patchSelection({ids: []}, 'selectedIds');
+    canvasUiState.patchSelection({image: {nodeId:'', index:-1}}, 'selectedImage');
     node.runPrompt = value;
     setPromptDraftForNode(node, value);
     node.__origin = 'agent_reply';
@@ -2908,9 +2909,9 @@ function saveCanvasAgentReplyAsTextNode(text=''){
     node.__origin = 'agent_reply_text';
     node.role = 'text';
     node.status = 'ready';
-    selectedId = node.id;
-    selectedIds = [node.id];
-    selectedImage = {nodeId:'', index:-1};
+    canvasUiState.patchSelection({primaryId: node.id}, 'selectedId');
+    canvasUiState.patchSelection({ids: [node.id]}, 'selectedIds');
+    canvasUiState.patchSelection({image: {nodeId:'', index:-1}}, 'selectedImage');
     render();
     scheduleSave();
     toast('已保存为文本节点');
@@ -2938,8 +2939,8 @@ CanvasRenderScheduler.configure({
     canvasThumbnailUrl: (u, e2) => canvasThumbnailUrl(u, e2),
     forceNodeIds: () => {
         const force = [];
-        if(selectedId) force.push(selectedId);
-        (selectedIds || []).forEach(id => force.push(id));
+        if(canvasUiState.selection.primaryId) force.push(canvasUiState.selection.primaryId);
+        (canvasUiState.selection.ids || []).forEach(id => force.push(id));
         if(dragState?.id) force.push(dragState.id);
         (dragState?.groupIds || []).forEach(id => force.push(id));
         if(resizeState?.id) force.push(resizeState.id);
@@ -2969,19 +2970,17 @@ CanvasComfyJobEngine.configure({
 // ===== 画布撤销记录（canvas-undo-controller.js）：主文件侧注入 =====
 CanvasUndoController.configure({
     getContext: () => ({
+        setSelection: (patch, reason) => canvasUiState.patchSelection(patch, reason),
         getNodes: () => nodes,
         setNodes: value => { nodes = value; },
         getCanvas: () => canvas,
-        getSelectedId: () => selectedId,
-        setSelectedId: value => { selectedId = value; },
-        getSelectedIds: () => selectedIds,
-        setSelectedIds: value => { selectedIds = value; },
-        getSelectedImage: () => selectedImage,
-        setSelectedImage: value => { selectedImage = value; },
+        getSelectedId: () => canvasUiState.selection.primaryId,
+        getSelectedIds: () => canvasUiState.selection.ids,
+        getSelectedImage: () => canvasUiState.selection.image,
         isSuppressed: () => undoSuppressed,
         setSuppressed: value => { undoSuppressed = Boolean(value); },
         nodeStore,
-        clearComposerSelection: () => { activeComposerSubject = null; lastComposerNodeId = ''; },
+        clearComposerSelection: () => { closeAllSmartPopovers(); canvasUiState.clearEditor(); },
         render: () => render(),
         scheduleSave: () => scheduleSave(),
         toast: (...args) => toast(...args),
@@ -2992,15 +2991,13 @@ CanvasUndoController.configure({
 // ===== 节点删除事务（canvas-node-deletion-controller.js）：一次性删改、单次渲染与保存 =====
 CanvasNodeDeletionController.configure({
     getContext: () => ({
+        setSelection: (patch, reason) => canvasUiState.patchSelection(patch, reason),
         getNodes: () => nodes,
         selectedNodeIds: () => selectedNodeIds(),
         getWorld: () => world,
-        getSelectedId: () => selectedId,
-        setSelectedId: value => { selectedId = value; },
-        getSelectedIds: () => selectedIds,
-        setSelectedIds: value => { selectedIds = value; },
-        getSelectedImage: () => selectedImage,
-        setSelectedImage: value => { selectedImage = value; },
+        getSelectedId: () => canvasUiState.selection.primaryId,
+        getSelectedIds: () => canvasUiState.selection.ids,
+        getSelectedImage: () => canvasUiState.selection.image,
         getCanvas: () => canvas,
         nodeStore,
         pushUndo: () => pushUndo(),
@@ -3021,13 +3018,11 @@ CanvasNodeDeletionController.configure({
 // ===== 节点选择状态（canvas-node-selection-controller.js）：主文件侧注入 =====
 CanvasNodeSelectionController.configure({
     getContext: () => ({
+        setSelection: (patch, reason) => canvasUiState.patchSelection(patch, reason),
         getNodes: () => nodes,
-        getSelectedId: () => selectedId,
-        setSelectedId: value => { selectedId = value; },
-        getSelectedIds: () => selectedIds,
-        setSelectedIds: value => { selectedIds = value; },
-        getSelectedImage: () => selectedImage,
-        setSelectedImage: value => { selectedImage = value; },
+        getSelectedId: () => canvasUiState.selection.primaryId,
+        getSelectedIds: () => canvasUiState.selection.ids,
+        getSelectedImage: () => canvasUiState.selection.image,
         setFrontNodeIds: value => { frontNodeIds = value; },
         getWorld: () => world,
         savePromptDraftForCurrent: () => savePromptDraftForCurrent(),
@@ -3041,12 +3036,10 @@ CanvasNodeSelectionController.configure({
 // ===== 节点复制与剪贴板（canvas-node-clipboard-controller.js）：主文件侧注入 =====
 CanvasNodeClipboardController.configure({
     getContext: () => ({
+        setSelection: (patch, reason) => canvasUiState.patchSelection(patch, reason),
         getNodes: () => nodes,
         getCanvas: () => canvas,
         selectedNodeIds: () => selectedNodeIds(),
-        setSelectedId: value => { selectedId = value; },
-        setSelectedIds: value => { selectedIds = value; },
-        setSelectedImage: value => { selectedImage = value; },
         isNodeSelected: id => isNodeSelected(id),
         isEditableTarget: target => isEditableTarget(target),
         getActiveElement: () => document.activeElement,
@@ -3132,9 +3125,9 @@ CanvasNodeActionController.configure({
         setSmartCascadeSilentSelection: value => { smartCascadeSilentSelection = value; },
         syncSelectionUi: () => syncSelectionUi(),
         updateComposer: () => updateComposer(),
-        setSelectedId: value => { selectedId = value; },
-        setSelectedIds: value => { selectedIds = value; },
-        setSelectedImage: value => { selectedImage = value; },
+        setSelectedId: value => { canvasUiState.patchSelection({primaryId: value}, 'selectedId'); },
+        setSelectedIds: value => { canvasUiState.patchSelection({ids: value}, 'selectedIds'); },
+        setSelectedImage: value => { canvasUiState.patchSelection({image: value}, 'selectedImage'); },
         bringNodesToFront: (...args) => bringNodesToFront(...args),
         setPendingGroupUploadPoint: value => { pendingGroupUploadPoint = value; },
         setUploadTargetId: value => { uploadTargetId = value; },
@@ -3170,8 +3163,8 @@ CanvasNodeContextMenuController.configure({
         // 菜单项「复制」= 放进内部剪贴板（之后 Ctrl+V 可粘），与「复制节点」= 立刻克隆一份不同
         const selected = selectedNodeIds();
         if(!selected.includes(nodeId)){
-            selectedId = nodeId;
-            selectedIds = [];
+            canvasUiState.patchSelection({primaryId: nodeId}, 'selectedId');
+            canvasUiState.patchSelection({ids: []}, 'selectedIds');
             syncSelectionUi();
         }
         return copySelectedNodes();
@@ -3204,9 +3197,9 @@ CanvasImageContextMenuController.configure({
     settingsForStorage:value => settingsForStorage(value),
     cloneSettings:value => cloneSmartSettings(value),
     connectInputNode:(...args) => connectInputNode(...args),
-    setSelectedId:value => {selectedId = value;},
-    setSelectedIds:value => {selectedIds = value;},
-    setSelectedImage:value => {selectedImage = value;},
+    setSelectedId:value => {canvasUiState.patchSelection({primaryId: value}, 'selectedId');},
+    setSelectedIds:value => {canvasUiState.patchSelection({ids: value}, 'selectedIds');},
+    setSelectedImage:value => {canvasUiState.patchSelection({image: value}, 'selectedImage');},
     isApiLikeEngine:engine => isApiLikeEngine(engine),
     setApiKind:value => {settings.apiKind = value;},
     syncSelectionUi:() => syncSelectionUi(),
@@ -3231,7 +3224,7 @@ CanvasImageNodeInteractions.configure({
         getNodes: () => nodes,
         bringNodesToFront: (...args) => bringNodesToFront(...args),
         hideRunTimerForNode: (...args) => hideRunTimerForNode(...args),
-        getSelectedIds: () => selectedIds,
+        getSelectedIds: () => canvasUiState.selection.ids,
         selectNodeFromPointer: (...args) => selectNodeFromPointer(...args),
         smartCascadeAnyRunning: () => smartCascadeAnyRunning(),
         setSmartCascadeSilentSelection: value => { smartCascadeSilentSelection = value; },
@@ -3240,9 +3233,9 @@ CanvasImageNodeInteractions.configure({
         clearImageClickTimer: () => clearImageClickTimer(),
         getSuppressImageClickUntil: () => suppressImageClickUntil,
         setSuppressImageClickUntil: value => { suppressImageClickUntil = value; },
-        setSelectedId: value => { selectedId = value; },
-        setSelectedIds: value => { selectedIds = value; },
-        setSelectedImage: value => { selectedImage = value; },
+        setSelectedId: value => { canvasUiState.patchSelection({primaryId: value}, 'selectedId'); },
+        setSelectedIds: value => { canvasUiState.patchSelection({ids: value}, 'selectedIds'); },
+        setSelectedImage: value => { canvasUiState.patchSelection({image: value}, 'selectedImage'); },
         openImagePreview: (...args) => openImagePreview(...args),
         openSmartImageContextMenu: (...args) => openSmartImageContextMenu(...args),
         setThumbDragState: value => { thumbDragState = value; },
@@ -3294,11 +3287,11 @@ CanvasNodeLayoutController.configure({
         getNodes: () => nodes,
         getWorld: () => world,
         selectedNodeIds: () => selectedNodeIds(),
-        getSelectedIds: () => selectedIds,
-        getSelectedId: () => selectedId,
-        setSelectedIds: value => { selectedIds = value; },
-        setSelectedId: value => { selectedId = value; },
-        setSelectedImage: value => { selectedImage = value; },
+        getSelectedIds: () => canvasUiState.selection.ids,
+        getSelectedId: () => canvasUiState.selection.primaryId,
+        setSelectedIds: value => { canvasUiState.patchSelection({ids: value}, 'selectedIds'); },
+        setSelectedId: value => { canvasUiState.patchSelection({primaryId: value}, 'selectedId'); },
+        setSelectedImage: value => { canvasUiState.patchSelection({image: value}, 'selectedImage'); },
         nodeRect: (...args) => nodeRect(...args),
         nodeScale: (...args) => nodeScale(...args),
         imageLayout: (...args) => imageLayout(...args),
@@ -3361,8 +3354,8 @@ CanvasArtifactView.configure({
     setActiveSectionId: (v) => { canvasAgentActiveSectionId = v; },
     getActiveItemId: () => canvasAgentActiveItemId,
     setActiveItemId: (v) => { canvasAgentActiveItemId = v; },
-    getSelectedId: () => selectedId,
-    setSelectedId: (v) => { selectedId = v; },
+    getSelectedId: () => canvasUiState.selection.primaryId,
+    setSelectedId: (v) => { canvasUiState.patchSelection({primaryId: v}, 'selectedId'); },
     getNodes: () => nodes,
     getRefs: () => canvasAgentRefsState,
     getMessages: () => canvasAgentMessagesState,
@@ -3488,9 +3481,9 @@ CanvasImageCrop.configure({
     getViewport: () => CanvasViewport.viewport,
     mediaKindForItem: (item) => mediaKindForItem(item),
     setSelection: (nodeId, imageIndex) => {
-        selectedId = nodeId;
-        selectedIds = [];
-        selectedImage = {nodeId, index:imageIndex};
+        canvasUiState.patchSelection({primaryId: nodeId}, 'selectedId');
+        canvasUiState.patchSelection({ids: []}, 'selectedIds');
+        canvasUiState.patchSelection({image: {nodeId, index:imageIndex}}, 'selectedImage');
     },
     syncSelectionUi: () => syncSelectionUi(),
     fileNameFromUrl: (url) => fileNameFromUrl(url),
@@ -3739,7 +3732,7 @@ CanvasPromptTemplateController.configure({
         promptTemplateLibrarySelect, promptInput, shell,
         promptTemplateItems: () => promptTemplateItems(),
         renderPromptTemplatePanel: (...a) => renderPromptTemplatePanel(...a),
-        setTemplateNodeSelection: id => { selectedId = id; selectedIds = []; selectedImage = {nodeId:'', index:-1}; },
+        setTemplateNodeSelection: id => { canvasUiState.patchSelection({primaryId: id}, 'selectedId'); canvasUiState.patchSelection({ids: []}, 'selectedIds'); canvasUiState.patchSelection({image: {nodeId:'', index:-1}}, 'selectedImage'); },
         render: () => render(),
         selectedNode: () => selectedNode(),
         activeComposerNode: () => activeComposerNode(),
@@ -3833,12 +3826,7 @@ function nodeRatioBox(node, s){
 // 不能停在 pending 占位框上（老王："跑图都是先选了比例的，那失败了也不应该改变尺寸"）。
 function restoreNodeBoxAfterFailure(node){
     if(!isSmartImageNode(node) || (node.images || []).length) return false;
-    const box = node.cardSize ? {w:node.cardSize.width, h:node.cardSize.height} : nodeRatioBox(node);
-    node.w = box.w;
-    node.h = box.h;
-    node.cardSize = {width:box.w, height:box.h};
-    node.cardSizing = node.cardSizing || 'default';
-    return true;
+    return CanvasGenerationLifecycle.restoreFrame(node, nodeRatioBox(node));
 }
 function mediaNodeDefaultScale(node){
     if((node?.images || []).length > 1 && !Number.isFinite(Number(node?.scale))) return MEDIA_GROUP_DEFAULT_SCALE;
@@ -3905,9 +3893,9 @@ function createCanvasGroupFromImages(images, options={}){
     const group = CanvasNodeLayoutController.createCanvasGroupForNodes(members, {addToStore:false});
     if(!group) return null;
     nodeStore.addNodes([...members, group], 'user_manual');
-    selectedIds = [];
-    selectedId = group.id;
-    selectedImage = {nodeId:'', index:-1};
+    canvasUiState.patchSelection({ids: []}, 'selectedIds');
+    canvasUiState.patchSelection({primaryId: group.id}, 'selectedId');
+    canvasUiState.patchSelection({image: {nodeId:'', index:-1}}, 'selectedImage');
     render();
     scheduleSave();
     return group;
@@ -4232,15 +4220,11 @@ function preserveNodeCardForRun(node, s=node?.runSettings || {}){
     if(!isSmartImageNode(node) || isCanvasGroupNode(node) || node.type === 'smart-speech') return;
     // Capture the displayed box before outputs/pending state change, for every engine.
     const layout = imageLayout(node.images || [], nodeScale(node), node);
-    node.cardSize = {width:layout.width, height:layout.height};
-    node.cardSizing = node.cardSizing || 'media';
-    node.generationFrameLocked = true;
-    node.w = layout.width;
-    node.h = layout.height;
+    CanvasGenerationLifecycle.lockFrame(node, layout);
 }
 function syncNodeCardToSpec(node){
     const s = node?.runSettings || {};
-    if(!isSmartImageNode(node) || node.running || node.pending || s.engine === 'comfy' || s.engine === 'blender') return false;
+    if(!isSmartImageNode(node) || node.running || node.apiRunning || node.pending || node.jimengPending || ['running','queued'].includes(node.comfyStatus) || s.engine === 'comfy' || s.engine === 'blender') return false;
     let size;
     if(s.apiKind === 'video'){
         const match = String(s.videoAspect || '16:9').match(/^(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)$/);
@@ -4492,8 +4476,8 @@ function tcLocateNode(nodeId){
     if(!nodeId) return false;
     const node = nodes.find(n => n.id === nodeId);
     if(!node) return false;
-    selectedIds = [];
-    selectedId = nodeId;
+    canvasUiState.patchSelection({ids: []}, 'selectedIds');
+    canvasUiState.patchSelection({primaryId: nodeId}, 'selectedId');
     const rect = nodeRect(node);
     centerViewportOnWorldPoint({x:rect.x + rect.width/2, y:rect.y + rect.height/2});
     syncSelectionUi();
@@ -4566,9 +4550,9 @@ function openImagePreviewFromCanvasDblClick(event){
     event.stopImmediatePropagation?.();
     clearImageClickTimer();
     suppressImageClickUntil = Date.now() + 260;
-    selectedId = nodeId;
-    selectedIds = [];
-    selectedImage = {nodeId, index:imageIndex};
+    canvasUiState.patchSelection({primaryId: nodeId}, 'selectedId');
+    canvasUiState.patchSelection({ids: []}, 'selectedIds');
+    canvasUiState.patchSelection({image: {nodeId, index:imageIndex}}, 'selectedImage');
     bringNodesToFront(nodeId);
     openImagePreview(nodeId, imageIndex);
     return true;
@@ -5421,8 +5405,8 @@ function imageSizeForRatio(img) {
 function sourceRatioImageForNode(node){
     const images = (node?.images || []).filter(img => img?.url && !isAudioMediaItem(img));
     if(!images.length) return null;
-    if(selectedImage.nodeId === node?.id && selectedImage.index >= 0 && imagesForNode(node)[selectedImage.index]){
-        const selected = imagesForNode(node)[selectedImage.index];
+    if(canvasUiState.selection.image.nodeId === node?.id && canvasUiState.selection.image.index >= 0 && imagesForNode(node)[canvasUiState.selection.image.index]){
+        const selected = imagesForNode(node)[canvasUiState.selection.image.index];
         if(imageSizeForRatio(selected)) return selected;
     }
     return images.find(img => imageSizeForRatio(img)) || images[0];
@@ -6237,8 +6221,7 @@ let canvasMetaPollTimer = null;
 if(globalThis.CanvasMergeSync){CanvasMergeSync.configure({
         beforeMerge: () => savePromptDraftForCurrent(),
         afterMerge: () => {
-            activeComposerSubject = null;
-            lastComposerNodeId = '';
+            closeAllSmartPopovers(); canvasUiState.clearEditor();
             const subject = selectedNode();
             if(isSmartImageNode(subject)) loadPromptDraft(subject);
         },
@@ -6333,11 +6316,12 @@ function deleteStylePreset(id){
 }
 function styleTokenHtml(preset){
     const filter = preset.kind === 'filter';
-    return `<span class="mention-style-token${filter ? ' mention-filter-token' : ''}" contenteditable="false" data-preset-kind="${filter ? 'filter' : 'style'}" data-style-id="${escapeAttr(preset.id)}" data-style-name="${escapeAttr(preset.name)}" data-style-text="${escapeAttr(preset.text || '')}"><i data-lucide="${filter ? 'aperture' : 'palette'}" class="style-token-icon"></i><span>@${filter ? '滤镜·' : ''}${escapeHtml(preset.name)}</span><button class="style-token-x" type="button" tabindex="-1" title="移除${filter ? '滤镜' : '风格'}"><i data-lucide="x"></i></button></span>`;
+    const shot = preset.kind === 'preset';
+    return `<span class="mention-style-token${filter ? ' mention-filter-token' : ''}" contenteditable="false" data-preset-kind="${filter ? 'filter' : shot ? 'preset' : 'style'}" data-style-id="${escapeAttr(preset.id)}" data-style-name="${escapeAttr(preset.name)}" data-style-text="${escapeAttr(preset.text || '')}"><i data-lucide="${filter ? 'aperture' : 'palette'}" class="style-token-icon"></i><span>@${filter ? '滤镜·' : shot ? '预设·' : ''}${escapeHtml(preset.name)}</span><button class="style-token-x" type="button" tabindex="-1" title="移除${filter ? '滤镜' : shot ? '预设' : '风格'}"><i data-lucide="x"></i></button></span>`;
 }
 function insertedStyleIds(){
     if(!promptInput) return [];
-    return [...promptInput.querySelectorAll('.mention-style-token:not(.mention-filter-token)')].map(t => t.dataset.styleId).filter(Boolean);
+    return [...promptInput.querySelectorAll('.mention-style-token:not(.mention-filter-token):not([data-preset-kind="preset"])')].map(t => t.dataset.styleId).filter(Boolean);
 }
 function selectedFilterPresetId(){
     return promptInput?.querySelector('.mention-filter-token')?.dataset.styleId || 'ft-none';
@@ -6358,7 +6342,7 @@ function applyFilterPreset(preset){
 }
 function insertStyleToken(preset){
     if(!preset || !promptInput) return;
-    if(insertedStyleIds().includes(preset.id)){ toast('该风格已添加'); return; }
+    if(promptInput.querySelector(`[data-style-id="${CSS.escape(preset.id)}"]`)){ toast('该预设已添加'); return; }
     promptInput.focus();
     const sel = window.getSelection();
     const range = sel && sel.rangeCount && promptInput.contains(sel.anchorNode) ? sel.getRangeAt(0) : null;
@@ -6394,7 +6378,7 @@ function bindStyleTokenRemoval(){
 }
 function removeStyleToken(token){
     const name = token?.dataset?.styleName || '';
-    const kind = token?.classList.contains('mention-filter-token') ? '滤镜' : '风格';
+    const kind = token?.dataset.presetKind === 'preset' ? '预设' : token?.classList.contains('mention-filter-token') ? '滤镜' : '风格';
     token?.remove?.();
     if(promptInput){
         promptInput.dispatchEvent(new Event('input', {bubbles:true}));
@@ -6460,8 +6444,9 @@ function renderComposerStyleControl(){
             <div class="style-popover-head">
                 <div class="smart-popover-title">风格库 <span class="style-library-count" data-style-count></span></div>
                 <button type="button" class="style-new-btn" data-style-new title="新建自定义风格"><i data-lucide="plus"></i><span>新建</span></button>
-            </div>
             <label class="style-library-search"><i data-lucide="search"></i><input type="search" data-style-search aria-label="搜索风格" placeholder="搜索风格、媒介或关键词" value="${escapeAttr(styleLibraryQuery)}"></label>
+                <button type="button" class="filter-preset-close" data-style-close aria-label="关闭风格库"><i data-lucide="x"></i></button>
+            </div>
             <div class="style-library-categories" aria-label="风格分类">
                 ${[{id:'all',name:'全部'},...CanvasStylePresets.categories,{id:'mine',name:'我的风格'}].map(category => `<button type="button" data-style-category="${category.id}" aria-pressed="${category.id === styleLibraryCategory}">${category.name}</button>`).join('')}
             </div>
@@ -6471,10 +6456,11 @@ function renderComposerStyleControl(){
                 <div class="style-library-empty" data-style-empty hidden></div>
             </div>
         </div>
-    </div>${filterPresetControlHtml()}`;
+    </div>${filterPresetControlHtml()}${shotPresetControlHtml()}`;
     bindComposerStyleControl();
     filterComposerStyleLibrary();
     bindFilterPresetControl();
+    bindShotPresetControl();
     refreshIcons();
 }
 function bindPresetPopoverScroll(pop){
@@ -6500,14 +6486,15 @@ function positionPresetPopover(ctrl,pop){
     const scale = rect.width / ctrl.offsetWidth || 1;
     // Keep wide libraries clear of the fixed left canvas toolbar as well as the viewport edge.
     const leftInset = document.querySelector('.canvas-tool-dock') ? 72 : 12;
-    const availableWidth = Math.max(200,(window.innerWidth - leftInset - 12)/scale);
+    const rightInset = document.querySelector('#canvasAgentToggle') ? 64 : 12;
+    const availableWidth = Math.max(200,(window.innerWidth - leftInset - rightInset)/scale);
     pop.style.maxWidth = `${availableWidth}px`;
     pop.style.minWidth = `${Math.min(360,availableWidth)}px`;
     ctrl.classList.toggle('style-pop-above',useAbove);
     pop.style.maxHeight = `${Math.max(180,Math.min(580,(useAbove ? above : below)/scale))}px`;
     pop.style.marginLeft = '0px';
     const bounds = pop.getBoundingClientRect();
-    const shift = bounds.right > window.innerWidth - 12 ? window.innerWidth - 12 - bounds.right : bounds.left < leftInset ? leftInset - bounds.left : 0;
+    const shift = bounds.right > window.innerWidth - rightInset ? window.innerWidth - rightInset - bounds.right : bounds.left < leftInset ? leftInset - bounds.left : 0;
     if(shift) pop.style.marginLeft = `${shift/scale}px`;
 }
 function filterPresetControlHtml(){
@@ -6517,8 +6504,7 @@ function filterPresetControlHtml(){
     return `<div class="smart-control filter-mode-control">
         <button class="smart-pill${active !== 'ft-none' ? ' has-value' : ''}" type="button" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}" aria-expanded="false"><i data-lucide="aperture"></i><span>${escapeHtml(label)}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
         <div class="smart-popover style-popover filter-popover">
-            <div class="style-popover-head"><div class="smart-popover-title">滤镜预设</div><button type="button" class="filter-preset-close" data-filter-close aria-label="关闭滤镜预设"><i data-lucide="x"></i></button></div>
-            <label class="style-library-search"><i data-lucide="search"></i><input type="search" data-filter-search aria-label="搜索滤镜" placeholder="搜索滤镜预设" value="${escapeAttr(filterLibraryQuery)}"></label>
+            <div class="style-popover-head"><div class="smart-popover-title">滤镜预设</div><label class="style-library-search"><i data-lucide="search"></i><input type="search" data-filter-search aria-label="搜索滤镜" placeholder="搜索滤镜预设" value="${escapeAttr(filterLibraryQuery)}"></label><button type="button" class="filter-preset-close" data-filter-close aria-label="关闭滤镜预设"><i data-lucide="x"></i></button></div>
             <div class="style-library-results" data-preset-scroll><div class="style-tile-grid filter-preset-grid">
                 ${CanvasFilterPresets.presets.map(preset => `<div class="style-tile filter-preset-tile${preset.id === active ? ' active' : ''}" data-filter-option="${preset.id}" role="button" tabindex="0" aria-label="${preset.name}" aria-pressed="${preset.id === active}" title="${escapeAttr(preset.text || '移除当前滤镜')}"><div class="style-tile-img" style="background-image:url('${preset.image}');filter:${preset.previewFilter}"></div>${preset.id === active ? '<span class="style-tile-check"><i data-lucide="check"></i></span>' : ''}<div class="style-tile-name">${preset.name}</div></div>`).join('')}
             </div><div class="style-library-empty" data-filter-empty hidden>没有匹配的滤镜</div></div>
@@ -6632,6 +6618,7 @@ function bindComposerStyleControl(){
     });
     pill.addEventListener('mouseleave', hideStyleTip);
     }
+    ctrl?.querySelector('[data-style-close]')?.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();ctrl.classList.remove('pinned');pill?.setAttribute('aria-expanded','false');if(ctrl.contains(document.activeElement))document.activeElement.blur();});
     bindPresetPopoverScroll(ctrl?.querySelector('.style-popover'));
     ctrl?.querySelector('[data-style-search]')?.addEventListener('input',event => {
         styleLibraryQuery = event.target.value;
@@ -6641,6 +6628,7 @@ function bindComposerStyleControl(){
         if(event.key !== 'Escape') return;
         event.preventDefault(); event.stopPropagation();
         ctrl.classList.remove('pinned');
+        pill?.setAttribute('aria-expanded','false');
         if(ctrl.contains(document.activeElement)) document.activeElement.blur();
     });
     ctrl?.querySelectorAll('[data-style-category]').forEach(button => button.addEventListener('click',event => {
@@ -6739,6 +6727,7 @@ function setStylePanelTab(tab){
     const filterPane = document.getElementById('stylePanelFilterPane');
     if(stylePane) stylePane.style.display = stylePanelTab === 'style' ? 'flex' : 'none';
     if(filterPane) filterPane.style.display = stylePanelTab === 'filter' ? 'flex' : 'none';
+    stylePanel.querySelectorAll('[data-panel-search-kind]').forEach(label=>{label.hidden=label.dataset.panelSearchKind!==stylePanelTab;});
 }
 function stylePanelTileHtml(preset, activeIds){
     const on = activeIds.includes(preset.id);
@@ -7429,7 +7418,7 @@ function createSpeechNode(point){
         title:'语音生成', images:[], speechProvider:CanvasSpeech.providers()[0]?.id || '', speechModel:'mimo-v2.5-tts-voicedesign',
         speechStyle:'', speechText:'', speechVoice:'mimo_default', created_at:Date.now(), status:'ready', role:'media', __origin:'user_manual'};
     nodeStore.addNode(node, 'user_manual');
-    selectedId = node.id;
+    canvasUiState.patchSelection({primaryId: node.id}, 'selectedId');
     render();
     scheduleSave();
     return node;
@@ -7453,7 +7442,7 @@ function createNode(x, y, images=[], options={}){
         node.cardSizing = 'default';
     }
     nodeStore.addNode(node, 'user_manual');
-    if(options.select !== false) selectedId = node.id;
+    if(options.select !== false) canvasUiState.patchSelection({primaryId: node.id}, 'selectedId');
     render();
     scheduleSave();
     return node;
@@ -7484,7 +7473,7 @@ llmEnabled:Boolean(options.llmEnabled),
         __origin:'user_manual'
     };
     nodeStore.addNode(node, 'user_manual');
-    if(options.select !== false) selectedId = node.id;
+    if(options.select !== false) canvasUiState.patchSelection({primaryId: node.id}, 'selectedId');
     render();
     scheduleSave();
 return node;
@@ -7496,7 +7485,7 @@ function createLoopNode(x, y, options={}){
     if(!options.skipUndo) pushUndo();
     const node = {id:uid('loop'), type:'smart-loop', x, y, w:340, h:168, title:'Loop', count:1, mode:'serial', showPrompt:false, imageInput:false, loopStart:1, imageBatchSize:1, variablePrompt:'', created_at:Date.now(), status:'ready', role:'text', __origin:'user_manual'};
     nodeStore.addNode(node, 'user_manual');
-    if(options.select !== false) selectedId = node.id;
+    if(options.select !== false) canvasUiState.patchSelection({primaryId: node.id}, 'selectedId');
     render();
     scheduleSave();
     return node;
@@ -7866,8 +7855,8 @@ async function beginSmartImageRename(nodeId, imageIndex, labelEl){
         nodes.forEach(n => (n.images || []).forEach(img => {
             if(img && img.url === oldUrl) Object.assign(img, updated, {name:updated.name || targetName});
         }));
-        selectedId = nodeId;
-        selectedImage = {nodeId, index:imageIndex};
+        canvasUiState.patchSelection({primaryId: nodeId}, 'selectedId');
+        canvasUiState.patchSelection({image: {nodeId, index:imageIndex}}, 'selectedImage');
         render();
         scheduleSave();
     };
@@ -8092,14 +8081,14 @@ function smartLogPreviewNode(url, kind='image'){
         return;
     }
     const node = {id:'__smart_log_preview__', type:'smart-image', images:[{url, name:'log-preview', kind}], title:kind === 'video' ? 'Video' : 'Image', __preview:true};
-    const prevSelectedId = selectedId;
-    const prevSelectedImage = {...selectedImage};
+    const prevSelectedId = canvasUiState.selection.primaryId;
+    const prevSelectedImage = {...canvasUiState.selection.image};
     nodeStore.addNode(node);
     try { openImageEditor(node.id, 0); }
     finally {
         nodeStore.removeNode(node.id);
-        selectedId = prevSelectedId;
-        selectedImage = prevSelectedImage;
+        canvasUiState.patchSelection({primaryId: prevSelectedId}, 'selectedId');
+        canvasUiState.patchSelection({image: prevSelectedImage}, 'selectedImage');
     }
 }
 // 2026-09-23：日志面板原本只在点开那一刻渲染一次，之后新生成的日志永远不出现。
@@ -8261,17 +8250,17 @@ if(globalThis.CanvasNodeBodyHtml){CanvasNodeBodyHtml.configure({
         smartNodeInputThumbsHtml: (...a) => smartNodeInputThumbsHtml(...a),
         thumbMediaHtml: (...a) => thumbMediaHtml(...a),
         trf: (...a) => trf(...a),
-        selectedId: () => selectedId,
-        selectedIds: () => selectedIds,
-        selectedImage: () => selectedImage,
+        selectedId: () => canvasUiState.selection.primaryId,
+        selectedIds: () => canvasUiState.selection.ids,
+        selectedImage: () => canvasUiState.selection.image,
         block: () => block,
         canvas: () => canvas,
         deleteImage: () => deleteImage,
         escapeAttr: () => escapeAttr,
         imageForDisplay: () => imageForDisplay,
-        setSelectedId: v => { selectedId = v; },
-        setSelectedIds: v => { selectedIds = v; },
-        setSelectedImage: v => { selectedImage = v; }
+        setSelectedId: v => { canvasUiState.patchSelection({primaryId: v}, 'selectedId'); },
+        setSelectedIds: v => { canvasUiState.patchSelection({ids: v}, 'selectedIds'); },
+        setSelectedImage: v => { canvasUiState.patchSelection({image: v}, 'selectedImage'); }
 });}
 function smartLoopEditorText(){return CanvasNodeBodyHtml.smartLoopEditorText.apply(null, arguments);}
 function insertSmartLoopToken(){return CanvasNodeBodyHtml.insertSmartLoopToken.apply(null, arguments);}
@@ -8551,11 +8540,8 @@ const title = isTable ? '镜头表' : node.type === 'smart-prompt' ? 'Prompt' : 
         const isEmpty = isImageNode && imgs.length === 0 && !node.pending && !isQueued && !isJimengPending && !comfyBusy;
         const isHistory = isHistoryGroupNode(node);
         const isGroup = isImageNode && imgs.length > 1;
-        // ⚠️ isGroup 会给节点加 `.group-node` 类，而这个类名同时被「空壳组框」使用
-        // （node.type==='smart-group'，nodeLayerZ 对它返回 0）。所以凡是针对
-        // `.group-node` 写死 z-index 的 CSS 都会误伤这里的多图节点（内部真的装着
-        // .thumb-item > img）——2026-10-07「连线在组里盖住图片」就是这个原因，已去掉
-        // `.image-node.group-node{z-index:0 !important}`。层级一律交给 nodeLayerZ()。
+        // Multi-image cards and canvas group frames have distinct surfaces.
+        // nodeLayerZ owns stacking; component CSS must not override it.
         const isPending = ((node.pending || node.status === 'pending' || isQueued || isJimengPending || comfyBusy) && imgs.length === 0);
         const isBlenderPreview = node.runSettings?.engine === 'blender' || node.runSettings?.provider_id === 'blender' || node.title === '3D预演';
         const body = nodeBodyHtml(node, layout);
@@ -8565,7 +8551,7 @@ const title = isTable ? '镜头表' : node.type === 'smart-prompt' ? 'Prompt' : 
         const comfyNodeNote = node.comfyError
             ? `<div class="comfy-node-note error">${escapeHtml(`失败：${node.comfyError}`)}</div>`
             : node.comfyNotice ? `<div class="comfy-node-note">${escapeHtml(node.comfyNotice)}</div>` : '';
-const html = `<div class="image-node ${node.cardSize ? 'fixed-media-card' : ''} ${isEmpty ? 'empty-node' : ''} ${node.type === 'smart-speech' ? 'speech-smart-node' : ''} ${isGroup ? 'group-node' : ''} ${node.groupLayout?.mode === 'preserve' ? 'preserved-group-node' : ''} ${isCanvasGroupNode(node) ? 'canvas-group-node' : ''} ${isHistory ? 'history-group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isTable ? 'table-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isBlenderPreview ? 'blender-preview-node' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''} ${node.comfyStatus === 'running' ? 'comfy-running' : ''} ${node.comfyStatus === 'queued' ? 'comfy-queued' : ''} node-status-${escapeHtml(node.status || 'ready')} node-role-${escapeHtml(node.role || 'media')}" data-id="${escapeHtml(node.id)}" data-status="${escapeHtml(node.status || 'ready')}" data-role="${escapeHtml(node.role || 'media')}" data-comfy-status="${escapeHtml(node.comfyStatus || '')}" ${(node.comfyStatus === 'queued' && Number(node.comfyQueuePosition ?? -1) > 0) ? `data-comfy-queue="${Number(node.comfyQueuePosition)}"` : ''} style="left:${node.x || 0}px;top:${node.y || 0}px;width:${layout.width}px;height:${layout.height}px;z-index:${nodeLayerZ(node)}">
+const html = `<div class="image-node ${node.cardSize ? 'fixed-media-card' : ''} ${isEmpty ? 'empty-node' : ''} ${node.type === 'smart-speech' ? 'speech-smart-node' : ''} ${isGroup ? 'multi-image-node' : ''} ${node.groupLayout?.mode === 'preserve' ? 'preserved-group-node' : ''} ${isCanvasGroupNode(node) ? 'canvas-group-node' : ''} ${isHistory ? 'history-group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isTable ? 'table-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isBlenderPreview ? 'blender-preview-node' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''} ${node.comfyStatus === 'running' ? 'comfy-running' : ''} ${node.comfyStatus === 'queued' ? 'comfy-queued' : ''} node-status-${escapeHtml(node.status || 'ready')} node-role-${escapeHtml(node.role || 'media')}" data-id="${escapeHtml(node.id)}" data-status="${escapeHtml(node.status || 'ready')}" data-role="${escapeHtml(node.role || 'media')}" data-comfy-status="${escapeHtml(node.comfyStatus || '')}" ${(node.comfyStatus === 'queued' && Number(node.comfyQueuePosition ?? -1) > 0) ? `data-comfy-queue="${Number(node.comfyQueuePosition)}"` : ''} style="left:${node.x || 0}px;top:${node.y || 0}px;width:${layout.width}px;height:${layout.height}px;z-index:${nodeLayerZ(node)}">
             <div class="node-head"><div class="node-title">${node.canvasSetEnabled === true ? `<span class="node-set-badge" title="${escapeAttr(tr('smart.setBadgeTip'))}">SET</span>` : ''}${title}</div><div class="node-actions">${deleteBtn}</div></div>
             ${isCanvasGroupNode(node) ? `<div class="canvas-group-header"><span class="canvas-group-title-display" title="双击重命名">${escapeHtml(node.title || '未命名组')}</span><button class="canvas-group-delete node-delete" type="button" title="删除组"><i data-lucide="trash-2"></i></button></div>` : ''}
             ${!isCanvasGroupNode(node) ? (!isEmpty ? `<div class="floating-node-set">${canvasNodeSetToggleHtml(node)}</div>${((node.type === 'smart-image' || node.type === 'smart-video' || node.type === 'smart-audio' || !node.type) && hasOut) ? '<button class="node-move-lines" type="button" title="把线移到新素材（点此节点，再点目标素材，旧素材所有连线整体平移，图片与节点均不动）"><i data-lucide="link"></i></button>' : ''}${(node.type === 'smart-image' || node.type === 'smart-video' || node.type === 'smart-audio' || !node.type) ? '<button class="upload-node-btn" type="button" data-upload-action="files"><i data-lucide="upload"></i><span>上传</span></button>' : ''}<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>` : `<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>`) : ''}
@@ -8655,7 +8641,7 @@ const html = `<div class="image-node ${node.cardSize ? 'fixed-media-card' : ''} 
         const isPending = (node.pending || isQueued) && imgs.length === 0;
         const body = nodeBodyHtml(node, layout);
         const deleteBtn = `<button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button>`;
-        return `<div class="image-node ${node.cardSize ? 'fixed-media-card' : ''} ${isEmpty ? 'empty-node' : ''} ${isGroup ? 'group-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''}" data-id="${escapeHtml(node.id)}" style="left:${node.x || 0}px;top:${node.y || 0}px;width:${layout.width}px;height:${layout.height}px;z-index:${nodeLayerZ(node)}">
+        return `<div class="image-node ${node.cardSize ? 'fixed-media-card' : ''} ${isEmpty ? 'empty-node' : ''} ${isGroup ? 'multi-image-node' : ''} ${isPrompt ? 'prompt-smart-node' : ''} ${isLoop ? 'loop-smart-node' : ''} ${isNodeSelected(node.id) ? 'selected' : ''} ${(dragState?.groupIds?.includes(node.id) || dragState?.id === node.id) ? 'dragging' : ''} ${node.running ? 'node-running' : ''} ${isPending ? 'node-pending' : ''}" data-id="${escapeHtml(node.id)}" style="left:${node.x || 0}px;top:${node.y || 0}px;width:${layout.width}px;height:${layout.height}px;z-index:${nodeLayerZ(node)}">
             <div class="node-head"><div class="node-title">${title}</div><div class="node-actions">${deleteBtn}</div></div>
             ${!isEmpty ? `<div class="floating-node-actions"><button class="mini-x node-delete" type="button" title="${escapeHtml(tr('smart.deleteNode'))}"><i data-lucide="trash-2"></i></button></div>` : ''}
             ${runTimePillHtml(node)}
@@ -9468,8 +9454,8 @@ function deleteImage(id, imageIndex){
     pushUndo();
     node.images = (node.images || []).filter((_, index) => index !== imageIndex);
     if(node.images.length <= 1) node.title = 'Image';
-    if(selectedImage.nodeId === id) selectedImage = {nodeId:id, index:Math.min(selectedImage.index, node.images.length - 1)};
-    if(selectedImage.index < 0) selectedImage = {nodeId:'', index:-1};
+    if(canvasUiState.selection.image.nodeId === id) canvasUiState.patchSelection({image: {nodeId:id, index:Math.min(canvasUiState.selection.image.index, node.images.length - 1)}}, 'selectedImage');
+    if(canvasUiState.selection.image.index < 0) canvasUiState.patchSelection({image: {nodeId:'', index:-1}}, 'selectedImage');
     render();
     scheduleSave();
 }
@@ -9881,8 +9867,8 @@ async function exportPanoramaFrame(){
             : viewportCenter();
         pushUndo();
         const newNode = createImageNodeAt(point, [frame], {select:true, skipUndo:true});
-        selectedIds = [];
-        selectedImage = {nodeId:newNode.id, index:0};
+        canvasUiState.patchSelection({ids: []}, 'selectedIds');
+        canvasUiState.patchSelection({image: {nodeId:newNode.id, index:0}}, 'selectedImage');
         render();
         scheduleSave();
         toast(tr('smart.panoramaExportDone'));
@@ -10022,8 +10008,8 @@ async function exportVideoFrame(which='current'){
             : viewportCenter();
         pushUndo();
         const newNode = createImageNodeAt(point, [frame], {select:true, skipUndo:true});
-        selectedIds = [];
-        selectedImage = {nodeId:newNode.id, index:0};
+        canvasUiState.patchSelection({ids: []}, 'selectedIds');
+        canvasUiState.patchSelection({image: {nodeId:newNode.id, index:0}}, 'selectedImage');
         render();
         scheduleSave();
         toast('已导出到画布');
@@ -10199,8 +10185,8 @@ CanvasImageEditorLifecycleController.configure({
     getModal: () => imageEditModal,
     nextLoadToken: () => ++previewLoadToken,
     getLoadToken: () => previewLoadToken,
-    setSelectedId: value => { selectedId = value; },
-    setSelectedImage: value => { selectedImage = value; },
+    setSelectedId: value => { canvasUiState.patchSelection({primaryId: value}, 'selectedId'); },
+    setSelectedImage: value => { canvasUiState.patchSelection({image: value}, 'selectedImage'); },
     setCropState: value => { cropState = value; },
     resetGridState: () => CanvasImageGridSplitController.reset(),
     resetImageViewState: () => { CanvasImageEditViewportController.reset(); imageEditModeTouched = false; },
@@ -10293,7 +10279,7 @@ function replaceEditedImage(file){
     if(!node || !file) return false;
     node.images[index] = {...(node.images[index] || {}), url:file.url, name:file.name, kind:file.kind || mediaKindForItem(file), natural_w:0, natural_h:0};
     if((node.images || []).length === 1){ delete node.w; delete node.h; }
-    selectedId = node.id; selectedImage = {nodeId:node.id, index};
+    canvasUiState.patchSelection({primaryId: node.id}, 'selectedId'); canvasUiState.patchSelection({image: {nodeId:node.id, index}}, 'selectedImage');
     return true;
 }
 function applyOutpaintSizeToSmartParams(width, height){
@@ -10328,8 +10314,8 @@ async function applyImageCrop(){
         const layout = imageLayout(node.images || [], nodeScale(node), node);
         closeImageEditor();
         const newNode = createNode(Number(node.x || 0) + Number(layout.width || 260) + 36, Number(node.y || 0), [cropped]);
-        selectedIds = [];
-        selectedImage = {nodeId:newNode.id, index:0};
+        canvasUiState.patchSelection({ids: []}, 'selectedIds');
+        canvasUiState.patchSelection({image: {nodeId:newNode.id, index:0}}, 'selectedImage');
         render();
         scheduleSave();
     }
@@ -10384,8 +10370,8 @@ async function applyImageMirror(nodeId, imageIndex, dir){
         const mirrored = {...file, kind:'image', natural_w:w, natural_h:h};
         const layout = imageLayout([mirrored], nodeScale(node), node);
         const newNode = createNode(Number(node.x || 0) + Number(layout.width || 260) + 36, Number(node.y || 0), [mirrored]);
-        selectedIds = [];
-        selectedImage = {nodeId:newNode.id, index:0};
+        canvasUiState.patchSelection({ids: []}, 'selectedIds');
+        canvasUiState.patchSelection({image: {nodeId:newNode.id, index:0}}, 'selectedImage');
         render();
         scheduleSave();
         toast('已生成镜像图');
@@ -10434,7 +10420,7 @@ async function applyImageMask(){
     const file = blob ? await uploadCroppedBlob(blob, `${base}_mask.png`) : null;
     if(file){
         node.images.push({url:file.url, name:file.name, role:'mask'});
-        selectedId = node.id; selectedImage = {nodeId:node.id, index:node.images.length - 1};
+        canvasUiState.patchSelection({primaryId: node.id}, 'selectedId'); canvasUiState.patchSelection({image: {nodeId:node.id, index:node.images.length - 1}}, 'selectedImage');
         closeImageEditor(); render(); scheduleSave();
     }
 }
@@ -10512,8 +10498,6 @@ function applyImageEdit(){
     if(imageEditMode === 'grid') return applyImageGridSplit();
     return applyImageCrop();
 }
-let lastComposerNodeId = '';
-let activeComposerSubject = null;
 function currentComposerSubject(){
     return selectedNode();
 }
@@ -10581,8 +10565,25 @@ function positionComposerForNode(node){
     composer.style.width = `${cardW}px`;
     const nodeCenterX = viewport.x + (rect.x + rect.width / 2) * scale;
     const nodeBottomScreen = viewport.y + (rect.y + rect.height) * scale;
-    composer.style.left = `${(nodeCenterX - cardW / 2 - viewport.x) / scale}px`;
-    composer.style.top = `${(nodeBottomScreen + 14 - viewport.y) / scale}px`;
+    // The editor has fixed screen size even when the node is zoomed. Clamp
+    // before converting back to world coordinates, leaving room for the dock.
+    const leftInset = document.querySelector('.canvas-tool-dock') ? 72 : 12;
+    const maxLeft = Math.max(12, shell.clientWidth - cardW - 12);
+    const left = Math.max(Math.min(leftInset, maxLeft), Math.min(nodeCenterX - cardW / 2, maxLeft));
+    let maxTop = shell.clientHeight - composer.offsetHeight - 64;
+    if(minimap?.offsetHeight){
+        const shellBox = shell.getBoundingClientRect(), mapBox = minimap.getBoundingClientRect();
+        const uiScale = shellBox.width / Math.max(shell.clientWidth, 1);
+        const mapLeft = (mapBox.left - shellBox.left) / uiScale;
+        const mapRight = (mapBox.right - shellBox.left) / uiScale;
+        if(left < mapRight && left + cardW > mapLeft){
+            maxTop = Math.min(maxTop, (mapBox.top - shellBox.top) / uiScale - composer.offsetHeight - 12);
+        }
+    }
+    maxTop = Math.max(12, maxTop);
+    const top = Math.max(12, Math.min(nodeBottomScreen + 14, maxTop));
+    composer.style.left = `${(left - viewport.x) / scale}px`;
+    composer.style.top = `${(top - viewport.y) / scale}px`;
 }
 function isAudioOnlyNode(node){
     const imgs = node?.images || [];
@@ -10590,18 +10591,16 @@ function isAudioOnlyNode(node){
 }
 function updateComposer(){
     const node = selectedNode();
-    if(smartCascadeSilentSelection && !activeComposerSubject){
+    if(smartCascadeSilentSelection && !canvasUiState.editor.subject){
         composer.classList.remove('open');
         if(cascadeRunBtn) cascadeRunBtn.style.display = 'none';
-        activeComposerSubject = null;
-        lastComposerNodeId = '';
+        closeAllSmartPopovers(); canvasUiState.clearEditor();
         return;
     }
     if(node?.type === 'smart-speech' || isAudioOnlyNode(node)){
         savePromptDraftForCurrent();
         composer.classList.remove('open');
-        activeComposerSubject = null;
-        lastComposerNodeId = '';
+        closeAllSmartPopovers(); canvasUiState.clearEditor();
         if(cascadeRunBtn) cascadeRunBtn.style.display = 'none';
         setPromptInputLocked(false);
         return;
@@ -10611,8 +10610,7 @@ function updateComposer(){
         if(cascadeRunBtn) cascadeRunBtn.style.display = 'none';
         savePromptDraftForCurrent();
         composer.classList.remove('open');
-        activeComposerSubject = null;
-        lastComposerNodeId = '';
+        closeAllSmartPopovers(); canvasUiState.clearEditor();
         setPromptInputLocked(false);
         if(!node) setPromptText('');
         return;
@@ -10620,10 +10618,9 @@ function updateComposer(){
     // composer 只绑定节点本身：图片只是素材/结果，不携带提示词或参数状态。
     const subject = node;
     const composerKey = `${node.id}:node`;
-    const switchedNode = lastComposerNodeId !== composerKey;
-    if(switchedNode) savePromptDraftForCurrent();
-    lastComposerNodeId = composerKey;
-    activeComposerSubject = subject;
+    const switchedNode = canvasUiState.editor.key !== composerKey;
+    if(switchedNode){ savePromptDraftForCurrent(); closeAllSmartPopovers(); }
+    canvasUiState.bindEditor(subject, composerKey);
     const hasPromptInput = promptInputNodesFor(node).length > 0;
     // 每次选中都从节点刷新设置（确保 3D预演 节点引擎生效）
     settings = smartSettingsForNode(subject);
@@ -10767,7 +10764,7 @@ CanvasImageNodeMediaController.configure({
     defaultImageNodeScale: MEDIA_NODE_DEFAULT_SCALE,
     defaultGroupNodeScale: MEDIA_GROUP_DEFAULT_SCALE,
     previousGroupNodeScale: MEDIA_GROUP_PREVIOUS_DEFAULT_SCALE,
-    setSelectedId: value => { selectedId = value; },
+    setSelectedId: value => { canvasUiState.patchSelection({primaryId: value}, 'selectedId'); },
     render: () => render(),
     scheduleSave: () => scheduleSave()
 });
@@ -11705,8 +11702,8 @@ function createPendingOutputFromSource(sourceNode, expectedCount, meta, options=
     if(options.connectSource === false) addConnection(sourceNode.id, output.id, 'flow');
     else connectInputNode(sourceNode.id, output.id);
     attachRunMeta(output, options.stripInputMeta ? stripRunInputMeta(meta) : meta);
-    selectedId = sourceNode.id;
-    selectedImage = {nodeId:'', index:-1};
+    canvasUiState.patchSelection({primaryId: sourceNode.id}, 'selectedId');
+    canvasUiState.patchSelection({image: {nodeId:'', index:-1}}, 'selectedImage');
     return output;
 }
 function createParallelLoopOutputNode(templateNode, sourceNode, roundIndex, roundOffset=0){
@@ -11837,6 +11834,8 @@ function extractCurrentImagesToSource(node, meta=null){
 }
 async function finalizePendingNode(pendingNode, urls, meta, kind='image'){
     if(!pendingNode) return;
+    const attempt = meta?.generationAttemptId || pendingNode.generationAttemptId;
+    if(attempt && !CanvasGenerationLifecycle.isCurrent(pendingNode, attempt)) return false;
     preserveNodeCardForRun(pendingNode);
     urls = CanvasGenerationResultModel.uniqueMediaItems(urls);
     const ext = kind === 'video' ? 'mp4' : kind === 'audio' ? 'mp3' : kind === 'text' ? 'txt' : 'png';
@@ -11850,6 +11849,7 @@ async function finalizePendingNode(pendingNode, urls, meta, kind='image'){
             const name = (typeof item === 'object' && item.name) || `output-${i + 1}.${ext}`;
             return {url, name, kind:itemKind, generatedResult:true};
         }).filter(img => img.url);
+    if(attempt && !CanvasGenerationLifecycle.isCurrent(pendingNode, attempt)) return false;
     pendingNode.images = imgs;
     pendingNode.pending = 0;
     pendingNode.runFinishedAt = nowMs();
@@ -11868,11 +11868,14 @@ async function finalizePendingNode(pendingNode, urls, meta, kind='image'){
     // 重跑产物按新落盘名（MM-DD-NN）命名，历史版本进 history/ 分组。不再沿用第一次生图名。
     delete pendingNode.retainOutputNames;
     delete pendingNode._retainOutputNames;
-    selectedId = pendingNode._selectAfterRunId || pendingNode.id;
+    // Completing A must not take the editor away from B. Explicit extraction
+    // destinations still apply while A itself remains selected.
+    const ownsSelection = canvasUiState.selection.primaryId === pendingNode.id;
+    if(ownsSelection) canvasUiState.patchSelection({primaryId: pendingNode._selectAfterRunId || pendingNode.id}, 'generation-result');
     delete pendingNode._runMetaTargetId;
     delete pendingNode._selectAfterRunId;
-    if(activeComposerSubject?.id && selectedId === activeComposerSubject.id) lastComposerNodeId = `${selectedId}:node`;
-    selectedImage = {nodeId:'', index:-1};
+    if(canvasUiState.editor.subject?.id && canvasUiState.selection.primaryId === canvasUiState.editor.subject.id) canvasUiState.patchEditor({key: `${canvasUiState.selection.primaryId}:node`}, 'lastComposerNodeId');
+    if(ownsSelection) canvasUiState.patchSelection({image: {nodeId:'', index:-1}}, 'generation-result');
 }
 function restoreFromExtraction(node, extracted){
     if(!node || !extracted) return;
@@ -12354,7 +12357,7 @@ function replaceOutputsToNodeWithHistory(node, additions, kind='image', meta=nul
     const afterRight = (Number(node.x) || 0) + nodeRect(node).width;
     const skipShift = options.skipShift || Boolean(smartLoopContext?.nodeId);
     if(!skipShift) pushRightSideNodes(node, afterRight - beforeRight + 36);
-    selectedImage = {nodeId:'', index:-1};
+    canvasUiState.patchSelection({image: {nodeId:'', index:-1}}, 'selectedImage');
     return next;
 }
 function appendOutputsToNode(node, additions, kind='image', options={}){
@@ -12827,11 +12830,11 @@ if(globalThis.CanvasSmartCascadeRunner){CanvasSmartCascadeRunner.configure({
         trf: (...a) => trf(...a),
         updateComposer: (...a) => updateComposer(...a),
         upstreamLoopPromptNodesFor: (...a) => upstreamLoopPromptNodesFor(...a),
-        activeComposerSubject: () => activeComposerSubject,
-        lastComposerNodeId: () => lastComposerNodeId,
-        selectedId: () => selectedId,
-        selectedIds: () => selectedIds,
-        selectedImage: () => selectedImage,
+        activeComposerSubject: () => canvasUiState.editor.subject,
+        lastComposerNodeId: () => canvasUiState.editor.key,
+        selectedId: () => canvasUiState.selection.primaryId,
+        selectedIds: () => canvasUiState.selection.ids,
+        selectedImage: () => canvasUiState.selection.image,
         settings: () => settings,
         smartCascadeRunPath: () => smartCascadeRunPath,
         smartCascadeSilentSelection: () => smartCascadeSilentSelection,
@@ -12841,11 +12844,11 @@ if(globalThis.CanvasSmartCascadeRunner){CanvasSmartCascadeRunner.configure({
         promptInput: () => promptInput,
         runBtn: () => runBtn,
         smartCascadeRuns: () => smartCascadeRuns,
-        setActiveComposerSubject: v => { activeComposerSubject = v; },
-        setLastComposerNodeId: v => { lastComposerNodeId = v; },
-        setSelectedId: v => { selectedId = v; },
-        setSelectedIds: v => { selectedIds = v; },
-        setSelectedImage: v => { selectedImage = v; },
+        setActiveComposerSubject: v => { canvasUiState.patchEditor({subject: v}, 'activeComposerSubject'); },
+        setLastComposerNodeId: v => { canvasUiState.patchEditor({key: v}, 'lastComposerNodeId'); },
+        setSelectedId: v => { canvasUiState.patchSelection({primaryId: v}, 'selectedId'); },
+        setSelectedIds: v => { canvasUiState.patchSelection({ids: v}, 'selectedIds'); },
+        setSelectedImage: v => { canvasUiState.patchSelection({image: v}, 'selectedImage'); },
         setSettings: v => { settings = v; },
         setSmartCascadeRunPath: v => { smartCascadeRunPath = v; },
         setSmartCascadeSilentSelection: v => { smartCascadeSilentSelection = v; },
@@ -12857,13 +12860,14 @@ function runSmartCascadeFromLoop(loopId){
     if(!loop){ toast('没有找到循环节点'); return; }
     const tail = cascadeTailForLoop(loop.id);
     if(!tail){ toast('请把循环节点连接到下游图片链路'); return; }
-    selectedId = tail.id;
-    selectedIds = [];
-    selectedImage = {nodeId:'', index:-1};
+    canvasUiState.patchSelection({primaryId: tail.id}, 'selectedId');
+    canvasUiState.patchSelection({ids: []}, 'selectedIds');
+    canvasUiState.patchSelection({image: {nodeId:'', index:-1}}, 'selectedImage');
     runSmartCascade(tail);
 }
 // 生图执行域外移 canvas-generation-runner.js（第十五刀）。settings/selected 写入走 setter 回主文件真变量。
 if(globalThis.CanvasGenerationRunner){CanvasGenerationRunner.configure({
+        nodes: () => nodes,
         preserveNodeCardForRun: (...a) => preserveNodeCardForRun(...a),
         addSmartGenerationLog: (...a) => addSmartGenerationLog(...a),
         allowsPromptlessCustomComfy: (...a) => allowsPromptlessCustomComfy(...a),
@@ -12899,15 +12903,15 @@ if(globalThis.CanvasGenerationRunner){CanvasGenerationRunner.configure({
         toast: (...a) => toast(...a),
         uid: (...a) => uid(...a),
         updateComfyNodeLiveState: (...a) => updateComfyNodeLiveState(...a),
-        selectedId: () => selectedId,
-        selectedImage: () => selectedImage,
+        selectedId: () => canvasUiState.selection.primaryId,
+        selectedImage: () => canvasUiState.selection.image,
         settings: () => settings,
         undoSuppressed: () => undoSuppressed,
         canvas: () => canvas,
         nodeStore: () => nodeStore,
         smartLoopContext: () => smartLoopContext,
-        setSelectedId: v => { selectedId = v; },
-        setSelectedImage: v => { selectedImage = v; },
+        setSelectedId: v => { canvasUiState.patchSelection({primaryId: v}, 'selectedId'); },
+        setSelectedImage: v => { canvasUiState.patchSelection({image: v}, 'selectedImage'); },
         setSettings: v => { settings = v; },
         setUndoSuppressed: v => { undoSuppressed = v; }
 });}
@@ -13082,6 +13086,7 @@ if(globalThis.CanvasComfyJobSubmitter){CanvasComfyJobSubmitter.configure({
 function submitComfyWorkflowJob(){return CanvasComfyJobSubmitter.submitComfyWorkflowJob.apply(null, arguments);}
 // Comfy/即梦任务监督域外移 canvas-smart-task-supervisor.js（第二刀），此处留注入与薄代理。
 if(globalThis.CanvasSmartTaskSupervisor){CanvasSmartTaskSupervisor.configure({
+        isComposerOwner: node => canvasUiState.editor.subject?.id === node?.id && selectedNode()?.id === node?.id,
         preserveNodeCardForRun: (...a) => preserveNodeCardForRun(...a),
         addConnection: (...a) => addConnection(...a),
         addSmartGenerationLog: (...a) => addSmartGenerationLog(...a),
@@ -13172,12 +13177,12 @@ function finishSelection(event){
     const b = screenToWorld(event);
     const minX = Math.min(a.x, b.x), minY = Math.min(a.y, b.y);
     const maxX = Math.max(a.x, b.x), maxY = Math.max(a.y, b.y);
-    selectedIds = nodes.filter(node => {
+    canvasUiState.patchSelection({ids: nodes.filter(node => {
         const r = nodeRect(node);
         return r.x < maxX && r.x + r.width > minX && r.y < maxY && r.y + r.height > minY;
-    }).map(n => n.id);
-    selectedId = selectedIds.length === 1 ? selectedIds[0] : '';
-    selectedImage = {nodeId:'', index:-1};
+    }).map(n => n.id)}, 'selectedIds');
+    canvasUiState.patchSelection({primaryId: canvasUiState.selection.ids.length === 1 ? canvasUiState.selection.ids[0] : ''}, 'selectedId');
+    canvasUiState.patchSelection({image: {nodeId:'', index:-1}}, 'selectedImage');
     selectionState = null;
     if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('box-selecting');
     selectionJustFinished = true;
@@ -13192,8 +13197,8 @@ function groupSelectedNodes(){
 CanvasKeyboardShortcutController.configure({
     getWorld:() => world,
     getDeleteShortcutHandledAt:() => deleteShortcutHandledAt,
-    getSelectedIds:() => selectedIds,
-    getSelectedId:() => selectedId,
+    getSelectedIds:() => canvasUiState.selection.ids,
+    getSelectedId:() => canvasUiState.selection.primaryId,
     selectedNodeIds:() => selectedNodeIds(),
     isDeleteShortcut:event => isDeleteShortcut(event),
     deleteSelectedNodesFromKeyboard:event => deleteSelectedNodesFromKeyboard(event),
@@ -13790,8 +13795,8 @@ lastMouseWorld = screenToWorld(e);
                         inheritNodeMetaFromImage(source);
                     }
                     const point = screenToWorld(e);
-                    selectedId = '';
-                    selectedImage = {nodeId:'', index:-1};
+                    canvasUiState.patchSelection({primaryId: ''}, 'selectedId');
+                    canvasUiState.patchSelection({image: {nodeId:'', index:-1}}, 'selectedImage');
                     const newNode = createImageNodeAt(point, [img], {select:false, skipUndo:true});
                     undoSuppressed = false;
                     dragState = {id:newNode.id, startX:e.clientX, startY:e.clientY, ox:newNode.x, oy:newNode.y, thumbDetached:true};
@@ -13979,7 +13984,7 @@ window.addEventListener('paste', e => {
     const files = [...(e.clipboardData?.files || [])].filter(isSupportedUploadFile);
     if(files.length){
         lastImagePasteAt = Date.now();
-        handleFiles(files, selectedId);
+        handleFiles(files, canvasUiState.selection.primaryId);
         return;
     }
     if(CanvasNodeClipboardController.hasClipboardNodes() && !isEditableTarget(e.target)){
@@ -14109,7 +14114,7 @@ fileInput.onchange = () => {
         uploadTargetId = '';
         return;
     }
-    const targetId = groupPoint ? '' : (uploadTargetId || selectedId);
+    const targetId = groupPoint ? '' : (uploadTargetId || canvasUiState.selection.primaryId);
     handleFiles(fileInput.files, targetId, groupPoint ? {point:groupPoint} : {});
     pendingGroupUploadPoint = null;
     uploadTargetId = '';
@@ -14725,6 +14730,8 @@ document.getElementById('imageEditStage').addEventListener('wheel', event => {
     stage.scrollTop = contentY * scale - my;
 }, {passive:false, capture:true});
 window.addEventListener('resize', () => {
+    const node = selectedNode();
+    if(node && composer.classList.contains('open')) positionComposerForNode(node);
     if(cropState) syncImageEditOverflow();
     if(panoramaState.enabled) resizePanoramaViewer();
 });

@@ -7,9 +7,12 @@
 
     function D(name){return typeof deps[name] === 'function' ? deps[name]() : deps[name];}
 
+function isCurrentComfyResult(node,meta){ return !meta?.generationAttemptId || global.CanvasGenerationLifecycle.isCurrent(node,meta.generationAttemptId); }
 async function runComfyWorkflowJob(node, runSettings, prompt, refs, progressNode=null, meta=null){
     const payload = await deps.buildComfyWorkflowJobPayload(node, runSettings, prompt, refs);
+    if(!isCurrentComfyResult(progressNode || node,meta)) return {urls:[],alreadyFinalized:true};
     const result = await deps.submitComfyWorkflowJob(progressNode, payload, meta);
+    if(!isCurrentComfyResult(progressNode || node,meta)) return {urls:[],alreadyFinalized:true};
     if(result.comfyAlreadyFinalized) return {urls:[], kind:'image', raw:result, alreadyFinalized:true};
     // 视频优先（2026-09-30 打组 bug 兜底）：job 结果同时含 videos+images（预览图）时，
     // resultMediaUrls 会把两者合并成一个列表并被统一盖上 kind=video，PNG 变"假视频"黑卡。
@@ -19,14 +22,14 @@ async function runComfyWorkflowJob(node, runSettings, prompt, refs, progressNode
     if(progressNode) deps.clearComfyProgress(progressNode);
     return {urls, kind:deps.mediaKindForUrls(urls, fallbackKind), raw:result};
 }
-async function runComfyGeneration(node, prompt, refs, pendingNode, meta){
- const runSettings = deps.normalizeComfyWorkflowSelection(D("settings"));
+async function runComfyGeneration(node, prompt, refs, pendingNode, meta, capturedSettings=null){
+ const runSettings = deps.normalizeComfyWorkflowSelection(capturedSettings || D("settings"));
  const allRefs = refs || [];
  refs = deps.comfyWorkflowImageRefsForNode(node, allRefs);
  const mode = runSettings.comfyMode || 'custom';
- if(mode === 'text') return runComfyText(node, prompt, pendingNode, meta);
- if(mode === 'enhance') return runComfyEnhance(node, refs, pendingNode, meta);
-    if(mode === 'edit') return runComfyEdit(node, prompt, refs, pendingNode, meta);
+ if(mode === 'text') return runComfyText(node, prompt, pendingNode, meta, runSettings);
+ if(mode === 'enhance') return runComfyEnhance(node, refs, pendingNode, meta, runSettings);
+    if(mode === 'edit') return runComfyEdit(node, prompt, refs, pendingNode, meta, runSettings);
     const result = await runComfyWorkflowJob(node, runSettings, prompt, allRefs, pendingNode || node, meta);
     if(result.alreadyFinalized) return;
     if(!result.urls.length) throw new Error(tr('smart.errComfyNoImages'));
@@ -37,6 +40,7 @@ async function runComfyGeneration(node, prompt, refs, pendingNode, meta){
     const outputUrls = out.map(o => o.url);
     if(pendingNode){
         await deps.finalizePendingNode(pendingNode, outputUrls, meta, kind);
+        if(!isCurrentComfyResult(pendingNode,meta)) return;
         deps.clearComfyProgress(pendingNode);
         // ComfyUI has returned and the output is now on the canvas. Release
         // this Comfy-only run lock immediately; outer cleanup remains a
@@ -49,39 +53,44 @@ async function runComfyGeneration(node, prompt, refs, pendingNode, meta){
         deps.attachRunMeta(created, meta);
         deps.addConnection(node.id, created.id);
     }
-    deps.clearPromptInput({preserveDraft:true});
+    if(deps.isComposerOwner(node)) deps.clearPromptInput({preserveDraft:true});
     deps.scheduleSave();
 }
-async function runComfyText(node, prompt, pendingNode, meta){
+async function runComfyText(node, prompt, pendingNode, meta, runSettings=D("settings")){
     const data = await fetch(deps.comfyProxyUrl('/api/generate'), {
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({prompt, width:Number(D("settings").width || 1024), height:Number(D("settings").height || 1024), workflow_json:'Z-Image.json', type:'zimage'})
+        body:JSON.stringify({prompt, width:Number(runSettings.width || 1024), height:Number(runSettings.height || 1024), workflow_json:'Z-Image.json', type:'zimage'})
     }).then(async r => { if(!r.ok) throw new Error(await r.text()); return r.json(); });
+    if(!isCurrentComfyResult(pendingNode || node,meta)) return;
     const out = data.outputs || data.images || [];
     if(!out.length) throw new Error(tr('smart.errComfyNoImages'));
     if(pendingNode){
         await deps.finalizePendingNode(pendingNode, out, meta);
+        if(!isCurrentComfyResult(pendingNode,meta)) return;
     } else {
         const created = deps.createNode((node.x || 0) + deps.nodeRect(node).width + 40, node.y || 0, out.map((url, i) => ({url, name:`comfy-${i + 1}.png`})));
         deps.attachRunMeta(created, meta);
         deps.addConnection(node.id, created.id);
     }
-    deps.clearPromptInput({preserveDraft:true});
+    if(deps.isComposerOwner(node)) deps.clearPromptInput({preserveDraft:true});
     deps.scheduleSave();
 }
-async function runComfyEnhance(node, refs, pendingNode, meta){
+async function runComfyEnhance(node, refs, pendingNode, meta, runSettings=D("settings")){
     if(!refs.length) throw new Error(tr('smart.errEnhanceNeedRefs'));
     const inputName = await comfyNameForRef(refs[0]);
+    if(!isCurrentComfyResult(pendingNode || node,meta)) return;
     const data = await fetch(deps.comfyProxyUrl('/api/generate'), {
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({workflow_json:'Z-Image-Enhance.json', type:'enhance', params:{"15":{image:inputName},"204":{value:Number(D("settings").enhanceStrength ?? 0.5)}}})
+        body:JSON.stringify({workflow_json:'Z-Image-Enhance.json', type:'enhance', params:{"15":{image:inputName},"204":{value:Number(runSettings.enhanceStrength ?? 0.5)}}})
     }).then(async r => { if(!r.ok) throw new Error(await r.text()); return r.json(); });
+    if(!isCurrentComfyResult(pendingNode || node,meta)) return;
     const out = data.outputs || data.images || [];
     if(!out.length) throw new Error(tr('smart.errComfyNoImages'));
     if(pendingNode){
         await deps.finalizePendingNode(pendingNode, out, meta);
+        if(!isCurrentComfyResult(pendingNode,meta)) return;
     } else {
         const created = deps.createNode((node.x || 0) + deps.nodeRect(node).width + 40, node.y || 0, out.map((url, i) => ({url, name:`enhance-${i + 1}.png`})));
         deps.attachRunMeta(created, meta);
@@ -89,25 +98,28 @@ async function runComfyEnhance(node, refs, pendingNode, meta){
     }
     deps.scheduleSave();
 }
-async function runComfyEdit(node, prompt, refs, pendingNode, meta){
+async function runComfyEdit(node, prompt, refs, pendingNode, meta, runSettings=D("settings")){
     if(!refs.length) throw new Error(tr('smart.errEditNeedRefs'));
     const names = [];
     for(const ref of refs.slice(0, 3)) names.push(await comfyNameForRef(ref));
+    if(!isCurrentComfyResult(pendingNode || node,meta)) return;
     const data = await fetch(deps.comfyProxyUrl('/api/generate'), {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({prompt, workflow_json:'Flux2-Klein.json', type:'klein', params:{"168":{text:prompt},"158":{noise_seed:Math.floor(Math.random()*1000000)},"278":{image:names[0] || ""},"270":{image:names[1] || ""},"292":{image:names[2] || ""},"313":{value:Boolean(names[1])},"314":{value:Boolean(names[2])}}})
     }).then(async r => { if(!r.ok) throw new Error(await r.text()); return r.json(); });
+    if(!isCurrentComfyResult(pendingNode || node,meta)) return;
     const out = data.outputs || data.images || [];
     if(!out.length) throw new Error(tr('smart.errComfyNoImages'));
     if(pendingNode){
         await deps.finalizePendingNode(pendingNode, out, meta);
+        if(!isCurrentComfyResult(pendingNode,meta)) return;
     } else {
         const created = deps.createNode((node.x || 0) + deps.nodeRect(node).width + 40, node.y || 0, out.map((url, i) => ({url, name:`edit-${i + 1}.png`})));
         deps.attachRunMeta(created, meta);
         deps.addConnection(node.id, created.id);
     }
-    deps.clearPromptInput({preserveDraft:true});
+    if(deps.isComposerOwner(node)) deps.clearPromptInput({preserveDraft:true});
     deps.scheduleSave();
 }
 async function comfyNameForRef(ref){
@@ -326,12 +338,12 @@ function resumeJimengPendingNodes(){
 async function pollSmartCanvasTask(taskId){
     return CanvasGenerationTaskPoller.poll(taskId);
 }
-async function finalizeSmartPendingTask(node, taskId, images, kind='image'){
+async function finalizeSmartPendingTask(node, taskId, images, kind='image', expectedAttempt=node?.generationAttemptId){
     if(!node || !taskId) return;
+    const isCurrent = () => !expectedAttempt || global.CanvasGenerationLifecycle.isCurrent(node,expectedAttempt);
+    if(!isCurrent()) return false;
     deps.preserveNodeCardForRun(node);
     rememberSmartTaskIds(node, [taskId]);
-    node.pendingTasks = smartPendingTasks(node).filter(task => task.taskId !== taskId);
-    node.pending = Math.max(0, Number(node.pending || 0) - 1);
     const ext = kind === 'video' ? 'mp4' : kind === 'audio' ? 'mp3' : kind === 'text' ? 'txt' : 'png';
     const date = new Date();
     const rawItems = Array.isArray(images) ? images : [];
@@ -345,6 +357,9 @@ async function finalizeSmartPendingTask(node, taskId, images, kind='image'){
     if(!additions.length && rawItems.length){
         additions = fallbackGeneratedOutputItems(rawItems, kind);
     }
+    if(!isCurrent()) return false;
+    node.pendingTasks = smartPendingTasks(node).filter(task => task.taskId !== taskId);
+    node.pending = smartPendingTasks(node).length;
     const existing = (node.images || []).map(img => deps.stripImageGenerationMeta(img));
     const seenUrls = new Set(existing.flatMap(img => global.CanvasGenerationResultModel.mediaIdentityKeys(img)));
     const seenTaskIds = new Set(existing.map(img => String(img?.generationTaskId || '').trim()).filter(Boolean));
@@ -384,7 +399,7 @@ async function finalizeSmartPendingTask(node, taskId, images, kind='image'){
     }
 }
 async function recoverCompletedEmptySmartNode(node){
-    if(!node || (node.images || []).length || smartPendingTasks(node).length) return false;
+    if(!node || (node.images || []).length || smartPendingTasks(node).length || node.pending || node.running || node.apiRunning || ['preparing','queued','running'].includes(node.generationState)) return false;
     const ids = Array.isArray(node.lastTaskIds) ? node.lastTaskIds.filter(Boolean).slice(-6).reverse() : [];
     if(!ids.length || node._recoveringCompletedTask) return false;
     node._recoveringCompletedTask = true;
@@ -403,9 +418,11 @@ async function recoverCompletedEmptySmartNode(node){
     }
 }
 async function resumeSmartPendingNode(node){
+    const attempt = node?.generationAttemptId;
+    const isCurrent = () => !attempt || global.CanvasGenerationLifecycle.isCurrent(node,attempt);
     const tasks = smartPendingTasks(node);
     if(!node || !tasks.length) return;
-    node.pending = Math.max(tasks.length, Number(node.pending || 0) || tasks.length);
+    node.pending = tasks.length;
     node.running = false;
     node.apiRunning = true;   // 2026-09-17：被恢复的 API 任务也显示「生成中」动效
     deps.syncRunButtonAvailability(node);
@@ -414,10 +431,13 @@ async function resumeSmartPendingNode(node){
     await Promise.all(tasks.map(async task => {
         try {
             const result = await pollSmartCanvasTask(task.taskId);
-            await finalizeSmartPendingTask(node, task.taskId, result?.images || result?.videos || deps.resultMediaUrls(result), task.kind || 'image');
+            if(!isCurrent()) return;
+            await finalizeSmartPendingTask(node, task.taskId, result?.images || result?.videos || deps.resultMediaUrls(result), task.kind || 'image', attempt);
+            if(!isCurrent()) return;
             deps.render();
             deps.scheduleSave();
         } catch(e) {
+            if(!isCurrent()) return;
             if(e && e.jimengPending && e.submitId){
                 node.pendingTasks = smartPendingTasks(node).filter(item => item.taskId !== task.taskId);
                 setNodeJimengPending(node, e);
@@ -426,7 +446,7 @@ async function resumeSmartPendingNode(node){
                 return;
             }
             node.pendingTasks = smartPendingTasks(node).filter(item => item.taskId !== task.taskId);
-            node.pending = Math.max(0, Number(node.pending || 0) - 1);
+            node.pending = smartPendingTasks(node).length;
             if(!node.pending && smartPendingTasks(node).length === 0){
                 delete node.pendingTasks;
                 node.running = false;
@@ -452,7 +472,11 @@ async function resumeSmartPendingNode(node){
         }
     }));
     // 2026-09-17：无论成功/失败都清掉 API 运行动效标记
+    if(!isCurrent()) return;
     node.apiRunning = false;
+    if(attempt && !node.pending && !node.jimengPending){
+        global.CanvasGenerationLifecycle.finish(node,attempt,(node.images || []).length ? 'succeeded' : 'failed', failures[0]?.message || node.runError, deps.nowMs());
+    }
     deps.syncRunButtonAvailability(node);
     if(failures.length && !(node.images || []).length){
         throw failures[0];

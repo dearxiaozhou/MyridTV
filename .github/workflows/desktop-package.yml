@@ -61,6 +61,38 @@ jobs:
             exit $LASTEXITCODE
           }
 
+      # Keep the legacy full local suite separate; this portable UI baseline
+      # is mandatory on PRs, main, tags and manual releases.
+      - name: Install UI baseline browser
+        shell: pwsh
+        run: |
+          python -m pip install playwright==1.63.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m playwright install chromium
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: UI baseline (isolated, no generation)
+        shell: pwsh
+        env:
+          MYRIDTV_PYTHON_EXE: ${{ steps.setup-python.outputs.python-path }}
+          MYRIDTV_UI_ARTIFACTS: _verification/ui-baseline
+        run: |
+          & .\tests\run_regression.ps1 -Only ui_baseline
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .\tests\run_regression.ps1 -Only generation_lifecycle
+          exit $LASTEXITCODE
+
+      - name: Preserve UI baseline evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-baseline
+          path: |
+            _verification/ui-baseline/
+            _verification/generation-lifecycle/
+          if-no-files-found: warn
+          retention-days: 14
+
   # ── 打包：只在「手动」或「打 tag」时跑 ──────────────────────────────
   # PR 和普通的 push main 都不会走到这里。
   # needs: verify 保证自检过了才出包。

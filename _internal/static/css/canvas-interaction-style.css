@@ -1,4 +1,7 @@
 /* Shared interaction language: neutral surfaces with a clear green selected state. */
+/* Library close buttons are border controls; retain a visible neutral hover edge. */
+.style-popover .filter-preset-close:hover {background:var(--x-hover-bg);color:var(--x-text);border-color:var(--x-selected-line);box-shadow:inset 0 0 0 1px var(--x-selected-ring);}
+.style-popover :is(.filter-preset-close,.shot-categories button):focus-visible {outline:2px solid var(--x-selected-line);outline-offset:2px;}
 :is(button.active, [role="tab"].active, [role="tab"][aria-selected="true"],
     button[aria-pressed="true"], [role="button"].active,
     [role="option"].selected, [role="option"][aria-selected="true"],
@@ -869,4 +872,14 @@ html.studio-theme-dark .prompt-node-llm .shared-native-select-trigger {
   width: 12px;
   color: var(--x-selected-line);
   text-align: center;
+}
+
+/* Multi-image surface interaction belongs here, never on the canvas group frame.
+   Keep the existing card shadow; neutral state colors use the shared tokens. */
+.image-node.multi-image-node:hover, .image-node.multi-image-node.selected {
+  border-color:var(--x-selected-line);
+  box-shadow:0 10px 30px rgba(0,0,0,.08);
+}
+.image-node.multi-image-node.selected {
+  box-shadow:0 0 0 1px var(--x-selected-line), 0 14px 36px var(--shadow);
 }

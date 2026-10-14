@@ -82,24 +82,13 @@ body.smart-node-drag .image-wrap:hover .image-resolution-badge,
 body.smart-node-drag .smart-image-name-label { opacity:0 !important; pointer-events:none !important; }
 .image-node:not(.empty-node) { min-height:0; }
 .image-node.empty-node { background:var(--card); border:1px solid var(--line); box-shadow:0 12px 34px var(--shadow); overflow:visible; display:flex; flex-direction:column; }
-/* 2026-10-05：组必须压在连线层(z-index:1)之下，否则打组后组背景会盖住连线。
-   2026-10-07 修正（老王："连线在组里面显示盖住了图片"）：**这里的 !important 去掉了**。
-   原因是 `.group-node` 这个类被两种完全不同的东西共用：
-     ① `type:'smart-group'` 的空壳组框 —— 打组产生，body 为空，只画一个框，
-        需要压在连线之下（否则组背景盖住连线）。
-     ② `smart-image` 且图片数 ≥ 2 的多图节点 —— 内部是 .ratio-thumb-grid 缩略图网格，
-        真的装着图片（定义见 smart-canvas.js 的 isGroup = isImageNode && imgs.length > 1）。
-   `!important` 会盖掉 nodeLayerZ 写进内联样式的 2/4，把②也一起钉成 0；而 .image-node
-   是 position:absolute，z-index:0 会**建立层叠上下文**，把内部 .thumb-item > img 全部
-   囚禁在 0 层 → 连线(1)必然绘制在图片之上，而且选中/置顶也救不回来。
-   现在只保留 `z-index:0` 作为无内联值时的兜底，实际层级由内联 nodeLayerZ 决定：
-     空壳组框 = 0 → 压在连线之下（保住 10-05 的修复）
-     多图节点 = 2 → 压住连线，图片不再被盖 */
-.image-node.group-node { padding:16px; background:rgba(255,255,255,.46); border:1px solid rgba(200,200,200,.35); box-shadow:0 10px 30px rgba(0,0,0,.06); backdrop-filter:blur(12px); z-index:0; }
+/* Component boundaries: multi-image-node owns the thumbnail surface;
+   canvas-group-node owns the frame. nodeLayerZ exclusively owns stacking. */
+.image-node.multi-image-node { padding:16px; background:var(--x-group-alt); border:1px solid rgba(200,200,200,.35); box-shadow:0 10px 30px rgba(0,0,0,.06); backdrop-filter:none; }
 /* 2026-10-05：组的背景不再透明（老王：参考图，组要和画布底色有色差，看得出边界）。
    颜色走主题变量 var(--x-group)：深色下 #2e2e2e（比底色 #1c1c1c 亮一档），
    浅色下 #e6ebf3（比底色 #f8fafc 深一档）。此前写死深色，浅色主题下组一直是黑块。 */
-.image-node.group-node.preserved-group-node { padding:0; overflow:visible; background:var(--x-group); border-color:rgba(200,200,200,.42); }
+.image-node.multi-image-node.preserved-group-node { padding:0; overflow:visible; background:var(--x-group); border-color:rgba(200,200,200,.42); backdrop-filter:blur(12px); }
 .image-node.canvas-group-node { min-height:0; padding:0; overflow:visible; border-radius:12px; background:var(--x-group); border:1px solid var(--x-group-accent); box-shadow:none; }
 .image-node.canvas-group-node .node-head,.image-node.canvas-group-node .node-body,.image-node.canvas-group-node .node-hint { display:none; }
 .canvas-group-header { position:absolute; left:1px; top:1px; right:1px; height:31px; z-index:4; display:flex; align-items:center; gap:6px; padding:0 8px; box-sizing:border-box; border-bottom:1px solid var(--x-group-accent-soft); border-radius:10px 10px 0 0; background:var(--x-group-header-bg); pointer-events:auto; cursor:move; }
@@ -116,27 +105,23 @@ body.smart-node-drag .smart-image-name-label { opacity:0 !important; pointer-eve
 .preserved-group-item .node-img { width:100% !important; height:100% !important; }
 /* 深色主题下也保持实色（原来是 rgba(31,31,31,.28) 半透明，会把上面刚设的实色又拉透明）。
    颜色同样走 var(--x-group)/var(--x-group-alt)，随主题切换，不再写死。 */
-.theme-dark .image-node.group-node { background:var(--x-group-alt); border-color:rgba(200,200,200,.28); }
-.theme-dark .image-node.group-node.preserved-group-node,
+.theme-dark .image-node.multi-image-node { border-color:rgba(200,200,200,.28); }
+.theme-dark .image-node.multi-image-node.preserved-group-node,
 .theme-dark .image-node.canvas-group-node { background:var(--x-group); }
 .image-node.history-group-node { border-color:rgba(200,200,200,.34); background:rgba(248,250,252,.66); }
 .theme-dark .image-node.history-group-node { border-color:rgba(200,200,200,.28); background:rgba(30,41,59,.28); }
 .image-node.selected { outline:0; }
 .image-node.selected::after { content:""; position:absolute; inset:-2px; z-index:2; border:2px solid transparent; border-radius:14px; background:var(--x-selected-line) border-box; -webkit-mask:linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask-composite:exclude; pointer-events:none; filter:drop-shadow(0 0 7px var(--x-selected-ring)); }
-.image-node.selected:not(.empty-node):not(.group-node):not(.prompt-smart-node):not(.loop-smart-node) { box-shadow:none; border-radius:8px; }
-.image-node.selected:not(.empty-node):not(.group-node) .image-wrap img, .image-node.selected:not(.empty-node):not(.group-node) .node-img { border-color:transparent; box-shadow:none; }
-.image-node.group-node .ratio-thumb-grid { display:flex; flex-wrap:wrap; align-items:flex-start; align-content:center; justify-content:center; gap:8px; width:100%; height:100%; }
-/* 多图缩略图组（isGroup）同样给实底色，否则组里的图片直接浮在画布上、没有组容器感。
-   注意 .theme-dark 那条（:108 附近）会给 .group-node 再铺一层半透明色，这里是实色，
-   因同权重且靠后声明，实际生效的是本条（原 #2a2a2a，现走 var(--x-group-alt)，随主题切换）。 */
-.image-node.group-node:not(.preserved-group-node) { background:var(--x-group-alt); backdrop-filter:none; }
-.image-node.group-node:not(.preserved-group-node) .node-body { background:transparent; }
-.image-node.group-node .ratio-thumb-grid .thumb-item { flex:0 0 auto; width:var(--thumb-w); height:var(--thumb-h); min-width:0; min-height:0; border:0; border-radius:8px; background:transparent; }
-.image-node.group-node .ratio-thumb-grid .thumb-item img { width:auto; height:auto; max-width:100%; max-height:100%; border:0; border-radius:8px; background:transparent; }
-.theme-dark .image-node.group-node .ratio-thumb-grid .thumb-item,
-.theme-dark .image-node.group-node .ratio-thumb-grid .thumb-item img { border-color:transparent; background:transparent; }
-.image-node.group-node:hover, .image-node.group-node.selected { border-color:var(--x-selected-line); box-shadow:0 10px 30px rgba(0,0,0,.08); }
-.image-node.group-node.selected { box-shadow:0 0 0 1px var(--x-selected-line), 0 14px 36px var(--shadow); }
+.image-node.selected:not(.empty-node):not(.multi-image-node):not(.prompt-smart-node):not(.loop-smart-node) { box-shadow:none; border-radius:8px; }
+.image-node.selected:not(.empty-node):not(.multi-image-node) .image-wrap img, .image-node.selected:not(.empty-node):not(.multi-image-node) .node-img { border-color:transparent; box-shadow:none; }
+.image-node.multi-image-node .ratio-thumb-grid { display:flex; flex-wrap:wrap; align-items:flex-start; align-content:center; justify-content:center; gap:8px; width:100%; height:100%; }
+.image-node.multi-image-node:not(.preserved-group-node) .node-body { background:transparent; }
+.image-node.multi-image-node .ratio-thumb-grid .thumb-item { flex:0 0 auto; width:var(--thumb-w); height:var(--thumb-h); min-width:0; min-height:0; border:0; border-radius:8px; background:transparent; }
+.image-node.multi-image-node .ratio-thumb-grid .thumb-item img { width:auto; height:auto; max-width:100%; max-height:100%; border:0; border-radius:8px; background:transparent; }
+.theme-dark .image-node.multi-image-node .ratio-thumb-grid .thumb-item,
+.theme-dark .image-node.multi-image-node .ratio-thumb-grid .thumb-item img { border-color:transparent; background:transparent; }
+
+
 .image-node.empty-node:hover { border-color:var(--x-selected-line); box-shadow:0 10px 30px rgba(0,0,0,.08); }
 .image-node.empty-node.selected { border-color:var(--x-selected-line); box-shadow:0 0 0 1px var(--x-selected-line), 0 12px 34px var(--shadow); }
 .image-node.prompt-smart-node, .image-node.loop-smart-node, .image-node.table-smart-node { padding:12px; background:var(--panel); border:1px solid var(--line); box-shadow:0 20px 56px var(--shadow); backdrop-filter:blur(20px); overflow:visible; }
@@ -1109,7 +1094,7 @@ audio { display:none !important; width:0 !important; height:0 !important; min-wi
 /* 全宽悬停桥：弹层比 pill 宽，斜向移动到两侧选项时也不会因 8px 间隙丢失 hover 而需要点第二次。 */
 .smart-popover::after { content:""; position:absolute; left:0; right:0; top:100%; height:8px; }
 /* 下拉菜单一律点击弹出（.pinned），不再悬停自动弹出 */
-.smart-control:focus-within .smart-popover, .smart-control.pinned .smart-popover { opacity:1; visibility:visible; pointer-events:auto; transform:translate(-50%, 0); transition-delay:0s; }
+.smart-control:not([data-param-popover]):focus-within .smart-popover, .smart-control.pinned .smart-popover { opacity:1; visibility:visible; pointer-events:auto; transform:translate(-50%, 0); transition-delay:0s; }
 
 body.composer-select-open .smart-popover { opacity:0 !important; visibility:hidden !important; pointer-events:none !important; transform:translate(-50%, 4px) !important; }
 body.composer-select-open .comfy-nodes-control.pinned .smart-popover { opacity:1 !important; visibility:visible !important; pointer-events:auto !important; transform:translate(-50%, 0) !important; }
@@ -4862,4 +4847,19 @@ body.canvas-mode-objects .node-port { display:none !important; }
 .filter-preset-close:hover {border-color:var(--x-selected-line); color:var(--x-text); background:var(--x-hover-bg);}
 
 /* Keep the original square cards: full-bleed picture with the name over its lower edge. */
+.style-popover-head .smart-popover-title {margin-right:auto; white-space:nowrap;}
+.style-popover-head .style-library-search {margin-left:auto; flex:0 1 240px; min-width:90px;}
+.style-popover-head .filter-preset-close {flex:0 0 28px;}
+.shot-categories {flex-wrap:nowrap;}
+.shot-preset-tile {aspect-ratio:16/9;}
+.shot-text-grid {grid-template-columns:repeat(3,minmax(0,1fr));}
+.shot-text-card {aspect-ratio:auto; min-height:112px; padding:14px; background:var(--card); color:var(--text); text-align:left;}
+.shot-text-name {font-size:13px;font-weight:700;line-height:1.5;}
+.shot-text-description {margin:8px 0 0;font-size:12px;line-height:1.7;color:var(--muted);white-space:normal;}
+.shot-popover {width:min(840px,calc(100vw - 84px));max-width:min(840px,calc(100vw - 84px));}
+.shot-mode-control > .smart-pill {border-radius:8px !important;}
+.style-panel-top .style-library-search {margin-left:auto;flex:0 1 220px;min-width:80px;}
+.style-panel-top .style-library-search[hidden] {display:none;}
+.style-panel-head-row:empty {display:none;}
+@media(max-width:560px){.shot-popover .style-tile-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.style-popover-head{gap:5px;}.style-popover-head .style-library-search{flex-basis:130px;}.shot-categories button{padding:5px 6px;}}
 @media(max-width:720px){.style-mode-control .style-tile-grid {grid-template-columns:repeat(3,minmax(0,1fr));}}

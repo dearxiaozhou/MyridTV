@@ -38,6 +38,86 @@
 
     function configure(patch) { Object.assign(deps, patch || {}); }
     function settings() { return deps.getSettings ? deps.getSettings() : {}; }
+    var lifecycleBound = false;
+    var placementFrame = 0;
+
+    function schedulePopoverPlacement() {
+        if (placementFrame) return;
+        placementFrame = global.requestAnimationFrame(function () {
+            placementFrame = 0;
+            global.document.querySelectorAll('.smart-control[data-param-popover].pinned').forEach(fitPopover);
+        });
+    }
+
+    function bindPopoverLifecycle() {
+        if (lifecycleBound) return;
+        lifecycleBound = true;
+        global.addEventListener('resize', schedulePopoverPlacement);
+        global.document.addEventListener('wheel', schedulePopoverPlacement, { passive: true, capture: true });
+        global.document.addEventListener('keydown', function (event) {
+            if (event.key !== 'Escape') return;
+            var control = event.target.closest && event.target.closest('.smart-control[data-param-popover].pinned');
+            if (!control) return;
+            event.preventDefault();
+            event.stopPropagation();
+            setPopoverOpen(control, false);
+            var pill = control.querySelector(':scope > .smart-pill');
+            if (pill) pill.focus({ preventScroll: true });
+        }, true);
+    }
+
+    function fitPopover(control) {
+        var popover = control.querySelector(':scope > .smart-popover');
+        if (!popover || !control.classList.contains('pinned')) return;
+        // translate is independent of the component's existing transform.
+        // Convert screen pixels back through the canvas/UI scale.
+        popover.style.removeProperty('translate');
+        var rect = popover.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
+        var scaleX = rect.width / Math.max(popover.offsetWidth, 1);
+        var scaleY = rect.height / Math.max(popover.offsetHeight, 1);
+        var margin = 8;
+        var tools = global.document.querySelector('.canvas-tool-dock');
+        var leftMargin = tools ? tools.getBoundingClientRect().right + margin : margin;
+        leftMargin = Math.max(margin, Math.min(leftMargin, global.innerWidth - margin - rect.width));
+        var dx = Math.max(leftMargin - rect.left, Math.min(0, global.innerWidth - margin - rect.right));
+        var dy = Math.max(margin - rect.top, Math.min(0, global.innerHeight - margin - rect.bottom));
+        popover.style.translate = (dx / scaleX) + 'px ' + (dy / scaleY) + 'px';
+    }
+
+    // One writer for parameter popover state, including controls relocated out
+    // of dynamicParams. Keep visual state and accessibility state atomic.
+    function setPopoverOpen(control, open) {
+        control.classList.toggle('pinned', open);
+        var pill = control.querySelector(':scope > .smart-pill');
+        if (pill) pill.setAttribute('aria-expanded', String(open));
+        if (!open && control.contains(global.document.activeElement)) {
+            global.document.activeElement.blur();
+        }
+        if (open) fitPopover(control);
+        else {
+            var popover = control.querySelector(':scope > .smart-popover');
+            if (popover) popover.style.removeProperty('translate');
+        }
+    }
+
+    function togglePopover(pill, event) {
+        event.preventDefault(); event.stopPropagation();
+        var control = pill.parentElement;
+        control.setAttribute('data-param-popover', '');
+        bindPopoverLifecycle();
+        var opening = !control.classList.contains('pinned');
+        deps.closeAllSmartPopovers();
+        if (opening) pill.focus({ preventScroll: true });
+        setPopoverOpen(control, opening);
+    }
+
+    function bindPopoverTrigger(pill) {
+        pill.parentElement.setAttribute('data-param-popover', '');
+        bindPopoverLifecycle();
+        pill.setAttribute('aria-expanded', String(pill.parentElement.classList.contains('pinned')));
+        pill.onclick = function (event) { togglePopover(pill, event); };
+    }
 
     function handleComfyNodeModeToggle(button, event) {
         if (event) { event.preventDefault(); event.stopPropagation(); }
@@ -113,17 +193,7 @@
             var control = pill.parentElement;
             pill.setAttribute('aria-expanded', control.classList.contains('pinned') ? 'true' : 'false');
             if (pill.closest('.style-mode-control,.filter-mode-control')) return;
-            pill.onclick = function (event) {
-                event.preventDefault(); event.stopPropagation();
-                var wasPinned = control.classList.contains('pinned');
-                deps.closeAllSmartPopovers();
-                if (wasPinned && control.contains(global.document.activeElement)) global.document.activeElement.blur();
-                else pill.focus({ preventScroll: true });
-                if (!wasPinned) {
-                    control.classList.add('pinned');
-                    pill.setAttribute('aria-expanded', 'true');
-                }
-            };
+            bindPopoverTrigger(pill);
         });
         container.querySelectorAll('[data-combo-engine]').forEach(function (button) {
             button.onclick = function (event) {
@@ -146,12 +216,7 @@
             global.document.addEventListener('click', function (event) {
                 var pill = event.target && event.target.closest && event.target.closest('.smart-control > .smart-pill');
                 if (!pill || pill.onclick || pill.closest('#dynamicParams') || pill.closest('.composer-reference-mode-slot')) return;
-                event.preventDefault();
-                var control = pill.parentElement;
-                var wasPinned = control.classList.contains('pinned');
-                deps.closeAllSmartPopovers();
-                if (wasPinned && control.contains(global.document.activeElement)) global.document.activeElement.blur();
-                if (!wasPinned) control.classList.add('pinned');
+                togglePopover(pill, event);
             });
         }
         container.querySelectorAll('[data-smart-param]').forEach(function (button) {
@@ -311,6 +376,8 @@
 
     global.CanvasParamEvents = {
         configure: configure,
+        setPopoverOpen: setPopoverOpen,
+        bindPopoverTrigger: bindPopoverTrigger,
         bindDynamicParams: bindDynamicParams,
         handleComfyNodeModeToggle: handleComfyNodeModeToggle,
         handleRhNodeModeToggle: handleRhNodeModeToggle

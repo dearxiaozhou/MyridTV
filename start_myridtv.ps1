@@ -315,6 +315,19 @@ function Test-PortInUse([string]$HostName, [int]$Port) {
     } catch { return $false }
 }
 
+function Test-PortBindable([string]$HostName, [int]$Port) {
+    $portProbe = $null
+    try {
+        $address = [System.Net.Dns]::GetHostAddresses($HostName) | Where-Object { $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork } | Select-Object -First 1
+        if (!$address) { return $false }
+        $portProbe = [System.Net.Sockets.TcpListener]::new($address, $Port)
+        $portProbe.ExclusiveAddressUse = $true
+        $portProbe.Start()
+        return $true
+    } catch { return $false }
+    finally { if ($portProbe) { $portProbe.Stop() } }
+}
+
 function Normalize-PathText($Value) {
     if (!$Value) { return '' }
     return ([string]$Value).TrimEnd([char]92, [char]47).ToLowerInvariant()
@@ -356,7 +369,7 @@ if ($portHealth -and $portHealth.ok) {
     if ($ownerPath -and $myPath -and $ownerPath -ne $myPath) {
         $shifted = $false
         for ($candidatePort = $ProxyPort + 1; $candidatePort -le $ProxyPort + 20; $candidatePort++) {
-            if (!(Test-PortInUse $ProxyHost $candidatePort)) { $ProxyPort = $candidatePort; $shifted = $true; break }
+            if (Test-PortBindable $ProxyHost $candidatePort) { $ProxyPort = $candidatePort; $shifted = $true; break }
         }
         if ($shifted) {
             Write-StartupLog ("proxy port conflict: port used by another MyridTV install (user_data={0}); this install switches to port {1}" -f $portHealth.user_data_dir, $ProxyPort)
@@ -366,6 +379,17 @@ if ($portHealth -and $portHealth.ok) {
         }
     } else {
         Write-StartupLog "proxy on port $ProxyPort belongs to this install (user_data=$($portHealth.user_data_dir))"
+    }
+}
+if (!($portHealth -and $portHealth.ok) -and !(Test-PortBindable $ProxyHost $ProxyPort)) {
+    $unavailablePort = $ProxyPort
+    for ($candidatePort = $unavailablePort + 1; $candidatePort -le [Math]::Min(65535, $unavailablePort + 100); $candidatePort++) {
+        if (Test-PortBindable $ProxyHost $candidatePort) {
+            $ProxyPort = $candidatePort
+            Set-ProxyPortInConfig $ProxyPort
+            Write-StartupLog "proxy port $unavailablePort cannot bind; switched to $ProxyPort"
+            break
+        }
     }
 }
 $ProxyBase = "http://{0}:{1}" -f $ProxyHost, $ProxyPort

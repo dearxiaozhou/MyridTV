@@ -45,9 +45,9 @@
         ctx.getNodes().forEach(node => {
             if(Array.isArray(node.inputNodeIds)) node.inputNodeIds = node.inputNodeIds.filter(id => !deleteIds.has(id));
         });
-        if(deleteIds.has(ctx.getSelectedId())) ctx.setSelectedId('');
-        ctx.setSelectedIds((ctx.getSelectedIds() || []).filter(id => !deleteIds.has(id)));
-        if(deleteIds.has(ctx.getSelectedImage()?.nodeId)) ctx.setSelectedImage({nodeId:'', index:-1});
+        ctx.setSelection({primaryId:deleteIds.has(ctx.getSelectedId()) ? '' : ctx.getSelectedId(),
+            ids:(ctx.getSelectedIds() || []).filter(id => !deleteIds.has(id)),
+            image:deleteIds.has(ctx.getSelectedImage()?.nodeId) ? {nodeId:'', index:-1} : ctx.getSelectedImage()}, 'delete-nodes');
         ctx.render();
         ctx.scheduleSave();
         return true;
@@ -74,9 +74,8 @@
             const canvas = ctx.getCanvas();
             if(canvas) canvas.connections = (canvas.connections || []).filter(conn => conn.from !== history.id && conn.to !== history.id);
         }
-        if(ctx.getSelectedImage()?.nodeId === id) ctx.setSelectedImage({nodeId:'', index:-1});
-        ctx.setSelectedId(id);
-        ctx.setSelectedIds([]);
+        ctx.setSelection({primaryId:id, ids:[],
+            image:ctx.getSelectedImage()?.nodeId === id ? {nodeId:'', index:-1} : ctx.getSelectedImage()}, 'clear-media');
         ctx.render();
         ctx.scheduleSave();
         return true;

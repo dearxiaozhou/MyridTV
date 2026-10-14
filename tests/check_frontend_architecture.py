@@ -7,6 +7,7 @@ modules should stay small enough to review as a single responsibility.
 """
 from pathlib import Path
 import sys
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 JS_DIR = ROOT / "_internal" / "static" / "js"
@@ -17,6 +18,27 @@ CANVAS_MODULE_LINE_LIMIT = 1_200
 
 def line_count(path: Path) -> int:
     return len(path.read_text(encoding="utf-8").splitlines())
+
+
+def component_boundary_errors():
+    """Guard the historical group/card stacking regression at its source."""
+    css_dir = ROOT / '_internal' / 'static' / 'css'
+    paths = [SMART_CANVAS, css_dir / 'smart-canvas.css', css_dir / 'canvas-interaction-style.css']
+    errors = []
+    for path in paths:
+        source = path.read_text(encoding='utf-8')
+        source = re.sub(r'/\*.*?\*/', '', source, flags=re.S)
+        if re.search(r'\.group-node\b|[\'\"]group-node[\'\"]', source):
+            errors.append(f'{path.name}: ambiguous group-node surface; use multi-image-node or canvas-group-node')
+        if path.suffix != '.css':
+            continue
+        for selectors, body in re.findall(r'([^{}]+)\{([^{}]*)\}', source):
+            if not re.search(r'\bz-index\s*:', body):
+                continue
+            for selector in selectors.split(','):
+                if re.search(r'\.image-node\.(?:multi-image-node|canvas-group-node)(?:\.[\w-]+|:[\w-]+)*\s*$', selector):
+                    errors.append(f'{path.name}: nodeLayerZ owns stacking, remove z-index from {selector.strip()}')
+    return errors
 
 
 def main() -> int:
@@ -37,7 +59,18 @@ def main() -> int:
         for path, lines in too_large:
             print(f"FAIL - {path.name} is {lines:,} lines (limit {CANVAS_MODULE_LINE_LIMIT:,})")
         return 1
+    boundary_errors = component_boundary_errors()
+    entry_source = SMART_CANVAS.read_text(encoding='utf-8')
+    if re.search(r'\b(?:let|var)\s+(?:selectedId|selectedIds|selectedImage|activeComposerSubject|lastComposerNodeId)\s*=', entry_source):
+        boundary_errors.append('smart-canvas.js: transient selection/editor state must be owned by CanvasUiState')
+    if re.search(r'\bcanvasUiState\.(?:selection|editor)\.[A-Za-z_$][\w$]*\s*=(?!=)', entry_source):
+        boundary_errors.append('smart-canvas.js: use state commands; readonly snapshots cannot be assigned')
+    if boundary_errors:
+        for error in boundary_errors:
+            print('FAIL - ' + error)
+        return 1
     print("PASS - entry script did not grow; extracted modules remain reviewable")
+    print('PASS - group/card component boundaries and stacking ownership')
     return 0
 
 

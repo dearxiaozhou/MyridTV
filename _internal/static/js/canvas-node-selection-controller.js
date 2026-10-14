@@ -14,9 +14,7 @@
     function clearSelection(){
         const ctx = context();
         ctx.savePromptDraftForCurrent();
-        ctx.setSelectedId('');
-        ctx.setSelectedIds([]);
-        ctx.setSelectedImage({nodeId:'', index:-1});
+        ctx.setSelection({primaryId:'', ids:[], image:{nodeId:'', index:-1}}, 'clear-selection');
         ctx.setFrontNodeIds([]);
     }
 
@@ -72,20 +70,18 @@
             const current = selectedNodeIds();
             const exists = current.includes(nodeId);
             const next = exists ? current.filter(id => id !== nodeId) : [...current, nodeId];
-            ctx.setSelectedIds(next);
-            ctx.setSelectedId(next.length === 1 ? next[0] : '');
+            let image = ctx.getSelectedImage();
             if(hasImageIndex && !exists){
-                ctx.setSelectedImage({nodeId, index:imageIndex});
+                image = {nodeId, index:imageIndex};
             } else if(!next.includes(ctx.getSelectedImage()?.nodeId)){
-                ctx.setSelectedImage({nodeId:'', index:-1});
+                image = {nodeId:'', index:-1};
             }
+            ctx.setSelection({primaryId:next.length === 1 ? next[0] : '', ids:next, image}, 'toggle-selection');
             ctx.bringNodesToFront(next);
             return next;
         }
 
-        ctx.setSelectedId(nodeId);
-        ctx.setSelectedIds([]);
-        ctx.setSelectedImage(hasImageIndex ? {nodeId, index:imageIndex} : {nodeId:'', index:-1});
+        ctx.setSelection({primaryId:nodeId, ids:[], image:hasImageIndex ? {nodeId, index:imageIndex} : {nodeId:'', index:-1}}, 'select-node');
         ctx.bringNodesToFront(nodeId);
         return [nodeId];
     }
