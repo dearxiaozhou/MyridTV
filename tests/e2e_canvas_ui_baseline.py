@@ -241,7 +241,25 @@ def run():
                     results.append({'case': label, 'passed': True})
                     print('PASS - ' + label)
                 except Exception as exc:
-                    results.append({'case': label, 'passed': False, 'error': str(exc), 'pageErrors': errors})
+                    # Dump what the page actually looks like: on GitHub runners the failure
+                    # modes differ per case and the console alone never explained them.
+                    diag = {}
+                    try:
+                        diag = page.evaluate("""() => ({
+                            slotCount: document.querySelectorAll('#composerReferenceModeSlot').length,
+                            slotHtml: (document.querySelector('#composerReferenceModeSlot') || {}).outerHTML?.slice(0, 600) || '',
+                            composerControls: document.querySelectorAll('#composer .smart-control').length,
+                            pillCount: document.querySelectorAll('#composer .smart-pill').length,
+                            missingGlobals: ['CanvasParamControls','CanvasParamEvents','CanvasUndoController',
+                                'CanvasImageDropPayload','CanvasUiState','CanvasCameraLanguage','CanvasStateHub']
+                                .filter(n => typeof window[n] === 'undefined'),
+                            readyState: document.readyState,
+                            scripts: document.scripts.length
+                        })""")
+                    except Exception as diag_exc:
+                        diag = {'diagError': str(diag_exc)[:300]}
+                    results.append({'case': label, 'passed': False, 'error': str(exc),
+                                    'pageErrors': errors, 'diag': diag})
                     page.screenshot(path=str(OUT / f'{label}-failure.png'))
                     print('FAIL - ' + label + ': ' + str(exc)[:500])
                 finally:
