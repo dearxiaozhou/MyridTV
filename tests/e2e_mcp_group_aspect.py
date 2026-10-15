@@ -12,7 +12,7 @@ CHROME=r'C:\Users\77972\AppData\Local\ms-playwright\chromium-1228\chrome-win64\c
 def main():
     with tempfile.TemporaryDirectory(prefix='mcp-aspect-') as temp:
         env={**os.environ,'MYRIDTV_USER_DATA_DIR':temp,'MYRIDTV_ASSETS_DIR':str(Path(temp)/'assets')}
-        proc=subprocess.Popen([sys.executable,'-B','-c','import rh_official_proxy as p;p.ThreadingHTTPServer(("127.0.0.1",3242),p.Handler).serve_forever()'],cwd=ROOT,env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        proc=subprocess.Popen([sys.executable,'-B','-c','import rh_official_proxy as p;p.CanvasProxyServer(("127.0.0.1",3242),p.Handler).serve_forever()'],cwd=ROOT,env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         desktop=None
         def api(path,data=None,method=None):
             req=urllib.request.Request(BASE+path,data=None if data is None else json.dumps(data).encode(),method=method,headers={'Content-Type':'application/json'})

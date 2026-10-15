@@ -55,7 +55,7 @@ def main():
         port = 3229
         base = f'http://127.0.0.1:{port}'
         log = open(Path(temp)/'runtime.log','w',encoding='utf-8')
-        proc = subprocess.Popen([sys.executable,'-B','-c',f'import rh_official_proxy as p; p.ThreadingHTTPServer(("127.0.0.1",{port}),p.Handler).serve_forever()'], cwd=ROOT,env=env,stdout=log,stderr=log)
+        proc = subprocess.Popen([sys.executable,'-B','-c',f'import rh_official_proxy as p; p.CanvasProxyServer(("127.0.0.1",{port}),p.Handler).serve_forever()'], cwd=ROOT,env=env,stdout=log,stderr=log)
         def api(path,payload=None,method=None):
             data=None if payload is None else json.dumps(payload).encode()
             req=urllib.request.Request(base+path,data=data,method=method or ('GET' if data is None else 'POST'),headers={'Content-Type':'application/json'})

@@ -15,7 +15,10 @@ import rh_official_proxy as proxy
 
 proxy.PORT = TEST_PORT
 
-from http.server import ThreadingHTTPServer
+# 2026-10-15: 用 CanvasProxyServer（request_queue_size=128 + daemon_threads）而非裸
+# ThreadingHTTPServer（默认 backlog=5）。冷启动拉 130+ 静态脚本时，5 的监听队列会在
+# 浏览器并发握手的瞬间丢连接（status=-1）→ 模块未加载 → UI baseline 门随机缺全局。
+# 这与生产入口（rh_official_proxy.py 的 CanvasProxyServer）保持一致。
 
 proxy.append_log(proxy.LOG_FILE, f"[TEST] isolated instance starting pid={os.getpid()} port={TEST_PORT} data={TEST_DATA}")
 try:
@@ -25,4 +28,4 @@ except Exception as exc:
 threading.Thread(target=proxy.patch_static_versions_loop, daemon=True).start()
 
 print(f"[TEST] serving on http://127.0.0.1:{TEST_PORT}", flush=True)
-ThreadingHTTPServer(("127.0.0.1", TEST_PORT), proxy.Handler).serve_forever()
+proxy.CanvasProxyServer(("127.0.0.1", TEST_PORT), proxy.Handler).serve_forever()

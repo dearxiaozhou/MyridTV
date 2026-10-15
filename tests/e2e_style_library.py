@@ -17,7 +17,7 @@ def main():
         base='http://127.0.0.1:3231'
         env={**os.environ,'MYRIDTV_USER_DATA_DIR':temp,'MYRIDTV_ASSETS_DIR':str(Path(temp)/'assets')}
         with open(Path(temp)/'runtime.log','w',encoding='utf-8') as log:
-            proc=subprocess.Popen([sys.executable,'-B','-c','import rh_official_proxy as p; p.ThreadingHTTPServer(("127.0.0.1",3231),p.Handler).serve_forever()'],cwd=ROOT,env=env,stdout=log,stderr=log)
+            proc=subprocess.Popen([sys.executable,'-B','-c','import rh_official_proxy as p; p.CanvasProxyServer(("127.0.0.1",3231),p.Handler).serve_forever()'],cwd=ROOT,env=env,stdout=log,stderr=log)
             def api(path,payload=None):
                 data=None if payload is None else json.dumps(payload).encode()
                 with urllib.request.urlopen(urllib.request.Request(base+path,data=data,headers={'Content-Type':'application/json'}),timeout=15) as response:return json.load(response)
