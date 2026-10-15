@@ -1595,6 +1595,11 @@ def _mcp_handle(name, args):
 
 
 class Handler(BaseHTTPRequestHandler):
+    # 2026-10-15: HTTP/1.1 + keep-alive。冷启动打开画布要拉 130+ 个静态文件，
+    # HTTP/1.0 下每个文件一条短连接，慢机(CI runner)上并发握手容易丢连接
+    # (trace 里 js 请求 status=-1, 耗时 600~1000ms)。升 1.1 后浏览器用 ~6 条
+    # 长连接复用到全部文件，连接数从 130+ 降到个位数。所有响应都带 Content-Length。
+    protocol_version = 'HTTP/1.1'
     def _send(self, status, data):
         raw = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self._send_bytes(status, raw, "application/json; charset=utf-8")
@@ -2050,6 +2055,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
                 self.send_header("Allow", "POST")
+                self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
             if request_path.startswith("/api/runninghub/workflows/"):
