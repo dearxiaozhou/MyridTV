@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-studio-scale="off">
+<head>
+    <link rel="stylesheet" href="/static/css/design-tokens.css?v=theme-audit-v0911-final">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/static/images/myrid-icon.png" type="image/png">
+    <title>资产目录</title>
+    <script>
+        (function(){
+            try {
+                var theme = localStorage.getItem('studio_theme') || localStorage.getItem('canvas_theme') || 'dark';
+                if(theme === 'dark') {
+                    document.documentElement.classList.add('studio-theme-dark');
+                    document.documentElement.classList.add('theme-dark');
+                }
+            } catch(e) {}
+        })();
+    </script>
+    <script src="/static/js/theme.js?v=2026.09.25.lighttrial1"></script>
+    <script src="/static/js/i18n.js?v=2026.10.01.speech9"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?cb=interaction-audit-v0105c&v=2026.10.01.speech9">
+    <link rel="stylesheet" href="/static/css/light-theme-trial.css?v=interaction-audit-v0105c">
+    <link rel="stylesheet" href="/static/css/canvas-interaction-style.css?v=dropdown-menu-v0109">
+    <style>
+        /* 2026-10-16 老王：资产目录窗口曾是纯黑——本页没给 body 设背景，一路透明透出弹窗
+           底盘 rgba(10,10,10,.94)（近黑）。现参考素材库配色统一：页面 --x-page(#1c1c1c)，
+           卡片 --x-card(#242424)（= 素材库 .asset-panel 的色），描边分隔，与素材库/控制台一致。
+           注意：theme.css 有 3 处 `html.studio-theme-dark body{background:#000 !important}`
+           （5/990/1168 行），特异性 (0,1,2)，普通 body 规则（含 !important）也压不过它；
+           素材库的解法是 asset-manager.css:855 用同选择器 + !important 且文件在后加载获胜。
+           此处内联 <style> 在 theme.css 之后，同选择器同重要性 → 后加载者胜。 */
+        body { margin:0; min-height:100vh; background:var(--x-page); color:var(--text); }
+        html.studio-theme-dark body { background:var(--x-page) !important; }
+        .ar-page, .ar-page *, .ar-page *::before, .ar-page *::after { box-sizing: border-box; }
+        .ar-page { width:100%; height:100%; overflow-y:auto; overflow-x:hidden; padding:20px 22px 24px; color:var(--text); background:transparent; }
+        .ar-title { font-size:19px; font-weight:700; letter-spacing:.4px; }
+        .ar-sub { margin-top:5px; font-size:13px; color:var(--muted); line-height:1.6; }
+        .ar-card { margin-top:14px; padding:14px 16px 16px; border:1px solid var(--line); border-radius:12px; background:var(--x-card); }
+        .ar-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:12px; }
+        .ar-row:first-of-type { margin-top:14px; }
+        .ar-k { font-size:12.5px; color:var(--muted); flex:0 0 auto; }
+        .ar-path { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:13px; padding:7px 10px; border:1px solid var(--line); border-radius:8px; background:var(--input-bg, rgba(127,127,127,.08)); flex:1 1 260px; min-width:180px; max-width:100%; word-break:break-all; }
+        .ar-input { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:13px; padding:8px 11px; border:1px solid var(--line); border-radius:8px; background:var(--input-bg, rgba(127,127,127,.08)); color:var(--text); flex:1 1 240px; min-width:170px; max-width:100%; }
+        .ar-btn { border:1px solid var(--line); border-radius:8px; padding:8px 14px; font-size:13px; color:var(--text); background:var(--btn-bg, rgba(127,127,127,.12)); cursor:pointer; flex:0 0 auto; }
+        .ar-btn:hover { background:var(--btn-hover-bg, rgba(127,127,127,.22)); }
+        .ar-btn.primary { border-color:transparent; background:#3d7ea6; color:#fff; }
+        .ar-btn.primary:hover { background:#356e91; }
+        .ar-btn:disabled { opacity:.5; cursor:not-allowed; }
+        .ar-tag { display:inline-block; font-size:12px; padding:3px 9px; border-radius:999px; border:1px solid var(--line); color:var(--muted); }
+        .ar-tag.is-custom { color:#7ee0a8; border-color:rgba(126,224,168,.4); }
+        .ar-meta { font-size:12.5px; color:var(--muted); }
+        .ar-status { margin-top:10px; font-size:13px; min-height:18px; }
+        .ar-status.is-ok { color:#7ee0a8; }
+        .ar-status.is-error { color:#ff8f8f; }
+        .ar-status.is-warn { color:#ffc66b; }
+        /* 校验规则：默认隐藏，出错才显示 */
+        .ar-hint { display:none; margin-top:10px; font-size:12.5px; color:var(--muted); line-height:1.7; }
+        .ar-hint.show { display:block; }
+        /* 待生效 amber pill：收敛「重启后生效」×3 为一处 */
+        .ar-pending { display:none; margin-top:14px; font-size:12.5px; padding:7px 12px; border-radius:999px; align-self:flex-start;
+            color:#ffc66b; border:1px solid rgba(255,198,107,.4); background:rgba(255,198,107,.1); }
+        .ar-pending.show { display:inline-block; }
+        .ar-section { margin-top:16px; padding-top:14px; border-top:1px dashed var(--line); }
+        .ar-bar { margin-top:8px; height:6px; border-radius:999px; background:rgba(127,127,127,.2); overflow:hidden; }
+        .ar-bar > i { display:block; height:100%; width:0; background:var(--accent); transition:width .3s ease; }
+    </style>
+</head>
+<body>
+    <div class="ar-page">
+        <section class="ar-card">
+            <div class="ar-title">资产目录</div>
+            <div class="ar-sub">所有生成物（图片/视频/音频/Blender 预演）都放这。改完重启 MyridTV 才生效。</div>
+
+            <div class="ar-row"><span class="ar-k">当前目录</span><span class="ar-path" id="arCurrentDir">读取中…</span></div>
+            <div class="ar-row"><span class="ar-tag" id="arSourceTag">—</span><span class="ar-meta" id="arMeta"></span></div>
+
+            <div class="ar-row"><span class="ar-k">更换</span>
+                <input class="ar-input" id="arInput" type="text" placeholder="例如 D:\MyridAssets" spellcheck="false">
+                <button class="ar-btn" id="arBrowseBtn" type="button">浏览…</button>
+                <button class="ar-btn primary" id="arSaveBtn" type="button">保存并创建</button>
+                <button class="ar-btn" id="arDefaultBtn" type="button">恢复默认</button>
+            </div>
+            <div class="ar-hint" id="arHint"></div>
+            <div class="ar-status" id="arSaveStatus"></div>
+
+            <div class="ar-pending" id="arPendingPill"></div>
+
+            <!-- 搬迁块常驻：有旧资产才可点；没有时给说明，换目录后若旧目录有内容这里就能搬（2026-10-16 老王） -->
+            <div class="ar-section" id="arMigrateSection">
+                <div class="ar-row"><span class="ar-k">旧目录搬迁</span>
+                    <span class="ar-path" id="arLegacyDir">—</span>
+                    <button class="ar-btn" id="arMigrateBtn" type="button">开始搬迁</button>
+                </div>
+                <div class="ar-hint" id="arMigrateNote"></div>
+                <div class="ar-status" id="arMigrateProgress"></div>
+                <div class="ar-bar"><i id="arMigrateBar"></i></div>
+            </div>
+        </section>
+    </div>
+
+    <script src="/static/js/assets-root.js?v=2026.10.16.assetsroot2"></script>
+</body>
+</html>

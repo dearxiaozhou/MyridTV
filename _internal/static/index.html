@@ -75,7 +75,8 @@
 
 .stage {
 position: absolute;
-inset: 0;
+/* 2026-10-16：顶部 31px 让给自绘 HTML 标题栏（#tb-bar），原生 Caption 按钮区由壳层占右侧 */
+inset: 31px 0 0 0;
 overflow: hidden;
 background: var(--bg);
 transition: background 0.3s ease;
@@ -332,13 +333,15 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
     }
 
     /* ===== 任务控制台（task-console） ===== */
+    /* 2026-10-16 老王：控制台原是近黑面板（--dock-bg = rgba(10,10,10,.94)）+ 近透明卡片，
+       与素材库/资产目录不统一。现统一为素材库配色：面板 --x-page(#1c1c1c)，卡片 --x-card(#242424) */
     .tc-overlay { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,0.55); display: none; }
     .tc-overlay.open { display: block; }
     .tc-panel {
       position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 41;
       width: min(1180px, 94vw); height: 86vh;
       display: none; flex-direction: column;
-      background: var(--dock-bg);
+      background: var(--x-page);
       border: 1px solid var(--line); border-radius: 14px;
       box-shadow: 0 28px 80px rgba(0,0,0,0.6);
       color: var(--text);
@@ -377,9 +380,8 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
     .tc-stat {
       display: flex; align-items: center; justify-content: space-between; gap: 8px;
       border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; min-width: 0;
-      background: rgba(255,255,255,0.02);
+      background: var(--x-card);
     }
-    html.theme-light .tc-stat { background: rgba(255,255,255,0.5); }
     .tc-stat-main { min-width: 0; }
     .tc-stat-num { font-size: 22px; font-weight: 950; line-height: 1.2; }
     .tc-stat-label { font-size: 12px; color: var(--muted); margin-top: 2px; white-space: nowrap; }
@@ -403,9 +405,8 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
     .tc-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px 22px; }
     .tc-item {
       border: 1px solid var(--line); border-radius: 11px; padding: 12px 14px; margin-bottom: 10px;
-      background: rgba(255,255,255,0.02); cursor: pointer;
+      background: var(--x-card); cursor: pointer;
     }
-    html.theme-light .tc-item { background: rgba(255,255,255,0.55); }
     .tc-item.selected { border-color: var(--dock-accent); box-shadow: inset 2px 0 0 var(--dock-accent); }
     .tc-item-top { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
     .tc-kind { font-size: 14px; font-weight: 900; }
@@ -433,8 +434,7 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
     .tc-detail b { color: var(--text); font-weight: 600; }
     .tc-params { margin-top: 8px; font-size: 13px; color: var(--muted); }
     .tc-params summary { cursor: pointer; color: var(--dock-accent, #50708c); font-weight: 700; user-select: none; }
-    .tc-params[open] { background: rgba(255,255,255,0.03); border: 1px solid var(--line); border-radius: 9px; padding: 8px 12px; max-height: 40vh; overflow-y: auto; }
-    html.theme-light .tc-params[open] { background: rgba(0,0,0,0.03); }
+    .tc-params[open] { background: var(--x-page); border: 1px solid var(--line); border-radius: 9px; padding: 8px 12px; max-height: 40vh; overflow-y: auto; }
     .tc-param-line { padding: 3px 0; word-break: break-all; border-bottom: 1px dashed var(--line); }
     .tc-param-line:last-child { border-bottom: none; }
     .tc-stat.run .tc-stat-num { color: #4ade80; }
@@ -465,8 +465,7 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
     .tc-analytics-custom input { height: 30px; padding: 0 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--dock-pill-bg); color: var(--text); font: inherit; }
     .tc-analytics-error { color: #f87171; }
     .tc-analytics-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; min-width: 670px; }
-    .tc-analytics-kpi { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,0.035); }
-    html.theme-light .tc-analytics-kpi { background: rgba(255,255,255,0.58); }
+    .tc-analytics-kpi { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--x-card); }
     .tc-analytics-kpi-label { color: var(--muted); font-size: 12px; white-space: nowrap; }
     .tc-analytics-kpi-value { font-size: 25px; font-weight: 900; line-height: 1.3; margin: 4px 0; font-variant-numeric: tabular-nums; }
     .tc-analytics-kpi-sub { color: var(--muted); font-size: 11px; white-space: nowrap; }
@@ -507,6 +506,125 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
     #update-notice button { flex: none; border: 0; border-radius: 8px; padding: 7px 10px; color: var(--text); background: var(--dock-active-bg); cursor: pointer; }
     #update-notice button.secondary { background: var(--dock-pill-bg); }
 
+    /* ===== 2026-10-16 自绘 HTML 标题栏（与 ChatGPT / WorkBuddy 同构）=====
+       原生最小化/最大化/关闭由壳层 DWM 按钮绘制，占右侧 --tb-btn-w（壳层按 DPI 注入真实宽度）；
+       左侧 36px 槽位留给 DWM 应用图标；条带行由本元素铺满，菜单/外观/语言全部网页内完成，
+       跨壳动作（新建/导入/导出画布、后端地址、日志、关于、更新、退出、拖动、最大化切换）
+       经 chrome.webview.postMessage 交回 installer/desktop/Program.cs 执行。 */
+    :root {
+      --tb-h: 31px;
+      --tb-bg: #1C1C1C;
+      --tb-fg: #E5E7EB;
+      --tb-hover: rgba(255, 255, 255, 0.10);
+      --tb-open: rgba(255, 255, 255, 0.14);
+      --tb-pop-bg: #262626;
+      --tb-pop-border: #454545;
+      --tb-item-hover: #343434;
+      --tb-sep: #3D3D3D;
+      --tb-btn-w: 138px;
+    }
+    html.theme-light {
+      --tb-bg: #F8FAFC;
+      --tb-fg: #0F172A;
+      --tb-hover: rgba(15, 23, 42, 0.06);
+      --tb-open: rgba(15, 23, 42, 0.10);
+      --tb-pop-bg: #FFFFFF;
+      --tb-pop-border: #E2E8F0;
+      --tb-item-hover: #F1F5F9;
+      --tb-sep: #E2E8F0;
+    }
+    #tb-bar {
+      position: absolute; top: 0; left: 0; right: 0; height: var(--tb-h); z-index: 600;
+      display: flex; align-items: center;
+      padding-left: 0; box-sizing: border-box;
+      background: var(--tb-bg); color: var(--tb-fg);
+      border-bottom: 1px solid var(--tb-sep);
+      font-size: 12.5px; line-height: 1; cursor: default;
+      user-select: none; -webkit-user-select: none;
+    }
+    /* 菜单条最左：软件图标（原生 Caption 图标位，DWM 不画 → 自绘；空白区仍可拖动） */
+    .tb-app-icon { flex: 0 0 auto; width: 16px; height: 16px; margin: 0 8px 0 14px; opacity: .92; pointer-events: none; }
+    .tb-menus { display: flex; align-items: center; gap: 2px; height: 100%; flex: 0 0 auto; }
+    .tb-menu {
+      height: 23px; padding: 0 10px; border: 0; border-radius: 6px;
+      background: transparent; color: inherit; font: inherit; font-size: 12.5px;
+      display: inline-flex; align-items: center; white-space: nowrap; cursor: default;
+    }
+    .tb-menu:hover { background: var(--tb-hover); }
+    .tb-menu.open { background: var(--tb-open); }
+    .tb-flex { flex: 1 1 auto; height: 100%; min-width: 0; }
+    .tb-pop {
+      position: absolute; top: calc(var(--tb-h) - 1px); min-width: 196px; max-width: 340px;
+      padding: 4px; border: 1px solid var(--tb-pop-border); border-radius: 8px;
+      background: var(--tb-pop-bg); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.38);
+      display: none; z-index: 10;
+    }
+    html.theme-light .tb-pop { box-shadow: 0 10px 30px rgba(15, 23, 42, 0.16); }
+    .tb-pop.open { display: block; }
+    .tb-item {
+      position: relative; display: flex; align-items: center; gap: 8px;
+      height: 30px; padding: 0 10px; border-radius: 6px; color: inherit;
+      white-space: nowrap; cursor: default;
+    }
+    .tb-item:hover { background: var(--tb-item-hover); }
+    /* 勾号行内前缀（不保留固定勾选列）→ 未勾选项标签贴左，与顶层菜单按钮文字对齐 */
+    .tb-check { flex: 0 0 auto; font-size: 11px; opacity: .95; }
+    .tb-label { flex: 1 1 auto; }
+    .tb-arrow { flex: 0 0 auto; font-size: 10px; opacity: 0.6; }
+    .tb-sep { height: 1px; margin: 4px 8px; background: var(--tb-sep); }
+    .tb-pop .tb-pop { top: -5px; left: calc(100% - 5px); }
+    /* 窗口按钮：DWM 原生按钮会被 WebView2 的不透明内容盖住 → 自绘（GPT/WorkBuddy 同构），
+       宽度收窄在壳层注入的 --tb-btn-w 内（与 Windows 三键总宽一致），动作经 postMessage 回壳。 */
+    .tb-winbtns { flex: 0 0 auto; width: var(--tb-btn-w); height: 100%; display: flex; align-items: stretch; }
+    .tb-winbtn {
+      flex: 1 1 0; min-width: 0; padding: 0; margin: 0; border: 0; border-radius: 0;
+      background: transparent; color: var(--tb-fg); cursor: default;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .tb-winbtn svg { width: 10px; height: 10px; display: block; }
+    .tb-winbtn:hover { background: var(--tb-hover); }
+    .tb-winbtn:active { background: var(--tb-open); }
+    .tb-winbtn.tb-winclose:hover { background: #E81123; color: #FFFFFF; }
+    .tb-winbtn .ico-restore { display: none; }
+    .tb-winbtn[data-max="1"] .ico-max { display: none; }
+    .tb-winbtn[data-max="1"] .ico-restore { display: block; }
+
+    /* ===== 设置类页面弹窗（2026-10-16 老王：所有窗口用弹窗，不挤掉主页面）=====
+       全屏遮罩 + 居中面板 + 头部右上角关闭键；iframe 仍加载原页面 URL（同源），
+       主题/语言经 postMessage 同步。遮罩/面板 z-index 低于标题栏（600）→ 菜单与窗口键可用。 */
+    .tb-page-overlay { position: fixed; inset: 0; z-index: 590; background: rgba(0, 0, 0, 0.55); display: none; }
+    .tb-page-overlay.open { display: block; }
+    .tb-page-panel {
+      position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+      width: min(1360px, 94vw); height: min(900px, 90vh); z-index: 591;
+      display: none; flex-direction: column; overflow: hidden;
+      background: var(--x-page); color: var(--text);
+      border: 1px solid var(--line); border-radius: 12px;
+      box-shadow: 0 28px 80px rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(14px);
+    }
+    html.theme-light .tb-page-panel { box-shadow: 0 28px 80px rgba(15, 23, 42, 0.22); }
+    .tb-page-panel.open { display: flex; }
+    /* 关闭键原来只有 10px 细灰 × 且透明底，老王反馈"没看到"→ 2026-10-16 加高加底色，
+       不再依赖 --tb-fg（真机 WebView 里可能未定义），直接用 --text */
+    .tb-page-head {
+      flex: 0 0 auto; height: 40px; display: flex; align-items: center; justify-content: flex-end;
+      padding: 0 10px 0 14px; border-bottom: 1px solid var(--line);
+      background: var(--x-page);
+    }
+    .tb-page-close {
+      height: 30px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px;
+      background: rgba(127,127,127,.22); color: var(--text, #E5E7EB); cursor: default;
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12.5px; font-weight: 600; line-height: 1;
+    }
+    .tb-page-close:hover { background: #E81123; border-color: #E81123; color: #FFFFFF; }
+    .tb-page-close svg { width: 12px; height: 12px; display: block; }
+    /* 2026-10-16 修复：全局 iframe 规则是 position:absolute; inset:0 + display:none，
+       舞台帧靠 switchUI 加 .active 才正常显示；弹窗帧没人加 .active，且 absolute 会盖住 head
+       （关闭键被 iframe 压住看不见）。这里显式改回常规流内 flex 子项。 */
+    .tb-page-frame { position: relative; inset: auto; flex: 1 1 auto; width: 100%; height: 100%; border: 0; background: transparent; display: block; }
+
   </style>
 <link rel="stylesheet" href="/static/css/light-theme-trial.css?v=interaction-audit-v0105c">
 <link rel="stylesheet" href="/static/css/canvas-interaction-style.css?v=component-boundaries-v0111">
@@ -514,33 +632,48 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
 <body>
   <div id="update-notice" role="status" aria-live="polite"><span id="update-notice-text">界面更新已就绪</span><button type="button" id="update-refresh">刷新界面</button><button type="button" class="secondary" id="update-later">稍后</button></div>
   <main class="app-shell">
+    <!-- 2026-10-16：自绘 HTML 标题栏。菜单由下方行内脚本按 TB_MENUS 生成；
+         壳层只负责原生 Caption 按钮命中区、吃标题栏行与 postMessage 动作分发。 -->
+    <div id="tb-bar" role="menubar" aria-label="标题栏菜单">
+      <img class="tb-app-icon" src="/static/images/myrid-icon-16.png" alt="" draggable="false">
+      <div class="tb-menus" id="tb-menus"></div>
+      <div class="tb-flex" id="tb-flex" title="拖动移动窗口 · 双击最大化 / 还原"></div>
+      <div class="tb-winbtns" id="tb-winbtns">
+        <button type="button" class="tb-winbtn" id="tb-btn-min" title="最小化">
+          <svg viewBox="0 0 10 10" class="ico-min" aria-hidden="true"><path d="M0 6.5 H10" stroke="currentColor" stroke-width="1" fill="none"/></svg>
+        </button>
+        <button type="button" class="tb-winbtn" id="tb-btn-max" data-max="0" title="最大化">
+          <svg viewBox="0 0 10 10" class="ico-max" aria-hidden="true"><rect x="0.5" y="0.5" width="9" height="9" stroke="currentColor" stroke-width="1" fill="none"/></svg>
+          <svg viewBox="0 0 10 10" class="ico-restore" aria-hidden="true"><rect x="0.5" y="2.5" width="7" height="7" stroke="currentColor" stroke-width="1" fill="none"/><rect x="2.5" y="0.5" width="7" height="7" stroke="currentColor" stroke-width="1" fill="none"/></svg>
+        </button>
+        <button type="button" class="tb-winbtn tb-winclose" id="tb-btn-close" title="关闭">
+          <svg viewBox="0 0 10 10" class="ico-close" aria-hidden="true"><path d="M0.5 0.5 L9.5 9.5 M9.5 0.5 L0.5 9.5" stroke="currentColor" stroke-width="1" fill="none"/></svg>
+        </button>
+      </div>
+    </div>
+    <!-- 设置类页面弹窗：不挤掉主页面；关闭键在面板右上角，Esc / 点遮罩同样可关（绑定见下方 init） -->
+    <div id="tb-page-overlay" class="tb-page-overlay"></div>
+    <section id="tb-page-panel" class="tb-page-panel" aria-label="页面弹窗">
+      <header class="tb-page-head">
+        <button type="button" id="tb-page-close" class="tb-page-close" title="关闭（Esc）" aria-label="关闭">
+          <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1 1 L9 9 M9 1 L1 9" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>
+          <span>关闭</span>
+        </button>
+      </header>
+      <iframe id="tb-page-frame" class="tb-page-frame" title="页面弹窗内容" scrolling="yes"></iframe>
+    </section>
     <section class="stage" aria-label="内容区域">
   <iframe id="frame-canvas" data-page="canvas" data-src="/static/canvas.html?cb=backend-info-v0116&audit=interaction-v0105&v=2026.10.01.speech9" scrolling="yes"></iframe>
       <iframe id="frame-asset-manager" data-page="asset-manager" data-src="/static/asset-manager.html?v=2026.10.01.speech9" scrolling="yes"></iframe>
       <iframe id="frame-api-settings" data-page="api-settings" data-src="/static/api-settings.html?v=2026.10.01.speech9" scrolling="yes"></iframe>
     <iframe id="frame-comfyui-settings" data-page="comfyui-settings" data-src="/static/comfyui-settings.html?v=2026.10.01.speech9" scrolling="yes"></iframe>
+    <iframe id="frame-assets-root" data-page="assets-root" data-popup-width="760" data-src="/static/assets-root.html?v=2026.10.16.assetsroot2" scrolling="yes"></iframe>
 <iframe id="frame-smart-canvas" data-page="smart-canvas" data-src="/static/smart-canvas.html?cb=backend-info-v0116&audit=interaction-v0105&v=2026.10.01.speech9" scrolling="no"></iframe>
     </section>
 
-    <div class="bottom-dock-shell">
-    <button class="dock-toggle left" type="button" onclick="toggleBottomDock()" title="向下收起/显示底部菜单">
-      <svg width="17" height="17" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
-    </button>
-
-    <nav class="bottom-dock" aria-label="底部菜单">
-      <button class="dock-pill" type="button" onclick="switchUI(this, 'api-settings')" title="API配置"><span class="dock-icon">API</span><span class="dock-pill-label">API配置</span></button>
-      <button class="dock-pill" type="button" onclick="switchUI(this, 'comfyui-settings')" title="本地工作流"><span class="dock-icon">WF</span><span class="dock-pill-label">本地工作流</span></button>
-      <button class="dock-pill" type="button" onclick="switchUI(this, 'asset-manager')" title="素材库"><span class="dock-icon">LIB</span><span class="dock-pill-label">素材库</span></button>
-      <button class="dock-logo" type="button" onclick="goHomeCanvas()" title="返回主页"><img src="/static/images/myrid-icon-dock.png?v=20260629" alt="MyridTV"></button>
-      <button class="dock-pill" type="button" onclick="toggleTheme()" id="dock-theme-btn" title="深色模式"><span class="dock-icon">TH</span><span class="dock-pill-label">深色模式</span></button>
-      <button class="dock-pill" type="button" onclick="toggleTaskConsole()" id="dock-console-btn" title="任务控制台"><span class="dock-icon">TC</span><span class="dock-pill-label">控制台</span></button>
-        <button class="dock-pill dock-version" type="button" id="app-version-pill" title="点击检查更新"><span class="dock-icon">V</span><span class="dock-pill-label app-version">版本：V0.11.17</span></button>
-    </nav>
-
-    <button class="dock-toggle right" type="button" onclick="toggleBottomDock()" title="向下收起/显示底部菜单">
-      <svg width="17" height="17" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
-    </button>
-    </div>
+    <!-- 2026-10-16：底部 dock 移除，页面导航改由自绘 HTML 标题栏（#tb-bar，菜单数据见下方 TB_MENUS）承担；
+         版本号仅保留在这个隐藏节点里，供更新提示逻辑读取当前版本，可见版本见菜单「关于 → 关于 MyridTV」。 -->
+    <span class="app-version" hidden>版本：V0.12.10</span>
   </main>
 
   <!-- 任务运行控制台（task-console） -->
@@ -618,7 +751,7 @@ const ACTIVE_PAGE_KEY = 'studio_active_page';
    canvas.html 仍保留，作为画布管理页（列表 / 新建 / 回收站 / 导入导出），
    并在"一张画布都没有"或接口不可用时作为兜底首页。 */
 const DEFAULT_PAGE_ID = 'smart-canvas';
-const PAGE_IDS = ['canvas', 'asset-manager', 'api-settings', 'comfyui-settings', 'smart-canvas'];
+const PAGE_IDS = ['canvas', 'asset-manager', 'api-settings', 'comfyui-settings', 'smart-canvas', 'assets-root'];
 const pageHistory = [];
 
 function getActivePageId() {
@@ -822,10 +955,6 @@ function goHomeCanvas() {
     switchUI(document.querySelector('.dock-logo'), target, { preserveFrame: true, skipHistory: true });
 }
 
-function toggleBottomDock() {
-    document.body.classList.toggle('dock-collapsed');
-}
-
 function toggleTheme() {
     if (!window.StudioTheme) return;
     window.StudioTheme.set(window.StudioTheme.get() === 'dark' ? 'light' : 'dark');
@@ -890,18 +1019,36 @@ window.addEventListener('wheel', function (event) {
     }
 }, { passive: false, capture: true });
 
+// 壳层原生文件夹选择的结果回传（Program.cs PickAssetsDirAsync 用 ExecuteScriptAsync 调这里），
+// 父文档再转给所有 iframe，资产页收到 assets-dir-picked 后填进输入框
+window.__onShellPickedDir = function (path) {
+    if (!path) return;
+    document.querySelectorAll('iframe').forEach(function (frame) {
+        if (frame.contentWindow) {
+            try { frame.contentWindow.postMessage({ type: 'assets-dir-picked', path: path }, '*'); } catch (e) { }
+        }
+    });
+};
+
 window.addEventListener('message', function (event) {
     const data = event.data || {};
     if (data.type === 'smart-canvas-lock-scroll') {
         lockStudioRootScroll();
         return;
     }
+    // 壳层原生文件夹选择的结果回传（Program.cs PickAssetsDirAsync → ExecuteScriptAsync 调这里），
+    // 父文档再转给所有 iframe，资产页收到 assets-dir-picked 后填进输入框
     if (data.type === 'asset_library_updated' || data.type === 'prompt_library_updated') {
         document.querySelectorAll('iframe').forEach(function (frame) {
             if (frame.contentWindow && frame.contentWindow !== event.source) {
                 try { frame.contentWindow.postMessage(data, '*'); } catch (e) { }
             }
         });
+        return;
+    }
+    // iframe（如弹窗里的资产页）没有 window.chrome.webview，借父文档转发给壳层（2026-10-16 文件夹选择）
+    if (data.type === 'shell-forward' && typeof data.msg === 'string') {
+        try { window.chrome.webview.postMessage(data.msg); } catch (e) { }
         return;
     }
     if (data.type === 'canvas-current-id') {
@@ -913,7 +1060,15 @@ window.addEventListener('message', function (event) {
         return;
     }
     if (data.type === 'open-page' && PAGE_IDS.includes(data.page)) {
-        const options = {};
+      // 设置类页面一律走弹窗，不挤掉主页面（画布内「管理提示词库」→ 素材库弹窗同理）
+      if (PAGE_POPUPS[data.page]) {
+        openPagePopup(data.page, {
+          tab: typeof data.tab === 'string' ? data.tab : '',
+          src: typeof data.src === 'string' ? data.src : (typeof data.url === 'string' ? data.url : '')
+        });
+        return;
+      }
+      const options = {};
         if (typeof data.src === 'string') options.src = data.src;
         if (typeof data.url === 'string') options.src = data.url;
         // 带 tab 参数跳子页（如 ~ 面板「管理提示词库」→ 素材库提示词库标签）：拼进 src，iframe 重载时以 URL 为准
@@ -1480,10 +1635,407 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    pill.addEventListener('click', runUpdateCheck);
+    if (pill) pill.addEventListener('click', runUpdateCheck);
     checkUpdateStatus();
     window.setInterval(checkUpdateStatus, 60000);
 });
+
+/* ===== 2026-10-16 自绘 HTML 标题栏 =====
+   交互对齐 GPT / WorkBuddy：点顶层菜单展开，展开后 hover 其它顶层即切换；
+   子菜单 hover 展开；点条目执行动作并收起；Esc / 点空白收起。
+   网页内可完成的事（切页 / 外观 / 语言 / 控制台）直接调既有全局函数；
+   必须壳层出手的事走 postMessage：menu|<动作> 与 win|drag / win|maximize-toggle。 */
+(function () {
+  var STRINGS = {
+    zh: {
+      'menu.canvas': '画布',
+      'menu.settings': '设置',
+      'menu.workflow': '工作流',
+      'menu.help': '帮助',
+      'menu.about': '关于',
+      'menu.canvas.home': '主页画布',
+      'menu.canvas.new': '新建画布',
+      'menu.canvas.import': '导入画布',
+      'menu.canvas.export': '导出画布',
+      'menu.settings.api': 'API 配置',
+      'menu.settings.assets': '资产目录',
+      'menu.settings.library': '素材库',
+      'menu.settings.appearance': '外观',
+      'menu.settings.appearance.dark': '深色模式',
+      'menu.settings.appearance.light': '浅色模式',
+      'menu.settings.language': '语言',
+      'menu.settings.language.zh': '中文',
+      'menu.settings.language.en': 'English',
+      'menu.workflow.comfyui': 'ComfyUI 配置',
+      'menu.help.backend': '后端地址（点击复制）',
+      'menu.help.console': '控制台',
+      'menu.help.logs': '日志',
+      'menu.about.about': '关于 MyridTV',
+      'menu.about.update': '检查更新',
+      'menu.about.exit': '退出 MyridTV',
+      'win.min': '最小化',
+      'win.max': '最大化',
+      'win.restore': '还原',
+      'win.close': '关闭'
+    },
+    en: {
+      'menu.canvas': 'Canvas',
+      'menu.settings': 'Settings',
+      'menu.workflow': 'Workflow',
+      'menu.help': 'Help',
+      'menu.about': 'About',
+      'menu.canvas.home': 'Home Canvas',
+      'menu.canvas.new': 'New Canvas',
+      'menu.canvas.import': 'Import Canvas',
+      'menu.canvas.export': 'Export Canvas',
+      'menu.settings.api': 'API Settings',
+      'menu.settings.assets': 'Asset Root',
+      'menu.settings.library': 'Asset Library',
+      'menu.settings.appearance': 'Appearance',
+      'menu.settings.appearance.dark': 'Dark Mode',
+      'menu.settings.appearance.light': 'Light Mode',
+      'menu.settings.language': 'Language',
+      'menu.settings.language.zh': '中文',
+      'menu.settings.language.en': 'English',
+      'menu.workflow.comfyui': 'ComfyUI Settings',
+      'menu.help.backend': 'Backend URL (copy)',
+      'menu.help.console': 'Console',
+      'menu.help.logs': 'Logs',
+      'menu.about.about': 'About MyridTV',
+      'menu.about.update': 'Check for Updates',
+      'menu.about.exit': 'Quit MyridTV',
+      'win.min': 'Minimize',
+      'win.max': 'Maximize',
+      'win.restore': 'Restore',
+      'win.close': 'Close'
+    }
+  };
+
+  var MENUS = [
+    { id: 'canvas', key: 'menu.canvas', items: [
+      { key: 'menu.canvas.home', run: function () { goHomeCanvas(); } },
+      { key: 'menu.canvas.new', run: function () { tbShell('menu|new-canvas'); } },
+      { key: 'menu.canvas.import', run: function () { tbShell('menu|import-canvas'); } },
+      { key: 'menu.canvas.export', run: function () { tbShell('menu|export-canvas'); } }
+    ]},
+    { id: 'settings', key: 'menu.settings', items: [
+      { key: 'menu.settings.api', run: function () { openPagePopup('api-settings'); } },
+      { key: 'menu.settings.assets', run: function () { openPagePopup('assets-root'); } },
+      { key: 'menu.settings.library', run: function () { openPagePopup('asset-manager'); } },
+      { sep: true },
+      { key: 'menu.settings.appearance', sub: [
+        { key: 'menu.settings.appearance.dark', check: function () { return tbTheme() !== 'light'; }, run: function () { tbSetTheme('dark'); } },
+        { key: 'menu.settings.appearance.light', check: function () { return tbTheme() === 'light'; }, run: function () { tbSetTheme('light'); } }
+      ]},
+      { key: 'menu.settings.language', sub: [
+        { key: 'menu.settings.language.zh', check: function () { return currentStudioLang() !== 'en'; }, run: function () { tbSetLang('zh'); } },
+        { key: 'menu.settings.language.en', check: function () { return currentStudioLang() === 'en'; }, run: function () { tbSetLang('en'); } }
+      ]}
+    ]},
+    { id: 'workflow', key: 'menu.workflow', items: [
+      { key: 'menu.workflow.comfyui', run: function () { openPagePopup('comfyui-settings'); } }
+    ]},
+    { id: 'help', key: 'menu.help', items: [
+      { key: 'menu.help.backend', run: function () { tbShell('menu|backend-url'); } },
+      { key: 'menu.help.console', run: function () { toggleTaskConsole(); } },
+      { key: 'menu.help.logs', run: function () { tbShell('menu|logs'); } }
+    ]},
+    { id: 'about', key: 'menu.about', items: [
+      { key: 'menu.about.about', run: function () { tbShell('menu|about'); } },
+      { key: 'menu.about.update', run: function () { tbShell('menu|update'); } },
+      { sep: true },
+      { key: 'menu.about.exit', run: function () { tbShell('menu|exit'); } }
+    ]}
+  ];
+
+  var bar = null, menusHost = null, openId = null, pops = [];
+
+  function tbT(key) {
+    var dict = STRINGS[currentStudioLang()] || STRINGS.zh;
+    return dict[key] || STRINGS.zh[key] || key;
+  }
+  function tbTheme() {
+    try { return window.StudioTheme && window.StudioTheme.get ? window.StudioTheme.get() : 'dark'; }
+    catch (e) { return 'dark'; }
+  }
+  function tbShell(msg) {
+    try { window.chrome.webview.postMessage(msg); } catch (e) { }
+  }
+
+  /* ===== 设置类页面弹窗（2026-10-16 老王：所有窗口用弹窗，不挤掉主页面）=====
+     菜单项 / 画布内 open-page 都走这里；iframe 加载与舞台iframe 相同的 data-src，
+     关闭时卸载（停轮询，下次打开重载取最新配置）。Esc / 点遮罩 / 右上角 × 均可关。 */
+  var PAGE_POPUPS = {
+    'api-settings': 'menu.settings.api',
+    'assets-root': 'menu.settings.assets',
+    'asset-manager': 'menu.settings.library',
+    'comfyui-settings': 'menu.workflow.comfyui'
+  };
+  var pagePopupOpen = false;
+
+  /* 2026-10-16 修复：顶层 message 处理器（open-page 分支）在 IIFE 外引用这两个名字，
+     不挂到 window 会 ReferenceError: PAGE_POPUPS is not defined → 点画布卡片永远进不去。 */
+  window.PAGE_POPUPS = PAGE_POPUPS;
+  window.openPagePopup = openPagePopup;
+
+  /* 弹窗自适应内容（老王：一点内容别撑个 1360×900 大盒子，还要左右滑）
+     宽度：舞台 iframe 上 data-popup-width 声明则用它，否则默认宽；
+     高度：读弹窗内容 body 的实际高度收敛（整页型配置页 body=满高，自然还是大窗）。 */
+  function fitPopup(pageId) {
+    var panel = document.getElementById('tb-page-panel');
+    var frame = document.getElementById('tb-page-frame');
+    var stage = document.getElementById('frame-' + pageId);
+    if (!panel || !frame) return;
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var wantW = stage ? parseInt(stage.dataset.popupWidth || '0', 10) : 0;
+    var w = wantW > 0 ? Math.min(wantW, Math.floor(vw * 0.94)) : Math.min(1360, Math.floor(vw * 0.94));
+    panel.style.width = w + 'px';
+    panel.style.height = Math.floor(vh * 0.9) + 'px';
+    var settle = function () {
+      var h = 0;
+      try {
+        var d = frame.contentDocument;
+        if (d) {
+          if (d.body) h = d.body.scrollHeight;
+          if (!h && d.documentElement) h = d.documentElement.scrollHeight;
+        }
+      } catch (e) { }
+      panel.style.height = Math.min(Math.max(h + 41, 200), Math.floor(vh * 0.9)) + 'px';
+    };
+    requestAnimationFrame(function () { requestAnimationFrame(settle); });
+  }
+
+  function openPagePopup(pageId, opts) {
+    var key = PAGE_POPUPS[pageId];
+    if (!key) return;
+    opts = opts || {};
+    var stageFrame = document.getElementById('frame-' + pageId);
+    var src = opts.src || (stageFrame && (stageFrame.dataset.src || stageFrame.getAttribute('src'))) || '';
+    if (!src) return;
+    if (opts.tab) {
+      var parts = src.split('#')[0].split('?');
+      var params = new URLSearchParams(parts[1] || '');
+      params.set('tab', opts.tab);
+      src = parts[0] + '?' + params.toString();
+    }
+    var frame = document.getElementById('tb-page-frame');
+    if (frame.getAttribute('src') !== src) frame.src = src;
+    document.getElementById('tb-page-overlay').classList.add('open');
+    document.getElementById('tb-page-panel').classList.add('open');
+    pagePopupOpen = true;
+    syncThemeToFrame(frame);
+    syncLanguageToFrame(frame);
+    fitPopup(pageId);
+    frame.addEventListener('load', function once() {
+      frame.removeEventListener('load', once);
+      syncThemeToFrame(frame);
+      syncLanguageToFrame(frame);
+      fitPopup(pageId);
+    });
+  }
+
+  function closePagePopup() {
+    document.getElementById('tb-page-overlay').classList.remove('open');
+    document.getElementById('tb-page-panel').classList.remove('open');
+    pagePopupOpen = false;
+    var frame = document.getElementById('tb-page-frame');
+    if (frame) frame.src = 'about:blank';
+  }
+  function tbSetTheme(next) {
+    try { if (window.StudioTheme && window.StudioTheme.set) window.StudioTheme.set(next); } catch (e) { }
+    document.querySelectorAll('iframe').forEach(syncThemeToFrame);
+  }
+  function tbSetLang(next) {
+    try {
+      if (window.StudioI18n && window.StudioI18n.set) window.StudioI18n.set(next);
+      else localStorage.setItem('studio_lang', next);
+      if (window.StudioI18n && window.StudioI18n.apply) window.StudioI18n.apply();
+    } catch (e) { }
+    if (typeof syncLanguageButton === 'function') syncLanguageButton();
+    document.querySelectorAll('iframe').forEach(syncLanguageToFrame);
+  }
+
+  function buildPop(items) {
+    var pop = document.createElement('div');
+    pop.className = 'tb-pop';
+    items.forEach(function (item) {
+      if (item.sep) {
+        var sep = document.createElement('div');
+        sep.className = 'tb-sep';
+        pop.appendChild(sep);
+        return;
+      }
+      var row = document.createElement('div');
+      row.className = 'tb-item';
+      // 勾号行内前缀（不保留固定勾选列）→ 未勾选项的标签贴左，与顶层菜单按钮文字对齐
+      if (item.check && item.check()) {
+        var check = document.createElement('span');
+        check.className = 'tb-check';
+        check.textContent = '✓';
+        row.appendChild(check);
+      }
+      var label = document.createElement('span');
+      label.className = 'tb-label';
+      label.textContent = tbT(item.key);
+      row.appendChild(label);
+      if (item.sub) {
+        var arrow = document.createElement('span');
+        arrow.className = 'tb-arrow';
+        arrow.textContent = '▸';
+        row.appendChild(arrow);
+        var sub = buildPop(item.sub);
+        pop.appendChild(sub);
+        row.addEventListener('mouseenter', function () {
+          pop.querySelectorAll('.tb-pop.open').forEach(function (node) {
+            if (node !== sub) node.classList.remove('open');
+          });
+          sub.classList.add('open');
+          sub.style.left = (pop.clientWidth - 5) + 'px';
+          sub.style.top = (row.offsetTop - 4) + 'px';
+        });
+      } else {
+        row.addEventListener('click', function (ev) {
+          ev.stopPropagation();
+          closeAll();
+          try { item.run(); } catch (e) { }
+        });
+      }
+      pop.appendChild(row);
+    });
+    return pop;
+  }
+
+  function openMenu(id) {
+    var menu = null;
+    for (var i = 0; i < MENUS.length; i++) if (MENUS[i].id === id) menu = MENUS[i];
+    if (!menu) return;
+    closeAll();
+    openId = id;
+    var btn = menusHost.querySelector('.tb-menu[data-id="' + id + '"]');
+    if (btn) btn.classList.add('open');
+    var pop = buildPop(menu.items);
+    bar.appendChild(pop);
+    if (btn) pop.style.left = btn.offsetLeft + 'px';
+    pop.classList.add('open');
+    pops.push(pop);
+  }
+
+  function closeAll() {
+    openId = null;
+    if (menusHost) menusHost.querySelectorAll('.tb-menu.open').forEach(function (n) { n.classList.remove('open'); });
+    pops.forEach(function (p) { p.remove(); });
+    pops = [];
+  }
+
+  function renderLabels() {
+    if (!menusHost) return;
+    menusHost.querySelectorAll('.tb-menu').forEach(function (btn) {
+      for (var i = 0; i < MENUS.length; i++) {
+        if (MENUS[i].id === btn.dataset.id) { btn.textContent = tbT(MENUS[i].key); break; }
+      }
+    });
+    var btnMin = document.getElementById('tb-btn-min');
+    var btnMax = document.getElementById('tb-btn-max');
+    var btnClose = document.getElementById('tb-btn-close');
+    if (btnMin) btnMin.title = tbT('win.min');
+    if (btnMax) btnMax.title = (btnMax.dataset.max === '1') ? tbT('win.restore') : tbT('win.max');
+    if (btnClose) btnClose.title = tbT('win.close');
+  }
+
+  // 壳层在窗口最大化/还原时回调（WM_SIZE 状态变化），切换最大化按钮字形
+  window.__tbSyncWinState = function (maximized) {
+    var btnMax = document.getElementById('tb-btn-max');
+    if (!btnMax) return;
+    btnMax.dataset.max = maximized ? '1' : '0';
+    btnMax.title = maximized ? tbT('win.restore') : tbT('win.max');
+  };
+
+  function init() {
+    bar = document.getElementById('tb-bar');
+    menusHost = document.getElementById('tb-menus');
+    if (!bar || !menusHost) return;
+    MENUS.forEach(function (menu) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tb-menu';
+      btn.dataset.id = menu.id;
+      btn.textContent = tbT(menu.key);
+      btn.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        if (openId === menu.id) closeAll(); else openMenu(menu.id);
+      });
+      btn.addEventListener('mouseenter', function () {
+        if (openId && openId !== menu.id) openMenu(menu.id);
+      });
+      menusHost.appendChild(btn);
+    });
+
+    // 条带空白区（含图标槽）交互：按住不动=点击；位移超 3px 才向壳发拖动（win|drag），
+    // 两次 click 间隔 <400ms 判为双击 → 最大化/还原（win|maximize-toggle）。
+    // 不用 DOM dblclick：壳的移动循环会吞掉 mouseup，网页点击流会断（实测 click/dblclick 均不触发）。
+    var dragArmed = false, dragSent = false, dragX = 0, dragY = 0, lastBarClick = 0;
+    function tbIsChrome(t) {
+      return !!(t && t.closest && t.closest('.tb-menu, .tb-pop, .tb-winbtn'));
+    }
+    bar.addEventListener('mousedown', function (ev) {
+      if (ev.button !== 0) return;
+      if (tbIsChrome(ev.target)) return;
+      ev.preventDefault();
+      dragArmed = true; dragSent = false;
+      dragX = ev.clientX; dragY = ev.clientY;
+    });
+    bar.addEventListener('mousemove', function (ev) {
+      if (!dragArmed || dragSent) return;
+      if (Math.abs(ev.clientX - dragX) > 3 || Math.abs(ev.clientY - dragY) > 3) {
+        dragSent = true;
+        tbShell('win|drag');
+      }
+    });
+    window.addEventListener('mouseup', function () { dragArmed = false; });
+    bar.addEventListener('click', function (ev) {
+      if (tbIsChrome(ev.target)) return;
+      var now = Date.now();
+      if (now - lastBarClick < 400) {
+        lastBarClick = 0;
+        tbShell('win|maximize-toggle');
+        return;
+      }
+      lastBarClick = now;
+    });
+    // 窗口按钮（自绘，替代被 WebView2 盖住的原生 Caption 按钮）
+    var btnMin = document.getElementById('tb-btn-min');
+    var btnMax = document.getElementById('tb-btn-max');
+    var btnClose = document.getElementById('tb-btn-close');
+    if (btnMin) btnMin.addEventListener('click', function (ev) { ev.stopPropagation(); tbShell('win|minimize'); });
+    if (btnMax) btnMax.addEventListener('click', function (ev) { ev.stopPropagation(); tbShell('win|maximize-toggle'); });
+    if (btnClose) btnClose.addEventListener('click', function (ev) { ev.stopPropagation(); tbShell('win|close'); });
+    // 页面弹窗：右上角 × / 点遮罩关闭（Esc 见下方 keydown）
+    var btnPageClose = document.getElementById('tb-page-close');
+    if (btnPageClose) btnPageClose.addEventListener('click', function (ev) { ev.stopPropagation(); closePagePopup(); });
+    var pageOverlay = document.getElementById('tb-page-overlay');
+    if (pageOverlay) pageOverlay.addEventListener('mousedown', function (ev) {
+      if (ev.target === pageOverlay) closePagePopup();
+    });
+    // 点菜单 / 下拉之外（含条带空白）收起；Esc 收起。
+    document.addEventListener('mousedown', function (ev) {
+      if (!openId) return;
+      var t = ev.target;
+      if (t && t.closest && t.closest('.tb-menu, .tb-pop')) return;
+      closeAll();
+    });
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape') {
+        if (openId) { closeAll(); return; }
+        if (pagePopupOpen) closePagePopup();
+      }
+    });
+    window.addEventListener('studio-lang-change', renderLabels);
+    renderLabels();
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
 </script>
 </body>
 </html>

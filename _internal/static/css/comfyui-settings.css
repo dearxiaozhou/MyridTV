@@ -1002,3 +1002,16 @@ body.theme-dark {
     border-bottom:1px solid var(--wf-v2-line) !important;
     background:var(--wf-v2-panel) !important;
 }
+
+/* 2026-10-16 老王：左侧栏卡片之间的缝是纯黑。
+   真因：theme.css 旧主壳规则 `html.studio-theme-dark body .sidebar { background:#000000 !important }`
+   （三处，76/1010/1188 行）与本页 .sidebar 类名撞车——该规则为已移除的底部 dock 布局所写，
+   却把本页侧栏（含 flex gap 缝）整块涂成 #000。api-settings 页有自己的 !important 覆盖故未中招。
+   修法：同选择器 + !important + 本文件在 theme.css 之后加载 → 覆盖回页面底色，
+   缝隙与页面边缘（body --wf-v2-bg = --x-page = #1c1c1c）融为一体，卡片仍亮一档。 */
+html.studio-theme-dark body .sidebar,
+body.studio-theme-dark .sidebar,
+html.theme-dark body .sidebar,
+body.theme-dark .sidebar {
+    background:var(--wf-v2-bg) !important;
+}
