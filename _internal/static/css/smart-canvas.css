@@ -24,7 +24,8 @@ button { border:0; cursor:pointer; }
 .shell.panning .image-node { transition:none !important; filter:none !important; }
 .shell.panning .image-node img,
 .shell.panning .image-node video { transition:none !important; }
-.shell.cutting-connections, .shell.cutting-connections * { cursor:crosshair !important; }
+/* 划断中隐藏系统光标：刀本体就是光标（跟手显示），再画个十字就是两个鼠标图标了 */
+.shell.cutting-connections, .shell.cutting-connections * { cursor:none !important; }
 .world { position:absolute; left:0; top:0; width:6000px; height:4000px; transform-origin:0 0; }
 /* 只在平移/缩放期间提升为合成层。常驻 will-change 会让 Chrome 把整个 world 栅格化一次后一直放大纹理，
    节点文字因此发虚并丢失次像素抗锯齿；运动结束后摘掉该类，逼浏览器按当前缩放重新栅格化。 */

@@ -9036,6 +9036,15 @@ function moveConnKnifeToClient(clientX, clientY){
     g.setAttribute('transform', `translate(${wp.x.toFixed(1)} ${wp.y.toFixed(1)}) scale(${(1 / scaleNow).toFixed(4)})`);
     g.classList.add('show');
 }
+// 兜底收尾：capture 阶段先拿 mouseup，避免中途有 handler stopPropagation 把
+// 事件拦在 window 之前（那样手势会卡住不结束）。finish 幂等，重复调用无副作用。
+document.addEventListener('mouseup', e => {
+    if(connectionCutState && e.button === 2) finishConnectionCutGesture();
+}, true);
+// 鼠标在窗口外松开时 mouseup 收不到 → 失焦即取消（不切任何线），别留着一直划
+window.addEventListener('blur', () => {
+    if(connectionCutState && typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.cancelActive();
+});
 function startConnectionCutGesture(event, initialIndex=-1){
     if(event){
         event.preventDefault();
@@ -13586,14 +13595,11 @@ shell.oncontextmenu = e => {
         return;
     }
     if(e.altKey && !isCanvasOverlayTarget(e.target)){
-        // mousedown 已经起过手势了，contextmenu 别再启一次——重启会清空已划到的线
-        // （且会让单击后残留一个永不结束的 cutting 手势）。
-        if(connectionCutState){
-            e.preventDefault();
-            e.stopPropagation();
-            return;
-        }
-        startConnectionCutGesture(e, connectionIndexFromTarget(e.target));
+        // 划断手势的唯一入口是 mousedown。contextmenu 是 mouseup 之后才到的，
+        // 那时手势已经 finish 了；若在这里重启，就会留下一个没有 mouseup 收尾的
+        // 手势——表现就是“松掉鼠标还在一直划”。所以这里只负责吞掉右键菜单。
+        e.preventDefault();
+        e.stopPropagation();
         return;
     }
     closeSmartImageContextMenu();
@@ -13923,13 +13929,14 @@ lastMouseWorld = screenToWorld(e);
     CanvasNodeGestureController.queueDragFrame(e);
 };
 window.onmouseup = e => {
-    CanvasNodeGestureController.flushDragFrame(e);
-    document.body.classList.remove('smart-node-drag');
-    document.body.classList.remove('smart-node-resize');
+    // 划断收尾放在最前：前面任何一步抛错都不会把手势卡在“一直划”的状态
     if(connectionCutState && e.button === 2){
         finishConnectionCutGesture();
         return;
     }
+    CanvasNodeGestureController.flushDragFrame(e);
+    document.body.classList.remove('smart-node-drag');
+    document.body.classList.remove('smart-node-resize');
     if(portDragState){
         const drag = portDragState;
         portDragState = null;
