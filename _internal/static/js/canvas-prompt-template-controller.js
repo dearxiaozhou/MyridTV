@@ -17,7 +17,8 @@
         const button=ctx.composerTemplateBtn;
         const panel=ctx.promptTemplatePanel;
         if(!button||!panel) return;
-        const active=panel.classList.contains('open') && panel.dataset.target==='composer';
+        // 停靠在资产库面板（.docked）时不算 composer 激活态
+        const active=panel.classList.contains('open') && panel.dataset.target==='composer' && !panel.classList.contains('docked');
         button.classList.toggle('active',active);
         button.setAttribute('aria-pressed',active?'true':'false');
     }
@@ -47,6 +48,12 @@
         const target=options.target==='composer'?'composer':'node';
         panel.dataset.target=target;
         panel.dataset.nodeId=nodeId||'';
+        if(panel.classList.contains('docked')){
+            // 2026-10-16：面板停靠在资产库里时被外部入口打开 → 摘掉停靠态（openPanel 会搬回 shell），
+            // 并广播给 smart-canvas.js 同步资产库 tab
+            panel.classList.remove('docked');
+            panel.dispatchEvent(new CustomEvent('prompttemplate-undocked'));
+        }
         if(panel.parentElement!==ctx.shell) ctx.shell.appendChild(panel);
         if(templateId) state.selectedId=templateId;
         if(!state.selectedId) state.selectedId=ctx.promptTemplateItems()[0]?.id||'';
@@ -64,6 +71,9 @@
     }
     function closePanel(){
         const ctx=context();
+        // 2026-10-16：停靠在资产库面板（.docked）时不关——由 tab 切换/资产面板关闭接管；
+        // 应用模板后也留在库内继续浏览
+        if(ctx.promptTemplatePanel?.classList.contains('docked')){ syncComposerButton(); return; }
         ctx.promptTemplatePanel?.classList.remove('open');
         syncComposerButton();
         ctx.render();
@@ -148,7 +158,7 @@
         if(ctx.composerTemplateBtn) ctx.composerTemplateBtn.onclick=event=>{
             event.preventDefault();event.stopPropagation();
             const panel=context().promptTemplatePanel;
-            if(panel?.classList?.contains('open')&&panel.dataset.target==='composer'){closePanel();return;}
+            if(panel?.classList?.contains('open')&&panel.dataset.target==='composer'&&!panel.classList.contains('docked')){closePanel();return;}
             const active=context();
             openPanel(active.activeComposerNode()?.id||active.selectedNode()?.id||'',active.state.selectedId,{target:'composer',anchor:event.currentTarget});
         };

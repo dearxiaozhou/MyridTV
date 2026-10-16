@@ -68,7 +68,6 @@ const assetLibrarySelect = document.getElementById('assetLibrarySelect');
 const assetCategorySelect = document.getElementById('assetCategorySelect');
 const assetGrid = document.getElementById('assetGrid');
 const assetDropZone = document.getElementById('assetDropZone');
-const workflowEmpty = document.getElementById('workflowEmpty');
 const SMART_CANVAS_ACTIONS = window.WcsSmartCanvasActions || null;
 const assetImageControls = document.getElementById('assetImageControls');
 const assetDialogBackdrop = document.getElementById('assetDialogBackdrop');
@@ -3854,52 +3853,6 @@ function importedMediaNodeTitle(image){
     const kind = mediaKindForItem(image);
     return kind === 'video' ? 'Video' : kind === 'audio' ? 'Audio' : kind === 'text' ? 'Text' : kind === 'file' ? 'File' : 'Image';
 }
-function createCanvasGroupFromImages(images, options={}){
-    const items = [...(images || [])].filter(image => image?.url);
-    if(items.length < 2) return null;
-    const columns = Math.min(4, Math.max(2, Math.ceil(Math.sqrt(items.length))));
-    const rows = Math.ceil(items.length / columns);
-    const width = columns * AUTO_IMPORT_GROUP_CELL + (columns - 1) * AUTO_IMPORT_GROUP_GAP;
-    const height = rows * AUTO_IMPORT_GROUP_CELL + (rows - 1) * AUTO_IMPORT_GROUP_GAP;
-    const center = options.point || viewportCenter();
-    const left = Math.round((Number(center?.x) || 0) - width / 2);
-    const top = Math.round((Number(center?.y) || 0) - height / 2);
-    const members = items.map((image, index) => {
-        const slot = {
-            x:left + (index % columns) * (AUTO_IMPORT_GROUP_CELL + AUTO_IMPORT_GROUP_GAP),
-            y:top + Math.floor(index / columns) * (AUTO_IMPORT_GROUP_CELL + AUTO_IMPORT_GROUP_GAP),
-            w:AUTO_IMPORT_GROUP_CELL,
-            h:AUTO_IMPORT_GROUP_CELL
-        };
-        const size = imageSizeWithinBox(image, slot.w, slot.h);
-        const cleanImage = stripImageGenerationMeta({...image, groupPosition:undefined});
-        return {
-            id:uid('smart'),
-            type:'smart-image',
-            x:Math.round(slot.x + (slot.w - size.width) / 2),
-            y:Math.round(slot.y + (slot.h - size.height) / 2),
-            w:size.width,
-            h:size.height,
-            title:importedMediaNodeTitle(image),
-            images:[cleanImage],
-            scale:1,
-            created_at:Date.now(),
-            status:'ready',
-            role:'media',
-            __origin:'user_manual',
-            ...(size.known ? {} : {autoGroupSlot:slot})
-        };
-    });
-    const group = CanvasNodeLayoutController.createCanvasGroupForNodes(members, {addToStore:false});
-    if(!group) return null;
-    nodeStore.addNodes([...members, group], 'user_manual');
-    canvasUiState.patchSelection({ids: []}, 'selectedIds');
-    canvasUiState.patchSelection({primaryId: group.id}, 'selectedId');
-    canvasUiState.patchSelection({image: {nodeId:'', index:-1}}, 'selectedImage');
-    render();
-    scheduleSave();
-    return group;
-}
 function fitAutoGroupMemberToSlot(node, image){
     const slot = node?.autoGroupSlot;
     if(!slot || !image) return false;
@@ -3912,139 +3865,10 @@ function fitAutoGroupMemberToSlot(node, image){
     delete node.autoGroupSlot;
     return true;
 }
-function migrateLegacyAutoImageGroups(sourceNodes){
-    const migrated = [];
-    for(const node of sourceNodes || []){
-        const title = String(node?.title || '').trim().toLowerCase();
-        const images = node?.images || [];
-        const generated = Boolean(node?.runAt || node?.runFinishedAt || node?.runSettings || node?.sourceNodeId || node?.isHistoryGroup || node?.historyFor)
-            || images.some(image => image?.generatedResult || image?.loopInputPreview || image?.grid?.type === 'grid-split');
-        const importTitle = ['group', 'media', 'images', 'videos', 'audio'].includes(title);
-        if(!isSmartImageNode(node) || images.length < 2 || !importTitle || generated || node.groupLayout || (node.__origin && node.__origin !== 'user_manual')){
-            migrated.push(node);
-            continue;
-        }
-        const layout = imageLayout(images, nodeScale(node), node);
-        const columns = Math.max(1, Math.min(4, Number(layout.cols) || Math.ceil(Math.sqrt(images.length))));
-        const rows = Math.ceil(images.length / columns);
-        const cell = Math.max(96, Math.min(AUTO_IMPORT_GROUP_CELL, Number(layout.thumb) || AUTO_IMPORT_GROUP_CELL));
-        const gap = AUTO_IMPORT_GROUP_GAP;
-        const gridW = columns * cell + (columns - 1) * gap;
-        const gridH = rows * cell + (rows - 1) * gap;
-        const centerX = (Number(node.x) || 0) + layout.width / 2;
-        const centerY = (Number(node.y) || 0) + layout.height / 2;
-        const left = Math.round(centerX - gridW / 2);
-        const top = Math.round(centerY - gridH / 2);
-        const members = images.map((image, index) => {
-            const slot = {
-                x:left + (index % columns) * (cell + gap),
-                y:top + Math.floor(index / columns) * (cell + gap),
-                w:cell,
-                h:cell
-            };
-            const size = imageSizeWithinBox(image, slot.w, slot.h);
-            return {
-                id:uid('smart'),
-                type:'smart-image',
-                x:Math.round(slot.x + (slot.w - size.width) / 2),
-                y:Math.round(slot.y + (slot.h - size.height) / 2),
-                w:size.width,
-                h:size.height,
-                title:importedMediaNodeTitle(image),
-                images:[stripImageGenerationMeta({...image, groupPosition:undefined})],
-                scale:1,
-                created_at:Number(node.created_at) || Date.now(),
-                status:'ready',
-                role:'media',
-                __origin:'user_manual',
-                ...(size.known ? {} : {autoGroupSlot:slot})
-            };
-        });
-        const group = CanvasNodeLayoutController.createCanvasGroupForNodes(members, {
-            id:node.id,
-            title:node.title || 'Group',
-            created_at:node.created_at,
-            origin:node.__origin || 'user_manual',
-            addToStore:false
-        });
-        migrated.push(...members, group);
-    }
-    return migrated;
-}
-// MCP/Agent image results are independent outputs. A multi-image smart-image node
-// traps them in a thumbnail grid, so each output needs its own resizable node and
-// the same smart-group container created by the manual Group action.
-function materializeAgentImageGroups(sourceNodes){
+// Existing groups retain their size reconciliation; creating groups is manual only.
+function reconcileExistingAgentGroups(sourceNodes){
     const result = [...(sourceNodes || [])];
     let changed = false;
-    const supportedOrigins = new Set(['mcp', 'mcp_update', 'agent_tool_generation', 'mcp_flow']);
-    const candidates = result.filter(node => node?.type === 'smart-image'
-        && supportedOrigins.has(node.__origin) && Array.isArray(node.images) && node.images.length > 1
-        && !node.isHistoryGroup && !node.historyFor && node.groupLayout?.mode !== 'preserve');
-    for(const source of candidates){
-        const originalImages = source.images.filter(image => image?.url);
-        if(originalImages.length < 2) continue;
-        const existingGroup = result.find(node => node.type === 'smart-group' && node.mcpGroupSourceId === source.id);
-        const existingMembers = existingGroup
-            ? (existingGroup.memberIds || []).map(id => result.find(node => node.id === id)).filter(Boolean)
-            : [];
-        const knownUrls = new Set(existingMembers.filter(node => node.id !== source.id)
-            .flatMap(node => (node.images || []).map(image => image?.url).filter(Boolean)));
-        const additionalImages = originalImages.slice(1).filter(image => !knownUrls.has(image.url));
-        const beforeCount = originalImages.length;
-        source.images = [originalImages[0]];
-        changed = true;
-        if(!additionalImages.length) continue;
-        const originalWidth = Number(source.w || source.cardSize?.width || 520);
-        const cellWidth = Number(source.mcpGroupCellWidth) || Math.max(180, Math.min(520, Math.round(originalWidth / Math.min(4, beforeCount))));
-        const cellHeight = Math.max(120, Math.round(Number(source.h || source.cardSize?.height || 300)));
-        source.mcpGroupCellWidth = cellWidth;
-        const firstSize = imageSizeWithinBox(source.images[0], cellWidth, cellHeight);
-        if(!source.generationFrameLocked && source.cardSizing !== 'manual' && (!existingGroup || !(Number(source.w) > 24 && Number(source.h) > 24))){
-            source.w = firstSize.width;
-            source.h = firstSize.height;
-            source.cardSize = {width:firstSize.width, height:firstSize.height};
-            source.cardSizing = 'intrinsic';
-        }
-        const members = existingGroup ? [...existingMembers] : [source];
-        if(!members.some(node => node.id === source.id)) members.unshift(source);
-        const anchorX = Number(source.x) || 0;
-        additionalImages.forEach(image => {
-            const size = imageSizeWithinBox(image, cellWidth, cellHeight);
-            const rows = members.map(member => nodeRect(member));
-            const nextX = members.length % 4 === 0
-                ? anchorX : Math.max(...rows.map(rect => rect.x + rect.width)) + 12;
-            const nextY = members.length % 4 === 0
-                ? Math.max(...rows.map(rect => rect.y + rect.height)) + 12
-                : Math.max(...rows.map(rect => rect.y));
-            const member = {
-                id:uid('smart'), type:'smart-image',
-                title:`${source.title || 'Image'} · ${members.length + 1}`,
-                x:Math.round(nextX), y:Math.round(nextY),
-                w:size.width, h:size.height,
-                cardSize:{width:size.width, height:size.height}, cardSizing:'intrinsic',
-                images:[image], scale:1, status:'ready', role:'media',
-                created_at:Number(source.created_at) || Date.now(),
-                __origin:'mcp_output', mcpGroupSourceId:source.id
-            };
-            members.push(member);
-            result.push(member);
-        });
-        const measured = CanvasNodeLayoutController.createCanvasGroupForNodes(members, {
-            id:existingGroup?.id, title:existingGroup?.title || source.title || 'Group',
-            created_at:existingGroup?.created_at || source.created_at,
-            origin:'mcp', addToStore:false
-        });
-        if(existingGroup){
-            existingGroup.memberIds = members.map(node => node.id);
-            existingGroup.x = measured.x; existingGroup.y = measured.y;
-            existingGroup.w = measured.w; existingGroup.h = measured.h;
-        } else {
-            measured.mcpGroupSourceId = source.id;
-            source.mcpGroupId = measured.id;
-            result.push(measured);
-        }
-    }
     // Existing saved groups need the same reconciliation as newly split results.
     // Metadata may arrive after grouping or a server merge may contain old cardSize.
     for(const group of result.filter(node => node.type === 'smart-group' && node.mcpGroupSourceId)){
@@ -5985,6 +5809,7 @@ function positionPromptTemplateNearAnchor(anchor){
     return CanvasPromptTemplateController.positionNearAnchor(anchor);
 }
 function openPromptTemplatePanel(nodeId='', templateId='', options={}){
+    undockPromptTemplatePanel(); // 若停靠在资产库面板，先移回原位再按原逻辑开浮层
     return CanvasPromptTemplateController.openPanel(nodeId, templateId, options);
 }
 function closePromptTemplatePanel(){
@@ -6443,12 +6268,13 @@ function renderComposerStyleControl(){
         <div class="smart-popover style-popover">
             <div class="style-popover-head">
                 <div class="smart-popover-title">风格库 <span class="style-library-count" data-style-count></span></div>
-                <button type="button" class="style-new-btn" data-style-new title="新建自定义风格"><i data-lucide="plus"></i><span>新建</span></button>
             <label class="style-library-search"><i data-lucide="search"></i><input type="search" data-style-search aria-label="搜索风格" placeholder="搜索风格、媒介或关键词" value="${escapeAttr(styleLibraryQuery)}"></label>
                 <button type="button" class="filter-preset-close" data-style-close aria-label="关闭风格库"><i data-lucide="x"></i></button>
             </div>
+            <!-- 2026-10-16 老王：「新建」从标题行移到「我的风格」后面 -->
             <div class="style-library-categories" aria-label="风格分类">
                 ${[{id:'all',name:'全部'},...CanvasStylePresets.categories,{id:'mine',name:'我的风格'}].map(category => `<button type="button" data-style-category="${category.id}" aria-pressed="${category.id === styleLibraryCategory}">${category.name}</button>`).join('')}
+                <button type="button" class="style-new-btn" data-style-new title="新建自定义风格"><i data-lucide="plus"></i><span>新建</span></button>
             </div>
             <div class="style-library-results">
                 ${CanvasStylePresets.categories.map(category => `<section data-style-group="${category.id}"><div class="style-option-group-label">${category.name}</div><div class="style-tile-grid">${BUILTIN_STYLE_PRESETS.filter(preset => preset.category === category.id).map(tileHtml).join('')}</div></section>`).join('')}
@@ -6683,12 +6509,53 @@ function bindComposerStyleControl(){
     });
 }
 
+/* ===== 提示词库停靠（2026-10-16 老王：资产库面板的「提示词库」tab）=====
+ * 不复制第二套模板库 UI——把 #promptTemplatePanel 整个搬进 #assetPanel（.docked 模式），
+ * 库选择/搜索/分组/编辑/应用全部复用。停靠时 target 固定 'composer'（应用=写进下方提示词框），
+ * controller 对 .docked 有专门守卫：closePanel 不关（由 tab 切换/面板关闭接管）。
+ */
+let promptTemplatePanelHome = null;
+function undockPromptTemplatePanel(){
+    if(!promptTemplatePanel || !promptTemplatePanel.classList.contains('docked')) return;
+    promptTemplatePanel.classList.remove('docked', 'open');
+    promptTemplatePanel.dataset.target = '';
+    promptTemplatePanel.dataset.nodeId = '';
+    promptTemplatePanel.style.cssText = '';
+    (promptTemplatePanelHome || shell || document.body).appendChild(promptTemplatePanel);
+    const closeBtn = document.getElementById('promptTemplateClose');
+    if(closeBtn) closeBtn.onclick = () => CanvasPromptTemplateController.closePanel();
+    promptTemplatePanelHome = null;
+}
+function dockPromptTemplateInAssetPanel(dock){
+    if(!assetPanel || !promptTemplatePanel) return;
+    if(!dock){
+        undockPromptTemplatePanel();
+        return;
+    }
+    if(promptTemplatePanel.classList.contains('docked')) return;
+    promptTemplatePanelHome = promptTemplatePanel.parentElement || shell || document.body;
+    promptTemplatePanel.classList.add('docked', 'open');
+    promptTemplatePanel.style.cssText = '';
+    promptTemplatePanel.dataset.target = 'composer';
+    promptTemplatePanel.dataset.nodeId = '';
+    assetPanel.appendChild(promptTemplatePanel);
+    const closeBtn = document.getElementById('promptTemplateClose');
+    // 停靠态下 × = 退出提示词库 tab，回到图片资产
+    if(closeBtn) closeBtn.onclick = () => { assetTab = 'image'; renderAssetLibrary(); };
+    renderPromptTemplatePanel({preserveScroll:false});
+}
+// composer/节点入口打开模板库时（controller.openPanel 会搬回 shell 并 dispatch 此事件），同步 tab 态
+promptTemplatePanel?.addEventListener('prompttemplate-undocked', () => {
+    if(assetTab === 'prompts'){ assetTab = 'image'; renderAssetLibrary(); }
+});
+
 function toggleAssetLibrary(open=!assetLibraryOpen){
     if(!assetPanel || !assetToggle) return;
     assetLibraryOpen = !!open;
     assetPanel.classList.toggle('open', assetLibraryOpen);
     assetToggle?.classList.toggle('active', assetLibraryOpen);
     if(assetLibraryOpen) loadAssetLibrary();
+    else undockPromptTemplatePanel();
     render();
 }
 
@@ -6752,8 +6619,10 @@ function renderStylePanel(){
     const activeIds = insertedStyleIds();
     const categories = stylePanel.querySelector('[data-panel-style-categories]');
     if(categories){
+        // 2026-10-16 老王：「新建」从 head-row 移到分类行「我的风格」后面
         categories.innerHTML = [{id:'all',name:'全部'},...CanvasStylePresets.categories,{id:'mine',name:'我的风格'}]
-            .map(c => `<button type="button" data-panel-style-category="${c.id}" aria-pressed="${c.id === styleLibraryCategory}" class="${c.id === styleLibraryCategory ? 'active' : ''}">${c.name}</button>`).join('');
+            .map(c => `<button type="button" data-panel-style-category="${c.id}" aria-pressed="${c.id === styleLibraryCategory}" class="${c.id === styleLibraryCategory ? 'active' : ''}">${c.name}</button>`).join('')
+            + `<button type="button" class="style-new-btn" data-panel-style-new title="新建自定义风格"><i data-lucide="plus"></i><span>新建</span></button>`;
     }
     const results = stylePanel.querySelector('[data-panel-style-results]');
     if(results){
@@ -6936,7 +6805,8 @@ function renderAssetLibrary(){
     assetImageControls.style.display = imageMode ? 'block' : 'none';
     assetDropZone.style.display = imageMode ? 'flex' : 'none';
     assetGrid.style.display = imageMode ? 'grid' : 'none';
-    workflowEmpty.style.display = imageMode ? 'none' : 'flex';
+    // 2026-10-16 老王：删掉「工作流」占位 tab，换成「提示词库」——把模板库面板停靠进资产库面板
+    dockPromptTemplateInAssetPanel(!imageMode);
     if(!imageMode){ refreshIcons(); return; }
     const cats = assetCategories('image');
     if(!cats.some(cat => cat.id === activeAssetCategoryId)) activeAssetCategoryId = cats[0]?.id || '';
@@ -7172,7 +7042,7 @@ async function loadCanvas(){
         // Phase 4：载入即剔除墓碑节点（防御后端历史数据 / 多端竞态残留）
         const loadDead = nodeStore.deletedIds(canvas);
         const liveNodes = loadDead.size ? cleanedCanvas.nodes.filter(n => !loadDead.has(n.id)) : cleanedCanvas.nodes;
-        nodes = materializeAgentImageGroups(migrateLegacyAutoImageGroups(liveNodes));
+        nodes = reconcileExistingAgentGroups(liveNodes);
         const migratedLegacyGroups = nodes.length !== liveNodes.length || nodes.mcpGroupChanged;
         nodes.forEach(n => {
             const pendingTasks = smartPendingTasks(n);
@@ -8502,7 +8372,7 @@ function hideRunTimerForNode(){return CanvasGeneratedOutputNaming.hideRunTimerFo
 
 function refreshRunTimerPills(){return CanvasGeneratedOutputNaming.refreshRunTimerPills.apply(null, arguments);}
 function render(){
-    const materializedNodes = materializeAgentImageGroups(nodes);
+    const materializedNodes = reconcileExistingAgentGroups(nodes);
     if(materializedNodes.mcpGroupChanged){
         nodes = materializedNodes;
         scheduleSave();
@@ -10751,7 +10621,6 @@ CanvasImageNodeMediaController.configure({
     getNodes: () => nodes,
     selectedNode: () => selectedNode(),
     isImageNode: node => isSmartImageNode(node),
-    createGroupFromImages: (images, options) => createCanvasGroupFromImages(images, options),
     viewportCenter: () => viewportCenter(),
     createEmptyNodeAt: point => {
         undoSuppressed = true;
@@ -12321,24 +12190,21 @@ function updatePromptMentionUrlsForMovedAssets(){return CanvasHistoryArchiveGrou
 function demoteHistoryGroupNode(){return CanvasHistoryArchiveGroup.demoteHistoryGroupNode.apply(null, arguments);}
 function historyGroupForNode(){return CanvasHistoryArchiveGroup.historyGroupForNode.apply(null, arguments);}
 function ensureHistoryGroupForNode(){return CanvasHistoryArchiveGroup.ensureHistoryGroupForNode.apply(null, arguments);}
-function replaceOutputsToNodeWithHistory(node, additions, kind='image', meta=null, options={}){
+async function replaceOutputsToNodeWithHistory(node, additions, kind='image', meta=null, options={}){
     if(!node || !additions?.length) return [];
+    const attempt = node.generationAttemptId;
+    if(meta?.generationAttemptId && !CanvasGenerationLifecycle.isCurrent(node,meta.generationAttemptId)) return [];
     preserveNodeCardForRun(node);
     const beforeRight = (Number(node.x) || 0) + nodeRect(node).width;
     const existing = cleanHistoryImages(node.images || []);
     const next = cleanHistoryImages(additions);
     if(!next.length) return [];
-    const history = existing.length && nodeHasCompletedGeneration(node) ? ensureHistoryGroupForNode(node) : historyGroupForNode(node);
-    if(history){
-        const archived = cleanHistoryImages([...existing, ...(history.images || [])]);
-        history.images = archived;
-        history.title = '历史分组';
-        history.outputKind = kind;
-        history.scale = MEDIA_GROUP_DEFAULT_SCALE;
-        delete history.w;
-        delete history.h;
-    }
+    const nextUrls = new Set(next.map(image => image.url));
+    await moveOutputImagesToHistoryForRun(existing.filter(image => !nextUrls.has(image.url)), {strict:true});
+    if(node.generationAttemptId !== attempt || (meta?.generationAttemptId && !CanvasGenerationLifecycle.isCurrent(node,meta.generationAttemptId))) return [];
+    node.outputPlacement = 'replace';
     node.images = next;
+    delete node.runError;
     node.pending = 0;
     node.running = false;
     delete node.pendingTasks;
@@ -12599,7 +12465,7 @@ async function runCascadeStepIntoNode(sourceNode, targetNode, inputRefs, ctx=sma
                 return stripImageGenerationMeta({url, name, kind:(typeof item === 'object' && item.kind) || result.kind, generatedResult:true});
             }).filter(item => item.url);
         addSmartGenerationLog({run:{...runLog, kind:result.kind || logKind}, outputs:additions, runMs:nowMs() - runLogStart});
-        replaceOutputsToNodeWithHistory(outputNode, additions, result.kind, null, {skipShift:Boolean(ctx?.nodeId), autoTitlePrompt:prompt});
+        await replaceOutputsToNodeWithHistory(outputNode, additions, result.kind, null, {skipShift:Boolean(ctx?.nodeId), autoTitlePrompt:prompt});
         outputNode.runPrompt = targetPromptState.runPrompt;
         outputNode.runModelPrompt = targetPromptState.runModelPrompt;
         outputNode.runPromptRefs = targetPromptState.runPromptRefs || [];
@@ -12715,7 +12581,7 @@ async function runLoopRoundIntoSlot(loopNode, rootNode, outputSlot, loopIndex, c
                 const url = typeof item === 'string' ? item : item?.url || '';
                 return stripImageGenerationMeta({url, name:(typeof item === 'object' && item.name) || `output-${i + 1}.${ext}`, kind:(typeof item === 'object' && item.kind) || result.kind, generatedResult:true});
             }).filter(item => item.url);
-            replaceOutputsToNodeWithHistory(outputSlot, additions, result.kind, meta, {skipShift:Boolean(ctx?.nodeId), autoTitlePrompt:prompt});
+            await replaceOutputsToNodeWithHistory(outputSlot, additions, result.kind, meta, {skipShift:Boolean(ctx?.nodeId), autoTitlePrompt:prompt});
         }
         if(runPath?.states) {
             runPath.states[edgeKey] = 'done';
@@ -12736,7 +12602,7 @@ async function runLoopRoundIntoSlot(loopNode, rootNode, outputSlot, loopIndex, c
         settings = previousSettings;
     }
 }
-function appendCascadeRefsToReceiver(node, refs, ctx=smartLoopContext){
+async function appendCascadeRefsToReceiver(node, refs, ctx=smartLoopContext){
     if(!node || !refs?.length) return [];
     const additions = refs
         .filter(ref => ref?.url)
@@ -12746,7 +12612,7 @@ function appendCascadeRefsToReceiver(node, refs, ctx=smartLoopContext){
             kind:ref.kind || (isVideoMediaItem(ref) ? 'video' : 'image')
         }));
     if(!additions.length) return [];
-    replaceOutputsToNodeWithHistory(node, additions, mediaKindForUrls(additions, additions.some(isVideoMediaItem) ? 'video' : 'image'), null, {skipShift:Boolean(ctx?.nodeId)});
+    await replaceOutputsToNodeWithHistory(node, additions, mediaKindForUrls(additions, additions.some(isVideoMediaItem) ? 'video' : 'image'), null, {skipShift:Boolean(ctx?.nodeId)});
     render();
     return additions;
 }
