@@ -375,15 +375,15 @@
             </div>
         </aside>
         <aside id="assetPanel" class="asset-panel">
-            <div class="asset-head">
-                <div class="asset-title"><i data-lucide="library"></i><span data-i18n="smart.assetLibrary">资产库</span></div>
-                <button id="assetCloseBtn" class="asset-mini-btn" type="button" title="收起" data-i18n-title="common.close"><i data-lucide="x"></i></button>
-            </div>
-            <div class="asset-tabs">
-                <button class="asset-tab active" type="button" data-asset-tab="image" data-i18n="smart.assetImages">图片资产</button>
+            <!-- 2026-10-17 老王：头部照「预设」面板做——去掉「资产库」名称行，tab 按钮直接放头部一排 -->
+            <div class="style-panel-top">
+                <div class="asset-tabs" role="tablist" aria-label="资产库视图">
+                    <button class="asset-tab active" type="button" role="tab" aria-selected="true" data-asset-tab="image" data-i18n="smart.assetImages">图片资产</button>
                 <!-- 2026-10-16 老王：删掉「工作流」占位 tab（原"先预留在这里，后续接入"一直没接入），
                      换成「提示词库」——点它把 #promptTemplatePanel 停靠进来（见 smart-canvas.js dockPromptTemplateInAssetPanel）。技能不加。 -->
-                <button class="asset-tab" type="button" data-asset-tab="prompts" data-i18n="smart.assetPrompts">提示词库</button>
+                <button class="asset-tab" type="button" role="tab" aria-selected="false" data-asset-tab="prompts" data-i18n="smart.assetPrompts">提示词库</button>
+                </div>
+                <button id="assetCloseBtn" class="asset-mini-btn" type="button" title="收起" data-i18n-title="common.close"><i data-lucide="x"></i></button>
             </div>
             <div id="assetImageControls">
                 <select id="assetLibrarySelect" class="asset-category-select asset-library-select" title="选择资产库"></select>
