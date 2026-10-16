@@ -673,7 +673,7 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
 
     <!-- 2026-10-16：底部 dock 移除，页面导航改由自绘 HTML 标题栏（#tb-bar，菜单数据见下方 TB_MENUS）承担；
          版本号仅保留在这个隐藏节点里，供更新提示逻辑读取当前版本，可见版本见菜单「关于 → 关于 MyridTV」。 -->
-    <span class="app-version" hidden>版本：V0.12.19</span>
+    <span class="app-version" hidden>版本：V0.12.20</span>
   </main>
 
   <!-- 任务运行控制台（task-console） -->
@@ -1977,19 +1977,47 @@ document.addEventListener('DOMContentLoaded', function () {
     function tbIsChrome(t) {
       return !!(t && t.closest && t.closest('.tb-menu, .tb-pop, .tb-winbtn'));
     }
+    /* 2026-10-17 老王：条带上沿补回「拖动缩放窗口」。
+       原生标题栏行已被客户区吃进（壳层 WM_NCCALCSIZE），窗口顶部没有可缩放的 NC 区，
+       左右下三边仍是原生边框 → 这里只补上边（HTTOP=12）。
+       限定：最大化态不缩放；菜单/下拉/窗口按钮区不抢（否则点菜单会变成缩放）；
+       只有条带最上 6px 命中（与原生边框厚度同量级，避免误触）。 */
+    function tbResizeCode(ev) {
+      var btnMaxNow = document.getElementById('tb-btn-max');
+      if (btnMaxNow && btnMaxNow.dataset.max === '1') return 0;
+      if (tbIsChrome(ev.target)) return 0;
+      var rect = bar.getBoundingClientRect();
+      if (ev.clientY - rect.top > 6) return 0;
+      return 12; // HTTOP
+    }
     bar.addEventListener('mousedown', function (ev) {
       if (ev.button !== 0) return;
       if (tbIsChrome(ev.target)) return;
       ev.preventDefault();
+      var rc = tbResizeCode(ev);
+      if (rc) { tbShell('win|resize|' + rc); return; }
       dragArmed = true; dragSent = false;
       dragX = ev.clientX; dragY = ev.clientY;
     });
     bar.addEventListener('mousemove', function (ev) {
-      if (!dragArmed || dragSent) return;
+      if (!dragArmed || dragSent) {
+        // 悬停到上沿缩放带时给出 ns-resize 指针（原生上边框同款）
+        bar.style.cursor = tbResizeCode(ev) ? 'ns-resize' : '';
+        return;
+      }
       if (Math.abs(ev.clientX - dragX) > 3 || Math.abs(ev.clientY - dragY) > 3) {
         dragSent = true;
+        bar.style.cursor = '';
         tbShell('win|drag');
       }
+    });
+    /* 2026-10-17 老王：右键标题栏要出 Windows 那套（还原/移动/大小/最小化/最大化/关闭），
+       而不是 WebView 自带的浏览器菜单 → 屏蔽默认菜单，改由壳层弹原生系统菜单。 */
+    bar.addEventListener('contextmenu', function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (openId) closeAll();
+      tbShell('win|sysmenu');
     });
     window.addEventListener('mouseup', function () { dragArmed = false; });
     bar.addEventListener('click', function (ev) {
