@@ -6524,7 +6524,27 @@ function undockPromptTemplatePanel(){
     (promptTemplatePanelHome || shell || document.body).appendChild(promptTemplatePanel);
     const closeBtn = document.getElementById('promptTemplateClose');
     if(closeBtn) closeBtn.onclick = () => CanvasPromptTemplateController.closePanel();
+    restorePromptTemplateSearch();
     promptTemplatePanelHome = null;
+}
+// 2026-10-17 老王：停靠进资产库时，搜索框挪到面板头部右上角（照风格面板
+// .style-panel-top 的排布：tab 左、搜索居中撑开、× 右）。视图只重建 cats/body 的
+// innerHTML，整个搜索容器搬家不影响绑定（controller 按 id 取 input）。
+function movePromptTemplateSearchToPanelTop(){
+    const search = promptTemplatePanel?.querySelector('.prompt-template-search');
+    const topRow = assetPanel?.querySelector('.style-panel-top');
+    const closeBtn = document.getElementById('assetCloseBtn');
+    if(!search || !topRow) return;
+    if(closeBtn) topRow.insertBefore(search, closeBtn);
+    else topRow.appendChild(search);
+}
+function restorePromptTemplateSearch(){
+    const search = assetPanel?.querySelector('.style-panel-top .prompt-template-search')
+        || document.querySelector('.style-panel-top .prompt-template-search');
+    if(!search) return;
+    const before = promptTemplatePanel?.querySelector('#promptTemplateCats');
+    if(before) before.parentElement.insertBefore(search, before);
+    else promptTemplatePanel?.appendChild(search);
 }
 function dockPromptTemplateInAssetPanel(dock){
     if(!assetPanel || !promptTemplatePanel) return;
@@ -6542,6 +6562,7 @@ function dockPromptTemplateInAssetPanel(dock){
     const closeBtn = document.getElementById('promptTemplateClose');
     // 停靠态下 × = 退出提示词库 tab，回到图片资产
     if(closeBtn) closeBtn.onclick = () => { assetTab = 'image'; renderAssetLibrary(); };
+    movePromptTemplateSearchToPanelTop();
     renderPromptTemplatePanel({preserveScroll:false});
 }
 // composer/节点入口打开模板库时（controller.openPanel 会搬回 shell 并 dispatch 此事件），同步 tab 态
@@ -6795,7 +6816,14 @@ function assetThumbHtml(item){
 }
 function renderAssetLibrary(){
     if(!assetPanel || !assetGrid || !assetCategorySelect) return;
-    document.querySelectorAll('[data-asset-tab]').forEach(btn => btn.classList.toggle('active', btn.dataset.assetTab === assetTab));
+    // 2026-10-17 老王：切到「提示词库」后「图片资产」仍显示选中——class 切了，但
+    // canvas-interaction-style.css 也给 [role="tab"][aria-selected="true"] 上选中色，
+    // aria-selected 必须同步，否则视觉上两个 tab 都是绿的（照 setStylePanelTab 的做法）。
+    document.querySelectorAll('[data-asset-tab]').forEach(btn => {
+        const on = btn.dataset.assetTab === assetTab;
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
     const libs = assetLibraries();
     if(!activeAssetLibraryId || !libs.some(lib => lib.id === activeAssetLibraryId)) activeAssetLibraryId = libs[0]?.id || '';
     if(assetLibrarySelect){

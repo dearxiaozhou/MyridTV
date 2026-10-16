@@ -1686,6 +1686,9 @@ html.studio-theme-dark .canvas-add-toggle:hover .canvas-dock-icon {
 .style-panel-top .asset-tabs { flex:0 0 auto; width:max-content; }
 .style-panel-top .asset-tab { flex:0 0 auto; height:28px; padding:0 14px; font-size:11px; }
 .style-panel-top .asset-mini-btn { flex:0 0 auto; }
+/* 2026-10-17 老王：提示词库停靠进资产库后，搜索框挪到头部行右上角——
+   靠右撑开、可收缩，与风格面板的 .style-library-search 同一排布口径 */
+.style-panel-top .prompt-template-search { margin-left:auto; flex:0 1 220px; min-width:80px; }
 .style-panel-pane { min-height:0; flex:1 1 auto; display:flex; flex-direction:column; gap:8px; }
 .style-panel-head-row { display:flex; align-items:center; gap:6px; flex:0 0 auto; }
 .style-panel-head-row .style-library-search { flex:1 1 auto; min-width:0; }
