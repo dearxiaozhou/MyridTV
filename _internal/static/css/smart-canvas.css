@@ -1709,7 +1709,8 @@ html.studio-theme-dark .canvas-add-toggle:hover .canvas-dock-icon {
 .asset-mini-btn:hover { color:var(--x-text); background:var(--x-hover-bg); border-color:var(--x-selected-line); }
 .asset-mini-btn i,.asset-mini-btn svg { width:14px; height:14px; flex:0 0 auto; }
 .asset-tabs { display:flex; gap:5px; padding:3px; border-radius:12px; background:var(--soft); border:1px solid var(--line); }
-.asset-library-select { margin-bottom:8px; }
+/* 2026-10-17 老王：库选择挪进分类行后，去 margin，与分类下拉同排各占一半 */
+.asset-library-select { margin-bottom:0; flex:1 1 0; }
 .asset-tab { flex:1; height:26px; border-radius:9px; background:transparent; color:var(--muted); font-size:10.5px; font-weight:600; }
 .asset-tab.active { background:var(--x-selected-fill); color:var(--x-selected-text); border-color:var(--x-selected-line); box-shadow:inset 0 0 0 1px var(--x-selected-ring); }
 .node-actions,
