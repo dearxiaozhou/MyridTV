@@ -47,7 +47,11 @@
     function applyViewport() {
         if (!deps.world || !deps.shell) return;
         // Prompt controls stay at a stable screen size while the canvas world zooms.
-        deps.world.style.setProperty('--canvas-prompt-fixed-zoom', String(1 / safeScale(viewport.scale)));
+        // 2026-10-17 老王：节点左右 + 号（.node-port）也要恒定屏幕尺寸，所以另给一个
+        // 通用名的逆缩放变量（同名值，避免端口样式去引用 prompt 专用的变量名）。
+        const fixedZoom = String(1 / safeScale(viewport.scale));
+        deps.world.style.setProperty('--canvas-prompt-fixed-zoom', fixedZoom);
+        deps.world.style.setProperty('--canvas-fixed-zoom', fixedZoom);
         deps.world.style.transform = `translate3d(${viewport.x}px, ${viewport.y}px, 0) scale(${viewport.scale})`;
         if (deps.positionComposer) deps.positionComposer();
         deps.shell.classList.add('viewport-motion');

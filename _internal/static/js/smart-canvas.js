@@ -8651,12 +8651,17 @@ function updateConnScissorFromEvent(event){
         || document.body.classList.contains('smart-node-resize')) return;
     const g = world.querySelector('g.conn-scissor');
     if(!g) return;
-    // 光标压在节点上时不弹（剪刀会被节点盖住）
-    const hoveredNode = event.target?.closest?.('.image-node');
-    const nodeBox = hoveredNode?.getBoundingClientRect();
-    const overNodeBody = nodeBox && event.clientX >= nodeBox.left && event.clientX <= nodeBox.right
-        && event.clientY >= nodeBox.top && event.clientY <= nodeBox.bottom;
-    if(overNodeBody || event.target?.closest?.('.composer')){ requestHideConnScissor(); return; }
+    // 2026-10-17 老王：节点左右 + 号（.node-port，伸出节点外）区域内不许弹剪刀——
+    // 线一多，光标落在这片区域上，剪刀把线挡住，一点就把线剪断了。
+    // 判断口径：命中节点自身/其任意子元素（含端口）即跳过；剪刀层盖在端口之上时
+    // target 会变成剪刀本身，所以再用 elementsFromPoint 看底下有没有节点元素。
+    const overNodeOrPort = (() => {
+        if(event.target?.closest?.('.image-node')) return true;
+        const stack = document.elementsFromPoint?.(event.clientX, event.clientY) || [];
+        return stack.some(el => el.closest?.('.image-node'));
+    })();
+    if(overNodeOrPort || event.target?.closest?.('.composer')){ requestHideConnScissor(); return; }
+    const scaleNow = safeScale(viewport.scale);
     const wp = screenToWorld(event);
     const paths = [...world.querySelectorAll('svg.connection-layer path.conn-hit')];
     let best = null;
@@ -8666,13 +8671,15 @@ function updateConnScissorFromEvent(event){
         const p = connScissorNearestPoint(path, wp.x, wp.y);
         if(!p) continue;
         const d = Math.hypot(p.x - wp.x, p.y - wp.y);
-        if(d < 16 && (!best || d < best.d)) best = {d, index, x:p.x, y:p.y};
+        // 命中容差按屏幕距离恒定（剪刀本身也是恒定屏幕尺寸）→ 世界距离要除以缩放
+        if(d < 16 / scaleNow && (!best || d < best.d)) best = {d, index, x:p.x, y:p.y};
     }
     if(best){
         clearTimeout(connScissorHideTimer);
-        // 位置始终贴着光标所在线上移动；剪刀弹出需在同一条线停留满 480ms
+        // 位置始终贴着光标所在线上移动；剪刀弹出需在同一条线停留满 480ms。
+        // 2026-10-17 老王：剪刀图标不随画布缩放 → 整体乘 1/scale 抵消世界层缩放。
         g.dataset.connIndex = String(best.index);
-        g.setAttribute('transform', `translate(${best.x} ${best.y})`);
+        g.setAttribute('transform', `translate(${best.x} ${best.y}) scale(${1 / scaleNow})`);
         if(connScissorLineIndex !== best.index){
             connScissorLineIndex = best.index;
             if(g.classList.contains('show')){
