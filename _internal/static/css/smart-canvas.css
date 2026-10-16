@@ -577,7 +577,16 @@ audio { display:none !important; width:0 !important; height:0 !important; min-wi
 .connection-layer .conn-scissor:not(.show) * { pointer-events:none !important; }
 .connection-layer .conn-scissor.show { opacity:1; pointer-events:auto; }
 .connection-tools-layer { z-index:6; }
-.connection-layer .conn-scissor:hover circle:nth-of-type(2) { stroke-width:2; }
+/* 划断中把刀抬到节点之上（常态下它跟连线同层，避免盖住卡片上的按钮） */
+.shell.cutting-connections .connection-tools-layer { z-index:62; }
+/* 刀（原剪刀）按钮：鼠标停在连线上时吸附到光标最近的线上位置 */
+.connection-layer .conn-scissor:hover .conn-knife { filter:drop-shadow(0 0 4px rgba(201,162,39,.75)); }
+/* 划断刀痕（2026-10-17）：独立 SVG 层，压在节点(1/2/4)与连线(1)之上、snap 辅助线(60)旁 */
+.cut-trail-layer { position:absolute; left:0; top:0; width:6000px; height:4000px; overflow:visible; pointer-events:none; z-index:61; }
+.cut-trail-layer path.conn-cut-trail { fill:none; stroke:#C9A227; stroke-width:calc(2.4px * var(--canvas-fixed-zoom, 1)); stroke-linecap:round; stroke-linejoin:round; opacity:.95; filter:drop-shadow(0 0 3px rgba(201,162,39,.6)); transition:opacity .2s ease; }
+.cut-trail-layer path.conn-cut-trail.fade { opacity:0; }
+/* 刀口扫到的连线：先标金色，松手才真断（Blender 刀切线的红标同理） */
+.connection-layer path[data-conn-line].cut-marked { stroke:#C9A227; stroke-width:2.8; stroke-dasharray:none; animation:none; }
 .connection-layer .conn-pending { stroke-dasharray:5 4; animation:dash 1.5s linear infinite; }
 /* 运行中连线（A 彗星拖尾）：底线常亮实线，两颗光点沿管道滑行 */
 .connection-layer .conn-comet-track { stroke-dasharray:none; animation:none; }

@@ -276,6 +276,10 @@ let panState = null;
 // didPan 已收编进 CanvasInteractionMachine 粘滞表 'gesture:pan'（第7步）
 let portDragState = null;
 let connectionCutState = null;
+// 划断手势用的连线几何缓存：connIndex -> {c:[p0x,p0y,c1x,c1y,c2x,c2y,p1x,p1y], pts, box}
+// renderConnections 每次重渲时清空并重新填充（只存 8 个数，折线采样按需懒算）。
+const connCutGeom = new Map();
+const CONN_CUT_TRAIL_MAX_POINTS = 900;
 let saveTimer = null;
 const canvasSaveRecovery = window.CanvasSaveRecoveryController.create();
 const canvasMediaPresentation = window.CanvasMediaPresentationController.create({
@@ -7427,6 +7431,7 @@ function shellPoint(event){
     return {x:event.clientX - rect.left, y:event.clientY - rect.top};
 }
 function renderConnections(){
+    connCutGeom.clear();
     // 无线模式：不渲染任何连线（保留 svg 容器，切回连线模式即恢复）
     if(canvasObjectsMode()) return '<svg class="connection-layer" width="6000" height="4000" viewBox="0 0 6000 4000" xmlns="http://www.w3.org/2000/svg"></svg>';
     const nodeMap = new Map(nodes.map(node => [node.id, node]));
@@ -7468,9 +7473,15 @@ function renderConnections(){
         const width = isLinkedToSelection ? '2.4' : kind === 'input' ? '1.9' : '1.6';
         // 运行中连线：底线常亮 + 两颗彗星光点沿管道滑行（A 方案），不再用滚动虚线
         const cometLayer = isPendingLine ? `<path class="conn-comet" d="${curve}" pathLength="180" stroke="#dbeafe" stroke-dasharray="22 158" fill="none"></path><path class="conn-comet conn-comet-2" d="${curve}" pathLength="180" stroke="#93c5fd" stroke-width="2" stroke-dasharray="10 170" fill="none"></path>` : '';
-        return `<path class="${cls}" d="${curve}" stroke="${color}" stroke-width="${width}" fill="none" opacity="${opacity}"></path>${cometLayer}<path class="conn-hit" data-conn-index="${conn.index}" d="${curve}" stroke="transparent" stroke-width="14" fill="none"></path>`;
+        // 划断手势要用：存三次贝塞尔的四个控制点（p0,c1,c2,p1）。只存 8 个数，
+        // 折线采样留给真正划的时候懒算——render 每帧都跑，别在这里做采样。
+        connCutGeom.set(conn.index, {c: isHistory
+            ? [fx, fy, fx, fy + dy, tx, ty - dy, tx, ty]
+            : [fx, fy, fx + dx, fy, tx - dx, ty, tx, ty], pts: null, box: null});
+        // data-conn-line：划断手势拿到命中后要把这根线即时标成金色（Blender 刀切线同理）
+        return `<path class="${cls}" data-conn-line="${conn.index}" d="${curve}" stroke="${color}" stroke-width="${width}" fill="none" opacity="${opacity}"></path>${cometLayer}<path class="conn-hit" data-conn-index="${conn.index}" d="${curve}" stroke="transparent" stroke-width="14" fill="none"></path>`;
     }).join('');
-    return `<svg class="connection-layer" width="6000" height="4000" viewBox="0 0 6000 4000" xmlns="http://www.w3.org/2000/svg"><defs><filter id="conn-comet-glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>${paths}<g class="conn-scissor" data-conn-index="-1" transform="translate(-100 -100)"><circle r="20" fill="transparent" pointer-events="all"></circle><circle r="13" fill="var(--card,#1f1f1f)" stroke="#C9A227" stroke-width="1.4"></circle><g transform="translate(-9.4 -9.4) scale(0.78)" fill="none" stroke="#C9A227" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4 8.12 15.88"></path><path d="M14.47 14.48 20 20"></path><path d="M8.12 8.12 12 12"></path></g></g></svg>`;
+    return `<svg class="connection-layer" width="6000" height="4000" viewBox="0 0 6000 4000" xmlns="http://www.w3.org/2000/svg"><defs><filter id="conn-comet-glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>${paths}<g class="conn-scissor conn-knife-host" data-conn-index="-1" transform="translate(-100 -100)"><circle r="20" fill="transparent" pointer-events="all"></circle><circle r="13" fill="var(--card,#1f1f1f)" stroke="#C9A227" stroke-width="1.4"></circle><!-- 2026-10-17 老王：剪刀换刀（参考 Blender 节点 Ctrl+右键切线）。45° 裁刀：刀尖左下、刀柄右上，与剪刀同一套金描边+卡片填充观感 --><g class="conn-knife" transform="translate(-9.6 -9.6) scale(0.78)" fill="var(--card,#1f1f1f)" stroke="#C9A227" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 12.3 14.3 9.7 11.7z"></path><path d="M11 13 17.4 6.6" fill="none" stroke-width="3.4"></path></g></g></svg>`;
 }
 function refreshConnectionLayer(){
     const oldSvg = world.querySelector('svg.connection-layer');
@@ -8900,6 +8911,131 @@ function cutConnectionIndexes(indexes=[], {renderNow=true, saveNow=true, pushUnd
     if(saveNow) scheduleSave();
     return valid.length;
 }
+/* ===== 划断连线手势（2026-10-17 老王：照 Blender 节点 Ctrl+右键切线重做）=====
+ * 旧实现只对每个 pointermove 的“当前点”做一次 DOM 命中，鼠标事件间隔几十上百
+ * 像素时，中间跨过的连线根本没被采样到 → “慢慢划才有效，快速一刀只断一根”。
+ * 新实现把相邻两个鼠标位置连成一段，与连线的折线做线段×线段求交：刀口扫过
+ * 的线一根不漏，划多快都算数。 */
+function connCutBox(entry){
+    if(entry.box) return entry.box;
+    const c = entry.c;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for(let i = 0; i < 8; i += 2){
+        if(c[i] < minX) minX = c[i];
+        if(c[i] > maxX) maxX = c[i];
+        if(c[i + 1] < minY) minY = c[i + 1];
+        if(c[i + 1] > maxY) maxY = c[i + 1];
+    }
+    // 三次贝塞尔必在控制点凸包内 → 凸包 bbox 是安全上界，用它先粗筛
+    entry.box = [minX, minY, maxX, maxY];
+    return entry.box;
+}
+// 懒采样：把连线按 ~14px 世界距离折线化（长线多采几段，短线少采）
+function connCutPolyline(entry){
+    if(entry.pts) return entry.pts;
+    const c = entry.c;
+    const chord = Math.hypot(c[6] - c[0], c[7] - c[1]);
+    const n = Math.max(4, Math.min(56, Math.ceil(chord / 14)));
+    const pts = new Float64Array((n + 1) * 2);
+    for(let i = 0; i <= n; i++){
+        const t = i / n, mt = 1 - t;
+        const a = mt * mt * mt, b = 3 * mt * mt * t, cc = 3 * mt * t * t, d = t * t * t;
+        pts[i * 2] = a * c[0] + b * c[2] + cc * c[4] + d * c[6];
+        pts[i * 2 + 1] = a * c[1] + b * c[3] + cc * c[5] + d * c[7];
+    }
+    entry.pts = pts;
+    return pts;
+}
+function connCutSegsCross(ax, ay, bx, by, cx, cy, dx, dy){
+    const r1 = bx - ax, r2 = by - ay, s1 = dx - cx, s2 = dy - cy;
+    const den = r1 * s2 - r2 * s1;
+    if(!den) return false;
+    const ox = cx - ax, oy = cy - ay;
+    const t = (ox * s2 - oy * s1) / den;
+    if(t < 0 || t > 1) return false;
+    const u = (ox * r2 - oy * r1) / den;
+    return u >= 0 && u <= 1;
+}
+function connCutIntersectSegment(indexes, ax, ay, bx, by){
+    const segMinX = Math.min(ax, bx), segMaxX = Math.max(ax, bx);
+    const segMinY = Math.min(ay, by), segMaxY = Math.max(ay, by);
+    connCutGeom.forEach((entry, index) => {
+        if(indexes.has(index)) return;
+        const box = connCutBox(entry);
+        if(segMaxX < box[0] || segMinX > box[2] || segMaxY < box[1] || segMinY > box[3]) return;
+        const pts = connCutPolyline(entry);
+        const segs = pts.length / 2 - 1;
+        let ax0 = pts[0], ay0 = pts[1];
+        for(let i = 0; i < segs; i++){
+            const bx0 = pts[i * 2 + 2], by0 = pts[i * 2 + 3];
+            if(connCutSegsCross(ax, ay, bx, by, ax0, ay0, bx0, by0)){ indexes.add(index); return; }
+            ax0 = bx0; ay0 = by0;
+        }
+    });
+}
+// 刀痕独立 SVG 层：连线层每次重渲会清空，刀痕必须活在不会被重建的层里
+function cutTrailLayer(){
+    let svg = world && world.querySelector('svg.cut-trail-layer');
+    if(!svg && world){
+        svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', 'cut-trail-layer');
+        svg.setAttribute('width', '6000');
+        svg.setAttribute('height', '4000');
+        svg.setAttribute('viewBox', '0 0 6000 4000');
+        svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        world.appendChild(svg);
+    }
+    return svg;
+}
+function renderCutTrail(points){
+    const layer = cutTrailLayer();
+    if(!layer) return;
+    if(!points || points.length < 2){
+        if(layer.childNodes.length) layer.replaceChildren();
+        return;
+    }
+    let path = layer.querySelector('path.conn-cut-trail');
+    if(!path){
+        path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('class', 'conn-cut-trail');
+        layer.appendChild(path);
+    }
+    let d = `M${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
+    for(let i = 1; i < points.length; i++) d += ` L${points[i].x.toFixed(1)} ${points[i].y.toFixed(1)}`;
+    path.setAttribute('d', d);
+}
+// 刀口扫到的线即时标成金色（松手才真断，避免误切）——照 Blender 刀切线的红标
+function markCutConnections(state){
+    const svg = world && world.querySelector('svg.connection-layer:not(.connection-tools-layer)');
+    if(!svg || !state) return;
+    state.indexes.forEach(index => {
+        svg.querySelector(`path[data-conn-line="${index}"]`)?.classList.add('cut-marked');
+    });
+}
+function clearCutMarks(){
+    world && world.querySelectorAll('svg.connection-layer path.cut-marked').forEach(el => el.classList.remove('cut-marked'));
+}
+function clearCutTrail(){
+    const layer = world && world.querySelector('svg.cut-trail-layer');
+    if(!layer) return;
+    const path = layer.querySelector('path.conn-cut-trail');
+    if(!path){ if(layer.childNodes.length) layer.replaceChildren(); return; }
+    // 松手后刀痕短暂淡出，别硬切
+    path.classList.add('fade');
+    setTimeout(() => { if(path.isConnected) layer.replaceChildren(); }, 220);
+}
+// 刀跟着光标：划断时不再“停留 480ms 才出现”，而是立即跟手
+function moveConnKnifeToClient(clientX, clientY){
+    const g = world && world.querySelector('g.conn-scissor');
+    if(!g) return;
+    clearTimeout(connScissorHideTimer);
+    clearTimeout(connScissorShowTimer);
+    const scaleNow = safeScale(viewport.scale);
+    const wp = screenToWorld({clientX, clientY});
+    g.dataset.connIndex = '-1';
+    g.setAttribute('transform', `translate(${wp.x.toFixed(1)} ${wp.y.toFixed(1)}) scale(${(1 / scaleNow).toFixed(4)})`);
+    g.classList.add('show');
+}
 function startConnectionCutGesture(event, initialIndex=-1){
     if(event){
         event.preventDefault();
@@ -8908,10 +9044,12 @@ function startConnectionCutGesture(event, initialIndex=-1){
  closeCreateMenu();
     const indexes = new Set();
     if(Number.isFinite(initialIndex) && initialIndex >= 0) indexes.add(initialIndex);
+    const startW = event ? screenToWorld(event) : null;
     connectionCutState = {
         indexes,
         lastClientX:Number(event?.clientX || 0),
-        lastClientY:Number(event?.clientY || 0)
+        lastClientY:Number(event?.clientY || 0),
+        trail: startW ? [{x:startW.x, y:startW.y}] : []
     };
     if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.begin('cutting');
     shell.classList.add('cutting-connections');
@@ -8919,12 +9057,48 @@ function startConnectionCutGesture(event, initialIndex=-1){
 }
 function updateConnectionCutGesture(event){
     if(!connectionCutState) return;
-    connectionCutState.lastClientX = Number(event?.clientX || connectionCutState.lastClientX || 0);
-    connectionCutState.lastClientY = Number(event?.clientY || connectionCutState.lastClientY || 0);
-    connectionHitElementsAtClientPoint(connectionCutState.lastClientX, connectionCutState.lastClientY).forEach(el => {
+    const state = connectionCutState;
+    // 浏览器会把高频移动合并成一个事件，getCoalescedEvents() 能取回被合并掉的
+    // 中间点——快速划刀时靠它把轨迹补完整（拿不到就退回单段，一样能求交）。
+    const raw = [];
+    if(typeof event?.getCoalescedEvents === 'function'){
+        try{
+            const co = event.getCoalescedEvents();
+            if(co && co.length){
+                for(const ce of co){
+                    const x = Number(ce.clientX), y = Number(ce.clientY);
+                    if(Number.isFinite(x) && Number.isFinite(y)) raw.push([x, y]);
+                }
+            }
+        }catch(err){ /* 部分合成事件不支持，忽略即可 */ }
+    }
+    if(!raw.length){
+        const x = Number(event?.clientX), y = Number(event?.clientY);
+        if(Number.isFinite(x) && Number.isFinite(y)) raw.push([x, y]);
+    }
+    let prevX = state.lastClientX, prevY = state.lastClientY;
+    let prevW = screenToWorld({clientX:prevX, clientY:prevY});
+    for(const [cx, cy] of raw){
+        const w = screenToWorld({clientX:cx, clientY:cy});
+        // 关键：按“上一点→本点”整条线段求交，而不是只测当前点
+        connCutIntersectSegment(state.indexes, prevW.x, prevW.y, w.x, w.y);
+        const last = state.trail[state.trail.length - 1];
+        if(!last || Math.hypot(w.x - last.x, w.y - last.y) > 1.5){
+            state.trail.push({x:w.x, y:w.y});
+            if(state.trail.length > CONN_CUT_TRAIL_MAX_POINTS) state.trail.shift();
+        }
+        prevX = cx; prevY = cy; prevW = w;
+    }
+    state.lastClientX = prevX;
+    state.lastClientY = prevY;
+    // 鼠标几乎没动、正压在某条线上时，补一次点命中（保留原来的手感）
+    connectionHitElementsAtClientPoint(prevX, prevY).forEach(el => {
         const index = connectionIndexFromTarget(el);
-        if(index >= 0) connectionCutState.indexes.add(index);
+        if(index >= 0) state.indexes.add(index);
     });
+    moveConnKnifeToClient(prevX, prevY);
+    renderCutTrail(state.trail);
+    markCutConnections(state);
 }
 function finishConnectionCutGesture(){
     if(!connectionCutState) return false;
@@ -8932,7 +9106,11 @@ function finishConnectionCutGesture(){
     shell.classList.remove('panning');
     const indexes = [...connectionCutState.indexes];
     connectionCutState = null;
+    hideConnScissor();
+    clearCutTrail();
     if (typeof CanvasInteractionMachine !== 'undefined') CanvasInteractionMachine.end('cutting');
+    // 有真切断时 renderNow 会重渲、标记自然消失；没切断（空划）则手动清
+    setTimeout(clearCutMarks, 0);
     if(!indexes.length) return true;
     cutConnectionIndexes(indexes, {renderNow:true, saveNow:true, pushUndoSnapshot:true});
     return true;
@@ -13318,6 +13496,9 @@ if (typeof CanvasInteractionMachine !== 'undefined') {
         connectionCutState = null;
         shell.classList.remove('cutting-connections');
         shell.classList.remove('panning');
+        hideConnScissor();
+        clearCutTrail();
+        clearCutMarks();
     });
     SM.registerCancel('resizing', () => {
         if(resizeState){
@@ -13405,6 +13586,13 @@ shell.oncontextmenu = e => {
         return;
     }
     if(e.altKey && !isCanvasOverlayTarget(e.target)){
+        // mousedown 已经起过手势了，contextmenu 别再启一次——重启会清空已划到的线
+        // （且会让单击后残留一个永不结束的 cutting 手势）。
+        if(connectionCutState){
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+        }
         startConnectionCutGesture(e, connectionIndexFromTarget(e.target));
         return;
     }
