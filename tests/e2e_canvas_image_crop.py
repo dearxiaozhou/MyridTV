@@ -91,12 +91,14 @@ with sync_playwright() as pw:
             page.mouse.move(x1, y1)
             page.mouse.down()
             page.mouse.move(x2, y2, steps=4)
-            page.mouse.up()
+            # 2026-10-18：选框断言必须在 mouseup 之前完成——松手后画布会重渲节点 DOM，
+            # .smart-free-crop-box 随旧 DOM 一起消失（裁剪状态仍有效，Enter 仍可提交）。
             page.wait_for_function("""() => {
                 const box = document.querySelector('.smart-free-crop-box');
                 return box && parseFloat(box.style.width) > 3 && parseFloat(box.style.height) > 3;
             }""")
             before = page.locator(".image-node").count()
+            page.mouse.up()
             page.keyboard.press("Enter")
             page.wait_for_function("""({before}) => document.querySelectorAll('.image-node').length === before + 1""", arg={"before": before})
             check("拖拽框选并按 Enter 上传裁剪结果", len(uploads) == 1 and page.locator(".image-node").count() == before + 1, uploads)

@@ -210,6 +210,16 @@ def _agent_find_empty_position(canvas, x, y, w, h, step=36, category=None, node_
     - 文本节点(smart-prompt)实际非常宽(632)，列间距必须 ≥ 节点宽，避免左右列互相压盖。
     - 人物/角色 → 列0；场景 → 列1；道具/物品 → 列2；文档/剧本/笔记 → 列3。
     - 同类纵向递增 y，互不重叠。"""
+    # 2026-10-18：调用方显式给了 x/y 时必须尊重（工具契约「x/y 可省=自动空位」）。
+    # 此前 x/y 形参接收后从未参与计算，指定坐标被静默丢弃、一律落到自动空位。
+    # 两个数都有效才采用；只给一个仍走自动排布，避免半截坐标。
+    try:
+        _given_x = float(x)
+        _given_y = float(y)
+        if _given_x == _given_x and _given_y == _given_y:  # NaN 不等于自身
+            return _given_x, _given_y
+    except (TypeError, ValueError):
+        pass
     nodes_list = canvas.get("nodes") if isinstance(canvas.get("nodes"), list) else []
     # 文本节点实际渲染宽高（smart-prompt 632 宽，高度随内容）
     is_text = str(node_type or "") == "smart-prompt" or any(k in str(category or "") for k in ("剧本", "script", "note", "笔记", "文档", "clip", "分镜", "清单"))

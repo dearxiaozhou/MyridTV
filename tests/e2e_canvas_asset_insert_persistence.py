@@ -99,7 +99,19 @@ def main():
         asset_card.wait_for(state="visible", timeout=15000)
         check("画布素材库显示刚创建的隔离测试素材", asset_card.count() == 1, asset_card.get_attribute("data-name"))
 
-        asset_card.drag_to(page.locator("#shell"), target_position={"x": 720, "y": 450}, timeout=10000)
+        # 2026-10-18：资产面板宽 640、左起约 x=88，固定落点 720 仍落在面板内，被面板自身的
+        # drop-controller 吃掉（那是「把素材归入某分类」的另一种语义），画布不会建节点。
+        # 落点必须选在面板之外，并保证落在视口内。
+        shell = page.locator("#shell")
+        shell_box = shell.bounding_box()
+        panel_box = page.locator("aside.asset-panel").bounding_box()
+        drop_x = min(int(panel_box["x"] + panel_box["width"] + 200), int(shell_box["width"]) - 80)
+        drop_y = 450
+        asset_card.drag_to(
+            shell,
+            target_position={"x": drop_x - int(shell_box["x"]), "y": drop_y - int(shell_box["y"])},
+            timeout=10000,
+        )
         page.locator(".image-node").first.wait_for(state="visible", timeout=10000)
         page.wait_for_function(
             "url => (canvas?.nodes || []).some(node => (node.images || []).some(image => image.url === url))",

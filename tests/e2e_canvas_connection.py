@@ -160,17 +160,55 @@ def main():
         }""")
         print(f"  断线函数探测: {cut_ok}")
 
+        # 2026-10-18：剪刀在节点/端口/composer 命中区内一律不弹（10-17 有意防误剪）。
+        # UI 拖拽摆位后连线常整段压在端口命中区上，先用 API 把两节点拉成一条水平长线
+        # 并重载，保证连线中段是大片可命中的空白。
+        try:
+            with urllib.request.urlopen(f"{BASE}/api/canvases/{canvas_id}", timeout=15) as resp:
+                cur = json.loads(resp.read().decode("utf-8"))["canvas"]
+            ns = cur.get("nodes") or []
+            if len(ns) >= 2:
+                ns[0]["x"], ns[0]["y"] = 200, 300
+                ns[1]["x"], ns[1]["y"] = 1200, 300
+                req = urllib.request.Request(
+                    f"{BASE}/api/canvases/{canvas_id}",
+                    data=json.dumps({"nodes": ns, "base_updated_at": cur.get("updated_at")}).encode(),
+                    headers={"Content-Type": "application/json"}, method="PUT")
+                urllib.request.urlopen(req, timeout=15).read()
+                page.reload(wait_until="domcontentloaded")
+                page.locator("#canvasAddToggle").wait_for(state="visible", timeout=30000)
+                page.wait_for_function("() => (canvas?.connections || []).length >= 1", timeout=15000)
+                page.wait_for_timeout(1200)
+        except Exception as exc:
+            print(f"  拉开节点失败: {exc}")
+        
         # conn-hit 是连线点击区；取 SVG 曲线中点的屏幕坐标，避免命中包围盒空白。
         conn_hit = page.eval_on_selector_all(".conn-hit", "els => els.length")
         failures += not check("连线存在 conn-hit 点击区", conn_hit >= 1, str(conn_hit))
 
         if conn_hit >= 1:
             hit_box = page.eval_on_selector(".conn-hit >> nth=0", """el => {
-                const p = el.getPointAtLength(el.getTotalLength()/2);
-                const screen = new DOMPoint(p.x, p.y).matrixTransform(el.getScreenCTM());
-                return {cx: Math.round(screen.x), cy: Math.round(screen.y)};
+                // 2026-10-18：中点常压在节点/端口上（防误剪区）→ 沿曲线采样挑空白点
+                const L = el.getTotalLength();
+                const cand = [];
+                for (let i = 1; i < 20; i++) {
+                    const p = el.getPointAtLength(L * i / 20);
+                    const s = new DOMPoint(p.x, p.y).matrixTransform(el.getScreenCTM());
+                    cand.push({cx: Math.round(s.x), cy: Math.round(s.y)});
+                }
+                const clean = cand.find(c => {
+                    const stack = document.elementsFromPoint ? document.elementsFromPoint(c.cx, c.cy) : [];
+                    return stack.length && !stack.some(e => e.closest && (e.closest(".image-node")
+                        || e.closest(".composer") || e.closest(".node-port")));
+                });
+                return clean || cand[Math.floor(cand.length / 2)];
             }""")
             page.mouse.move(hit_box["cx"], hit_box["cy"])
+            # 剪刀需光标在同一条线上停留满 CONN_SCISSOR_SHOW_DELAY(480ms) 才弹出，
+            # 单次 move 只喂一个 pointermove，必须持续微抖动停留跨过延迟。
+            for _ in range(10):
+                page.mouse.move(hit_box["cx"] + 0.5, hit_box["cy"] + 0.5)
+                page.wait_for_timeout(90)
             page.wait_for_function(
                 "() => document.querySelector('svg.connection-layer g.conn-scissor')?.classList.contains('show')",
                 timeout=5000,

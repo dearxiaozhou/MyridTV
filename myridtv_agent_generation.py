@@ -364,6 +364,8 @@ def record_agent_generation_task_log(task_id, state):
         for log in logs:
             if not isinstance(log, dict):
                 continue
+            if str(log.get("taskId") or ""):
+                continue
             logged_outputs = log.get("outputs") or []
             if isinstance(logged_outputs, list) and output_set and any(str(u) in output_set for u in logged_outputs):
                 return
