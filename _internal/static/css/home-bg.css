@@ -1,0 +1,37 @@
+/* MyridTV 主页背景层 + 启用时的容器覆盖（2026-10-17 v3）
+ * 注意：canvas.html 内联样式里 #canvasGate 的黑底/渐变由
+ *   `body.prism-canvas-page #canvasGate`（特异性 id+class+type）声明，
+ *   所以这里必须用「同等或更高特异性 + !important」才压得住，且 background-image 也要清。 */
+
+/* 背景层：全屏 / 预览框内通用结构 */
+.hb-layer { inset: 0; overflow: hidden; pointer-events: none; }
+#home-bg-layer { position: fixed; z-index: 0; }
+.hb-media, .hb-el { position: absolute; inset: 0; width: 100%; height: 100%; }
+.hb-el { object-fit: cover; display: block; }
+.hb-scrim { position: absolute; inset: 0; background: #000; opacity: .30; }
+
+/* 启用背景时：主页自带的两团模糊光斑（body::before/::after, z-index:0）会盖在背景层上，隐掉 */
+body.has-home-bg::before,
+body.has-home-bg::after { display: none !important; }
+
+/* 启用背景时：让主页容器透出媒体 —— 清掉黑底与点阵/径向渐变 */
+body.prism-canvas-page #canvasGate.home-bg-on,
+body #canvasGate.home-bg-on {
+  background-color: transparent !important;
+  background-image: none !important;
+}
+body.prism-canvas-page #canvasGate.home-bg-on > .gate-panel,
+body.prism-canvas-page #canvasGate.home-bg-on .canvas-gate,
+body #canvasGate.home-bg-on .canvas-gate {
+  background-color: transparent !important;
+  background-image: none !important;
+}
+/* 外壳同样不能挡（部分主题给 .shell 上了底色） */
+body.has-home-bg #shell,
+body.has-home-bg .shell {
+  background-color: transparent !important;
+  background-image: none !important;
+}
+/* 注意：画布卡片（.canvas-item）的透明度由 JS applyCardAlpha() 用 inline !important
+ * 逐张设置（application-palette.css 给卡片上了 !important 底色，CSS 覆盖打不赢），
+ * 这里不再写死半透明规则，100% 时恢复卡片原样式。 */

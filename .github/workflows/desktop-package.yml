@@ -80,6 +80,8 @@ jobs:
           & .\tests\run_regression.ps1 -Only ui_baseline
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & .\tests\run_regression.ps1 -Only generation_lifecycle
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python .\tests\verify_canvas_overwrite.py
           exit $LASTEXITCODE
 
       - name: Preserve UI baseline evidence
@@ -90,6 +92,7 @@ jobs:
           path: |
             _verification/ui-baseline/
             _verification/generation-lifecycle/
+            _verification/overwrite/
           if-no-files-found: warn
           retention-days: 14
 

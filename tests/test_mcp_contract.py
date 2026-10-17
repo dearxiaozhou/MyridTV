@@ -26,13 +26,13 @@ class ContractTests(unittest.TestCase):
         self.old_dir = artifacts.AGENT_BATCH_DIR
         artifacts.AGENT_BATCH_DIR = root / "batches"
         self.addCleanup(setattr, artifacts, "AGENT_BATCH_DIR", self.old_dir)
-        self.registry = copy.deepcopy(mcp.MCP_TOOLS)
+        self.registry = copy.deepcopy(mcp._mcp_handle._private_registry)
         def legacy(name, args):
             canvas = store.read_canvas_record(args["canvas_id"], False)
             canvas["nodes"][0]["text"] = args["text"]
             saved = store.save_canvas_record(canvas["id"], canvas)
             return {"ok": True, "save_ok": True, "updated_at": saved["updated_at"]}
-        self.handle = contract.install(self.registry, legacy, None)
+        self.handle = contract.install(self.registry, legacy, None)._private_handle
         self.canvas = store.create_canvas_record({"nodes": [
             {"id": "a", "type": "smart-prompt", "title": "原始标题", "text": "搜索提示词", "x": 1, "y": 2},
             {"id": "b", "type": "smart-image", "images": [{"url": "/assets/result.png"}], "runSettings": {"model": "configured"}}
@@ -127,7 +127,7 @@ class ContractTests(unittest.TestCase):
         args = {"operations": [{"op_type": "update_node", "target_id": "a", "params": {"text": "once"}}], "idempotency_key": "same-request"}
         first = self.call("canvas_batch_operations", **args)
         updated = self.current()["updated_at"]
-        self.handle = contract.install(self.registry, lambda *a: None, None)
+        self.handle = contract.install(copy.deepcopy(mcp._mcp_handle._private_registry), lambda *a: None, None)._private_handle
         self.assertEqual(self.call("canvas_batch_operations", **args), first)
         self.assertEqual(self.current()["updated_at"], updated)
         self.assertEqual(self.call("canvas_snapshot", idempotency_key="same-request")["error_code"], "idempotency_conflict")

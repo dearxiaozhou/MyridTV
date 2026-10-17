@@ -15,7 +15,9 @@ def api(path,data=None,method=None):
     req=urllib.request.Request(BASE+path,data=None if data is None else json.dumps(data).encode(),method=method,headers={'Content-Type':'application/json'})
     return json.load(urllib.request.urlopen(req,timeout=30))
 def call(name,args,ok=True):
-    reply=api('/mcp',{'jsonrpc':'2.0','id':1,'method':'tools/call','params':{'name':name,'arguments':args}})
+    args=copy.deepcopy(args)
+    control={k:args.pop(k) for k in ('canvas_id','workflow_id','idempotency_key','expected_updated_at') if k in args}
+    reply=api('/mcp',{'jsonrpc':'2.0','id':1,'method':'tools/call','params':{'name':'canvas_execute','arguments':{'action':name.removeprefix('canvas_'),'params':args,**control}}})
     result=reply['result'];data=json.loads(result['content'][0]['text'])
     if ok:assert not result.get('isError'),data
     else:assert result.get('isError'),data
@@ -36,7 +38,7 @@ def validate(canvas):
 
 def main():
     tools=api('/mcp',{'jsonrpc':'2.0','id':2,'method':'tools/list'})['result']['tools']
-    check('MCP discoverable upsert and explicit reflow',{'canvas_upsert_flow','canvas_layout_flow'}<={t['name'] for t in tools})
+    check('MCP only exposes gateway; flow actions available', {t['name'] for t in tools}=={'canvas_execute'} and {'upsert_flow','layout_flow'}<=set(tools[0]['inputSchema']['properties']['action']['enum']))
     cid=call('canvas_create',{'title':'MCP 树状三分支验收'})['canvas_id']
     canvas=read(cid)
     canvas['nodes']=[{'id':'unrelated','type':'smart-prompt','title':'无关手工笔记','text':'保留原位','x':40,'y':40,'w':632,'h':388},

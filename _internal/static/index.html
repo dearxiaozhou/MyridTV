@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-CN" class="studio-route-booting">
 <head>
-    <link rel="stylesheet" href="/static/css/design-tokens.css?cb=theme-details-v01217&v=2026.10.01.speech9">
+    <link rel="stylesheet" href="/static/css/design-tokens.css?cb=card-hover-seven-v01317&v=2026.10.01.speech9">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="/static/images/myrid-icon.png" type="image/png">
@@ -12,7 +12,7 @@
       document.documentElement.classList.toggle('studio-theme-dark', theme === 'dark');
     })();
   </script>
-  <script src="/static/js/theme.js?cb=theme-details-v01217&v=2026.10.01.speech9"></script>
+  <script src="/static/js/theme.js?cb=card-hover-seven-v01317&v=2026.10.01.speech9"></script>
   <script src="/static/js/i18n.js?v=2026.10.01.speech9"></script>
   <style>
     :root {
@@ -572,6 +572,17 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
     .tb-label { flex: 1 1 auto; }
     .tb-arrow { flex: 0 0 auto; font-size: 10px; opacity: 0.6; }
     .tb-sep { height: 1px; margin: 4px 8px; background: var(--tb-sep); }
+    /* 主题分组分隔条（深色系 / 浅色系）：自带 1px 分割线 + 组名标签 */
+    .tb-group {
+      padding: 7px 12px 5px;
+      margin-top: 4px;
+      border-top: 1px solid var(--tb-sep);
+      font-size: 11px;
+      letter-spacing: .12em;
+      color: var(--tb-fg);
+      opacity: .5;
+    }
+    .tb-group:first-child { border-top: 0; margin-top: 0; padding-top: 4px; }
     .tb-pop .tb-pop { top: -5px; left: calc(100% - 5px); }
     /* 窗口按钮：DWM 原生按钮会被 WebView2 的不透明内容盖住 → 自绘（GPT/WorkBuddy 同构），
        宽度收窄在壳层注入的 --tb-btn-w 内（与 Windows 三键总宽一致），动作经 postMessage 回壳。 */
@@ -627,7 +638,7 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
 
   </style>
 <link rel="stylesheet" href="/static/css/light-theme-trial.css?v=interaction-audit-v0105c">
-<link rel="stylesheet" href="/static/css/canvas-interaction-style.css?cb=theme-details-v01217&v=2026.10.01.speech9">
+<link rel="stylesheet" href="/static/css/canvas-interaction-style.css?cb=card-hover-seven-v01317&v=2026.10.01.speech9">
 </head>
 <body>
   <div id="update-notice" role="status" aria-live="polite"><span id="update-notice-text">界面更新已就绪</span><button type="button" id="update-refresh">刷新界面</button><button type="button" class="secondary" id="update-later">稍后</button></div>
@@ -668,12 +679,13 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
       <iframe id="frame-api-settings" data-page="api-settings" data-src="/static/api-settings.html?v=2026.10.01.speech9" scrolling="yes"></iframe>
     <iframe id="frame-comfyui-settings" data-page="comfyui-settings" data-src="/static/comfyui-settings.html?v=2026.10.01.speech9" scrolling="yes"></iframe>
     <iframe id="frame-assets-root" data-page="assets-root" data-popup-width="760" data-src="/static/assets-root.html?v=2026.10.16.assetsroot2" scrolling="yes"></iframe>
+    <iframe id="frame-home-background" data-page="home-background" data-popup-width="900" data-src="/static/home-background.html?v=2026.10.17.homebg12" scrolling="yes"></iframe>
 <iframe id="frame-smart-canvas" data-page="smart-canvas" data-src="/static/smart-canvas.html?cb=backend-info-v0116&audit=interaction-v0105&v=2026.10.01.speech9" scrolling="no"></iframe>
     </section>
 
     <!-- 2026-10-16：底部 dock 移除，页面导航改由自绘 HTML 标题栏（#tb-bar，菜单数据见下方 TB_MENUS）承担；
          版本号仅保留在这个隐藏节点里，供更新提示逻辑读取当前版本，可见版本见菜单「关于 → 关于 MyridTV」。 -->
-    <span class="app-version" hidden>版本：V0.12.20</span>
+    <span class="app-version" hidden>版本：V0.14.0</span>
   </main>
 
   <!-- 任务运行控制台（task-console） -->
@@ -784,7 +796,7 @@ function rememberCanvasPage(pageId, options) {
 }
 
 function getTheme() {
-    return localStorage.getItem('studio_theme') || localStorage.getItem('canvas_theme') || 'dark';
+    return window.StudioTheme?.get?.() || localStorage.getItem('studio_theme') || localStorage.getItem('canvas_theme') || 'dark';
 }
 
 function currentStudioLang() {
@@ -957,14 +969,16 @@ function goHomeCanvas() {
 
 function toggleTheme() {
     if (!window.StudioTheme) return;
-    window.StudioTheme.set(window.StudioTheme.get() === 'dark' ? 'light' : 'dark');
+    const themes = window.StudioTheme.list();
+    const index = themes.findIndex(item => item.id === window.StudioTheme.get());
+    window.StudioTheme.set(themes[(index + 1) % themes.length].id);
     document.querySelectorAll('iframe').forEach(syncThemeToFrame);
 }
 
 function syncDockThemeButton() {
     const button = document.getElementById('dock-theme-btn');
     if (!button) return;
-    const label = window.StudioTheme && window.StudioTheme.get() === 'light' ? '浅色模式' : '深色模式';
+    const label = window.StudioTheme?.name?.(undefined, currentStudioLang()) || '石墨青绿';
     button.title = label;
     const text = button.querySelector('.dock-pill-label');
     if (text) text.textContent = label;
@@ -1653,16 +1667,17 @@ document.addEventListener('DOMContentLoaded', function () {
       'menu.workflow': '工作流',
       'menu.help': '帮助',
       'menu.about': '关于',
-      'menu.canvas.home': '主页画布',
+      'menu.canvas.home': '返回主页',
       'menu.canvas.new': '新建画布',
       'menu.canvas.import': '导入画布',
       'menu.canvas.export': '导出画布',
       'menu.settings.api': 'API 配置',
       'menu.settings.assets': '资产目录',
       'menu.settings.library': '素材库',
-      'menu.settings.appearance': '外观',
-      'menu.settings.appearance.dark': '深色模式',
-      'menu.settings.appearance.light': '浅色模式',
+      'menu.settings.appearance': '主题',
+      'menu.settings.appearance.dark': '石墨青绿',
+      'menu.settings.appearance.light': '雾白青绿',
+      'menu.settings.homeBg': '外观',
       'menu.settings.language': '语言',
       'menu.settings.language.zh': '中文',
       'menu.settings.language.en': 'English',
@@ -1684,16 +1699,17 @@ document.addEventListener('DOMContentLoaded', function () {
       'menu.workflow': 'Workflow',
       'menu.help': 'Help',
       'menu.about': 'About',
-      'menu.canvas.home': 'Home Canvas',
+      'menu.canvas.home': 'Back to Home',
       'menu.canvas.new': 'New Canvas',
       'menu.canvas.import': 'Import Canvas',
       'menu.canvas.export': 'Export Canvas',
       'menu.settings.api': 'API Settings',
       'menu.settings.assets': 'Asset Root',
       'menu.settings.library': 'Asset Library',
-      'menu.settings.appearance': 'Appearance',
-      'menu.settings.appearance.dark': 'Dark Mode',
-      'menu.settings.appearance.light': 'Light Mode',
+      'menu.settings.appearance': 'Themes',
+      'menu.settings.appearance.dark': 'Graphite Jade',
+      'menu.settings.appearance.light': 'Mist Jade',
+      'menu.settings.homeBg': 'Appearance',
       'menu.settings.language': 'Language',
       'menu.settings.language.zh': '中文',
       'menu.settings.language.en': 'English',
@@ -1722,15 +1738,26 @@ document.addEventListener('DOMContentLoaded', function () {
       { key: 'menu.settings.api', run: function () { openPagePopup('api-settings'); } },
       { key: 'menu.settings.assets', run: function () { openPagePopup('assets-root'); } },
       { key: 'menu.settings.library', run: function () { openPagePopup('asset-manager'); } },
-      { sep: true },
-      { key: 'menu.settings.appearance', sub: [
-        { key: 'menu.settings.appearance.dark', check: function () { return tbTheme() !== 'light'; }, run: function () { tbSetTheme('dark'); } },
-        { key: 'menu.settings.appearance.light', check: function () { return tbTheme() === 'light'; }, run: function () { tbSetTheme('light'); } }
-      ]},
       { key: 'menu.settings.language', sub: [
         { key: 'menu.settings.language.zh', check: function () { return currentStudioLang() !== 'en'; }, run: function () { tbSetLang('zh'); } },
         { key: 'menu.settings.language.en', check: function () { return currentStudioLang() === 'en'; }, run: function () { tbSetLang('en'); } }
-      ]}
+      ]},
+      { sep: true },
+      { key: 'menu.settings.appearance', sub: (function () {
+        var list = window.StudioTheme.list();
+        var groups = [ { label: '深色系', mode: 'dark' }, { label: '浅色系', mode: 'light' } ];
+        var rows = [];
+        groups.forEach(function (g) {
+          var themed = list.filter(function (t) { return t.mode === g.mode; });
+          if (!themed.length) return;
+          rows.push({ group: g.label });
+          themed.forEach(function (theme) {
+            rows.push({ themeId: theme.id, check: function () { return tbTheme() === theme.id; }, run: function () { tbSetTheme(theme.id); } });
+          });
+        });
+        return rows;
+      })() },
+      { key: 'menu.settings.homeBg', run: function () { openPagePopup('home-background'); } }
     ]},
     { id: 'workflow', key: 'menu.workflow', items: [
       { key: 'menu.workflow.comfyui', run: function () { openPagePopup('comfyui-settings'); } }
@@ -1748,7 +1775,7 @@ document.addEventListener('DOMContentLoaded', function () {
     ]}
   ];
 
-  var bar = null, menusHost = null, openId = null, pops = [];
+  var bar = null, menusHost = null, openId = null, hoverOpened = false, pops = [];
 
   function tbT(key) {
     var dict = STRINGS[currentStudioLang()] || STRINGS.zh;
@@ -1765,10 +1792,20 @@ document.addEventListener('DOMContentLoaded', function () {
   /* ===== 设置类页面弹窗（2026-10-16 老王：所有窗口用弹窗，不挤掉主页面）=====
      菜单项 / 画布内 open-page 都走这里；iframe 加载与舞台iframe 相同的 data-src，
      关闭时卸载（停轮询，下次打开重载取最新配置）。Esc / 点遮罩 / 右上角 × 均可关。 */
+  /* 主页背景配置中继：弹窗(外观)改配置后 postMessage 到外壳，外壳转发给画布主页 iframe，
+     让主页不必等 storage 事件/轮询也能立刻刷新（WebView2 下 storage 事件跨 iframe 偶发不触发）。 */
+  window.addEventListener('message', function (e) {
+    if (e.data && e.data.type === 'home-bg-config-changed') {
+      var cf = document.getElementById('frame-canvas');
+      if (cf && cf.contentWindow) { try { cf.contentWindow.postMessage({ type: 'home-bg-config-changed' }, '*'); } catch (err) {} }
+    }
+  });
+
   var PAGE_POPUPS = {
     'api-settings': 'menu.settings.api',
     'assets-root': 'menu.settings.assets',
     'asset-manager': 'menu.settings.library',
+    'home-background': 'menu.settings.homeBg',
     'comfyui-settings': 'menu.workflow.comfyui'
   };
   var pagePopupOpen = false;
@@ -1859,6 +1896,13 @@ document.addEventListener('DOMContentLoaded', function () {
     var pop = document.createElement('div');
     pop.className = 'tb-pop';
     items.forEach(function (item) {
+      if (item.group) {
+        var gh = document.createElement('div');
+        gh.className = 'tb-group';
+        gh.textContent = item.group;
+        pop.appendChild(gh);
+        return;
+      }
       if (item.sep) {
         var sep = document.createElement('div');
         sep.className = 'tb-sep';
@@ -1876,7 +1920,7 @@ document.addEventListener('DOMContentLoaded', function () {
       }
       var label = document.createElement('span');
       label.className = 'tb-label';
-      label.textContent = tbT(item.key);
+      label.textContent = item.themeId ? window.StudioTheme.name(item.themeId, currentStudioLang()) : tbT(item.key);
       row.appendChild(label);
       if (item.sub) {
         var arrow = document.createElement('span');
@@ -1893,6 +1937,18 @@ document.addEventListener('DOMContentLoaded', function () {
           sub.style.left = (pop.clientWidth - 5) + 'px';
           sub.style.top = (row.offsetTop - 4) + 'px';
         });
+        // 鼠标离开触发行且没进入自身子菜单 → 关闭；离开子菜单且没回到触发行 → 关闭。
+        // 标准级联菜单行为，避免悬停离开后下拉一直显示（老王 2026-10-17）。
+        row.addEventListener('mouseleave', function (e) {
+          var rt = e.relatedTarget;
+          if (rt && sub.contains(rt)) return;
+          sub.classList.remove('open');
+        });
+        sub.addEventListener('mouseleave', function (e) {
+          var rt = e.relatedTarget;
+          if (rt && row.contains(rt)) return;
+          sub.classList.remove('open');
+        });
       } else {
         row.addEventListener('click', function (ev) {
           ev.stopPropagation();
@@ -1905,12 +1961,13 @@ document.addEventListener('DOMContentLoaded', function () {
     return pop;
   }
 
-  function openMenu(id) {
+  function openMenu(id, byHover) {
     var menu = null;
     for (var i = 0; i < MENUS.length; i++) if (MENUS[i].id === id) menu = MENUS[i];
     if (!menu) return;
     closeAll();
     openId = id;
+    hoverOpened = !!byHover;
     var btn = menusHost.querySelector('.tb-menu[data-id="' + id + '"]');
     if (btn) btn.classList.add('open');
     var pop = buildPop(menu.items);
@@ -1918,13 +1975,41 @@ document.addEventListener('DOMContentLoaded', function () {
     if (btn) pop.style.left = btn.offsetLeft + 'px';
     pop.classList.add('open');
     pops.push(pop);
+    armFrameDismiss();
   }
 
   function closeAll() {
     openId = null;
+    hoverOpened = false;
+    disarmFrameDismiss();
     if (menusHost) menusHost.querySelectorAll('.tb-menu.open').forEach(function (n) { n.classList.remove('open'); });
     pops.forEach(function (p) { p.remove(); });
     pops = [];
+  }
+
+  /* 2026-10-17 老王：舞台内容是 iframe，iframe 内的 mousedown 不会冒泡到父文档，
+     原先只挂 document 的「点菜单/下拉之外收起」对整块舞台失效——在画布上点鼠标菜单不收，
+     只有随手点到某个菜单项才关（老王实测）。菜单打开期间给每个舞台 iframe 的 document
+     补一个 capture 阶段 mousedown：一点就 closeAll()。页面都由后端 /static 同源服务，
+     个别取不到 contentDocument 的（跨域/未挂载）用 try/catch 兜底跳过。 */
+  var frameDismiss = [];
+  function armFrameDismiss() {
+    disarmFrameDismiss();
+    document.querySelectorAll('.stage iframe').forEach(function (f) {
+      try {
+        var doc = f.contentDocument;
+        if (!doc) return;
+        var h = function () { closeAll(); };
+        doc.addEventListener('mousedown', h, true);
+        frameDismiss.push({ doc: doc, h: h });
+      } catch (e) { }
+    });
+  }
+  function disarmFrameDismiss() {
+    frameDismiss.forEach(function (b) {
+      try { b.doc.removeEventListener('mousedown', b.h, true); } catch (e) { }
+    });
+    frameDismiss = [];
   }
 
   function renderLabels() {
@@ -1962,12 +2047,19 @@ document.addEventListener('DOMContentLoaded', function () {
       btn.textContent = tbT(menu.key);
       btn.addEventListener('click', function (ev) {
         ev.stopPropagation();
-        if (openId === menu.id) closeAll(); else openMenu(menu.id);
+        // hoverOpened：菜单是被 mouseenter 抢先切换开的。此时点击应「保持打开」
+        // （标准菜单栏语义：点击换菜单=打开该菜单，而不是把它关掉），再点一次才收。
+        if (openId === menu.id && !hoverOpened) closeAll(); else openMenu(menu.id, false);
       });
       btn.addEventListener('mouseenter', function () {
-        if (openId && openId !== menu.id) openMenu(menu.id);
+        if (openId && openId !== menu.id) openMenu(menu.id, true);
       });
       menusHost.appendChild(btn);
+    });
+
+    // iframe 换页（src 更换 → contentDocument 换成新文档）后，若菜单仍开着就重新挂 Bridge 监听
+    document.querySelectorAll('.stage iframe').forEach(function (f) {
+      f.addEventListener('load', function () { if (openId) armFrameDismiss(); });
     });
 
     // 条带空白区（含图标槽）交互：按住不动=点击；位移超 3px 才向壳发拖动（win|drag），

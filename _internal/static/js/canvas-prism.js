@@ -30,58 +30,7 @@
       ].join('')), qs('.gate-title-row', gateHeadText) || gateHeadText.firstChild);
     }
 
-    const gateActions = qs('.gate-head-actions');
-    let info = qs('#gateBackendInfo');
-    if (!info) {
-      qs('.prism-canvas-gate-pills')?.remove();
-      const row = create('div', 'prism-canvas-gate-pills');
-      info = create('button', 'prism-canvas-hero-pill');
-      info.id = 'gateBackendInfo';
-      info.type = 'button';
-      info.textContent = '后端：检测中…';
-      row.appendChild(info);
-      if (gateActions) gateActions.insertAdjacentElement('afterend', row);
-      else gateHeadText.appendChild(row);
-      bindBackendInfo(info);
-    }
-  }
-
-  function bindBackendInfo(button) {
-    let address = '', normalText = '', copiedTimer = null, checkVersion = 0;
-    function show(port, connected) {
-      const endpoint = new URL(location.origin);
-      endpoint.port = String(port);
-      address = endpoint.origin;
-      normalText = `后端：${endpoint.hostname}:${port}${connected ? '' : ' · 未连接'}`;
-      button.textContent = normalText;
-      button.title = `${address}（点击复制后端地址）`;
-      button.setAttribute('aria-label', normalText + '，点击复制后端地址');
-      button.dataset.address = address;
-      button.dataset.connection = connected ? 'connected' : 'offline';
-    }
-    async function refreshBackend() {
-      const version = ++checkVersion;
-      try {
-        const response = await fetch('/health', {cache:'no-store'});
-        const health = response.ok ? await response.json() : null;
-        if (version !== checkVersion) return;
-        const port = Number(health?.port);
-        if (!health?.ok || !Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Unavailable backend');
-        show(port, true);
-      } catch (_) {
-        if (version !== checkVersion) return;
-        show(Number(location.port) || (location.protocol === 'https:' ? 443 : 80), false);
-      }
-    }
-    button.addEventListener('click', async () => {
-      if (!address) return;
-      const copied = await copyTextToClipboard(address);
-      button.textContent = copied ? '后端地址已复制' : '复制失败，请从提示中选择地址';
-      clearTimeout(copiedTimer);
-      copiedTimer = setTimeout(() => {button.textContent = normalText;}, 1800);
-    });
-    window.addEventListener('focus', refreshBackend);
-    refreshBackend();
+    // 2026-10-16：老王要求删掉主页面的「后端：127.0.0.1:3113」标签，整块移除
   }
 
   function ensureTopbarEnhancements() {

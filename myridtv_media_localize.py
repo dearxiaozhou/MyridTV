@@ -44,10 +44,10 @@ _r_output_asset_kind_for_name = None
 _r_output_asset_subdir_for_kind = None
 _r_request_multipart_json = None
 _r_resolve_user_asset_path = None
-_upload_image_lock = threading.Lock()
+_upload_media_lock = threading.Lock()
 
 
-def _matching_upload_image(directory, saved_name, data, original_name=""):
+def _matching_upload_media(directory, saved_name, data, original_name=""):
     """Match only this canvas's same-name collision family, never another scope."""
     stem = re.sub(r"-\d+$", "", Path(saved_name).stem) or Path(saved_name).stem
     family = re.compile(re.escape(stem) + r"(?:-\d+|-[0-9a-f]{6})?" + re.escape(Path(saved_name).suffix), re.I)
@@ -260,9 +260,9 @@ def upload_kind_for_file(file_name="", content_type=""):
     ext = str(Path(str(file_name or "")).suffix or "").lower()
     if mime.startswith("image/") or ext in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}:
         return "image"
-    if mime.startswith("video/") or ext in {".mp4", ".mov", ".avi", ".webm", ".mkv"}:
+    if mime.startswith("video/") or ext in {".mp4", ".mov", ".avi", ".webm", ".mkv", ".m4v"}:
         return "video"
-    if mime.startswith("audio/") or ext in {".mp3", ".wav", ".ogg", ".m4a", ".flac"}:
+    if mime.startswith("audio/") or ext in {".mp3", ".wav", ".ogg", ".m4a", ".flac", ".aac"}:
         return "audio"
     return "file"
 
@@ -341,16 +341,16 @@ def save_uploaded_file(file_info, target_dir=None, url_prefix=None, kind_subdir=
     directory.mkdir(parents=True, exist_ok=True)
     desired_name = upload_saved_name(original_name, ext)
     reused = False
-    # Canvas image imports are idempotent. Multipart exposes a basename, not
+    # Canvas media imports are idempotent. Multipart exposes a basename, not
     # a trusted source path, so confirm the bytes before reusing a local file.
-    with _upload_image_lock:
-        match = _matching_upload_image(directory, desired_name, data, original_name) if target_dir and kind_subdir and kind == 'image' else None
+    with _upload_media_lock:
+        match = _matching_upload_media(directory, desired_name, data, original_name) if target_dir and kind_subdir else None
         saved_name = match or unique_saved_name(directory, desired_name)
         reused = match is not None
         if not reused:
             (directory / saved_name).write_bytes(data)
     transcode_note = ""
-    if kind == "video":
+    if kind == "video" and not reused:
         # 就地确保可被 WebView2 播放：探测到 HEVC 等解不了的编码就用 ffmpeg 转 H.264。
         # 文件名不变（就地替换），因此对外 URL 无需改写；任何失败都保留原文件。
         try:

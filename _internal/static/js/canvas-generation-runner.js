@@ -43,18 +43,28 @@ async function runGeneration(){
  });
  }
     const nodeHasImages = (node.images || []).some(img => img?.url);
-    const workflowModeRun = deps.smartImageUsesWorkflowInput(node, D("smartLoopContext"));
-    // History is scoped to the node itself. Input links and neighboring nodes never
-    // affect whether this is the node's first generation.
-    const overwriteExistingOutput = nodeHasImages && nodeHasCompletedGeneration(node) && !workflowModeRun;
+    // Uploaded inputs and earlier generated results both belong to this node.
+    // Re-generation keeps the node identity and archives the previous image on disk.
+    const overwriteExistingOutput = nodeHasImages;
+    node.outputPlacement = 'replace';
     // 2026-10-09 老王拍板：保留名机制已移除 —— 画布素材名与磁盘文件名保持一致，
-    // 覆盖重跑产物按新落盘名命名，旧产物仍归档进 history/ 分组（下方 move 逻辑保留）。
-    const movedOutputAssetUrls = overwriteExistingOutput ? await moveOutputImagesToHistoryForRun(node.images || []) : new Map();
+    // 覆盖重跑产物按新落盘名命名，旧产物只进本地 history，不创建画布历史分组。
+    let movedOutputAssetUrls;
+    try {
+        movedOutputAssetUrls = overwriteExistingOutput ? await moveOutputImagesToHistoryForRun(node.images || [], {strict:true}) : new Map();
+    } catch(error) {
+        if(!isCurrent()) return;
+        lifecycle.finish(node,attempt,'failed','旧图归档失败，已保留当前素材：' + (error.message || String(error)));
+        deps.toast(node.runError);
+        deps.render(); deps.scheduleSave();
+        return;
+    }
     if(!isCurrent()) return;
     if(movedOutputAssetUrls.size){
         refs = remapRefsForMovedAssets(refs, movedOutputAssetUrls);
         updatePromptMentionUrlsForMovedAssets(movedOutputAssetUrls);
     }
+    const archivedPreviousImages = overwriteExistingOutput ? (node.images || []).map(image => ({...image})) : [];
     const meta = {...withRunSettings(() => snapshotRunMeta(prompt, node.id, request.displayPrompt, refs)), generationAttemptId:attempt};
     if(!ownsEditor()){
         meta.promptHtml = node.promptDraftHtml;
@@ -144,6 +154,8 @@ async function runGeneration(){
                 await deps.saveCanvas();
                 await deps.resumeSmartPendingNode(pendingNode);
                 if(!isCurrent()) return;
+                // blender 预演：渲染完在等插件回传（完全依赖插件），节点保持等待态，不算失败
+                if(!(pendingNode.images || []).length && deps.isPrevizPushWaiting && deps.isPrevizPushWaiting(pendingNode)) return;
                 if(!(pendingNode.images || []).length) throw new Error(tr('smart.errNoOutVideos'));
                 if(sourceVisualState) deps.restoreSourceVisualState(node, sourceVisualState);
                 deps.addSmartGenerationLog({run:runLog, outputs:(pendingNode.images || []).map(img => img.url).filter(Boolean), runMs:deps.nowMs() - runLogStart});
@@ -216,6 +228,9 @@ async function runGeneration(){
     } catch(e) {
         if(!isCurrent()) return;
         if(comfyRunToken && pendingNode.comfyRunToken !== comfyRunToken) return;
+        if(!branchNode && !(pendingNode.images || []).length && archivedPreviousImages.length){
+            pendingNode.images = archivedPreviousImages;
+        }
 
         if(deps.handleJimengPendingSignal(pendingNode, e)){
             if(sourceVisualState) deps.restoreSourceVisualState(node, sourceVisualState);

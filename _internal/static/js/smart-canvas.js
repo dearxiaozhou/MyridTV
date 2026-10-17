@@ -1297,7 +1297,7 @@ function clearPromptInput(options={}){
     }
 }
 function applyTheme(theme){
-    const dark = theme === 'dark';
+    const dark = window.StudioTheme?.isDark?.(theme) ?? (theme === 'dark');
     document.documentElement.classList.toggle('theme-dark', dark);
     document.documentElement.classList.toggle('studio-theme-dark', dark);
     document.body?.classList.toggle('theme-dark', dark);
@@ -10653,7 +10653,8 @@ function positionComposerForNode(node){
     if(!node) return;
     const rect = nodeRect(node);
     const scale = safeScale(viewport.scale);
-    const cardW = Math.max(280, Math.min(825, shell.clientWidth * 0.615));
+    const widthScale = Number.parseFloat(getComputedStyle(composer).getPropertyValue('--canvas-composer-width-scale')) || 1;
+    const cardW = Math.max(280, Math.min(825, shell.clientWidth * 0.615) * widthScale);
     composer.style.width = `${cardW}px`;
     const nodeCenterX = viewport.x + (rect.x + rect.width / 2) * scale;
     const nodeBottomScreen = viewport.y + (rect.y + rect.height) * scale;
@@ -12977,6 +12978,7 @@ if(globalThis.CanvasGenerationRunner){CanvasGenerationRunner.configure({
         restoreSourceVisualState: (...a) => restoreSourceVisualState(...a),
         resultMediaUrls: (...a) => resultMediaUrls(...a),
         resumeSmartPendingNode: (...a) => resumeSmartPendingNode(...a),
+        isPrevizPushWaiting: (...a) => isPrevizPushWaiting(...a),
         runApiGeneration: (...a) => runApiGeneration(...a),
         runApiVideoGeneration: (...a) => runApiVideoGeneration(...a),
         runComfyGeneration: (...a) => runComfyGeneration(...a),
@@ -13231,6 +13233,7 @@ function resumeJimengPendingNodes(){return CanvasSmartTaskSupervisor.resumeJimen
 function pollSmartCanvasTask(){return CanvasSmartTaskSupervisor.pollSmartCanvasTask.apply(null, arguments);}
 
 function resumeSmartPendingNode(){return CanvasSmartTaskSupervisor.resumeSmartPendingNode.apply(null, arguments);}
+function isPrevizPushWaiting(){return CanvasSmartTaskSupervisor.isPrevizPushWaiting.apply(null, arguments);}
 
 function recoverStuckComfyNodes(){return CanvasSmartTaskSupervisor.recoverStuckComfyNodes.apply(null, arguments);}
 

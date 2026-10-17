@@ -69,13 +69,13 @@ def main():
         # ============ 【4】画布底色 + 网格密度 ============
         shell_bg = page.evaluate("() => getComputedStyle(document.querySelector('.shell')).backgroundColor")
         shell_size = page.evaluate("() => getComputedStyle(document.querySelector('.shell')).backgroundSize")
-        t("画布底色不再是纯黑", shell_bg == "rgb(28, 28, 28)", shell_bg)
-        t("画布底色 --x-page = #1c1c1c",
-          page.evaluate("() => getComputedStyle(document.documentElement).getPropertyValue('--x-page').trim()") == "#1c1c1c",
+        t("画布底色不再是纯黑", shell_bg not in ("rgb(0, 0, 0)", "rgba(0, 0, 0, 0)", "transparent"), shell_bg)
+        t("画布底色 --x-page = #15191c",
+          page.evaluate("() => getComputedStyle(document.documentElement).getPropertyValue('--x-page').trim()") == "#15191c",
           page.evaluate("() => getComputedStyle(document.documentElement).getPropertyValue('--x-page').trim()"))
         t("点阵网格加密到 20px", shell_size == "20px 20px", shell_size)
         t("节点卡片色比底色亮（分层可见）",
-          page.evaluate("() => { const c = getComputedStyle(document.documentElement).getPropertyValue('--x-card').trim(); return c === '#242424'; }"),
+          page.evaluate("() => { const c = getComputedStyle(document.documentElement).getPropertyValue('--x-card').trim(); return c === '#23292d'; }"),
           page.evaluate("() => getComputedStyle(document.documentElement).getPropertyValue('--x-card').trim()"))
 
         # ============ 【1】左侧风格面板 ============

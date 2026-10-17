@@ -15,6 +15,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -491,9 +492,79 @@ def enhance_previz_prompt_with_llm(prompt, payload):
     return enhanced
 
 
-def run_blender_previz(payload):
+# ===== 第22刀：预演回传「完全依赖插件」——任务延期结算 =====
+# 渲染成功不算完：后端任务停在 running，等 Blender 插件把动画推回来才结算。
+# 插件没开/没推 → 任务一直等（用户可在控制台手动停止），视频绝不绕开插件落地。
+_PUSH_WAITERS = {}
+_PUSH_WAITERS_LOCK = threading.Lock()
+
+
+def register_previz_push_waiter(task_id):
+    """登记一个等待插件回传的任务，返回等待条目（event + media 槽）。"""
+    safe_id = str(task_id or "").strip()
+    if not safe_id:
+        return None
+    entry = {"event": threading.Event(), "media": None, "registered_at": time.time()}
+    with _PUSH_WAITERS_LOCK:
+        _PUSH_WAITERS[safe_id] = entry
+    append_log(_log_file(), f"previz push waiter registered task={safe_id}")
+    return entry
+
+
+def deliver_previz_push(task_id, payload):
+    """插件推送到达：把 payload 交给等待中的任务 worker。命中返回 True。"""
+    safe_id = str(task_id or "").strip()
+    with _PUSH_WAITERS_LOCK:
+        entry = _PUSH_WAITERS.get(safe_id)
+    if not entry:
+        return False
+    entry["media"] = payload
+    entry["event"].set()
+    append_log(_log_file(), f"previz push delivered task={safe_id}")
+    return True
+
+
+def unregister_previz_push_waiter(task_id):
+    safe_id = str(task_id or "").strip()
+    with _PUSH_WAITERS_LOCK:
+        _PUSH_WAITERS.pop(safe_id, None)
+
+
+def _previz_push_wait_timeout():
+    raw = (os.environ.get("MYRIDTV_PREVIZ_PUSH_TIMEOUT_SEC") or "").strip()
+    try:
+        value = float(raw)
+    except ValueError:
+        return 0.0
+    return max(0.0, value)
+
+
+def _wait_for_previz_push(task_id, entry):
+    """阻塞等待插件回传。每秒 tick 检查任务是否被用户停止；超时 0 = 一直等。"""
+    import myridtv_task_state  # 延迟导入，避免模块环
+    timeout_sec = _previz_push_wait_timeout()
+    deadline = time.time() + timeout_sec if timeout_sec > 0 else None
+    while True:
+        if entry["event"].wait(1.0):
+            return entry["media"]
+        state = myridtv_task_state.get_task_state(task_id) or {}
+        status = str(state.get("status") or "").strip().lower()
+        if status in ("cancelled", "canceled"):
+            raise RuntimeError(str(state.get("error") or "用户手动停止，未等待插件回传"))
+        if status == "failed":
+            raise RuntimeError(str(state.get("error") or "任务已失败"))
+        if deadline is not None and time.time() >= deadline:
+            raise RuntimeError(f"等待插件回传超时（{int(timeout_sec)} 秒），Blender 插件未推送")
+
+def run_blender_previz(payload, task_id=""):
     """画布 Blender 预演：镜头表文本(prompt) → previz 三件套 → mp4。
-    渲染完成后走插件通道(append_blender_assets)自动建节点回填画布。"""
+
+    渲染成功不算完（2026-10-17 起回传完全依赖插件）：自动打开 Blender 工程
+    （GUI）并把画布 ID / 代理地址 / 任务 ID 填进 myridtv 插件面板，随后阻塞等待
+    插件「动画推送」回传；推送到达才带着插件渲染的视频结算任务，由前端
+    finalizeSmartPendingTask 写回原 3D预演 节点。插件没开 → 任务一直 running
+    （控制台可手动停止），视频不会绕开插件落地。task_id 为空时行为同旧版
+    （直接返回后端渲染结果，不等推送）。"""
     import sys  # 顶层未导入 sys，这里局部引入
     canvas_id = str((payload or {}).get("canvas_id") or "").strip()
     canvas_title = str((payload or {}).get("canvas_title") or "").strip()
@@ -603,26 +674,51 @@ def run_blender_previz(payload):
     except Exception:
         pass
     duration_seconds = round(total_frames / max(_G_PREVIZ_FPS, 1), 3) if total_frames else 0
-    # 自动打开 Blender 工程（GUI）+ 把当前画布 ID 填进 myridtv 插件面板（亮绿灯才能手动推送回传）
-    if blend_path.exists():
-        try:
-            fill_script = _G_PREVIZ_DIR / "open_with_canvas.py"
-            subprocess.Popen(
-                [_G_BLENDER_BIN, str(blend_path), "--python", str(fill_script), "--",
-                 "--canvas-id", canvas_id, "--proxy-url", "http://127.0.0.1:3107"],
-                cwd=str(_G_PREVIZ_DIR))
-            append_log(_log_file(), f"previz opened blend={blend_path.name} canvas={canvas_id}")
-        except Exception as exc:
-            append_log(_log_file(), f"previz open blend failed: {exc}")
+    # —— 回传完全依赖插件（2026-10-17 第22刀）——
+    # 先登记等待者（必须在自动开箱之前：插件最早也要等填充后才可能推送），
+    # 再开箱填 canvas_id/proxy_url/task_id，然后阻塞等插件动画推送。
+    display = f"Blender 预演 {tag}"
+    pushed_by_plugin = False
+    push_entry = register_previz_push_waiter(task_id)
+    try:
+        # 自动打开 Blender 工程（GUI）+ 把画布 ID / 代理地址 / 任务 ID 填进 myridtv
+        # 插件面板（亮绿灯才能推送回传）
+        if blend_path.exists():
+            try:
+                fill_script = _G_PREVIZ_DIR / "open_with_canvas.py"
+                subprocess.Popen(
+                    [_G_BLENDER_BIN, str(blend_path), "--python", str(fill_script), "--",
+                     "--canvas-id", canvas_id, "--proxy-url", _app_base_getter(),
+                     "--task-id", str(task_id or "")],
+                    cwd=str(_G_PREVIZ_DIR))
+                append_log(_log_file(), f"previz opened blend={blend_path.name} canvas={canvas_id} task={task_id or '-'}")
+            except Exception as exc:
+                append_log(_log_file(), f"previz open blend failed: {exc}")
+        if push_entry is not None:
+            push_payload = _wait_for_previz_push(task_id, push_entry) or {}
+            saved = _r_save_blender_payload_asset(push_payload)
+            display = str(push_payload.get("camera_name") or push_payload.get("node_title") or "").strip() or display
+            url = saved["url"]
+            size = int(saved.get("size_bytes") or 0)
+            video_name = saved["name"]
+            push_dur = parse_number(push_payload.get("duration_seconds"))
+            if push_dur:
+                duration_seconds = round(float(push_dur), 3)
+            pushed_by_plugin = True
+            append_log(_log_file(), f"previz push landed task={task_id} url={url}")
+    finally:
+        if push_entry is not None:
+            unregister_previz_push_waiter(task_id)
     # 画布点生成路径：不 append 建节点（避免与前端写回原节点重复 = 双视频节点 bug）
-    # 回填统一由前端 finalizeSmartPendingTask 写回原 3D预演 节点
-    # 插件手动推送仍走 append_blender_assets（push-animation 路由）
-    append_log(_log_file(), f"previz done url={url} size={size} dur={duration_seconds}")
+    # 回填统一由前端 finalizeSmartPendingTask 写回原 3D预演 节点；
+    # 无 task_id 的直调（旧行为）才把后端渲染视频直接作为结果返回。
+    append_log(_log_file(), f"previz done url={url} size={size} dur={duration_seconds} pushed={pushed_by_plugin}")
     return {
-        "images": [{"url": url, "name": video_name, "kind": "video", "display_name": f"Blender 预演 {tag}"}],
+        "images": [{"url": url, "name": video_name, "kind": "video", "display_name": display}],
         "backend": "blender-previz",
         "video_url": url,
         "duration_seconds": duration_seconds,
+        "pushed_by_plugin": pushed_by_plugin,
         "previs_data_url": myridtv_media_localize.asset_output_url(data_json_path.name, "file", canvas_folder=f"{canvas_folder}/previs_data"),
         "video_prompt_url": myridtv_media_localize.asset_output_url(prompt_path.name, "file", canvas_folder=f"{canvas_folder}/previs_data"),
         "validation_url": myridtv_media_localize.asset_output_url(validation_path.name, "file", canvas_folder=f"{canvas_folder}/previs_data"),

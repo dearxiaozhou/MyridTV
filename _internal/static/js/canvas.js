@@ -353,7 +353,7 @@ function localViewportForCanvas(canvasId, fallback={x:0, y:0, scale:1}){
     };
 }
 function applyTheme(theme){
-    const dark = theme === 'dark';
+    const dark = window.StudioTheme?.isDark?.(theme) ?? (theme === 'dark');
     document.documentElement.classList.toggle('studio-theme-dark', dark);
     document.documentElement.classList.toggle('theme-dark', dark);
     document.body.classList.toggle('studio-theme-dark', dark);

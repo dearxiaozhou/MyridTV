@@ -1,4 +1,4 @@
-/* Applies imported media to image nodes and maintains their single/group shape. */
+/* Applies imported media to image nodes. Canvas groups are created manually. */
 (function(global){
     'use strict';
 
@@ -17,16 +17,12 @@
         if(kinds.size > 1) return list.length > 1 ? 'Media' : fallback;
         if(kinds.has('video')) return list.length > 1 ? 'Videos' : 'Video';
         if(kinds.has('audio')) return 'Audio';
-        return list.length > 1 ? 'Group' : 'Image';
+        return list.length > 1 ? 'Images' : 'Image';
     }
 
     function appendImages(uploaded, targetId='', options={}){
         const images = [...(uploaded || [])].filter(file => file?.url);
         if(!images.length) return null;
-        if(options.forceNew && images.length > 1 && typeof deps.createGroupFromImages === 'function'){
-            const group = deps.createGroupFromImages(images, options);
-            if(group) return group;
-        }
         let node = deps.getNodes().find(item => item.id === targetId) || deps.selectedNode();
         if(node && !deps.isImageNode(node)) node = null;
         if(options.forceNew) node = null;
@@ -47,7 +43,7 @@
             node.images = [...(node.images || []), ...images.map(file => ({...file, kind:file.kind || deps.mediaKindForItem(file)}))];
         }
         if(node.images.length > 1){
-            node.title = uploadTitleForItems(node.images, 'Group');
+            node.title = uploadTitleForItems(node.images, 'Images');
             const scale = Number(node.scale);
             if(previousCount <= 1 && (!Number.isFinite(scale) || scale === deps.defaultImageNodeScale || scale === deps.previousGroupNodeScale)){
                 node.scale = deps.defaultGroupNodeScale;

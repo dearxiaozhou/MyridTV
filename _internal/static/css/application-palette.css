@@ -1,0 +1,181 @@
+/* Approved product palettes. Important layers beat historical unlayered theme
+   overrides without changing component geometry or competing on specificity.
+   Interaction colors remain in canvas-interaction-style.css. */
+@layer studio-interaction, studio-palette;
+@layer studio-palette {
+  html body :is(.gate-create-row,.smart-image-name-label,.image-resolution-badge) {
+    background:var(--x-panel-solid) !important; color:var(--x-text) !important;
+    border-color:var(--x-line) !important; box-shadow:var(--x-sh-1) !important;
+  }
+  html body :is(.create-cancel,.canvas-dock-icon,.create-card-icon) {
+    background:var(--x-soft) !important; color:var(--x-text) !important; border-color:var(--x-line) !important;
+  }
+  /* Confirmation is a primary action, excluded from neutral hover via .primary. */
+  html body .create-confirm { background:var(--x-strong) !important; color:var(--x-strong-text) !important; border-color:var(--x-strong) !important; }
+  /* Project metadata and the bottom composer use the same surfaces as drawers. */
+  html body :is(.canvas-meta-pop,.composer-card,.agent-select-pop) {
+    background:var(--x-panel-solid) !important; color:var(--x-text) !important;
+    border-color:var(--x-line) !important; box-shadow:var(--x-sh-2) !important;
+  }
+  html body :is(.canvas-meta-label,.emoji-option) { color:var(--x-muted) !important; }
+  html body :is(.canvas-cover-btn,.agent-select-btn,.previz-llm-toggle) {
+    background:var(--x-soft) !important; color:var(--x-text) !important; border-color:var(--x-line) !important;
+  }
+  html body .prompt-input {
+    background:var(--x-soft) !important; color:var(--x-text) !important; border-color:var(--x-line) !important;
+  }
+  html body .prompt-input::before { color:var(--x-faint) !important; }
+  /* Swatches represent project metadata; preserve each real color. */
+  html body .canvas-color-swatch.cc-none {
+    background:var(--x-soft) !important; color:var(--x-muted) !important; border-color:var(--x-line) !important;
+  }
+  html, body { background:var(--x-page) !important; color:var(--x-text) !important; }
+  html body {
+    --page:var(--x-page) !important; --bg:var(--x-page) !important; --bg-base:var(--x-page) !important;
+    --panel:var(--x-panel) !important; --card:var(--x-card) !important; --card-solid:var(--x-panel-solid) !important;
+    --soft:var(--x-soft) !important; --soft-2:var(--x-soft-2) !important;
+    --line:var(--x-line) !important; --line-strong:var(--x-line-strong) !important; --line-2:var(--x-line-strong) !important;
+    --grid:var(--x-grid) !important; --text:var(--x-text) !important; --text-main:var(--x-text) !important;
+    --muted:var(--x-muted) !important; --faint:var(--x-faint) !important;
+    --strong:var(--x-strong) !important; --strong-text:var(--x-strong-text) !important; --accent:var(--x-strong) !important;
+    --input-bg:var(--x-soft) !important; --btn-bg:var(--x-soft) !important; --btn-hover-bg:var(--x-hover-bg) !important;
+    --light-primary:var(--x-strong) !important; --light-primary-hover:var(--x-accent-hover) !important;
+    --dock-bg:var(--x-panel-solid) !important; --dock-pill-bg:var(--x-soft) !important;
+    --dock-pill-hover-bg:var(--x-hover-bg) !important; --dock-pill-line:var(--x-line) !important;
+    --dock-active-bg:var(--x-selected-fill) !important; --dock-active-line:var(--x-selected-line) !important;
+    --dock-accent:var(--x-selected-text) !important; --dock-icon-bg:var(--x-soft-2) !important; --dock-icon-fg:var(--x-muted) !important;
+    --stage:var(--x-page) !important;
+    --tb-bg:var(--x-soft) !important; --tb-fg:var(--x-text) !important;
+    --tb-hover:var(--x-hover-bg) !important; --tb-open:var(--x-selected-fill) !important;
+    --tb-pop-bg:var(--x-panel-solid) !important; --tb-pop-border:var(--x-line) !important;
+    --tb-item-hover:var(--x-hover-bg) !important; --tb-sep:var(--x-line) !important;
+    --api-hard-bg:var(--x-page) !important; --api-hard-panel:var(--x-card) !important; --api-hard-soft:var(--x-soft) !important;
+    --api-hard-line:var(--x-line) !important; --api-hard-line-strong:var(--x-line-strong) !important;
+    --api-hard-text:var(--x-text) !important; --api-hard-muted:var(--x-muted) !important; --api-hard-faint:var(--x-faint) !important;
+    --api-hard-ok:var(--x-ok) !important; --api-hard-warn:var(--x-warn) !important;
+    --asset-hard-page:var(--x-page) !important; --asset-hard-panel:var(--x-card) !important;
+    --asset-hard-card:var(--x-card) !important; --asset-hard-soft:var(--x-soft) !important;
+    --asset-hard-soft-2:var(--x-soft-2) !important; --asset-hard-line:var(--x-line) !important;
+    --asset-hard-line-strong:var(--x-line-strong) !important; --asset-hard-text:var(--x-text) !important;
+    --asset-hard-muted:var(--x-muted) !important; --asset-hard-faint:var(--x-faint) !important;
+    --asset-hard-strong:var(--x-strong) !important; --asset-hard-strong-text:var(--x-strong-text) !important;
+    --wf-hard-bg:var(--x-page) !important; --wf-hard-panel:var(--x-card) !important; --wf-hard-soft:var(--x-soft) !important;
+    --wf-hard-line:var(--x-line) !important; --wf-hard-line-strong:var(--x-line-strong) !important;
+    --wf-hard-text:var(--x-text) !important; --wf-hard-muted:var(--x-muted) !important; --wf-hard-faint:var(--x-faint) !important;
+    --wf-hard-accent:var(--x-strong) !important; --canvas-prism-line:var(--x-line) !important; --api-prism-line:var(--x-line) !important;
+  }
+
+  /* Page foundations: opaque shared backgrounds, with one understated grid. */
+  html body :is(.app-shell,.stage,.asset-page,.ar-page,.canvas-gate,.board,.shell) {
+    background-color:var(--x-page) !important; color:var(--x-text) !important; border-color:var(--x-line) !important;
+  }
+  html body .canvas-gate {
+    background-image:radial-gradient(var(--x-grid) .75px,transparent .9px) !important;
+    background-size:24px 24px !important; background-repeat:repeat !important;
+  }
+  html body .canvas-gate :is(.gate-panel,.gate-list,.gate-toolbar) {
+    background:transparent !important; box-shadow:none !important;
+  }
+  html body:is(.prism-canvas-page,.prism-api-page)::before,
+  html body:is(.prism-canvas-page,.prism-api-page)::after { background:none !important; opacity:0 !important; }
+
+  /* Shared panels, dialogs, toolbars and native-looking dropdowns. */
+  html body :is(.page-head,.content-head,.side-card,.side-panel,.block,.asset-panel,.asset-sidebar,
+    .asset-page-head,.ar-card,.panel,.toolbar,.canvas-nav,.gate-panel,.gate-list,.gate-toolbar,
+    .canvas-asset-panel,.prompt-template-panel,.image-edit-panel,.error-panel,.output-lightbox-shell,
+    .modal-panel,.modal-card,.modal-content,.modal-box,.modal-dialog,.dialog-panel,
+    .tc-panel,.tc-stats-panel,.tc-analytics,.tc-analytics-card,.tc-stat,.tb-page-panel,.tb-pop,
+    .bottom-dock,.bottom-dock-shell,.canvas-left-tools,.canvas-bottom-tools,.canvas-bottom-cluster,
+    .topbar,.create-menu,.quick-toolbar,.context-menu,.unified-popover,.unified-select-menu,
+    .shared-native-select-menu,.speech-options-popover,.speech-picker-menu,.style-popover,
+    .model-picker,.picker-panel,.picker-header,.picker-summary,.picker-footer,.prompt-library-panel,
+    .canvas-agent-panel,.canvas-agent-settings-panel,.canvas-agent-history-panel,.canvas-agent-skill-panel,
+    .previz-llm-panel,.previz-llm-panel::after) {
+    background:var(--x-panel-solid) !important; color:var(--x-text) !important;
+    border-color:var(--x-line) !important; box-shadow:var(--x-sh-2) !important;
+  }
+  html body :is(.image-node,.asset-card,.asset-item,.template-card,.prompt-template-card,.style-card,
+    .tc-item,.workflow-preview,.preview-card,.mod-row,.canvas-card-id-row,.ar-path,.field-frame,
+    .params-bar,.api-param-bar,.comfy-params,.rh-params,.node-head,.tc-toolbar,.tc-header,.tc-params) {
+    background-color:var(--x-card) !important; color:var(--x-text) !important; border-color:var(--x-line) !important;
+  }
+  /* Canvas project stripes and media covers retain their own identity. */
+  /* Approved soft taper: full viewport width, bright 3px center, faint thin ends.
+     This sibling stays outside the scrolling list and cannot intercept input. */
+  html body .gate-collection-divider {
+    position:relative; top:14px; width:100vw; height:0; flex:0 0 0;
+    align-self:center; pointer-events:none; z-index:1;
+  }
+  html body .gate-collection-divider::before {
+    content:""; position:absolute; left:0; right:0; top:-5px; height:10px;
+    background:radial-gradient(ellipse at center,color-mix(in srgb,var(--x-accent) 60%,transparent),transparent 65%);
+    filter:blur(4px);
+  }
+  html body .gate-collection-divider::after {
+    content:""; position:absolute; left:0; right:0; top:-1.5px; height:3px; border-radius:50%;
+    background:linear-gradient(90deg,
+      color-mix(in srgb,var(--x-accent) 9%,var(--x-page)),
+      color-mix(in srgb,var(--x-accent) 35%,var(--x-page)) 20%,
+      var(--x-accent) 43%,color-mix(in srgb,var(--x-accent) 60%,var(--x-text)) 50%,
+      var(--x-accent) 57%,color-mix(in srgb,var(--x-accent) 35%,var(--x-page)) 80%,
+      color-mix(in srgb,var(--x-accent) 9%,var(--x-page)));
+  }
+  html body .canvas-gate .gate-list { border-width:0 !important; border-radius:0 !important; }
+  /* Explicitly restore the complete card border, independent of legacy shorthands. */
+  html body .canvas-item { background-color:var(--x-card) !important; border:1px solid var(--x-line-strong) !important; box-shadow:var(--x-sh-1) !important; }
+  html body .canvas-item:not(:has(.has-cover)) { background-image:none !important; }
+  html body .canvas-open:not(.has-cover) { background:var(--x-card) !important; }
+  html body :is(.canvas-card-id-row,.canvas-card-meta,.canvas-card-meta-pill,.canvas-card-icon) {
+    background:var(--x-soft) !important; border-color:var(--x-line) !important;
+  }
+  html body .canvas-open:not(.has-cover) :is(.canvas-card-title,.canvas-kind-chip) { color:var(--x-text) !important; }
+  html body .canvas-open.has-cover :is(.canvas-card-title,.canvas-card-meta) { color:var(--x-media-overlay-text) !important; }
+  html body .canvas-open.has-cover .canvas-card-id-row { background:var(--x-media-overlay-bg) !important; color:var(--x-media-overlay-text) !important; border-color:var(--x-media-overlay-line) !important; }
+  html body .canvas-open.has-cover .canvas-card-id { color:var(--x-media-overlay-text) !important; }
+  html body :is(.canvas-card-id,.canvas-card-meta,.canvas-card-meta-pill,.page-head .sub,.editor-sub,
+    .side-title,.side-section-title,.asset-sub,.ar-sub,.ar-k,.tc-meta,.tc-time,.tc-stat-label,.workflow-meta) { color:var(--x-muted) !important; }
+  html body .canvas-card-meta :is(.canvas-card-time,.canvas-card-asset-count) { color:var(--x-muted) !important; }
+  /* White labels stay on an opaque dark scrim when a real media cover is present. */
+  html body .canvas-open.has-cover .canvas-card-meta { background:var(--x-media-overlay-bg) !important; border-color:var(--x-media-overlay-line) !important; }
+  html body .canvas-open.has-cover .canvas-card-meta :is(.canvas-card-time,.canvas-card-asset-count) { color:var(--x-media-overlay-text) !important; }
+  html body .canvas-owner-chip { background:var(--x-selected-fill) !important; border-color:var(--x-selected-ring) !important; color:var(--x-selected-text) !important; }
+  html body .api-step-card { background:var(--x-soft) !important; color:var(--x-text) !important; border-color:var(--x-line) !important; }
+  html body .api-step-card.active { background:var(--x-selected-fill) !important; color:var(--x-selected-text) !important; border-color:var(--x-selected-line) !important; }
+  html body .api-step-card.active :is(strong,span) { color:inherit !important; opacity:1 !important; }
+  html body .api-step-card.is-ok span { color:var(--x-ok) !important; }
+  html body :is(.rh-empty,.rh-paste-box,.rh-entry-card,.lora-field,.canvas-agent-suggestion-key) { background:var(--x-soft) !important; border-color:var(--x-line) !important; color:var(--x-muted) !important; }
+  html body .canvas-agent-test-btn:not(.is-ok):not(.is-err) { background:var(--x-soft) !important; border-color:var(--x-line) !important; color:var(--x-text) !important; }
+  html body .canvas-agent-bs-stage.current { background:var(--x-selected-fill) !important; color:var(--x-selected-text) !important; border-color:var(--x-selected-line) !important; }
+  html body :is(.title,.editor-title,.asset-title,.ar-title,.prism-canvas-brand-copy strong,.prism-api-title) { color:var(--x-text) !important; text-shadow:none !important; }
+  html body :is(.prism-canvas-brand-copy em,.prism-api-subtitle,.status,.empty,.empty-state,.hint) { color:var(--x-muted) !important; }
+  html body .tc-chart text { fill:var(--x-muted) !important; }
+  html body .node-drop-hint { opacity:1 !important; color:var(--x-muted) !important; }
+
+  html body :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),textarea,select) {
+    background-color:var(--x-soft) !important; color:var(--x-text) !important; border-color:var(--x-line) !important;
+    caret-color:var(--x-selected-text) !important;
+  }
+  html body :is(input,textarea)::placeholder { color:var(--x-faint) !important; opacity:1 !important; }
+
+  html body :is(.gate-icon-btn,.gate-back-link,.gate-sort,.gate-sort-btn,.smart-create-btn,.action-btn,
+    .ghost-btn,.asset-btn,.ar-btn,.api-page-save-btn,.api-link-btn,.run-btn,.save-btn,.dock-pill,
+    .dock-toggle,.dock-icon,.canvas-bottom-button,.smart-pill,.shared-native-select-trigger,
+    .speech-picker,.speech-generate,.upload-node-btn,.model-protocol-select,.filter-tab,.picker-cat-tab,
+    .workflow-card,.nav-row,.tree-row,.canvas-asset-tab,.prompt-template-tab,.tb-menu,.tc-btn,.tc-view-tab,
+    .style-filter-tab,.workspace-mode-tabs button,.btn-secondary,.menu-btn) {
+    background-color:var(--x-soft) !important; color:var(--x-text) !important; border-color:var(--x-line) !important;
+  }
+  html body .dock-icon { color:var(--x-muted) !important; }
+  html body :is(.smart-create-btn,.action-btn.save-btn,.api-page-save-btn,.api-link-btn,.asset-btn.primary,
+    .ar-btn.primary,.run-btn,.save-btn,.speech-generate,#agentSendBtn,.agent-send,.smart-agent-send):not(:disabled):not(.is-running):not(.is-stop):not(.is-ap-running) {
+    background:var(--x-strong) !important; color:var(--x-strong-text) !important; border-color:var(--x-strong) !important;
+  }
+  /* Explicit semantic exceptions, never converted into neutral mint actions. */
+  html body :is(.tc-btn-danger,.danger-btn,.asset-btn.danger,.ar-btn.danger,.btn-danger) {
+    background:var(--x-danger-soft) !important; color:var(--x-danger) !important; border-color:var(--x-danger) !important;
+  }
+  html body :is(.run-btn,.speech-generate):is(.is-running,.is-stop,.is-ap-running) {
+    color:var(--x-danger) !important; background:var(--x-danger-soft) !important; border-color:var(--x-danger) !important;
+  }
+  html body .tb-winclose:hover { background:var(--x-danger) !important; color:var(--x-media-overlay-text) !important; }
+}

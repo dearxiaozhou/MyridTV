@@ -1,5 +1,6 @@
 """Graph-layout properties and workflow isolation independent of a browser."""
 import copy,random,sys,unittest
+from unittest.mock import patch
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import myridtv_flow_layout as layout
@@ -8,6 +9,54 @@ def node(nid,wid='flow',w=320,h=180):
     return {'id':nid,'type':'smart-image','x':0,'y':0,'w':w,'h':h,'flowLayout':{'workflowId':wid,'layout':'tree_lr'}}
 
 class FlowLayoutTests(unittest.TestCase):
+    def setUp(self):
+        self.layout_switch=patch.object(layout,'AUTOMATIC_LAYOUT_ENABLED',True)
+        self.layout_switch.start();self.addCleanup(self.layout_switch.stop)
+    def test_single_external_output_follows_actual_parent_center_and_resize(self):
+        parent=node('parent','manual',h=260);parent.update(x=50,y=1300)
+        child=node('child',h=600)
+        canvas={'nodes':[parent,child],'connections':[{'from':'parent','to':'child'}]}
+        for height in [600,180,420]:
+            child['h']=height
+            layout.layout_workflow(canvas,'flow')
+            self.assertAlmostEqual(child['y']+height/2,parent['y']+130,delta=1)
+            self.assertEqual((parent['x'],parent['y']),(50,1300))
+            before=copy.deepcopy(canvas);layout.layout_workflow(canvas,'flow');self.assertEqual(canvas,before)
+
+    def test_locked_parent_single_chain_stays_level(self):
+        parent=node('parent',h=340);parent.update(x=100,y=1600,locked=True)
+        child=node('child',h=180);last=node('last',h=500)
+        canvas={'nodes':[parent,child,last],'connections':[{'from':'parent','to':'child'},{'from':'child','to':'last'}]}
+        layout.layout_workflow(canvas,'flow')
+        for n in [child,last]:self.assertAlmostEqual(n['y']+n['h']/2,1770,delta=1)
+        self.assertEqual((parent['x'],parent['y']),(100,1600))
+
+    def test_external_parent_multiple_outputs_keep_separate_branches(self):
+        parent=node('parent','manual',h=300);parent.update(x=20,y=900)
+        a=node('a',h=180);b=node('b',h=420)
+        canvas={'nodes':[parent,a,b],'connections':[{'from':'parent','to':'a'},{'from':'parent','to':'b'}]}
+        layout.layout_workflow(canvas,'flow')
+        self.assertGreaterEqual(b['y'],a['y']+a['h']+layout.GAP_Y)
+        self.assertAlmostEqual((a['y']+b['y']+b['h'])/2,1050,delta=1)
+
+    def test_multiple_external_inputs_use_their_real_average_center(self):
+        a=node('a','manual',h=200);a.update(x=10,y=600)
+        b=node('b','manual',h=400);b.update(x=10,y=1200)
+        child=node('child',h=300)
+        canvas={'nodes':[a,b,child],'connections':[{'from':'a','to':'child'},{'from':'b','to':'child'}]}
+        layout.layout_workflow(canvas,'flow')
+        self.assertAlmostEqual(child['y']+150,(700+1400)/2,delta=1)
+
+    def test_single_child_follows_parent_displaced_by_obstacle(self):
+        parent=node('parent');parent['flowLayout']['origin']={'x':120,'y':160}
+        child=node('child',h=300)
+        obstacle=node('obstacle','manual',h=300);obstacle.update(x=120,y=160)
+        canvas={'nodes':[parent,child,obstacle],'connections':[{'from':'parent','to':'child'}]}
+        layout.layout_workflow(canvas,'flow')
+        self.assertGreater(parent['y'],460)
+        self.assertAlmostEqual(parent['y']+90,child['y']+150,delta=1)
+        self.assertEqual((obstacle['x'],obstacle['y']),(120,160))
+
     def test_varied_dags_are_nonoverlapping_rightward_and_repeatable(self):
         rng=random.Random(77)
         for trial in range(20):
@@ -59,5 +108,16 @@ class FlowLayoutTests(unittest.TestCase):
         current=copy.deepcopy(canvas);a['w']=1200
         layout.relayout_changed(current,canvas)
         self.assertGreaterEqual(b['x'],a['x']+1200+layout.GAP_X)
+
+class DisabledFlowLayoutTests(unittest.TestCase):
+    def test_default_switch_preserves_positions_even_after_size_change(self):
+        self.assertFalse(layout.AUTOMATIC_LAYOUT_ENABLED)
+        a=node('a');b=node('b');a.update(x=90,y=1700);b.update(x=820,y=800)
+        canvas={'nodes':[a,b],'connections':[{'from':'a','to':'b'}]}
+        before=copy.deepcopy(canvas)
+        self.assertTrue(layout.layout_workflow(canvas,'flow')['disabled'])
+        self.assertEqual(canvas,before)
+        a['h']=900;layout.relayout_changed(before,canvas)
+        self.assertEqual([(n['x'],n['y']) for n in canvas['nodes']],[(90,1700),(820,800)])
 
 if __name__=='__main__':unittest.main()

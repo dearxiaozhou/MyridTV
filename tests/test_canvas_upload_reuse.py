@@ -1,9 +1,10 @@
-"""A canvas's existing image must not be copied back onto itself on import."""
+"""Existing canvas media must not be copied back onto itself on import."""
 import sys
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from myridtv_media_localize import save_uploaded_file
@@ -71,6 +72,58 @@ class CanvasUploadReuseTest(unittest.TestCase):
         self.assertEqual(len({r['url'] for r in results}), 1)
         self.assertEqual(sum(not r['reused'] for r in results), 1)
         self.assertEqual(len(list((self.root / 'images').iterdir())), 1)
+
+    def test_all_canvas_output_folders_reuse_without_overwriting(self):
+        folders = {'image':'images','video':'videos','audio':'audios','*':'files'}
+        for name, mime, folder in [('picture.png','image/png','images'),('clip.mp4','video/mp4','videos'),
+                                   ('voice.wav','audio/wav','audios'),('notes.txt','text/plain','files')]:
+            with self.subTest(folder=folder), patch('myridtv_media_localize.myridtv_video_codec.ensure_playable_video') as codec:
+                directory = self.root / folder
+                directory.mkdir()
+                original = directory / name
+                original.write_bytes(b'original bytes')
+                before = original.stat().st_mtime_ns
+                def upload(data=b'original bytes', root=self.root):
+                    return save_uploaded_file({'file_name':name,'content_type':mime,'data':data},
+                                              root, '/assets/output/fixture', folders)
+                result = upload()
+                self.assertTrue(result['reused'])
+                self.assertEqual(result['filename'], name)
+                self.assertEqual(original.stat().st_mtime_ns, before)
+                self.assertEqual(list(directory.iterdir()), [original])
+                codec.assert_not_called()  # Re-import must not mutate an existing video.
+                changed = upload(b'different bytes')
+                repeated = upload(b'different bytes')
+                self.assertFalse(changed['reused'])
+                self.assertTrue(repeated['reused'])
+                self.assertEqual(changed['url'], repeated['url'])
+                self.assertEqual(original.read_bytes(), b'original bytes')
+                self.assertEqual(len(list(directory.iterdir())), 2)
+                other = upload(root=self.root / ('other-'+folder))
+                self.assertFalse(other['reused'])
+
+    def test_concurrent_audio_imports_create_one_file(self):
+        def upload(_):
+            return save_uploaded_file({'file_name':'voice.wav','content_type':'audio/wav','data':b'audio'},
+                                      self.root, '/assets/output/fixture', {'audio':'audios'})
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            results = list(pool.map(upload, range(4)))
+        self.assertEqual(sum(not r['reused'] for r in results), 1)
+        self.assertEqual(len(list((self.root / 'audios').iterdir())), 1)
+
+    def test_unknown_mime_keeps_aac_and_m4v_in_their_media_folders(self):
+        for name, kind, folder in [('voice.aac','audio','audios'),('clip.m4v','video','videos')]:
+            with self.subTest(name=name), patch('myridtv_media_localize.myridtv_video_codec.ensure_playable_video') as codec:
+                directory=self.root / folder
+                directory.mkdir()
+                (directory / name).write_bytes(b'existing media')
+                result=save_uploaded_file({'file_name':name,'content_type':'application/octet-stream','data':b'existing media'},
+                                          self.root,'/assets/output/fixture',{'audio':'audios','video':'videos','*':'files'})
+                self.assertEqual(result['kind'],kind)
+                self.assertTrue(result['reused'])
+                self.assertIn('/'+folder+'/',result['url'])
+                self.assertFalse((self.root / 'files').exists())
+                codec.assert_not_called()
 
 
 if __name__ == '__main__':

@@ -1,3 +1,5 @@
+/* Named palette tokens take priority over legacy component overrides. */
+@layer studio-theme;
 /* ============================================================
  * MyridTV Design Tokens  —  唯一权威样式源
  * ------------------------------------------------------------
@@ -19,6 +21,13 @@
  * ============================================================ */
 
 :root {
+  /* Approved themes: 石墨青绿 (dark) / 雾白青绿 (light). */
+  --x-window-close-bg: #e81123;
+  --x-window-close-text: #ffffff;
+  /* Media scrims keep the same high contrast over user images in either theme. */
+  --x-media-overlay-bg: rgba(21,25,28,.74);
+  --x-media-overlay-text: #edf2f2;
+  --x-media-overlay-line: rgba(237,242,242,.28);
   /* ---------- 动效 ---------- */
   --x-ease: cubic-bezier(.4, 0, .2, 1);
   --x-ease-out: cubic-bezier(.16, 1, .3, 1);
@@ -27,14 +36,14 @@
   --x-dur-slow: .24s;
 
   /* ---------- AI 助手品牌操作 ---------- */
-  --x-agent-brand-gradient: linear-gradient(135deg, #38f8ff, #8b5cf6);
-  --x-agent-brand-shadow: 0 3px 10px rgba(139, 92, 246, .25);
+  --x-agent-brand-gradient: linear-gradient(135deg, var(--x-strong), var(--x-accent-hover));
+  --x-agent-brand-shadow: 0 3px 10px var(--x-selected-ring);
   --x-agent-brand-hover-filter: brightness(1.06);
   --x-agent-brand-border: rgba(255, 255, 255, .22);
   --x-agent-brand-border-hover: rgba(255, 255, 255, .44);
-  --x-agent-action-bg: rgba(99, 102, 241, .92);
-  --x-agent-action-hover: rgba(99, 102, 241, 1);
-  --x-agent-action-text: #ffffff;
+  --x-agent-action-bg: var(--x-strong);
+  --x-agent-action-hover: var(--x-accent-hover);
+  --x-agent-action-text: var(--x-strong-text);
 
   /* ---------- 圆角阶梯 ---------- */
   --x-r-xs: 6px;    /* 标签、徽标 */
@@ -97,23 +106,23 @@ html.theme-light,
 html.theme-light body,
 body.theme-light,
 html:not(.studio-theme-dark) body {
-  --x-page: #f8fafc;                    /* 页面 / 画布底色 */
-  --x-panel: rgba(255, 255, 255, .9);    /* 浮层面板（半透明） */
-  --x-panel-solid: #ffffff;              /* 面板实色 */
-  --x-card: #ffffff;                     /* 卡片 / 节点 */
-  --x-soft: #f1f5f9;                     /* 次级填充：hover / 输入框 */
-  --x-hover-bg: #e8edf3;                /* Neutral interactive hover / expanded fill */
-  --x-soft-2: #e8edf3;                   /* 更深一级填充 */
-  --x-line: #e2e8f0;                     /* 常规描边 */
-  --x-line-strong: #cbd5e1;              /* 强调描边 / 分隔线 */
-  --x-grid: #d9e1ea;                     /* 画布网格点 */
+  --x-page: #eef3f0 !important;                    /* 页面 / 画布底色 */
+  --x-panel: rgba(255,255,255,.97) !important;    /* 浮层面板（半透明） */
+  --x-panel-solid: #ffffff !important;              /* 面板实色 */
+  --x-card: #ffffff !important;                     /* 卡片 / 节点 */
+  --x-soft: #f3f7f5 !important;                     /* 次级填充：hover / 输入框 */
+  --x-hover-bg: #e2ece6 !important;                /* Neutral interactive hover / expanded fill */
+  --x-soft-2: #e6eeea !important;                   /* 更深一级填充 */
+  --x-line: #d2ded7 !important;                     /* 常规描边 */
+  --x-line-strong: #a9bfb1 !important;              /* 强调描边 / 分隔线 */
+  --x-grid: #d7e2dc !important;                     /* 画布网格点 */
 
   /* 2026-10-05：组（打组容器）背景。此前是写死的 #2e2e2e/#2a2a2a，只适配深色，
      浅色主题下组一直显示成深灰块（老王反馈）。改为按主题走：浅色下组比画布底色
      #f8fafc 深一档、深色下比底色 #1c1c1c 亮一档，方向相反但目的一致——让组和
      画布底色有色差、看得出边界，同时组里的白/深节点卡片仍能再分层。 */
-  --x-group: #e2e8f0;                    /* 组容器背景（打出的组 / 保留组） */
-  --x-group-alt: #e6ebf3;                /* 次级组背景（多图缩略图组） */
+  --x-group: #e1eae4 !important;                    /* 组容器背景（打出的组 / 保留组） */
+  --x-group-alt: #e7efea !important;                /* 次级组背景（多图缩略图组） */
   /* 取色依据：让组与画布底色的亮度差和深色族对齐——底色之上，深色 group/alt 分别
      亮 18/14 级（#1c1c1c → #2e2e2e / #2a2a2a），浅色这里就是比 #f8fafc 深 18/14 级
      （→ #e2e8f0 / #e6ebf3），两套主题的层次观感一致。 */
@@ -122,21 +131,21 @@ html:not(.studio-theme-dark) body {
      此前标题栏 background:rgba(31,31,31,.8)、标题字 #dcfce7、外框/底边框 rgba(74,222,128,.x)
      全是写死深色，浅色主题下也是黑底绿字。绿色作为 canvas 组的身份色保留，
      但底色/字色/边框随主题走：浅色=浅绿底+深绿字、深色=深底+浅绿字。 */
-  --x-group-accent: #16a34a;             /* canvas 组外框 / 底边框（实色强调） */
-  --x-group-accent-soft: rgba(22, 163, 74, .42);  /* 同色半透明，用于标题栏底边框 */
-  --x-group-header-bg: rgba(22, 163, 74, .10);    /* 标题栏背景（浅绿 tint） */
-  --x-group-header-text: #15803d;        /* 标题字（深绿，浅底可读） */
+  --x-group-accent: #257c61 !important;             /* canvas 组外框 / 底边框（实色强调） */
+  --x-group-accent-soft: rgba(37,124,97,.42) !important;  /* 同色半透明，用于标题栏底边框 */
+  --x-group-header-bg: rgba(37,124,97,.10) !important;    /* 标题栏背景（浅绿 tint） */
+  --x-group-header-text: #20654f !important;        /* 标题字（深绿，浅底可读） */
 
-  --x-text: #111827;                     /* 主文字 */
-  --x-muted: #64748b;                    /* 次要文字 */
-  --x-faint: #94a3b8;                    /* 弱化文字 / 占位符 */
+  --x-text: #23392d !important;                     /* 主文字 */
+  --x-muted: #5b7063 !important;                    /* 次要文字 */
+  --x-faint: #5b7063 !important;                    /* 弱化文字 / 占位符 */
 
-  --x-strong: #111827;                   /* 主按钮底色（反色） */
-  --x-strong-text: #ffffff;              /* 主按钮文字 */
-  --x-accent: #475569;                   /* 强调色 / 激活态 */
-  --x-accent-hover: #334155;
+  --x-strong: #257c61 !important;                   /* 主按钮底色（反色） */
+  --x-strong-text: #ffffff !important;              /* 主按钮文字 */
+  --x-accent: #257c61 !important;                   /* 强调色 / 激活态 */
+  --x-accent-hover: #1e694f !important;
 
-  --x-ok: #16a34a;
+  --x-ok: #237e56 !important;
   --x-warn: #b45309;
   --x-danger: #dc2626;
   --x-info: #2563eb;
@@ -146,25 +155,25 @@ html:not(.studio-theme-dark) body {
   --x-danger-soft: rgba(220, 38, 38, .12);
   --x-info-soft: rgba(37, 99, 235, .12);
 
-  --x-selected-line: #16a34a;
-  --x-selected-fill: rgba(22, 163, 74, .10);
-  --x-selected-text: #15803d;
-  --x-snap-guide: #15803d;
-  --x-snap-guide-halo: rgba(255, 255, 255, .9);
-  --x-selected-ring: rgba(22, 163, 74, .22);
+  --x-selected-line: #257c61 !important;
+  --x-selected-fill: rgba(37,124,97,.10) !important;
+  --x-selected-text: #20654f !important;
+  --x-snap-guide: #257c61 !important;
+  --x-snap-guide-halo: rgba(255,255,255,.9) !important;
+  --x-selected-ring: rgba(37,124,97,.22) !important;
 
   /* 让原生表单控件 / <select> 展开弹层走亮色系统绘制，与 UI 主题一致 */
   color-scheme: light;
 
-  --x-shadow: rgba(15, 23, 42, .08);     /* 阴影颜色（供 var() 组合） */
-  --x-sh-1: 0 2px 6px rgba(15, 23, 42, .06);
-  --x-sh-2: 0 8px 22px rgba(15, 23, 42, .08);
-  --x-sh-3: 0 18px 48px rgba(15, 23, 42, .12);
-  --x-focus: rgba(37, 99, 235, .35);
+  --x-shadow: rgba(25,52,38,.08) !important;     /* 阴影颜色（供 var() 组合） */
+  --x-sh-1: 0 2px 6px rgba(25,52,38,.06) !important;
+  --x-sh-2: 0 8px 22px rgba(25,52,38,.08) !important;
+  --x-sh-3: 0 18px 48px rgba(25,52,38,.12) !important;
+  --x-focus: rgba(37,124,97,.35) !important;
 
   /* 滚动条（2026-09-16 新增）：亮度按主题走，见文件末尾「滚动条统一实现」 */
-  --x-sb-thumb: rgba(15, 23, 42, .24);
-  --x-sb-thumb-hover: rgba(15, 23, 42, .46);
+  --x-sb-thumb: rgba(35,57,45,.24) !important;
+  --x-sb-thumb-hover: rgba(35,57,45,.46) !important;
 }
 
 /* ============================================================
@@ -190,35 +199,35 @@ body.theme-dark {
   /* 2026-10-05：画布底色由纯黑 #000000 改为一档深灰 #1c1c1c（老王：参考图观感，
      纯黑太死）。节点卡片 --x-card 同步抬到 #242424，保证卡片比底色亮一档、
      再靠描边和阴影分层；否则卡片(原 #1f1f1f)会沉进底色里糊成一片。 */
-  --x-page: #1c1c1c;
-  --x-panel: rgba(38, 38, 38, .94);
-  --x-panel-solid: #262626;
-  --x-card: #242424;
-  --x-soft: #343434;
-  --x-hover-bg: #343434;
-  --x-soft-2: #383838;
-  --x-line: #454545;
-  --x-line-strong: #7a7a7a;
-  --x-grid: rgba(255, 255, 255, .13);
+  --x-page: #15191c !important;
+  --x-panel: rgba(35,41,45,.97) !important;
+  --x-panel-solid: #23292d !important;
+  --x-card: #23292d !important;
+  --x-soft: #1b2125 !important;
+  --x-hover-bg: #2e393f !important;
+  --x-soft-2: #2b3338 !important;
+  --x-line: #364148 !important;
+  --x-line-strong: #53636b !important;
+  --x-grid: #303a40 !important;
   /* 组背景（深色）：比画布底色 #1c1c1c 亮一档，对应浅色族的同名变量。 */
-  --x-group: #2e2e2e;
-  --x-group-alt: #2a2a2a;
+  --x-group: #1d2928 !important;
+  --x-group-alt: #202c2b !important;
   /* canvas 型组（带绿色标题栏）强调色与标题栏，对应浅色族同名变量。 */
-  --x-group-accent: #4ade80;            /* 浅绿，深底可见 */
-  --x-group-accent-soft: rgba(74, 222, 128, .42);
-  --x-group-header-bg: rgba(31, 31, 31, .8);       /* 深底，保留原观感 */
-  --x-group-header-text: #dcfce7;        /* 浅绿字 */
+  --x-group-accent: #7ed6bd !important;            /* 浅绿，深底可见 */
+  --x-group-accent-soft: rgba(126,214,189,.42) !important;
+  --x-group-header-bg: rgba(126,214,189,.10) !important;       /* 深底，保留原观感 */
+  --x-group-header-text: #9fe8d2 !important;        /* 浅绿字 */
 
-  --x-text: #ffffff;
-  --x-muted: #c8c8c8;
-  --x-faint: #8a8a8a;
+  --x-text: #edf2f2 !important;
+  --x-muted: #a1afb5 !important;
+  --x-faint: #8f9da4 !important;
 
-  --x-strong: #ffffff;
-  --x-strong-text: #1f1f1f;
-  --x-accent: #404040;
-  --x-accent-hover: #4a4a4a;
+  --x-strong: #7ed6bd !important;
+  --x-strong-text: #122b23 !important;
+  --x-accent: #7ed6bd !important;
+  --x-accent-hover: #94e3ce !important;
 
-  --x-ok: #34d399;
+  --x-ok: #7ed6bd !important;
   --x-warn: #fbbf24;
   --x-danger: #f87171;
   --x-info: #60a5fa;
@@ -228,22 +237,22 @@ body.theme-dark {
   --x-danger-soft: rgba(248, 113, 113, .14);
   --x-info-soft: rgba(96, 165, 250, .14);
 
-  --x-selected-line: #4ade80;
-  --x-selected-fill: rgba(74, 222, 128, .12);
-  --x-selected-text: #4ade80;
-  --x-snap-guide: #4ade80;
-  --x-snap-guide-halo: rgba(0, 0, 0, .65);
-  --x-selected-ring: rgba(74, 222, 128, .24);
+  --x-selected-line: #7ed6bd !important;
+  --x-selected-fill: rgba(126,214,189,.13) !important;
+  --x-selected-text: #9fe8d2 !important;
+  --x-snap-guide: #7ed6bd !important;
+  --x-snap-guide-halo: rgba(21,25,28,.8) !important;
+  --x-selected-ring: rgba(126,214,189,.26) !important;
 
-  --x-shadow: rgba(0, 0, 0, .28);
-  --x-sh-1: 0 2px 6px rgba(0, 0, 0, .22);
-  --x-sh-2: 0 8px 22px rgba(0, 0, 0, .30);
-  --x-sh-3: 0 18px 48px rgba(0, 0, 0, .40);
-  --x-focus: rgba(255, 255, 255, .35);
+  --x-shadow: rgba(0,0,0,.28) !important;
+  --x-sh-1: 0 2px 6px rgba(0,0,0,.18) !important;
+  --x-sh-2: 0 8px 22px rgba(0,0,0,.24) !important;
+  --x-sh-3: 0 18px 48px rgba(0,0,0,.34) !important;
+  --x-focus: rgba(126,214,189,.40) !important;
 
   /* 滚动条（2026-09-16 新增）：深色底上用白色低透明度，避免浅灰白条刺眼 */
-  --x-sb-thumb: rgba(255, 255, 255, .18);
-  --x-sb-thumb-hover: rgba(255, 255, 255, .38);
+  --x-sb-thumb: rgba(161,175,181,.26) !important;
+  --x-sb-thumb-hover: rgba(161,175,181,.46) !important;
 }
 
 /* ============================================================
@@ -559,4 +568,198 @@ html body select:not([multiple]):not([size]) {
 
 html body select:not([multiple]):not([size])::-ms-expand {
   display: none;
+}
+
+/* Approved named themes: all pages consume these same semantic roles. */
+@layer studio-theme {
+  html[data-studio-theme="champagne"], html[data-studio-theme="champagne"] body, html[data-studio-theme="champagne"] :is(.theme-dark,.theme-light,.studio-theme-dark) {
+    --x-page: #1c1a18 !important;
+    --x-panel-solid: #2b2723 !important;
+    --x-soft: #24211e !important;
+    --x-soft-2: #332d28 !important;
+    --x-hover-bg: #39312a !important;
+    --x-line: #484038 !important;
+    --x-line-strong: #6a5c4d !important;
+    --x-grid: #39332d !important;
+    --x-text: #f2ede5 !important;
+    --x-muted: #b9ada0 !important;
+    --x-strong: #dabb8a !important;
+    --x-strong-text: #302418 !important;
+    --x-accent-hover: #e8ca9b !important;
+    --x-selected-text: #edcf9f !important;
+    --x-group: #312b25 !important;
+    --x-group-alt: #352e28 !important;
+    --x-card: #2b2723 !important;
+    --x-panel: #2b2723 !important;
+    --x-faint: #b9ada0 !important;
+    --x-accent: #dabb8a !important;
+    --x-selected-line: #dabb8a !important;
+    --x-selected-fill: rgba(218,187,138,.13) !important;
+    --x-selected-ring: rgba(218,187,138,.26) !important;
+    --x-focus: rgba(218,187,138,.40) !important;
+    --x-snap-guide: #dabb8a !important;
+    --x-snap-guide-halo: rgba(28,26,24,.85) !important;
+    --x-group-accent: #dabb8a !important;
+    --x-group-accent-soft: rgba(218,187,138,.42) !important;
+    --x-group-header-bg: rgba(218,187,138,.10) !important;
+    --x-group-header-text: #edcf9f !important;
+    --x-shadow: rgba(0,0,0,.18) !important;
+    --x-sh-1: 0 2px 6px rgba(0,0,0,.12) !important;
+    --x-sh-2: 0 8px 22px rgba(0,0,0,.18) !important;
+    --x-sh-3: 0 18px 48px rgba(0,0,0,.28) !important;
+    --x-sb-thumb: rgba(242,237,229,.24) !important;
+    --x-sb-thumb-hover: rgba(242,237,229,.46) !important;
+  }
+  html[data-studio-theme="obsidian"], html[data-studio-theme="obsidian"] body, html[data-studio-theme="obsidian"] :is(.theme-dark,.theme-light,.studio-theme-dark) {
+    --x-page: #0b0c0e !important;
+    --x-panel-solid: #191b1f !important;
+    --x-soft: #121417 !important;
+    --x-soft-2: #23242b !important;
+    --x-hover-bg: #292334 !important;
+    --x-line: #353940 !important;
+    --x-line-strong: #686070 !important;
+    --x-grid: #252a31 !important;
+    --x-text: #f1f3f6 !important;
+    --x-muted: #a9b0bc !important;
+    --x-strong: #b474ff !important;
+    --x-strong-text: #1c0d2b !important;
+    --x-accent-hover: #c792ff !important;
+    --x-selected-text: #ceabff !important;
+    --x-group: #24202d !important;
+    --x-group-alt: #292434 !important;
+    --x-card: #191b1f !important;
+    --x-panel: #191b1f !important;
+    --x-faint: #a9b0bc !important;
+    --x-accent: #b474ff !important;
+    --x-selected-line: #b474ff !important;
+    --x-selected-fill: rgba(180,116,255,.13) !important;
+    --x-selected-ring: rgba(180,116,255,.26) !important;
+    --x-focus: rgba(180,116,255,.40) !important;
+    --x-snap-guide: #b474ff !important;
+    --x-snap-guide-halo: rgba(11,12,14,.85) !important;
+    --x-group-accent: #b474ff !important;
+    --x-group-accent-soft: rgba(180,116,255,.42) !important;
+    --x-group-header-bg: rgba(180,116,255,.10) !important;
+    --x-group-header-text: #ceabff !important;
+    --x-shadow: rgba(0,0,0,.18) !important;
+    --x-sh-1: 0 2px 6px rgba(0,0,0,.12) !important;
+    --x-sh-2: 0 8px 22px rgba(0,0,0,.18) !important;
+    --x-sh-3: 0 18px 48px rgba(0,0,0,.28) !important;
+    --x-sb-thumb: rgba(241,243,246,.24) !important;
+    --x-sb-thumb-hover: rgba(241,243,246,.46) !important;
+  }
+  html[data-studio-theme="sakura"], html[data-studio-theme="sakura"] body, html[data-studio-theme="sakura"] :is(.theme-dark,.theme-light,.studio-theme-dark) {
+    --x-page: #fff3f8 !important;
+    --x-panel-solid: #ffffff !important;
+    --x-soft: #ffedf5 !important;
+    --x-soft-2: #f9e2ec !important;
+    --x-hover-bg: #ffe1ef !important;
+    --x-line: #edc6da !important;
+    --x-line-strong: #c994af !important;
+    --x-grid: #efd4e2 !important;
+    --x-text: #50283e !important;
+    --x-muted: #8c536e !important;
+    --x-strong: #d92c83 !important;
+    --x-strong-text: #ffffff !important;
+    --x-accent-hover: #be206e !important;
+    --x-selected-text: #b51f69 !important;
+    --x-group: #f7dfeb !important;
+    --x-group-alt: #fae7f0 !important;
+    --x-card: #ffffff !important;
+    --x-panel: #ffffff !important;
+    --x-faint: #8c536e !important;
+    --x-accent: #d92c83 !important;
+    --x-selected-line: #d92c83 !important;
+    --x-selected-fill: rgba(217,44,131,.13) !important;
+    --x-selected-ring: rgba(217,44,131,.26) !important;
+    --x-focus: rgba(217,44,131,.40) !important;
+    --x-snap-guide: #d92c83 !important;
+    --x-snap-guide-halo: rgba(255,243,248,.85) !important;
+    --x-group-accent: #d92c83 !important;
+    --x-group-accent-soft: rgba(217,44,131,.42) !important;
+    --x-group-header-bg: rgba(217,44,131,.10) !important;
+    --x-group-header-text: #b51f69 !important;
+    --x-shadow: rgba(80,40,62,.08) !important;
+    --x-sh-1: 0 2px 6px rgba(80,40,62,.12) !important;
+    --x-sh-2: 0 8px 22px rgba(80,40,62,.08) !important;
+    --x-sh-3: 0 18px 48px rgba(80,40,62,.12) !important;
+    --x-sb-thumb: rgba(80,40,62,.24) !important;
+    --x-sb-thumb-hover: rgba(80,40,62,.46) !important;
+  }
+  html[data-studio-theme="taiyuan-yeyu"], html[data-studio-theme="taiyuan-yeyu"] body, html[data-studio-theme="taiyuan-yeyu"] :is(.theme-dark,.theme-light,.studio-theme-dark) {
+    --x-page: #121714 !important;
+    --x-panel-solid: #1a231d !important;
+    --x-soft: #161e18 !important;
+    --x-soft-2: #233028 !important;
+    --x-hover-bg: #2c3a30 !important;
+    --x-line: #2e3a31 !important;
+    --x-line-strong: #48584c !important;
+    --x-grid: #28332b !important;
+    --x-text: #e8efe9 !important;
+    --x-muted: #94a39a !important;
+    --x-strong: #8fd3a8 !important;
+    --x-strong-text: #0f1511 !important;
+    --x-accent-hover: #a6dfbc !important;
+    --x-selected-text: #b6e4c6 !important;
+    --x-group: #19231b !important;
+    --x-group-alt: #1e2a22 !important;
+    --x-card: #1a231d !important;
+    --x-panel: #1a231d !important;
+    --x-faint: #94a39a !important;
+    --x-accent: #8fd3a8 !important;
+    --x-selected-line: #8fd3a8 !important;
+    --x-selected-fill: rgba(143,211,168,.13) !important;
+    --x-selected-ring: rgba(143,211,168,.26) !important;
+    --x-focus: rgba(143,211,168,.40) !important;
+    --x-snap-guide: #8fd3a8 !important;
+    --x-snap-guide-halo: rgba(18,23,20,.85) !important;
+    --x-group-accent: #8fd3a8 !important;
+    --x-group-accent-soft: rgba(143,211,168,.42) !important;
+    --x-group-header-bg: rgba(143,211,168,.10) !important;
+    --x-group-header-text: #b6e4c6 !important;
+    --x-shadow: rgba(0,0,0,.20) !important;
+    --x-sh-1: 0 2px 6px rgba(0,0,0,.12) !important;
+    --x-sh-2: 0 8px 22px rgba(0,0,0,.18) !important;
+    --x-sh-3: 0 18px 48px rgba(0,0,0,.28) !important;
+    --x-sb-thumb: rgba(232,239,233,.24) !important;
+    --x-sb-thumb-hover: rgba(232,239,233,.46) !important;
+  }
+  html[data-studio-theme="nuanxuan-liujin"], html[data-studio-theme="nuanxuan-liujin"] body, html[data-studio-theme="nuanxuan-liujin"] :is(.theme-dark,.theme-light,.studio-theme-dark) {
+    --x-page: #f4f0e7 !important;
+    --x-panel-solid: #ffffff !important;
+    --x-soft: #f3eee3 !important;
+    --x-soft-2: #ebe4d6 !important;
+    --x-hover-bg: #e7dfce !important;
+    --x-line: #e5dfd2 !important;
+    --x-line-strong: #c9bfa8 !important;
+    --x-grid: #eae3d5 !important;
+    --x-text: #2c2820 !important;
+    --x-muted: #8d8677 !important;
+    --x-strong: #b0823e !important;
+    --x-strong-text: #ffffff !important;
+    --x-accent-hover: #9a6e2f !important;
+    --x-selected-text: #8a5f2a !important;
+    --x-group: #ece5d6 !important;
+    --x-group-alt: #efe9dc !important;
+    --x-card: #ffffff !important;
+    --x-panel: #ffffff !important;
+    --x-faint: #8d8677 !important;
+    --x-accent: #b0823e !important;
+    --x-selected-line: #b0823e !important;
+    --x-selected-fill: rgba(176,130,62,.13) !important;
+    --x-selected-ring: rgba(176,130,62,.26) !important;
+    --x-focus: rgba(176,130,62,.40) !important;
+    --x-snap-guide: #b0823e !important;
+    --x-snap-guide-halo: rgba(244,240,231,.85) !important;
+    --x-group-accent: #b0823e !important;
+    --x-group-accent-soft: rgba(176,130,62,.42) !important;
+    --x-group-header-bg: rgba(176,130,62,.10) !important;
+    --x-group-header-text: #8a5f2a !important;
+    --x-shadow: rgba(44,40,32,.08) !important;
+    --x-sh-1: 0 2px 6px rgba(44,40,32,.06) !important;
+    --x-sh-2: 0 8px 22px rgba(44,40,32,.08) !important;
+    --x-sh-3: 0 18px 48px rgba(44,40,32,.12) !important;
+    --x-sb-thumb: rgba(44,40,32,.24) !important;
+    --x-sb-thumb-hover: rgba(44,40,32,.46) !important;
+  }
 }

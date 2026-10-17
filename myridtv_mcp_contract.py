@@ -103,6 +103,8 @@ def _batch(args):
         if errors:
             return fail("批量操作校验失败，未保存任何变更", errors=errors[:10])
         snapshot = copy.deepcopy(canvas)
+        from myridtv_canvas_gateway import enroll_existing
+        enroll_existing(cid,canvas)
         results = []
         for op in ops:
             batch._agent_apply_operation(canvas, op, None, results, cid, session_id="mcp")
@@ -277,6 +279,8 @@ def _validate(args, schema):
 
 
 def install(registry, legacy, fetch):
+    public_registry = registry
+    registry = copy.deepcopy(registry)
     def add(name, description, properties=None, required=None):
         registry[name] = {"description": description, "inputSchema": {
             "type": "object", "properties": properties or {}, "required": required or []}}
@@ -288,14 +292,15 @@ def install(registry, legacy, fetch):
                            branch_order={'type':'number'},branchOrder={'type':'number'},locked={'type':'boolean'},
                            depends_on={'type':'array','items':string},images={'type':'array','items':{'type':'object'}},
                            count={'type':'integer','minimum':1},reference_image_urls={'type':'array','items':string})
-    flow_properties = {'workflow_id':string,'layout':{'type':'string','enum':['tree_lr']},
+    node_properties.update(x={'type':'number'},y={'type':'number'})
+    flow_properties = {'workflow_id':string,'layout':{'type':'string','enum':['tree_lr','manual']},
                        'nodes':{'type':'array','maxItems':100,'items':{'type':'object','properties':node_properties,'required':['id'],'additionalProperties':False}},
                        'edges':{'type':'array','maxItems':300,'items':{'type':'object','properties':{
                            'from':string,'to':string,'kind':{'type':'string','enum':['input','flow']},'label':string},
                            'required':['from','to'],'additionalProperties':False}}}
-    add('canvas_upsert_flow', '按稳定 ID 批量创建/更新工作流并原子保存。layout 默认 tree_lr，自动左到右按真实尺寸布局，禁止 x/y；节点 parent_id/depends_on 或 edges 表达真实多输入 DAG，branch_order 控制分支顺序。锁定节点保留位置，其他工作流不移动。可在 edges 引用画布已有共享资产，无需重复创建。增量调用只需新增/更新节点和连线；省略节点不会删除。生成节点需 prompt，文本节点需 text。尺寸变化保存后自动重排当前工作流。', flow_properties, ['workflow_id','nodes'])
-    add('canvas_layout_flow', '重新布局一个已有工作流（例如生成结果尺寸变化后）；保留锁定及无关节点。',
-        {'workflow_id':string,'layout':{'type':'string','enum':['tree_lr']}},['workflow_id'])
+    add('canvas_upsert_flow', '按稳定 ID 批量创建/更新节点和连线并原子保存。MCP自动排版已关闭，省略坐标保留已有节点位置；新节点使用原生空位放置。可提供节点 x/y 指定位置。parent_id/depends_on/edges 表达真实依赖；省略节点不会删除。', flow_properties, ['workflow_id','nodes'])
+    add('canvas_layout_flow', '自动排版已关闭：此兼容动作不会移动节点，返回 layout_disabled=true。',
+        {'workflow_id':string,'layout':{'type':'string','enum':['tree_lr','manual']}},['workflow_id'])
     add("canvas_get_node", "读取一个节点的完整正文、图片、运行参数和待处理任务", {"node_id": string}, ["node_id"])
     add("canvas_check_generation", "查询生图任务的状态和结果；不存在或不属于指定画布时明确报错。按需查询，避免高频轮询。",
         {"task_id": string, "node_id": string}, ["task_id"])
@@ -327,6 +332,7 @@ def install(registry, legacy, fetch):
         schema["additionalProperties"] = False
         if name not in GLOBAL_TOOLS:
             schema["properties"]["canvas_id"] = string
+            schema["properties"]["workflow_id"] = string
             schema["required"] = list(dict.fromkeys(schema.get("required", []) + ["canvas_id"]))
         if name not in READ_TOOLS and name not in ("canvas_list_canvases", "canvas_list_skills"):
             schema["properties"]["idempotency_key"] = string
@@ -371,4 +377,5 @@ def install(registry, legacy, fetch):
             return fail("记录不存在或已过期", "record_not_found")
         except Exception as exc:
             return fail(str(exc), "execution_failed")
-    return handle
+    from myridtv_canvas_gateway import install as install_gateway
+    return install_gateway(public_registry, registry, handle)

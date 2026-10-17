@@ -88,6 +88,9 @@ def _agent_prepare_node_for_canvas(cid, canvas, node, origin, args=None):
     """
     if not isinstance(node, dict):
         return False, "node 不是 dict", False
+    # Only external gateway requests opt into workflow layout; manual/internal paths stay native.
+    from myridtv_canvas_gateway import enroll_new_node
+    enroll_new_node(cid, canvas, node)
     aid = _agent_ensure_artifactId(node, args)
     node["artifactId"] = aid
     node["__origin"] = origin

@@ -148,6 +148,13 @@ function smartPendingTasks(node){
     if(!node || !Array.isArray(node.pendingTasks)) return [];
     return node.pendingTasks.filter(task => task && task.taskId);
 }
+// blender 预演「完全依赖插件」：后端渲染完在等插件动画推送，节点保持等待态——
+// 无图、blender 引擎、pendingTasks 未清。轮询窗口超时≠失败（resumeSmartPendingNode 会重武装）。
+function isPrevizPushWaiting(node){
+    return !!node && !(node.images || []).length
+        && String(node.runSettings?.engine || '') === 'blender'
+        && smartPendingTasks(node).length > 0;
+}
 function rememberSmartTaskIds(node, taskIds=[]){
     if(!node) return;
     const seen = new Set();
@@ -242,7 +249,7 @@ async function finalizeJimengPending(node, urls, kind='image'){
         }).filter(item => item.url);
     if(!additions.length) return false;
     delete node.jimengPending;
-    deps.replaceOutputsToNodeWithHistory(node, additions, kind, null, {skipShift:true});
+    await deps.replaceOutputsToNodeWithHistory(node, additions, kind, null, {skipShift:true});
     node.running = false;
     node.pending = 0;
     node.runFinishedAt = deps.nowMs();
@@ -445,6 +452,15 @@ async function resumeSmartPendingNode(node){
                 deps.scheduleSave();
                 return;
             }
+            // blender 预演「完全依赖插件」：后端渲染完在等插件动画推送，轮询窗口超时≠失败——
+            // 不碰 pendingTasks，5 秒后重新武装继续等（推送落地/任务失败/用户停止都会正常退出循环）。
+            if(e && (e.message === tr('smart.errRunTimeout') || e.message === 'smart.errRunTimeout') && isPrevizPushWaiting(node)){
+                node.previzPushRearms = (node.previzPushRearms || 0) + 1;
+                setTimeout(() => {
+                    if(!(node.images || []).length && smartPendingTasks(node).length) resumeSmartPendingNode(node);
+                }, 5000);
+                return;
+            }
             node.pendingTasks = smartPendingTasks(node).filter(item => item.taskId !== task.taskId);
             node.pending = smartPendingTasks(node).length;
             if(!node.pending && smartPendingTasks(node).length === 0){
@@ -531,6 +547,7 @@ async function recoverCompletedEmptySmartNodes(){
         finalizeSmartPendingTask,
         recoverCompletedEmptySmartNode,
         resumeSmartPendingNode,
+        isPrevizPushWaiting,
         isRecoverableComfyNode,
         recoverStuckComfyNodes,
         resumeSmartPendingTasks,

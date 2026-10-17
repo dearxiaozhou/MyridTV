@@ -163,8 +163,8 @@ def _strip_llm_fenced_text(text):
     return text.strip()
 
 
-def run_blender_previz(payload):
-    return myridtv_blender_previz.run_blender_previz(payload)
+def run_blender_previz(payload, task_id=""):
+    return myridtv_blender_previz.run_blender_previz(payload, task_id)
 
 
 def run_task(task_id, payload):
@@ -172,7 +172,7 @@ def run_task(task_id, payload):
         provider_id = str((payload or {}).get("provider_id") or "").strip()
         if provider_id == "blender":
             myridtv_task_state.update_task_state(task_id, status="running", backend="blender-previz", provider_id="blender", checked_at=time.time())
-            result = run_blender_previz(payload)
+            result = run_blender_previz(payload, task_id)
             myridtv_task_state.update_task_state(task_id, status="succeeded", result=result, completed_at=time.time(), localized_at=time.time())
             return
         if provider_id == "volcengine":

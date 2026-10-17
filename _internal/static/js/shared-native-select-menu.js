@@ -3,7 +3,10 @@
 (function () {
     'use strict';
 
-    const targetSelector = '#protocolInput, .model-value-input.mod-sel, .prompt-node-llm select';
+    if (window.StudioSelectMenu) return;
+    // Agent settings and the engine switch already have their own visible menus.
+    // All other single-value selects share this adapter, including dynamic fields.
+    const targetSelector = 'select:not([multiple]):not([data-native-select]):not(#engineSelect):not(.agent-select-native):not(#canvasAgentSettingsPanel select)';
     const tracked = new Set();
     let activeState = null;
     let sequence = 0;
@@ -12,7 +15,8 @@
         if (select.id === 'protocolInput') return 'protocol';
         if (select.matches('.model-value-input.mod-sel')) return 'model';
         if (select.matches('.prompt-llm-provider')) return 'llm-provider';
-        return 'llm-model';
+        if (select.matches('.prompt-llm-model')) return 'llm-model';
+        return 'field';
     }
 
     function selectedOption(select) {
@@ -29,6 +33,7 @@
         if (state.label.textContent !== label) state.label.textContent = label;
         if (state.button.title !== label) state.button.title = label;
         state.button.disabled = state.select.disabled;
+        state.wrapper.hidden = state.select.hidden || state.select.style.display === 'none';
         state.button.setAttribute('aria-valuetext', label);
         if (state.select.disabled) state.button.setAttribute('aria-disabled', 'true');
         else state.button.removeAttribute('aria-disabled');
@@ -133,7 +138,7 @@
             option.setAttribute('role', 'option');
             option.setAttribute('aria-selected', nativeOption.selected ? 'true' : 'false');
             option.dataset.optionIndex = String(index);
-            option.disabled = nativeOption.disabled || state.select.disabled;
+            option.disabled = nativeOption.disabled || nativeOption.parentElement?.disabled || state.select.disabled;
             const label = document.createElement('span');
             label.className = 'shared-native-select-option-label';
             label.textContent = String(nativeOption.textContent || '').trim();
@@ -229,6 +234,11 @@
         wrapper.style.fontSize = computed.fontSize;
         wrapper.style.fontWeight = computed.fontWeight;
         wrapper.style.lineHeight = computed.lineHeight;
+        if (kind === 'field') {
+            wrapper.style.flex = computed.flex;
+            wrapper.style.margin = computed.margin;
+            wrapper.style.maxWidth = computed.maxWidth;
+        }
 
         const button = document.createElement('button');
         button.type = 'button';
@@ -237,7 +247,7 @@
         button.setAttribute('aria-haspopup', 'listbox');
         button.setAttribute('aria-expanded', 'false');
         const defaultLabels = { 'llm-provider': 'LLM 平台', 'llm-model': 'LLM 模型', model: '模型', protocol: '协议' };
-        button.setAttribute('aria-label', select.getAttribute('aria-label') || defaultLabels[kind]);
+        button.setAttribute('aria-label', select.getAttribute('aria-label') || select.title || defaultLabels[kind] || '选项');
         button.innerHTML = '<span class="shared-native-select-label"></span><svg class="shared-native-select-caret" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
 
         const label = button.querySelector('.shared-native-select-label');
@@ -281,6 +291,7 @@
         if (activeState) positionMenu(activeState);
     }, true);
 
+    window.StudioSelectMenu = { scan: () => scan(document.documentElement), close: closeMenu };
     scan(document.documentElement);
     const observer = new MutationObserver(records => {
         records.forEach(record => {

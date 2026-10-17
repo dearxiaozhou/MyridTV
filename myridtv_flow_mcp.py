@@ -11,7 +11,7 @@ import myridtv_flow_layout as layout
 
 NODE_KEYS = {'id','type','title','text','content','prompt','images','width','height','parent_id','parentId',
              'depends_on','branch_order','branchOrder','locked','provider_id','model','size','aspect_ratio',
-             'resolution','quality','count','reference_image_urls'}
+             'resolution','quality','count','reference_image_urls','x','y'}
 
 
 def upsert(args):
@@ -30,6 +30,7 @@ def upsert(args):
         seen=set();created=[];updated=[];dependency_edges=[]
         for spec in specs:
             if not isinstance(spec,dict) or set(spec)-NODE_KEYS:raise ValueError('节点含未知字段；坐标由 tree_lr 统一计算，不接受 x/y')
+            if layout.AUTOMATIC_LAYOUT_ENABLED and set(spec)&{'x','y'}:raise ValueError('自动布局开启时不接受 x/y')
             nid=spec.get('id')
             if not isinstance(nid,str) or not nid.strip() or len(nid)>200:raise ValueError('每个节点需要稳定的非空 id（最多200字符）')
             if nid in seen:raise ValueError('同一批次存在重复节点 ID: '+nid)
@@ -40,7 +41,7 @@ def upsert(args):
                 raise ValueError('节点 ID 已属于画布其他区域；共享资产请仅在 edges 中引用: '+nid)
             kind=spec.get('type') or ('text' if existing and existing.get('type')=='smart-prompt' else 'generation')
             if kind not in ('text','generation','image','video'):raise ValueError('节点 type 仅支持 text/generation/image/video')
-            for key in ('width','height','branch_order','branchOrder'):
+            for key in ('width','height','branch_order','branchOrder','x','y'):
                 if key in spec and (isinstance(spec[key],bool) or not isinstance(spec[key],(int,float)) or not math.isfinite(spec[key])):raise ValueError(key+' 必须是有限数字')
             if 'locked' in spec and not isinstance(spec['locked'],bool):raise ValueError('locked 必须是布尔值')
             if existing:
@@ -81,7 +82,10 @@ def upsert(args):
                 if not ok or deduped:raise ValueError(str(error))
                 canvas['nodes'].append(node);by_id[nid]=node;created.append(nid)
             flow=node.setdefault('flowLayout',{})
-            flow.update(workflowId=wid,layout='tree_lr')
+            flow.update(workflowId=wid,layout='tree_lr' if layout.AUTOMATIC_LAYOUT_ENABLED else 'manual')
+            if not layout.AUTOMATIC_LAYOUT_ENABLED:
+                for key in ('x','y'):
+                    if key in spec:node[key]=spec[key]
             if 'branch_order' in spec or 'branchOrder' in spec:flow['branchOrder']=spec.get('branch_order',spec.get('branchOrder'))
             if 'locked' in spec:flow['locked']=spec['locked']
             for key,field in (('width','w'),('height','h')):
@@ -109,7 +113,8 @@ def upsert(args):
                 target=by_id[b];target['inputNodeIds']=list(dict.fromkeys([*target.get('inputNodeIds',[]),a]))
         outcome=layout.layout_workflow(canvas,wid)
         saved=store.save_canvas_record(cid,canvas)
-        return {'ok':True,'canvas_id':cid,'workflow_id':wid,'layout':'tree_lr','created':created,'updated':updated,
+        return {'ok':True,'canvas_id':cid,'workflow_id':wid,'layout':'tree_lr' if layout.AUTOMATIC_LAYOUT_ENABLED else 'manual',
+                'layout_disabled':not layout.AUTOMATIC_LAYOUT_ENABLED,'created':created,'updated':updated,
                 'moved':outcome['moved'],'constraints':outcome['constraints'],'save_ok':True,'updated_at':saved['updated_at'],
                 'nodes':[{k:n.get(k) for k in ('id','x','y','w','h','flowLayout')} for n in saved['nodes']
                          if (n.get('flowLayout') or {}).get('workflowId')==wid]}

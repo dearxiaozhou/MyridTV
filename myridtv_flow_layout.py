@@ -8,6 +8,8 @@ import math
 import re
 
 GAP_X, GAP_Y = 160, 96
+# Product decision: external MCP calls must not automatically rearrange canvases.
+AUTOMATIC_LAYOUT_ENABLED = False
 
 
 def number(value, default=0):
@@ -110,6 +112,8 @@ def layout_workflow(canvas, workflow_id):
             all_children[a].append(b);all_parents[b].append(a)
     topological({nid:by_id[nid] for nid in ancestors},all_parents,all_children)
     topo, order = topological(selected, parents, children)
+    if not AUTOMATIC_LAYOUT_ENABLED:
+        return {'moved':[], 'constraints':[], 'disabled':True}
     by_id = {n['id']:n for n in canvas.get('nodes', [])}
     footprints = {nid:footprint(n, by_id) for nid,n in selected.items()}
     fixed = {nid for nid,n in selected.items() if locked(n) or
@@ -145,6 +149,24 @@ def layout_workflow(canvas, workflow_id):
             centers[nid]=(min(centers[c]-footprints[c][0][3]/2 for c in tree[nid])+
                           max(centers[c]+footprints[c][0][3]/2 for c in tree[nid]))/2
         elif children[nid]:centers[nid]=sum(centers[c] for c in children[nid])/len(children[nid])
+    # External inputs are real layout anchors, not merely horizontal constraints.
+    # Siblings sharing those inputs fan out around the anchor as one region.
+    external_roots = {}
+    for nid in topo:
+        if primary[nid] is not None:continue
+        inputs=tuple(sorted({e.get('from') for e in canvas.get('connections',[])
+                            if e.get('to')==nid and e.get('from') in by_id and e.get('from') not in selected}))
+        if inputs:external_roots.setdefault(inputs,[]).append(nid)
+    offsets = {}
+    for inputs, roots in external_roots.items():
+        input_rects=[footprint(by_id[nid],by_id)[0] for nid in inputs]
+        target=sum(r[1]+r[3]/2 for r in input_rects)/len(input_rects)
+        low=min(centers[nid]-spans[nid]/2 for nid in roots)
+        high=max(centers[nid]+spans[nid]/2 for nid in roots)
+        for nid in roots:offsets[nid]=target-(low+high)/2
+    for nid in topo:
+        if primary[nid] is not None:offsets[nid]=offsets.get(primary[nid],0)
+        centers[nid]+=offsets.get(nid,0)
     widths = {rank:max(footprints[nid][0][2] for nid in topo if ranks[nid]==rank) for rank in set(ranks.values())}
     columns = {0:ox}
     for rank in range(1,max(ranks.values())+1):columns[rank]=columns[rank-1]+widths[rank-1]+GAP_X
@@ -164,7 +186,14 @@ def layout_workflow(canvas, workflow_id):
                 if edge.get('to')==nid and edge.get('from') not in selected and edge.get('from') in by_id:
                     external,_=footprint(by_id[edge['from']],by_id)
                     x=max(x,external[0]+external[2]+GAP_X)
-            candidate=(round(x),round(centers[nid]-rect[3]/2),rect[2],rect[3])
+            center=centers[nid]
+            if primary[nid] is not None:
+                p=primary[nid]
+                pr=next((r for key,r in placed if key==p),footprints[p][0])
+                # Carry a locked/obstacle-displaced parent's actual vertical offset
+                # through its branch. A one-to-one edge therefore stays level.
+                center+=pr[1]+pr[3]/2-centers[p]
+            candidate=(round(x),round(center-rect[3]/2),rect[2],rect[3])
             # Fixed nodes/other workflows are obstacles, never moved to make room.
             while True:
                 hits=[r for _,r in placed if overlap(candidate,r,GAP_Y/2)]
@@ -198,6 +227,7 @@ def signature(canvas, workflow_id):
 
 
 def relayout_changed(current, saved):
+    if not AUTOMATIC_LAYOUT_ENABLED:return
     workflow_ids={n['flowLayout']['workflowId'] for n in saved.get('nodes',[]) if
                   isinstance(n.get('flowLayout'),dict) and n['flowLayout'].get('layout')=='tree_lr' and n['flowLayout'].get('workflowId')}
     owners={n['id']:(n.get('flowLayout') or {}).get('workflowId') for n in saved.get('nodes',[])}

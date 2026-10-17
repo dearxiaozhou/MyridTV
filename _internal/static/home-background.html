@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-studio-scale="off">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>主页背景</title>
+    <script>
+        (function () {
+            // 仅做防闪：默认深色先垫上 class，真实主题交给 theme.js 应用（含命名主题与浅色）。
+            try {
+                var theme = localStorage.getItem('studio_theme') || localStorage.getItem('canvas_theme') || 'dark';
+                document.documentElement.classList.toggle('studio-theme-dark', theme === 'dark');
+            } catch (e) {}
+        })();
+    </script>
+    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.06.29.9"></script>
+    <script src="/static/vendor/js/lucide.js?v=2026.06.29.9"></script>
+    <script src="/static/js/theme.js?cb=card-hover-seven-v01317&v=2026.10.01.speech9"></script>
+    <script src="/static/js/i18n.js?v=2026.10.01.speech9"></script>
+    <link rel="stylesheet" href="/static/css/design-tokens.css?v=2026.10.17.homebg1">
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.10.01.speech9">
+    <link rel="stylesheet" href="/static/css/home-bg.css?v=2026.10.17.homebg5">
+    <style>
+        :root { font-family: system-ui, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+        * { box-sizing: border-box; }
+        html, body { height: 100%; }
+        body { margin: 0; background: var(--x-page, #1a1a1a); color: var(--x-text, #eee);
+               display: flex; flex-direction: column; min-height: 84vh;
+               padding: 14px 22px 12px; gap: 11px; }
+
+        /* 预览：占据主要空间 */
+        .hb-preview { position: relative; flex: 1 1 auto; min-height: 300px; border-radius: 12px;
+                      overflow: hidden; border: 1px solid var(--x-line, #333); background: #000; }
+        .hb-preview-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+                           color: #8a8a8a; font-size: 13px; pointer-events: none; text-align: center; padding: 0 30px; }
+
+        /* 居中图标栏（无文字） */
+        .hb-toolbar { display: flex; align-items: center; justify-content: center; gap: 10px; }
+        .hb-tool { width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--x-line, #3a3a3a);
+                   background: var(--x-card, #242424); color: var(--x-muted, #9aa); cursor: pointer;
+                   display: inline-flex; align-items: center; justify-content: center; transition: all .15s; }
+        .hb-tool svg { width: 19px; height: 19px; }
+        .hb-tool:hover { color: var(--x-text, #eee); border-color: var(--x-accent, #8ab); }
+        .hb-tool.active { color: var(--x-accent, #8ab); border-color: var(--x-accent, #8ab);
+                          background: color-mix(in srgb, var(--x-accent, #8ab) 14%, transparent); }
+
+        /* 底部横排缩略图条 */
+        .hb-thumbs { display: flex; gap: 10px; overflow-x: auto; padding: 4px 2px 6px; min-height: 96px; }
+        .hb-thumb { position: relative; flex: 0 0 auto; width: 128px; height: 78px; border-radius: 9px;
+                    overflow: hidden; border: 2px solid transparent; cursor: pointer; background: #000;
+                    padding: 0; }
+        .hb-thumb img, .hb-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+        .hb-thumb.selected { border-color: var(--x-accent, #8ab); }
+        .hb-thumb .kind-badge { position: absolute; left: 5px; bottom: 4px; font-size: 10px; line-height: 1;
+                                padding: 3px 5px; border-radius: 4px; background: rgba(0,0,0,.62); color: #fff; }
+        .hb-empty { color: var(--x-muted, #9aa); font-size: 12.5px; align-self: center; margin: auto; }
+
+        /* 预览里的模拟主页画布列表（看卡片压在背景上的实时效果） */
+        .hb-preview-card { position: absolute; left: 4.5%; right: 4.5%; top: 10%; bottom: 20%; z-index: 2;
+                           border-radius: 12px; padding: 13px 14px; overflow: hidden; display: flex; flex-direction: column;
+                           gap: 9px; border: 1px solid rgba(255,255,255,.08); }
+        .hb-preview-card .pc-head { display: flex; align-items: center; gap: 8px; }
+        .hb-preview-card .pc-title { font-size: 14px; font-weight: 600; color: var(--x-text, #eee); }
+        .hb-preview-card .pc-pill { font-size: 10px; padding: 2px 7px; border-radius: 999px;
+                                    background: rgba(127,127,127,.22); color: var(--x-muted, #9aa); }
+        .hb-preview-card .pc-grid { flex: 1; display: flex; gap: 8px; min-height: 0; }
+        .hb-preview-card .pc-card { flex: 1; min-width: 0; border-radius: 9px; padding: 7px; display: flex;
+                                    flex-direction: column; gap: 5px; background: rgba(127,127,127,.13);
+                                    border: 1px solid rgba(255,255,255,.07); }
+        .hb-preview-card .pc-thumb { height: 46%; border-radius: 6px; background: linear-gradient(135deg, rgba(120,150,170,.35), rgba(90,110,140,.2)); }
+        .hb-preview-card .pc-line { height: 6px; border-radius: 3px; background: rgba(160,160,160,.30); }
+        .hb-preview-card .pc-line.w70 { width: 70%; } .hb-preview-card .pc-line.w45 { width: 45%; }
+
+        /* 滑块条：压在预览图底部，不另起一行 */
+        .hb-alpha-bar { position: absolute; left: 50%; transform: translateX(-50%); bottom: 12px; z-index: 3;
+                        display: flex; align-items: center; gap: 10px; padding: 7px 14px; border-radius: 999px;
+                        background: rgba(0,0,0,.48); border: 1px solid rgba(255,255,255,.16);
+                        backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+        .hb-alpha-bar label { font-size: 12px; color: rgba(255,255,255,.86); white-space: nowrap; }
+        .hb-alpha-bar input[type="range"] { width: 180px; accent-color: #8fd3a8; cursor: pointer; }
+        .hb-alpha-bar .hb-alpha-val { font-size: 12px; color: rgba(255,255,255,.92); min-width: 34px; text-align: right; }
+    </style>
+</head>
+<body>
+    <div class="hb-preview" id="preview">
+        <div class="hb-preview-hint" id="previewHint">还没有素材：点下方「+」打开素材文件夹，把图片 / 视频放进去后点「刷新」。</div>
+        <!-- 模拟主页卡片：实时看卡片压在背景上的效果 -->
+        <div class="hb-preview-card" id="previewCard">
+            <div class="pc-head"><span class="pc-title">选择画布</span><span class="pc-pill">4</span></div>
+            <div class="pc-grid">
+                <div class="pc-card"><div class="pc-thumb"></div><div class="pc-line w70"></div><div class="pc-line w45"></div></div>
+                <div class="pc-card"><div class="pc-thumb"></div><div class="pc-line w70"></div><div class="pc-line w45"></div></div>
+                <div class="pc-card"><div class="pc-thumb"></div><div class="pc-line w70"></div><div class="pc-line w45"></div></div>
+                <div class="pc-card"><div class="pc-thumb"></div><div class="pc-line w70"></div><div class="pc-line w45"></div></div>
+            </div>
+        </div>
+        <!-- 卡片透明度滑块：压在预览图底部 -->
+        <div class="hb-alpha-bar">
+            <label for="alphaSlider">卡片透明度</label>
+            <input type="range" id="alphaSlider" min="0" max="100" value="0" title="画布卡片透明度：0% = 卡片默认样式，100% = 完全透明">
+            <span class="hb-alpha-val" id="alphaVal">0%</span>
+        </div>
+    </div>
+
+    <div class="hb-toolbar">
+        <button class="hb-tool active" id="filterImage" title="图片" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+        </button>
+        <button class="hb-tool" id="filterVideo" title="视频" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>
+        </button>
+        <button class="hb-tool" id="carouselBtn" title="轮播开关" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
+        </button>
+        <button class="hb-tool" id="openFolderBtn" title="打开素材文件夹" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2Z"/></svg>
+        </button>
+        <button class="hb-tool" id="refreshBtn" title="刷新素材" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+        </button>
+    </div>
+
+    <div class="hb-thumbs" id="thumbs"></div>
+
+    <script src="/static/js/home-bg.js?v=2026.10.17.homebg13"></script>
+    <script>
+        (function () {
+            var cfg = HomeBg.readConfig();      // {mode, selected}
+            var allItems = [];                  // 全部素材 [{name,url,type}]
+            var filter = 'image';               // 缩略图条显示 image / video
+
+            var preview = document.getElementById('preview');
+            var previewHint = document.getElementById('previewHint');
+            var thumbs = document.getElementById('thumbs');
+            var filterImageBtn = document.getElementById('filterImage');
+            var filterVideoBtn = document.getElementById('filterVideo');
+            var carouselBtn = document.getElementById('carouselBtn');
+            var previewCtrl = null;
+
+            /* 主页即时同步（V0.13.21）：弹窗与主页 iframe 同源，保存后直接调用主页的
+               HomeBg 重应用——同步生效，不依赖 postMessage 中继 / storage 事件 / 轮询
+               （WebView2 下这三条都不可靠，正是"设置里有效、主页不动"的根因）。 */
+            function notifyHomepage() {
+                try {
+                    var cf = parent.document.getElementById('frame-canvas');
+                    if (cf && cf.contentWindow && cf.contentWindow.HomeBg) {
+                        cf.contentWindow.HomeBg.applyToHomepage();
+                    }
+                } catch (e) {}
+                try { parent.postMessage({ type: 'home-bg-config-changed' }, '*'); } catch (e) {}
+            }
+            /* 滑块拖动走轻路径：只补卡片透明度，不重渲背景（视频背景不会被打断） */
+            function notifyCardAlpha() {
+                try {
+                    var cf = parent.document.getElementById('frame-canvas');
+                    if (cf && cf.contentWindow && cf.contentWindow.HomeBg) {
+                        cf.contentWindow.HomeBg.applyCardAlpha(cfg.cardAlpha);
+                    }
+                } catch (e) {}
+                try { parent.postMessage({ type: 'home-bg-config-changed' }, '*'); } catch (e) {}
+            }
+
+            function renderPreview() {
+                if (previewCtrl) { previewCtrl.destroy(); previewCtrl = null; }
+                var usable = allItems.filter(function (it) { return it.type === filter; });
+                previewHint.style.display = usable.length ? 'none' : 'flex';
+                if (!usable.length) {
+                    previewHint.textContent = filter === 'image'
+                        ? '素材文件夹里还没有图片。'
+                        : '素材文件夹里还没有视频。';
+                    return;
+                }
+                // 预览里只放当前筛选类型，选中项优先开头
+                var ordered = usable.slice();
+                if (cfg.selected) {
+                    var at = ordered.findIndex(function (it) { return it.name === cfg.selected; });
+                    if (at > 0) { var pick = ordered.splice(at, 1)[0]; ordered.unshift(pick); }
+                }
+                var showCfg = (cfg.mode === 'carousel' && ordered.length > 1)
+                    ? { mode: 'carousel', selected: '' }
+                    : { mode: 'fixed', selected: ordered[0].name };
+                previewCtrl = HomeBg.render(preview, showCfg, ordered, { contained: true });
+            }
+
+            function renderThumbs() {
+                thumbs.innerHTML = '';
+                var usable = allItems.filter(function (it) { return it.type === filter; });
+                if (!usable.length) {
+                    var empty = document.createElement('div');
+                    empty.className = 'hb-empty';
+                    empty.textContent = '此类型暂无素材';
+                    thumbs.appendChild(empty);
+                    return;
+                }
+                usable.forEach(function (item) {
+                    var btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'hb-thumb' + (cfg.selected === item.name && cfg.mode === 'fixed' ? ' selected' : '');
+                    btn.title = item.name;
+                    if (item.type === 'video') {
+                        var v = document.createElement('video');
+                        v.src = item.url; v.muted = true; v.preload = 'metadata';
+                        v.addEventListener('mouseenter', function () { try { v.play(); } catch (e) {} });
+                        v.addEventListener('mouseleave', function () { try { v.pause(); } catch (e) {} });
+                        btn.appendChild(v);
+                    } else {
+                        var img = document.createElement('img');
+                        img.src = item.url; img.alt = item.name; img.loading = 'lazy';
+                        btn.appendChild(img);
+                    }
+                    var badge = document.createElement('span');
+                    badge.className = 'kind-badge';
+                    badge.textContent = item.type === 'video' ? '视频' : '图片';
+                    btn.appendChild(badge);
+                    // 点缩略图 = 立即使用（写配置即生效，主页自动跟随）
+                    btn.addEventListener('click', function () {
+                        cfg.selected = item.name;
+                        HomeBg.writeConfig(cfg);
+                        renderThumbs(); renderPreview();
+                        notifyHomepage();
+                    });
+                    thumbs.appendChild(btn);
+                });
+            }
+
+            function syncUI() {
+                filterImageBtn.classList.toggle('active', filter === 'image');
+                filterVideoBtn.classList.toggle('active', filter === 'video');
+                carouselBtn.classList.toggle('active', cfg.mode === 'carousel');
+            }
+
+            var firstLoad = true;
+
+            function reload() {
+                HomeBg.fetchList().then(function (data) {
+                    allItems = data.files || [];
+                    if (data.dir) document.getElementById('openFolderBtn').dataset.dir = data.dir;
+                    // 首次进入：默认筛选跟着「当前正在用的素材」的类型走，没有则图片优先
+                    if (firstLoad) {
+                        firstLoad = false;
+                        var sel = null;
+                        allItems.forEach(function (it) { if (it.name === cfg.selected) sel = it; });
+                        var hasImage = allItems.some(function (it) { return it.type === 'image'; });
+                        var hasVideo = allItems.some(function (it) { return it.type === 'video'; });
+                        filter = sel ? sel.type : (hasImage ? 'image' : (hasVideo ? 'video' : 'image'));
+                    }
+                    syncUI(); renderThumbs(); renderPreview();
+                });
+            }
+
+            filterImageBtn.addEventListener('click', function () { filter = 'image'; syncUI(); renderThumbs(); renderPreview(); });
+            filterVideoBtn.addEventListener('click', function () { filter = 'video'; syncUI(); renderThumbs(); renderPreview(); });
+            // 轮播开关：点了就切换 mode 并立即生效
+            carouselBtn.addEventListener('click', function () {
+                cfg.mode = cfg.mode === 'carousel' ? 'fixed' : 'carousel';
+                HomeBg.writeConfig(cfg);
+                syncUI(); renderThumbs(); renderPreview();
+                notifyHomepage();
+            });
+            // —— 卡片透明度滑块：压在预览图底部，控制「画布卡片」不透明度（拖动即生效） ——
+            var alphaSlider = document.getElementById('alphaSlider');
+            var alphaVal = document.getElementById('alphaVal');
+            var previewCard = document.getElementById('previewCard');
+            function cardRgb() { return HomeBg.isDarkTheme() ? '26, 29, 33' : '255, 255, 255'; }
+            function applyCardAlphaPreview() {
+                // UI 语义是「透明度」（0=默认不透，100=全透）；内部 cardAlpha 是「不透明度」，两者互补
+                var transparency = 100 - cfg.cardAlpha;
+                alphaSlider.value = transparency;
+                alphaVal.textContent = transparency + '%';
+                var a = cfg.cardAlpha / 100;
+                var cards = previewCard.querySelectorAll('.pc-card');
+                for (var i = 0; i < cards.length; i++) {
+                    if (a >= 1) {
+                        cards[i].style.removeProperty('background');
+                        cards[i].style.removeProperty('background-color');
+                    } else {
+                        cards[i].style.background = 'rgba(' + cardRgb() + ', ' + a + ')';
+                    }
+                }
+            }
+            alphaSlider.addEventListener('input', function () {
+                // 滑块值=透明度 → 不透明度 = 100 - 透明度
+                cfg.cardAlpha = 100 - HomeBg.clampAlpha(alphaSlider.value, 0);
+                HomeBg.writeConfig(cfg);
+                applyCardAlphaPreview();
+                // 同源直调主页 iframe 补卡片透明度（同步生效）；外壳中继兜底
+                notifyCardAlpha();
+            });
+            // 主题切换时卡片底色跟着换（深浅两套），与主页逻辑一致
+            try {
+                new MutationObserver(function () { applyCardAlphaPreview(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-studio-theme'] });
+            } catch (e) {}
+            applyCardAlphaPreview();
+            function openFolder() {
+                var dir = document.getElementById('openFolderBtn').dataset.dir || '';
+                HomeBg.openFolder(dir);
+            }
+            document.getElementById('openFolderBtn').addEventListener('click', openFolder);
+            document.getElementById('refreshBtn').addEventListener('click', reload);
+
+            reload();
+        })();
+    </script>
+</body>
+</html>

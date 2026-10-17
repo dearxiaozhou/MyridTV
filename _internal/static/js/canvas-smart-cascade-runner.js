@@ -141,11 +141,11 @@ async function runSmartCascade(targetNode=null){
                             outputs = await deps.runCascadeStepIntoNode(source, target, incomingRefs, stepCtx);
                             sharedRefs = deps.cascadeRefsFromOutputs(outputs, target);
                         } else {
-                            outputs = deps.appendCascadeRefsToReceiver(target, sharedRefs, stepCtx);
+                            outputs = await deps.appendCascadeRefsToReceiver(target, sharedRefs, stepCtx);
                         }
                     } catch(err) {
                         if(/缺少提示词|需要输入文本|need prompt/i.test(err.message || '') && incomingRefs.length){
-                            outputs = deps.appendCascadeRefsToReceiver(target, incomingRefs, stepCtx);
+                            outputs = await deps.appendCascadeRefsToReceiver(target, incomingRefs, stepCtx);
                             if(index === 0){
                                 sharedRefs = deps.cascadeRefsFromOutputs(outputs, target);
                             }

@@ -81,18 +81,73 @@ elif _portable_user_data:
     USER_DATA_DIR = _portable_user_data
 else:
     USER_DATA_DIR = Path(os.environ.get("APPDATA", str(APP_DIR))) / "MyridTV"
-# 资产与输出统一放在软件安装目录下（用户要求 2026-08-16）。
+# 资产与输出默认放在软件安装目录下（用户要求 2026-08-16）。
+# 2026-10-15 起可由用户自定义（Blender 插件那套：不改就用系统指定的）：
+#   优先级 env MYRIDTV_ASSETS_DIR > app_config.paths.assets_dir（安装器/设置页写入）> <安装目录>/assets。
 # 覆盖安装/在线升级只覆盖程序文件（installer [Files] 不删除未知目录），assets 子目录会保留。
-ASSETS_DIR = Path(os.environ.get("MYRIDTV_ASSETS_DIR") or (APP_DIR / "assets"))
+# 注意：改了目录要重启应用才生效——ASSETS_DIR 在 import 期就被若干子模块定值注入了。
+ASSETS_DIR = myridtv_asset_resolver.resolve_assets_root(APP_DIR, CONFIG_FILE)
+ASSETS_DIR_SOURCE = myridtv_asset_resolver.assets_dir_source(APP_DIR, CONFIG_FILE)
 
 
 def _migrate_legacy_assets():
     myridtv_asset_resolver.migrate_legacy_assets(USER_DATA_DIR, ASSETS_DIR)
 _migrate_legacy_assets()
+# 资产主路径下的标准子目录骨架（output/images|videos|audios|history、input、library、blender…）
+myridtv_asset_resolver.ensure_assets_layout(ASSETS_DIR)
 BLENDER_IMPORT_DIR = ASSETS_DIR / "blender_imports"
 # —— Blender 预演（画布 → Blender → 画布）——
-PREVIZ_DIR = ASSETS_DIR / "blender" / "previz"
-BLENDER_BIN = os.environ.get("MYRIDTV_BLENDER_BIN") or "blender"
+# previz 三件套是程序脚本、不是资产：随程序走（_internal/previz），升级会跟着更新。
+# 兼容老安装：程序目录里没有时才回退到资产目录下的旧副本（早期脚本曾被放进 assets）。
+PREVIZ_SHIPPED_DIR = APP_DIR / "_internal" / "previz"
+PREVIZ_LEGACY_DIR = ASSETS_DIR / "blender" / "previz"
+PREVIZ_DIR = PREVIZ_SHIPPED_DIR if (PREVIZ_SHIPPED_DIR / "previz_render.py").exists() else PREVIZ_LEGACY_DIR
+def _resolve_blender_bin():
+    r"""定位 blender.exe：环境变量 > PATH > 常见安装根扫描 > 裸命令兜底。
+
+    历史坑（2026-10-17）：以前只认 PATH 上的裸 "blender"，Blender 安装目录
+    不在 PATH 时 blender --background 直接 FileNotFoundError [WinError 2]，
+    3D 预演 2 秒即败。扫描根：C:\Program Files\Blender Foundation 与
+    <各固定盘>:\blender；优先最高 4.x——MyridTV 桥接插件（wcstv_blender_bridge_45，
+    bl_info 声明 4.5.0）只装在 4.5 用户配置里，GUI 自动开箱后的手动推送回传依赖它；
+    机器上没有 4.x 时才取最高版本（渲染脚本 --background 各版本通用）。
+    """
+    env_bin = (os.environ.get("MYRIDTV_BLENDER_BIN") or "").strip()
+    if env_bin and Path(env_bin).exists():
+        return env_bin
+    on_path = shutil.which("blender")
+    if on_path:
+        return on_path
+    roots = [Path(r"C:\Program Files\Blender Foundation")]
+    for drive in "CDEFGHIJKLMNOPQRSTUVWXYZ":
+        roots.append(Path("%s:/blender" % drive))
+    candidates = []
+    for root in roots:
+        try:
+            if not root.is_dir():
+                continue
+            for exe in root.glob("*/blender.exe"):
+                candidates.append(exe)
+            direct = root / "blender.exe"
+            if direct.is_file():
+                candidates.append(direct)
+        except OSError:
+            continue
+    if not candidates:
+        return "blender"
+
+    def _version_key(exe):
+        match = re.search(r"(\d+)\.(\d+)(?:\.(\d+))?", exe.parent.name)
+        if not match:
+            return (0, 0, 0)
+        return (int(match.group(1)), int(match.group(2)), int(match.group(3) or 0))
+
+    four_x = [exe for exe in candidates if _version_key(exe)[0] == 4]
+    pool = four_x or candidates
+    return str(max(pool, key=_version_key))
+
+
+BLENDER_BIN = _resolve_blender_bin()
 PREVIZ_FPS = int(os.environ.get("MYRIDTV_PREVIZ_FPS") or "24")
 PREVIZ_BLACK_SEC = 0.4
 CANVAS_AGENT_HISTORY_DIR = USER_DATA_DIR / "data" / "canvas_agent_history"
@@ -125,6 +180,9 @@ DEFAULT_CONFIG = {
         "logs_dir": "data/logs",
         "proxy_log": "data/logs/rh_official_proxy.log",
         "startup_log": "data/logs/startup.log",
+        # 资产主路径（assets 根目录）。空 = 用系统默认 <安装目录>/assets；
+        # 由安装器首装页或设置页写入绝对路径，改完需重启应用。
+        "assets_dir": "",
     },
     "runtime": {"python_exe": "", "python_env": "MYRIDTV_PYTHON_EXE"},
     "user_data": {"root_env": "MYRIDTV_USER_DATA_DIR", "default_dir": "%APPDATA%\\MyridTV", "mode": "junction"},
@@ -1182,6 +1240,7 @@ myridtv_blender_previz.configure(
     lambda *a, **k: resolve_chat_target(*a, **k),
     ASSETS_DIR, BLENDER_BIN, PREVIZ_DIR, PREVIZ_FPS,
 )
+append_log(LOG_FILE, f"blender bin resolved: {BLENDER_BIN}")
 
 myridtv_agent_tasks.configure(
     TASKS, TASKS_LOCK,
@@ -1911,6 +1970,50 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, {"ok": True, "library": read_prompt_libraries()})
         return
 
+    def _get_api_assets_root(self):
+        """资产主路径（assets 根目录）当前状态：给设置页读。"""
+        self._send(200, myridtv_asset_resolver.assets_root_payload(
+            ASSETS_DIR, APP_DIR, USER_DATA_DIR, CONFIG_FILE, ASSETS_DIR_SOURCE))
+        return
+
+    def _get_api_home_bg_list(self):
+        """主页背景素材目录清单：assets/home-bg/ 下用户自放的图片/视频。
+        目录不存在则自动创建，方便用户直接往里放文件。"""
+        import os as _os
+        folder = ASSETS_DIR / "home-bg"
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        files = []
+        if folder.is_dir():
+            _IMG_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".avif", ".svg"}
+            _VID_EXT = {".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v"}
+            try:
+                entries = sorted(folder.iterdir(), key=lambda p: p.name)
+            except Exception:
+                entries = []
+            for entry in entries:
+                if not entry.is_file():
+                    continue
+                ext = entry.suffix.lower()
+                kind = "image" if ext in _IMG_EXT else ("video" if ext in _VID_EXT else "")
+                if not kind:
+                    continue
+                try:
+                    stat = entry.stat()
+                except Exception:
+                    continue
+                files.append({
+                    "name": entry.name,
+                    "url": "/assets/home-bg/" + urllib.parse.quote(entry.name, safe=""),
+                    "type": kind,
+                    "size": stat.st_size,
+                    "mtime": int(stat.st_mtime),
+                })
+        self._send(200, {"ok": True, "dir": str(folder), "files": files})
+        return
+
     def _get_api_comfyui_instances(self):
         self._send(200, {"ok": True, "instances": read_comfy_instances()})
         return
@@ -2035,6 +2138,8 @@ class Handler(BaseHTTPRequestHandler):
                 '/api/config': '_get_api_config',
                 '/api/asset-library': '_get_api_asset_library',
                 '/api/prompt-libraries': '_get_api_prompt_libraries',
+                '/api/assets-root': '_get_api_assets_root',
+                '/api/home-bg/list': '_get_api_home_bg_list',
                 '/api/comfyui/instances': '_get_api_comfyui_instances',
                 '/api/comfyui/object-info': '_get_api_comfyui_object_info',
                 '/api/comfyui/queue': '_get_api_comfyui_queue',
@@ -2178,6 +2283,8 @@ class Handler(BaseHTTPRequestHandler):
         "/api/prompt-libraries/categories": "_post_api_prompt_libraries_categories",
         "/api/prompt-libraries/items": "_post_api_prompt_libraries_items",
         "/api/prompt-libraries/items/delete": "_post_api_prompt_libraries_items_delete",
+        "/api/assets-root": "_post2_api_assets_root",
+        "/api/assets-root/migrate": "_post2_api_assets_root_migrate",
         "/api/localize-generated-media": "_post_api_localize_generated_media",
         "/api/move-to-history": "_post_api_move_to_history",
         "/api/task-console-stop": "_post_api_task_console_stop",
@@ -2185,6 +2292,60 @@ class Handler(BaseHTTPRequestHandler):
         "/api/agent-models": "_post_api_agent_models",
         "/api/comfyui/auto-expose-media": "_post2_api_comfyui_auto_expose_media",
     }
+
+    def _post2_api_assets_root(self, payload):
+        """设置资产主路径（assets 根目录）。assets_dir 留空或 use_default=true = 回到系统默认 <安装目录>/assets。"""
+        raw = str(payload.get("assets_dir") or "").strip()
+        use_default = bool(payload.get("use_default")) or not raw
+        if use_default:
+            target_value = ""
+            target = Path(APP_DIR) / "assets"
+        else:
+            ok, message, candidate = myridtv_asset_resolver.validate_assets_target(raw, APP_DIR, USER_DATA_DIR)
+            if not ok:
+                raise ApiError(400, message)
+            target = candidate
+            target_value = str(candidate)
+        created = myridtv_asset_resolver.ensure_assets_layout(target)
+        merged = write_app_config(deep_merge(APP_CONFIG, {"paths": {"assets_dir": target_value}}))
+        try:
+            append_log(LOG_FILE, f"assets-root saved: {target} (source={'custom' if target_value else 'default'})")
+        except Exception:
+            pass
+        self._send(200, {
+            "ok": True,
+            "assets_dir": str(target),
+            "assets_dir_setting": target_value,
+            "source": "custom" if target_value else "default",
+            "created": created,
+            # ASSETS_DIR 在 import 期就被若干子模块定值注入，热切不可靠 → 改完必须重启应用
+            "requires_restart": True,
+            "config": merged,
+        })
+        return
+
+    def _post2_api_assets_root_migrate(self, payload):
+        """把旧资产目录内容复制到当前资产目录（复制而非移动：源目录原地保留，零丢失）。"""
+        source = str(payload.get("source") or payload.get("from") or "").strip() or str(Path(APP_DIR) / "assets")
+        target = str(payload.get("target") or payload.get("to") or "").strip() or str(ASSETS_DIR)
+        src = Path(source)
+        dst = Path(target)
+        if not src.exists() or not src.is_dir():
+            raise ApiError(400, "源目录不存在：%s" % src)
+        try:
+            same = src.resolve() == dst.resolve()
+        except Exception as exc:
+            raise ApiError(400, "路径无法解析：%s" % exc)
+        if same:
+            raise ApiError(400, "源目录和目标目录是同一个，不用搬")
+        dst.mkdir(parents=True, exist_ok=True)
+        state = myridtv_asset_resolver.start_assets_migration(str(src), str(dst))
+        try:
+            append_log(LOG_FILE, f"assets migration started: {src} -> {dst}")
+        except Exception:
+            pass
+        self._send(200, {"ok": True, "source": str(src), "target": str(dst), "migration": state})
+        return
 
     def _post2_api_online_image(self, payload):
         """do_POST 路由表 handler：原精确分支 /api/online-image 机械表化（体逐字）"""
@@ -2381,7 +2542,14 @@ class Handler(BaseHTTPRequestHandler):
         return
 
     def _post2_api_integrations_blender_push_animation(self, payload):
-        """do_POST 路由表 handler：原精确分支 /api/integrations/blender/push-animation 机械表化（体逐字）"""
+        """do_POST 路由表 handler：原精确分支 /api/integrations/blender/push-animation 机械表化（体逐字）
+        2026-10-17：回传完全依赖插件——推送带 task_id 且命中等待中的预演任务时，
+        直接交付给该任务的 worker（合并进结果后由前端写回原节点），不再 append 新节点；
+        未命中（手动推送/任务已结算）维持原行为 append 新节点。"""
+        task_id = str((payload or {}).get("task_id") or "").strip()
+        if task_id and myridtv_blender_previz.deliver_previz_push(task_id, payload):
+            self._send(200, {"ok": True, "delivered_to_task": task_id})
+            return
         self._send(200, append_blender_animation_to_canvas(payload))
         return
 
@@ -2782,7 +2950,7 @@ class Handler(BaseHTTPRequestHandler):
                     name = params.get("name", "")
                     args = params.get("arguments", {})
                     if name not in MCP_TOOLS:
-                        self._send(200, {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": f"Tool not found: {name}"}})
+                        self._send(200, {"jsonrpc": "2.0", "id": req_id, "result": {"isError": True, "content": [{"type":"text", "text":json.dumps({"ok":False,"error_code":"entrypoint_changed","error":"旧工具已撤下，请刷新 MCP 工具列表并调用 canvas_execute","entrypoint":"canvas_execute","action":name.removeprefix('canvas_')},ensure_ascii=False)}]}})
                     else:
                         try:
                             result = _mcp_handle(name, args)

@@ -78,11 +78,11 @@ with sync_playwright() as pw:
         state:{selectedId:state.selectedId,renders:state.renders,saves:state.saves}};
     }""")
 
-    check("图片节点媒体控制器加载并提供组标题归类", result["module"] and result["titles"] == {"images": "Group", "mixed": "Media", "audio": "Audio"}, result["titles"])
-    check("给指定节点追加图片后转为组图并按默认规则放大", result["group"] == {"id": "target", "count": 2, "title": "Group", "scale": 0.8, "hasSize": False}, result["group"])
+    check("图片节点媒体控制器加载并提供组标题归类", result["module"] and result["titles"] == {"images": "Images", "mixed": "Media", "audio": "Audio"}, result["titles"])
+    check("给指定节点追加图片后转为组图并按默认规则放大", result["group"] == {"id": "target", "count": 2, "title": "Images", "scale": 0.8, "hasSize": False}, result["group"])
     check("已存在组图保持用户当前缩放", result["existingGroupScale"] == 2, result["existingGroupScale"])
     check("单张图片保持单图标题并清除旧尺寸缓存", result["singleState"] == {"title": "Image", "count": 1, "hasSize": False}, result["singleState"])
-    check("强制新建组图沿用指定画布坐标并更新选中项", result["created"] == {"id": "created-1", "point": {"x": 120, "y": 240}, "count": 2, "title": "Group", "scale": 0.8, "selectedId": "created-1"}, result["created"])
+    check("强制新建组图沿用指定画布坐标并更新选中项", result["created"] == {"id": "created-1", "point": {"x": 120, "y": 240}, "count": 2, "title": "Images", "scale": 0.8, "selectedId": "created-1"}, result["created"])
     check("空图片列表不渲染也不保存", result["emptySkipped"] and result["state"]["renders"] == 4 and result["state"]["saves"] == 4, result["state"])
     check("媒体节点更新无脚本异常或真实写请求", not errors and not blocked_writes, {"errors": errors[:3], "blockedWrites": blocked_writes})
     browser.close()

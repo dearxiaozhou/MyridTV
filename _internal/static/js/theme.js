@@ -1,29 +1,53 @@
 (function(){
     const KEY = 'studio_theme';
     const LEGACY_KEY = 'canvas_theme';
+    const THEME_ID_KEY = 'studio_theme_id';
+    const THEMES = [
+        {id:'dark', mode:'dark', zh:'石墨青绿', en:'Graphite Jade'},
+        {id:'light', mode:'light', zh:'雾白青绿', en:'Mist Jade'},
+        {id:'champagne', mode:'dark', zh:'暖灰香槟', en:'Warm Champagne'},
+        {id:'obsidian', mode:'dark', zh:'黑曜电紫', en:'Obsidian Violet'},
+        {id:'sakura', mode:'light', zh:'樱雪莓粉', en:'Sakura Berry'},
+        {id:'taiyuan-yeyu', mode:'dark', zh:'苔原夜语', en:'Tundra Night'},
+        {id:'nuanxuan-liujin', mode:'light', zh:'暖宣流金', en:'Warm Gilt'}
+    ];
+    const themeInfo = id => THEMES.find(item => item.id === id);
     const SCALE_KEY = 'studio_ui_scale_mode';
     const SCALE_OPTIONS = ['auto', '100', '115', '125', '140'];
 
     /* 主题控制器允许浅色试验主题；默认仍保留深色。 */
     const LOCKED = null;
 
+    function ensureApplicationPalette(){
+        if(document.getElementById('studio-application-palette')) return;
+        const link = document.createElement('link');
+        link.id = 'studio-application-palette';
+        link.rel = 'stylesheet';
+        link.href = '/static/css/application-palette.css?cb=card-hover-seven-v01317';
+        const interactions = document.querySelector('link[href*="canvas-interaction-style.css"]');
+        document.head.insertBefore(link, interactions || null);
+    }
+    ensureApplicationPalette();
+
     function currentTheme(){
         if(LOCKED) return LOCKED;
         try {
-            var stored = localStorage.getItem(KEY) || localStorage.getItem(LEGACY_KEY) || 'dark';
-            return stored === 'light' ? 'light' : 'dark';
+            var stored = localStorage.getItem(THEME_ID_KEY) || localStorage.getItem(KEY) || localStorage.getItem(LEGACY_KEY) || 'dark';
+            return themeInfo(stored) ? stored : 'dark';
         } catch(e) {
             return 'dark';
         }
     }
 
     function applyTheme(theme){
-        const next = LOCKED || (theme === 'dark' || theme === 'light' ? theme : currentTheme());
-        const dark = next === 'dark';
+        const next = LOCKED || (themeInfo(theme) ? theme : currentTheme());
+        const dark = themeInfo(next).mode === 'dark';
+        document.documentElement.dataset.studioTheme = next;
         document.documentElement.classList.toggle('studio-theme-dark', dark);
         document.documentElement.classList.toggle('theme-dark', dark);
         document.documentElement.classList.toggle('theme-light', !dark);
         if(document.body){
+            document.body.dataset.studioTheme = next;
             document.body.classList.toggle('studio-theme-dark', dark);
             document.body.classList.toggle('theme-dark', dark);
             document.body.classList.toggle('theme-light', !dark);
@@ -35,7 +59,8 @@
                 localStorage.setItem(LEGACY_KEY, LOCKED);
             } catch(e) {}
         }
-        window.dispatchEvent(new CustomEvent('studio-theme-change', { detail: { theme: next } }));
+        // Keep dark/light for the native shell; named identity is independent.
+        window.dispatchEvent(new CustomEvent('studio-theme-change', { detail: { theme: dark ? 'dark' : 'light', themeId: next } }));
     }
 
     function ensureScaleStyle(){
@@ -216,11 +241,17 @@
     window.StudioTheme = {
         key: KEY,
         get: currentTheme,
+        list: () => THEMES.map(item => ({...item})),
+        isDark: id => (themeInfo(id || currentTheme()) || THEMES[0]).mode === 'dark',
+        name: (id, lang='zh') => (themeInfo(id || currentTheme()) || THEMES[0])[lang === 'en' ? 'en' : 'zh'],
         apply: applyTheme,
         set(theme){
-            const next = LOCKED || (theme === 'dark' ? 'dark' : 'light');
-            localStorage.setItem(KEY, next);
-            localStorage.setItem(LEGACY_KEY, next);
+            if(!themeInfo(theme)) return;
+            const next = LOCKED || theme;
+            const mode = themeInfo(next).mode;
+            localStorage.setItem(THEME_ID_KEY, next);
+            localStorage.setItem(KEY, mode);
+            localStorage.setItem(LEGACY_KEY, mode);
             applyTheme(next);
         }
     };
@@ -238,6 +269,16 @@
     applyScale(currentScaleMode());
 
     document.addEventListener('DOMContentLoaded', () => {
+        // Load the common select adapter for every themed page, once.
+        if(!window.StudioSelectMenu && !document.querySelector('script[src*="shared-native-select-menu.js"]')){
+            const script = document.createElement('script');
+            script.src = '/static/js/shared-native-select-menu.js?cb=card-hover-seven-v01317';
+            document.head.appendChild(script);
+        }
+        // Keep the shared interaction sheet after all component/theme surfaces.
+        const palette = document.getElementById('studio-application-palette');
+        const interactions = document.querySelector('link[href*="canvas-interaction-style.css"]');
+        if(palette && interactions) document.head.insertBefore(palette, interactions);
         applyTheme(currentTheme());
         applyScale(currentScaleMode());
     });
@@ -246,7 +287,7 @@
         if(event.data?.type === 'studio-ui-scale') setScaleMode(event.data.mode, false);
     });
     window.addEventListener('storage', event => {
-        if(event.key === KEY || event.key === LEGACY_KEY) applyTheme(currentTheme());
+        if(event.key === THEME_ID_KEY || event.key === KEY || event.key === LEGACY_KEY) applyTheme(currentTheme());
         if(event.key === SCALE_KEY) applyScale(currentScaleMode());
     });
     window.addEventListener('resize', scheduleAutoScaleRefresh);

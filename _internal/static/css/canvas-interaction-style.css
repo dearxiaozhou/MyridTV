@@ -1,4 +1,71 @@
 /* Shared interaction language: neutral surfaces with a clear green selected state. */
+/* Highest-priority interaction layer; the approved palette supplies all colors.
+   Primary, destructive, running, pin and media states remain explicit exceptions. */
+@layer studio-interaction {
+  /* Card surface declarations are layered too: keep hover above the base border. */
+  html body .canvas-item:hover {
+    border-color:var(--x-selected-line) !important;
+    box-shadow:0 0 0 1px var(--x-selected-ring),var(--x-sh-2) !important;
+  }
+  html body .gate-create-row:focus-within { border-color:var(--x-selected-line) !important; }
+  html body .create-confirm:not(:disabled):hover {
+    background:var(--x-accent-hover) !important; color:var(--x-strong-text) !important; border-color:var(--x-accent-hover) !important;
+  }
+  html body :is(.canvas-dock-item:hover,.canvas-dock-item.active) .canvas-dock-icon,
+  html body .create-card:hover .create-card-icon,
+  html body .smart-image-name-label:hover {
+    background:var(--x-hover-bg) !important; color:var(--x-text) !important; border-color:var(--x-selected-line) !important;
+  }
+  html body .shared-native-select[hidden] { display:none !important; }
+  html body .shared-native-select-option.keyboard-active:not(:disabled):not([aria-selected="true"]) {
+    background:var(--x-hover-bg) !important; color:var(--x-text) !important;
+    border-color:var(--x-selected-line) !important; box-shadow:inset 0 0 0 1px var(--x-selected-ring) !important;
+  }
+  html body :is(.agent-select-btn[aria-expanded="true"],.agent-select-opt:hover):not(:disabled) {
+    background:var(--x-hover-bg) !important; color:var(--x-text) !important; border-color:var(--x-selected-line) !important;
+  }
+  html body .canvas-color-swatch:is(.active,:hover) {
+    border-color:var(--x-selected-line) !important; box-shadow:0 0 0 2px var(--x-selected-ring) !important;
+  }
+  html body .prompt-input:focus { border-color:var(--x-selected-line) !important; }
+  html body :is(button,[role="button"],.gate-icon-btn,.gate-back-link,.gate-sort-btn,.tree-row,.nav-row):not(:disabled):not([aria-disabled="true"]):not(.tc-btn-danger):not(.danger):not(.danger-btn):not(.btn-danger):not(.delete-btn):not(.node-delete):not(.mini-x):not(.canvas-delete):not(.tb-winclose):not(.is-running):not(.is-stop):not(.is-ap-running):not(.canvas-pin-btn):not(.audio-play-button):not(.canvas-color-swatch):not(.speech-generate):not(.primary):not(.save-btn):not(.run-btn):not(.api-page-save-btn):not(.smart-create-btn):not(.api-link-btn):not(#agentSendBtn):not(.agent-send):not(.smart-agent-send):not(.is-saved):not(.canvas-open):not(.active):not(.selected):not([aria-selected="true"]):not([aria-pressed="true"]):hover,
+  html body :is(.shared-native-select-trigger,.smart-pill,.speech-picker,.filter-preset-trigger,.tb-menu)[aria-expanded="true"],
+  html body .tb-menu.open {
+    background:var(--x-hover-bg) !important; color:var(--x-text) !important;
+    border-color:var(--x-selected-line) !important; box-shadow:inset 0 0 0 1px var(--x-selected-ring) !important;
+  }
+  html body :is(button.active,button[aria-pressed="true"],[role="tab"].active,[role="tab"][aria-selected="true"],
+    [role="option"][aria-selected="true"],.dock-pill.active,.workflow-card.active,.provider-card.active,
+    .tree-row.active,.nav-row.active,.picker-cat-tab.active,.tc-view-tab.active,.canvas-bottom-button.active,
+    .unified-option.active,.canvas-input-mode-toggle.is-objects,.style-filter-tab.active):not(:disabled):not(.canvas-pin-btn):not(.canvas-color-swatch):not(.audio-play-button):not(.is-running):not(.is-stop):not(.is-ap-running):not(.tc-btn-danger) {
+    background:var(--x-selected-fill) !important; color:var(--x-selected-text) !important;
+    border-color:var(--x-selected-line) !important; box-shadow:inset 0 0 0 1px var(--x-selected-ring) !important;
+  }
+  html body :is(.canvas-item.active,.image-node.selected,.asset-card.selected,.tc-item.selected) {
+    border-color:var(--x-selected-line) !important; box-shadow:0 0 0 1px var(--x-selected-ring) !important;
+  }
+  html body :is(.smart-create-btn,.action-btn.save-btn,.api-page-save-btn,.api-link-btn,.asset-btn.primary,
+    .ar-btn.primary,.run-btn,.save-btn,.speech-generate,#agentSendBtn,.agent-send,.smart-agent-send):not(:disabled):not(.is-running):not(.is-stop):not(.is-ap-running):hover {
+    background:var(--x-accent-hover) !important; color:var(--x-strong-text) !important; border-color:var(--x-accent-hover) !important;
+  }
+  html body :is(.smart-create-btn,.action-btn.save-btn,.api-page-save-btn,.api-link-btn,.asset-btn.primary,
+    .ar-btn.primary,.run-btn,.save-btn,.speech-generate,#agentSendBtn,.agent-send,.smart-agent-send):not(.is-running):not(.is-stop):not(.is-ap-running) :is(span,i,svg) {
+    color:inherit !important;
+  }
+  html body :is(.smart-create-btn,.action-btn.save-btn,.api-page-save-btn,.api-link-btn,.asset-btn.primary,
+    .ar-btn.primary,.run-btn,.save-btn,.speech-generate,#agentSendBtn,.agent-send,.smart-agent-send):not(.is-running):not(.is-stop):not(.is-ap-running) svg { stroke:currentColor !important; }
+  html body :is(.tc-btn-danger,.danger-btn,.btn-danger,.delete-btn,.node-delete,.mini-x,.asset-btn.danger):not(:disabled):hover {
+    background:var(--x-danger-soft) !important; color:var(--x-danger) !important;
+    border-color:var(--x-danger) !important; box-shadow:inset 0 0 0 1px var(--x-danger) !important;
+  }
+  html body .tb-winclose:hover { background:var(--x-window-close-bg) !important; color:var(--x-window-close-text) !important; }
+  html body :is(button,[role="button"],[role="tab"]):focus-visible {
+    outline:2px solid var(--x-selected-line) !important; outline-offset:2px !important;
+  }
+  html body :is(input,textarea,select):focus,
+  html body .field-frame:focus-within { border-color:var(--x-selected-line) !important; }
+  html body :is(button,input,select,textarea):disabled { opacity:.5 !important; }
+}
 /* Library close buttons are border controls; retain a visible neutral hover edge. */
 .style-popover .filter-preset-close:hover {background:var(--x-hover-bg);color:var(--x-text);border-color:var(--x-selected-line);box-shadow:inset 0 0 0 1px var(--x-selected-ring);}
 .style-popover :is(.filter-preset-close,.shot-categories button):focus-visible {outline:2px solid var(--x-selected-line);outline-offset:2px;}

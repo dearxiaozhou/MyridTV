@@ -75,6 +75,8 @@ def _mcp_fetch(cid=""):
             d = json.loads(f.read())
         # 响应形如 {"ok":true,"canvas":{...}}，解包 canvas 字段供 _mcp_handle 使用
         if isinstance(d, dict) and "canvas" in d: d = d.get("canvas") or {}
+        from myridtv_canvas_gateway import enroll_existing
+        enroll_existing(cid,d)
         # Target identity stays local to this request.
         return d, True
     except: return {}, False

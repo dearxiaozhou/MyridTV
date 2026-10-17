@@ -131,6 +131,8 @@ def _agent_get_canvas(canvas_id=""):
     canvas = resp.get("canvas") if isinstance(resp, dict) and isinstance(resp.get("canvas"), dict) else None
     if not canvas:
         raise RuntimeError("画布读取失败: {}".format(resp.get("error") or resp))
+    from myridtv_canvas_gateway import enroll_existing
+    enroll_existing(cid,canvas)
     return cid, canvas
 
 

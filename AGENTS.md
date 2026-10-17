@@ -18,6 +18,26 @@
 
 After modifying MyridTV, verify the actual running local application window with a screenshot before reporting completion. Do not rely on static file inspection alone.
 
+## Existing-node Image Generation Rule
+
+Generating again on a node that already contains an image (uploaded or generated)
+must keep that node ID, position and connections. Archive the previous image in
+the canvas's local history folder and replace the node's images with the latest
+generation's results. Do not create a canvas history node or group old and new
+versions together. A manual rerun must not trigger MCP auto-grouping of versions.
+If disk archival fails, stop before provider submission and keep the current
+image. If generation fails without any new output, keep the last available image.
+Update other canvas references when a shared old file moves to history. Preserve
+explicit batch/loop output creation and existing user groups unless separately
+requested; those are not automatic history versions.
+
+## Manual-only Canvas Grouping
+
+Canvas groups must be created by an explicit user Group action. Do not split and
+group MCP/Agent multi-image results during render, sync or loading. Multi-file
+imports must not create a smart-group, and legacy multi-image nodes must not be
+converted to groups on load. Preserve existing saved groups and their contents.
+
 ## Packaging Rule
 
 1. Release builds must be produced through `installer/prepare-release.ps1` or `installer/build-installer.ps1`. Do not manually copy the app tree into a release folder.

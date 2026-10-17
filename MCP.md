@@ -1,111 +1,98 @@
-# 外部 Agent MCP 接口（V0.10.18）
+# MCP 自动排版已关闭
 
-后端统一入口为 `POST /mcp`；本地默认地址 `http://127.0.0.1:3107/mcp`。
-Codex 使用 `codex-canvas-mcp.py`，Hermes 使用 `hermes-canvas-mcp.py`。
-两个 stdio 入口共用 `myridtv_mcp_client.py`，每次 `tools/list` 向后端获取当前 schema。
-可用 `MYRIDTV_MCP_BASE` 指定其他本地实例；未连接后端时明确报错，不伪装成旧接口仍可用。
+外部调用仍使用 canvas_execute。创建、连线、结果尺寸变化不触发工作流重排；已有节点保持位置。支持坐标的动作可以传 x/y，新节点未传坐标时使用原生空位放置。upsert_flow 保留批量创建和依赖连接功能，返回 layout_disabled=true。下方旧排版说明仅作为历史记录，不再生效。
 
-## 调用流程
+# 外部 Agent 画布统一入口（V0.12.8）
 
-1. `canvas_list_canvases` 选择画布，或 `canvas_create` 创建并取得 `canvas_id`。
-2. `canvas_get_state` 读取画布概况与 `updated_at`；`canvas_get_node` 读取完整节点。
-3. 修改时明确传入 `canvas_id`。建议传 `expected_updated_at`，发现冲突后重新读取并重新决定修改。
-4. 每次逻辑写操作使用独立 `idempotency_key`；网络超时重试同一操作时，原样复用全部参数和同一个键。
-5. 生图返回 `task_id` 表示提交，不表示完成。使用 `canvas_check_generation` 按需查询状态与结果。
+对外 MCP **只发布一个工具：`canvas_execute`**。创建、更新、连接、生成、查询、快照和批量操作全部通过它。
+旧的独立 canvas_* 工具不再发布或执行；旧会话调用会收到 entrypoint_changed 及刷新工具列表的提示。
 
-本版本涉及画布的工具都要求明确的 `canvas_id`；不再继承其他调用留下的“当前画布”。
-全局工具（画布列表、新建画布、技能列表、保存技能）不需要此参数。
-`canvas_get_selection` 当前返回 `available=false`，表示尚无实时界面选择桥接，不能解释成用户没有选中节点。
+后端仍为 POST /mcp。Hermes、Codex、Claude 三个 stdio 适配器均读取同一后端 schema，不各自维护工具集。
+实际端口跟随当前 app_config，可用 MYRIDTV_MCP_BASE 指定；不能假定一直是3107。
 
-## 新增工具
-
-| 工具 | 用途 |
-| --- | --- |
-| `canvas_get_node` | 完整正文、图片、参数和待处理任务 |
-| `canvas_check_generation` | 指定画布任务的状态和媒体结果 |
-| `canvas_batch_operations` | 1–50 项操作，一次保存；错误时整批不保存 |
-| `canvas_undo_batch` | 撤销批次，恢复被删除节点和连线；后续有新修改时拒绝撤销 |
-| `canvas_list_snapshots` | 列出持久快照 |
-| `canvas_get_snapshot` | 查看快照完整记录 |
-| `canvas_restore_snapshot` | 按当前版本恢复节点、连线、设置、产物、视口和输入模式 |
-| `canvas_upsert_flow` | 按稳定 ID 批量创建/更新依赖图，自动布局并原子保存 |
-| `canvas_layout_flow` | 仅重新布局指定工作流，保留锁定与无关节点 |
-
-`canvas_snapshot` 已升级为持久快照，返回 `snapshot_id`，不会只写时间戳。
-恢复快照必须传入当前 `expected_updated_at`；保留现有画布身份、名称和日志。
-批量操作复用内置 Agent 的操作校验、节点构建和 Artifact Gate。
-同批新增节点的 ID 由软件分配；需要引用新节点时先取得返回 ID，再提交连线批次。
-
-## MCP 工作流自动布局
-
-外部 Agent 创建完整流程时优先使用 `canvas_upsert_flow`，不再逐个计算 x/y。
-接口沿用项目的 snake_case 命名：`canvas_id`、`workflow_id`；节点的
-`parent_id` / `branch_order` 也兼容 `parentId` / `branchOrder`。
-每批最多 100 个节点和 300 条边，同一工作流最多 500 个节点。
+## 调用结构
 
 ```json
 {
-  "canvas_id": "从 canvas_create 或 canvas_list_canvases 取得的 ID",
-  "workflow_id": "director-scene-01",
-  "layout": "tree_lr",
-  "nodes": [
-    {"id":"scene-01","type":"generation","title":"场景资产","prompt":"清晨居民家客厅，窗边木桌，冷暖光交织"},
-    {"id":"shot-01","type":"generation","title":"镜头一","prompt":"客厅全景，人物站在窗边","parent_id":"scene-01","branch_order":1},
-    {"id":"shot-02","type":"generation","title":"镜头二","prompt":"人物肩部近景，窗外光照在侧脸","parent_id":"scene-01","branch_order":2},
-    {"id":"shot-03","type":"generation","title":"镜头三","prompt":"桌面物品特写，背景人物虚化","parent_id":"scene-01","branch_order":3},
-    {"id":"video-01","type":"video","title":"视频一","prompt":"从客厅全景缓慢推进，人物保持一致","depends_on":["shot-01"]},
-    {"id":"video-02","type":"video","title":"视频二","prompt":"人物缓缓回头，保持侧面光线","depends_on":["shot-02"]},
-    {"id":"video-03","type":"video","title":"视频三","prompt":"缓慢掠过桌面，保持物品细节","depends_on":["shot-03"]}
-  ],
-  "edges": [
-    {"from":"已存在的角色资产节点ID","to":"shot-01","kind":"input"},
-    {"from":"已存在的角色资产节点ID","to":"shot-02","kind":"input"}
-  ]
+  "action": "upsert_flow",
+  "canvas_id": "明确选择的画布ID",
+  "workflow_id": "scene-production-01",
+  "idempotency_key": "scene-production-01-step-1",
+  "params": {
+    "nodes": [
+      {"id":"scene","type":"generation","title":"场景资产","prompt":"清晨居民家客厅，窗边木桌"},
+      {"id":"shot1","type":"generation","title":"镜头一","prompt":"客厅全景，角色站在窗边","parent_id":"scene","branch_order":1},
+      {"id":"shot2","type":"generation","title":"镜头二","prompt":"角色近景，窗光落在侧脸","parent_id":"scene","branch_order":2},
+      {"id":"shot3","type":"generation","title":"镜头三","prompt":"桌面物品特写，背景人物虚化","parent_id":"scene","branch_order":3},
+      {"id":"video1","type":"video","title":"视频一","prompt":"全景缓慢推进，保持角色一致","depends_on":["shot1"]}
+    ],
+    "edges": []
+  }
 }
 ```
 
-示例中的共享角色必须已经存在；没有该资产时删除相应 edges，或在同一批 nodes 中创建一次。
-真实依赖统一写入原生 `connections`；`kind=input` 同步目标节点的 `inputNodeIds`。
-原生连线已经从源节点右侧连接至目标节点左侧，无需修改画布连线系统。
+action 表示操作意图，具体参数放 params。
+canvas_id、workflow_id、idempotency_key、expected_updated_at 放顶层，不能通过 params 覆盖目标。
+涉及画布的操作必须明确给 canvas_id，不默认选择“最近画布”。不要提供 x/y，入口会拒绝坐标参数。
 
-- `nodes` 中每项必须有稳定 `id`。新文本节点用 `type=text` 和 `text`；新生成节点用
-  `generation/image/video` 和真实 `prompt`，沿用 Artifact Gate。生成参数 `provider_id/model/aspect_ratio/...`
-  与原 MCP 保持一致，不提交生成任务，也不产生生成费用。
-- `edges`、`parent_id`、`depends_on` 可组合使用，接受多输入 DAG；不会复制共享角色来伪造单父树。
-  重复连线去重。循环、悬空依赖、重复批内 ID、非法参数导致整批不保存。
-- 增量调用传同一 `workflow_id`，只提供新增或需更新的 nodes/edges。省略的节点、结果、提示词和连线保留。
-  同一 ID 更新而不是复制；跨工作流共享资产只在 edges 引用，不放入 nodes 覆盖它。
-- `branch_order` 控制同级从上到下的顺序。`width/height` 可选，只描述尺寸，不需要坐标。
-  文本、生成卡片和实际浏览器测量尺寸用于避让；生成后尺寸变化保存时自动重排受影响工作流。
-  MCP 图片分组作为整体占地移动，保留组内布局。
-- 既有节点传 `{"id":"...","locked":true}` 可锁定布局位置；`locked:false` 解锁。
-  也尊重节点已有的 `locked/positionLocked/layoutLocked/pinned` 标记。
-  不移动其他工作流或普通手工节点。若锁定坐标使依赖不能从左至右，返回 `constraints`，不会偷偷解锁。
-- `canvas_layout_flow` 只需 `canvas_id/workflow_id`，可显式重新布局；同样支持版本检查与幂等回执。
+## 查看操作参数
 
-实现复用现有 Python 节点构建、Artifact Gate、版本冲突保护和原子保存；本项目没有可复用的
-ELK/Dagre 图布局引擎，现有 layout coordinator 仅用于面板避让。本次使用独立、确定性的分层 DAG
-布局模块，避免给便携桌面版新增 Node.js 服务或安装依赖。对树分支保持顺序和父子居中；
-共享依赖保留真实图关系，不能保证任意非平面依赖图完全没有交叉。
+仍然调用同一个工具，不必猜参数：
 
-## 结果与错误
+```json
+{"action":"describe","params":{"action":"create_video_node"}}
+```
 
-工具结果通过 `result.content[].text` 返回 JSON。工具执行失败标记 `result.isError=true`，
-JSON 内包含 `error` 与 `error_code`。两个 stdio 入口原样保留错误标记。
-“查询成功，但任务状态为 failed”属于正常查询结果，查看其中的 `status` 和 `error`。
+返回该操作的 params_schema、用途和画布目标要求。`{"action":"describe"}` 列出全部 action。
 
-常见错误码：`invalid_arguments`、`node_not_found`、`task_not_found`、`conflict`、
-`task_canvas_mismatch`、`idempotency_conflict`、`outcome_unknown`。
-有 `outcome_unknown` 时先检查画布/任务，不要换键盲目重复提交。
-幂等回执在用户数据目录持久保存；同键复用不同参数会被拒绝。
+| action | 用途 |
+| --- | --- |
+| list_canvases / create | 选择画布 / 新建画布 |
+| get_state / get_node / search | 状态、完整节点和正文搜索 |
+| upsert_flow | 推荐：用稳定ID、nodes、edges 批量或增量建立依赖图 |
+| create_node / create_text_node / create_generation_node / create_video_node | 逐个创建，同样自动进入树状布局 |
+| update_node / delete_node | 更新或删除节点 |
+| connect_nodes / disconnect_nodes | 原生连接与输入引用，自动重排受影响工作流 |
+| generate_images / check_generation / analyze_image | 生成、任务查询、看图；用 describe 查具体参数 |
+| batch_operations / undo_batch | 原有批量事务与可恢复撤销 |
+| snapshot / list_snapshots / get_snapshot / restore_snapshot | 持久快照和版本保护恢复 |
+| layout_flow | 显式重排；常规创建、连线与尺寸变化不需要额外调用 |
+| list_skills / save_skill | 原有技能库操作，统一入口分发 |
 
-节点列表支持 `limit`（1–200）和 `offset`；完整节点正文使用 `canvas_get_node`。
-`/health` 保留原 `version`（静态资源版本），新增 `software_version` 与 `mcp_api_version`。
-MCP initialize 的 `serverInfo.version` 使用软件版本。
+## 自动布局是软件规则
 
-## 验证
+外部新增节点在现有 Artifact Gate 中、第一次保存前自动取得 flowLayout.layout=tree_lr 和工作流归属。
+即使 Agent 逐个创建再连线，也不需要主动选布局工具。
 
-`tests/test_mcp_contract.py` 和 `tests/test_canvas_save_revision.py` 覆盖并发、回滚、撤销、墓碑与幂等。
-运行 `tests/serve_mcp_verification.py` 可启动独立用户数据的真实后端（默认端口3227）；
-再运行 `tests/e2e_mcp_contract.py` 验证 HTTP、两个 stdio 入口及真实前端。
-任务状态使用验证实例的固定数据，不调用付费生成服务。
+- workflow_id 建议每个生产任务使用稳定值；省略时复用目标节点已有工作流，否则为 external:<canvas_id>。
+  更新既有节点时不能悄悄改变工作流归属。
+- 完整流程使用 upsert_flow。nodes 中的稳定ID负责去重，parent_id/depends_on/edges 表达真实多输入DAG。
+  branch_order 控制同级分支顺序，width/height 只描述尺寸。
+- 共享角色通过 edges 引用已有节点，不为树形外观重复创建。
+- 根据真实尺寸从左向右分层，尽量父子居中，保持间距；创建、连线、断连、删除和尺寸改变复用同一保存/布局逻辑。
+- 继续修改或连接旧 Agent 节点时，只接管本次触及的旧Agent连通区域。普通手工节点、无关旧任务、其他已有工作流不改归属。
+- 尊重 locked/positionLocked/layoutLocked/pinned。若锁定位置阻碍依赖方向，返回 constraints，不偷偷解锁。
+- 不新增自动分组，遵守“仅手工打组”规则；已有组按整体占地移动。不重构画布系统，不修改 DirectorOS Skill。
+
+upsert_flow 每批最多100节点、300边，同一工作流最多500节点；batch_operations 保留50操作上限。
+循环、悬空依赖或非法批量操作不会部分落库。真实复杂DAG不保证完全无交叉。
+
+## 错误、重试和任务
+
+每次逻辑写操作使用稳定 idempotency_key；超时后原样重试。同键复用不同动作、参数或工作流返回幂等冲突。
+生成返回 task_id 只表示已提交，用 check_generation 按需查询结果，不盲目重复提交。
+
+get_state 返回 updated_at，写操作可传 expected_updated_at；恢复快照必须使用当前版本。
+版本冲突先重新读取。错误仍通过 result.isError 与 content 中的JSON返回。
+新增错误：entrypoint_changed、coordinates_managed、workflow_conflict。
+get_selection.available=false 表示没有活动选择桥，不能推断用户未选择节点。
+
+## 生效与验证
+
+后端升级后，Hermes 等客户端需刷新 MCP 连接/工具列表。验收标准是 tools/list 仅返回 canvas_execute，
+而不是同时看到新旧工具。入口约束由后端执行，不能仅靠提示词或 Skill 要求 Agent 自觉选择新工具。
+
+tests/e2e_canvas_gateway.py 验证唯一入口、逐个创建自动布局、旧入口拦截、旧Agent继续操作、
+重试去重、并发隔离、手工/锁定保护和真实桌面保存刷新。
+tests/e2e_mcp_contract.py 验证查询、批量、快照、任务查询及三个真实 stdio 入口。
+测试使用隔离实例，不调用付费生成接口。

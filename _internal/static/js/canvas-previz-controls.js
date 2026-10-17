@@ -28,7 +28,7 @@
             ['ultrawide','21:9 超宽'], ['ultratall','9:21 超高']
         ];
         const cur = ratios.some(r => r[0] === settings.ratio) ? settings.ratio : 'wide';
-        // 镜头语言 30 条（值=名称原文，与 assets/blender/previz/camera_language.py 词表一致）
+        // 镜头语言 30 条（值=名称原文，与 _internal/previz/camera_language.py 词表一致）
         const lensOptions = global.CanvasCameraLanguage.map(p=>[p.name,p.description]);
         const beatOptions = [
             ['跟拍→横移→慢推', '镜头节拍：跟拍[0%-82%]；横移[30%-80%]；慢推[68%-100%]', '人物持续跟随，途中横移展示空间，结尾慢推收近。节拍按镜头时长自动换算。'],

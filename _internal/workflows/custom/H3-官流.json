@@ -1,0 +1,478 @@
+{
+  "115": {
+    "inputs": {
+      "aspect_ratio": "16:9 (Widescreen)",
+      "megapixels": 0.6,
+      "multiple": 32
+    },
+    "class_type": "ResolutionSelector",
+    "_meta": {
+      "title": "Resolution Selector (Size)"
+    }
+  },
+  "121": {
+    "inputs": {
+      "samples": [
+        "125",
+        0
+      ],
+      "vae": [
+        "150",
+        0
+      ]
+    },
+    "class_type": "VAEDecodeAudio",
+    "_meta": {
+      "title": "VAE解码（音频）"
+    }
+  },
+  "122": {
+    "inputs": {
+      "samples": [
+        "125",
+        0
+      ],
+      "vae": [
+        "149",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "123": {
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "K采样器选择"
+    }
+  },
+  "124": {
+    "inputs": {
+      "scheduler": "simple",
+      "steps": [
+        "163",
+        0
+      ],
+      "denoise": 1,
+      "model": [
+        "151",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "基本调度器"
+    }
+  },
+  "125": {
+    "inputs": {
+      "noise": [
+        "129",
+        0
+      ],
+      "guider": [
+        "126",
+        0
+      ],
+      "sampler": [
+        "123",
+        0
+      ],
+      "sigmas": [
+        "124",
+        0
+      ],
+      "latent_image": [
+        "136",
+        1
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "自定义采样器（高级）"
+    }
+  },
+  "126": {
+    "inputs": {
+      "model": [
+        "151",
+        0
+      ],
+      "conditioning": [
+        "136",
+        0
+      ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+      "title": "基本引导器"
+    }
+  },
+  "129": {
+    "inputs": {
+      "noise_seed": 840291360652186
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "随机噪波"
+    }
+  },
+  "131": {
+    "inputs": {
+      "expression": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17",
+      "values.a": [
+        "132",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "数学表达式"
+    }
+  },
+  "132": {
+    "inputs": {
+      "value": 8
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "Float (Duration)"
+    }
+  },
+  "136": {
+    "inputs": {
+      "prompt": [
+        "138",
+        0
+      ],
+      "width": [
+        "115",
+        0
+      ],
+      "height": [
+        "115",
+        1
+      ],
+      "length": [
+        "131",
+        1
+      ],
+      "ref_image_size": "match",
+      "clip": [
+        "148",
+        0
+      ],
+      "vae": [
+        "149",
+        0
+      ],
+      "audio_vae": [
+        "150",
+        0
+      ],
+      "ref_images.ref_image_0": [
+        "137",
+        0
+      ],
+      "ref_images.ref_image_1": [
+        "139",
+        0
+      ],
+      "ref_images.ref_image_2": [
+        "146",
+        0
+      ],
+      "ref_images.ref_image_3": [
+        "159",
+        0
+      ],
+      "ref_images.ref_image_4": [
+        "160",
+        0
+      ],
+      "ref_images.ref_image_5": [
+        "161",
+        0
+      ],
+      "ref_video_audios.ref_video_audio_0": [
+        "290",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "_meta": {
+      "title": "MiniMax H3 参考转视频"
+    }
+  },
+  "137": {
+    "inputs": {
+      "image": "20261012_174230_QwenEdit_00001_qazhn_1791798243.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
+  },
+  "138": {
+    "inputs": {
+      "value": "【参考图像锚定】\n\n图像1是金敏恩的多视角角色参考，同一个成年女性的正面、侧面、背面与面部特写。保留参考图中的面部特征、黑色长直发、白色短袖衬衫、深蓝色领带、黑色百褶裙、赤脚、清瘦身材，以及脸颊和前臂已有的轻微伤痕。视频中金敏恩只有一人。\n\n图像2是暴雨中的旧楼天台场景，保留左后方低矮水泥围墙、右侧斑驳墙面与敞开的旧门、门旁花盆、地面散落的透明塑料瓶、大片积水，以及远处青蓝色城市灯光。沿用参考图的粗颗粒、潮湿材质与青绿色暗部。\n\n【分镜】\n\n人物初始站位与空间关系：金敏恩站在天台水泥矮墙内侧，身体朝向左后方城市，右侧旧门位于金敏恩身后。白色短袖衬衫被雨淋湿后贴在肩背，衣料保持不透明，深蓝领带垂在胸前，黑色长发分束贴在脸侧。全段维持同一天台空间和人物朝向。环境中持续有雨点拍打水泥、积水溅响和风吹门轴的轻微声响。\n\n镜头1：雨里的停顿（镜头组·2机位·0–3秒·共3秒）。\n- [机位A·0–1.5秒·天台水泥矮墙内侧地面特写·稳定低机位]：雨点密集落进积水，青蓝色灯光倒影被一圈圈水纹打散。金敏恩的赤脚停在积水里，裙摆下缘掠过画面上方。\n- [机位B·1.5–3秒·天台水泥矮墙内侧背面中景·缓慢平移]：镜头从金敏恩右后侧轻移，带出左后方城市和右侧旧门。金敏恩双臂垂在身侧，肩膀随一次压住的吸气轻轻抬起，随后停住。\n\n镜头2：被雨声吞掉的话（镜头组·2机位·3–13秒·共10秒）。\n- [机位A·3–12秒·天台水泥矮墙内侧侧面近景·手持微呼吸]：镜头停在金敏恩左前侧，背景仍是同一面水泥矮墙与虚化城市灯光。金敏恩看向远处，嘴唇轻微分开，雨水顺着发梢滴落。眉心缓缓收紧，下唇颤动一次，金敏恩咽下一口气。画外音贴近耳边响起，画面中的嘴唇不随旁白逐字开合。\n画外音\n<金敏恩> (S1) says:\n<d>[Korean]서울에서는…… 재벌의 개는 명품을 두르지만, 우리 같은 사람은 벌레만도 못해.</d>\n- [机位B·12–13秒·天台水泥矮墙内侧面部特写·手持微呼吸]：旁白结束，金敏恩缓慢眨眼，眼角积起的泪与雨水一同滑过脸颊，视线仍停在远处。雨声重新清晰起来。\n\n镜头3：回忆逼近（镜头组·2机位·13–15秒·共2秒）。\n- [机位A·13–14秒·天台水泥矮墙内侧手部特写·稳定机位]：金敏恩垂在身侧的手指缓缓蜷起，指尖捏住一小块黑色裙料，雨水从指节滑落。\n- [机位B·14–15秒·天台水泥矮墙内侧眼部特写·轻微前推]：金敏恩眼睛里的城市光点微微晃动，眉头突然绷紧。雨声中混入一声短促尖锐耳鸣，画面在金敏恩视线凝住时结束，接入下一段更衣室回忆。\n\n【Speaker 声线设定】\n\nS1（金敏恩）：21岁韩国女性，年轻自然的中高音，音色偏薄，带轻微沙哑和鼻音，韩语发音自然。此段低声叙述，气息不稳但字句清晰，“서울에서는”之后短暂停顿，后半句连贯说完，句尾音量逐渐减弱。克制哽咽，不用甜美撒娇腔、播音腔或夸张哭喊。\n\n【禁止项】\n\n文字/UI/水印/Logo/角标/可读文字/真实UI/角色设定图排版/多视图并排/分屏/同一人物重复出现\n\n【强制声明】\n\n无背景音乐,仅保留环境音与人声和音效;画面禁字幕/文字/水印/Logo;禁止可读文字(指画面字幕文字,不含人声台词)"
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "Input Text (Prompt)"
+    }
+  },
+  "139": {
+    "inputs": {
+      "image": "0_1 (1) (1).png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
+  },
+  "146": {
+    "inputs": {
+      "image": "6d6c34d6c11a7bd5dbda10bf25ef31b82e567deb398272ddf4e92d827bd930aa.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
+  },
+  "148": {
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "加载CLIP"
+    }
+  },
+  "149": {
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "150": {
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "151": {
+    "inputs": {
+      "lora_name": "minimax_h3_turbo_4STEPS_comfyui.safetensors",
+      "strength_model": 1.0000000000000002,
+      "model": [
+        "288",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderBypassModelOnly",
+    "_meta": {
+      "title": "lora only"
+    }
+  },
+  "153": {
+    "inputs": {
+      "attention": "pytorch attention",
+      "model": [
+        "154",
+        0
+      ]
+    },
+    "class_type": "ModelAttentionBackend",
+    "_meta": {
+      "title": "ModelAttentionBackend"
+    }
+  },
+  "154": {
+    "inputs": {
+      "model": [
+        "157",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3MemoryEfficientSageAttentionPatch",
+    "_meta": {
+      "title": "MiniMax H3 Mem Eff Sage Attention Patch"
+    }
+  },
+  "155": {
+    "inputs": {
+      "tau": 1.3,
+      "start_percent": 0.2,
+      "end_percent": 0.9,
+      "min_tokens": 12288,
+      "sink_conditioning": "exact_kv_and_rows",
+      "morton": false,
+      "morton_curve": "2d_frame",
+      "centroid_tail": true,
+      "routed_cap_percent": 0,
+      "reuse_qkv_memory": false,
+      "verbose": false,
+      "dense_blocks": "",
+      "model": [
+        "153",
+        0
+      ]
+    },
+    "class_type": "SolAttnMiniMax",
+    "_meta": {
+      "title": "Patch Sol-Attn (MiniMax)"
+    }
+  },
+  "156": {
+    "inputs": {
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "MiniMaxH3/learned_latent_twopass_i2va_upstream_parity_v2_exp",
+      "format": "video/h265-mp4",
+      "pix_fmt": "yuv420p10le",
+      "crf": 22,
+      "save_metadata": true,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "287",
+        0
+      ],
+      "audio": [
+        "121",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "157": {
+    "inputs": {
+      "unet_name": "minimax_h3_fl2va_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNet加载器"
+    }
+  },
+  "159": {
+    "inputs": {
+      "image": "11f87974d3f56ab3e597154a7357ae81e1c1eff020bdf2300529e8507aaa6d67.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
+  },
+  "160": {
+    "inputs": {
+      "image": "15b2040b06a9df01eb537ef34e83c22238eb65e319d26af8763e8ba0df87e1a4.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
+  },
+  "161": {
+    "inputs": {
+      "image": "5b85e8ed594a73e93391a267d0f2dc9dc9f78303f0f450d44b8101a82f85b21f.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
+  },
+  "163": {
+    "inputs": {
+      "value": 12
+    },
+    "class_type": "INTConstant",
+    "_meta": {
+      "title": "INT Constant"
+    }
+  },
+  "226": {
+    "inputs": {},
+    "class_type": "忽略多组孤海",
+    "_meta": {
+      "title": "忽略多组 孤海"
+    }
+  },
+  "278": {
+    "inputs": {},
+    "class_type": "忽略多组孤海",
+    "_meta": {
+      "title": "忽略多组 孤海"
+    }
+  },
+  "286": {
+    "inputs": {
+      "clean_file_cache": true,
+      "clean_processes": true,
+      "clean_dlls": true,
+      "retry_times": 3,
+      "anything": [
+        "122",
+        0
+      ]
+    },
+    "class_type": "RAMCleanup",
+    "_meta": {
+      "title": "释放内存"
+    }
+  },
+  "287": {
+    "inputs": {
+      "offload_model": true,
+      "offload_cache": true,
+      "anything": [
+        "286",
+        0
+      ]
+    },
+    "class_type": "VRAMCleanup",
+    "_meta": {
+      "title": "释放显存"
+    }
+  },
+  "288": {
+    "inputs": {
+      "lora_name": "MysticXXX_MMH3-V1.safetensors",
+      "strength_model": 0.2,
+      "model": [
+        "155",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderBypassModelOnly",
+    "_meta": {
+      "title": "lora only"
+    }
+  },
+  "290": {
+    "inputs": {
+      "audio": "ai_ref_331aa34cd271.mp3"
+    },
+    "class_type": "LoadAudio",
+    "_meta": {
+      "title": "加载音频"
+    }
+  }
+}

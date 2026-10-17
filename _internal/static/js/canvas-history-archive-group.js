@@ -26,10 +26,11 @@ function shouldMoveOutputAssetToHistory(url){
  if(value.startsWith('/assets/output/videos/')) return false;
  return deps.generatedOutputKindForName(value, 'image') === 'image';
 }
-async function moveOutputImagesToHistoryForRun(images=[]){
+async function moveOutputImagesToHistoryForRun(images=[], options={}){
  const moved = new Map();
  for(const img of images || []){
  const oldUrl = String(img?.url || '').trim();
+ if(moved.has(oldUrl)){ img.url = moved.get(oldUrl); continue; }
  if(!shouldMoveOutputAssetToHistory(oldUrl)) continue;
  try {
  const res = await fetch('/api/move-to-history', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url:oldUrl})});
@@ -41,8 +42,18 @@ async function moveOutputImagesToHistoryForRun(images=[]){
  ['sourceUrl','localUrl','originalLocalUrl','source_url','local_url'].forEach(key => {
  if(img[key] === oldUrl) img[key] = nextUrl;
  });
+ // Other nodes may reuse this file. Preserve their references after the move.
+ for(const node of D("nodes") || []){
+   if(Array.isArray(node.images)) node.images = remapRefsForMovedAssets(node.images, moved);
+   for(const field of ['runPromptRefs','runInputRefs']){
+     if(Array.isArray(node[field])) node[field] = remapRefsForMovedAssets(node[field], moved);
+   }
+   if(typeof node.promptDraftHtml === 'string') node.promptDraftHtml = node.promptDraftHtml.split(oldUrl).join(nextUrl);
  }
- } catch(_) {}
+ } else if(options.strict) {
+   throw new Error(data?.detail || data?.error || '无法归档 ' + oldUrl);
+ }
+ } catch(error) { if(options.strict) throw error; }
  }
  return moved;
 }
