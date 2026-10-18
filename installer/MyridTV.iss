@@ -148,7 +148,7 @@ begin
   end;
 end;
 
-function GetAssetsDir: String;
+function GetAssetsDir(Param: String): String;
 begin
   if (AssetsDirPage = nil) or (Trim(AssetsDirPage.Values[0]) = '') then
     Result := ExpandConstant('{app}\assets')
@@ -156,9 +156,9 @@ begin
     Result := TrimTrailingBackslash(AssetsDirPage.Values[0]);
 end;
 
-function GetAssetsDirJson: String;
+function GetAssetsDirJson(Param: String): String;
 begin
-  Result := JsonEscapePath(GetAssetsDir);
+  Result := JsonEscapePath(GetAssetsDir(Param));
 end;
 
 function AssetsDirIsCustom: Boolean;
