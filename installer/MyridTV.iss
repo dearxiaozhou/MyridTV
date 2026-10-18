@@ -82,10 +82,8 @@ var
   AssetsLastDefault: String;
 
 function HexDigitChar(N: Integer): Char;
-const
-  HexTable = '0123456789ABCDEF';
 begin
-  Result := HexTable[N + 1];
+  Result := Copy('0123456789ABCDEF', N + 1, 1);
 end;
 
 function JsonEscapePath(const S: String): String;
