@@ -124,7 +124,11 @@ begin
     '不改就用下面的默认位置（软件安装目录下的 assets）。装好后也能在设置页里改，卸载不会删这个目录。',
     False, '');
   AssetsDirPage.Add('资产目录：');
-  AssetsDirPage.Values[0] := ExpandConstant('{app}\assets');
+  // InitializeWizard 阶段 {app} 尚未初始化（要到安装目录确定后才有值），
+  // 在这里 ExpandConstant('{app}\assets') 会抛 "app constant before initialized"。
+  // WizardDirValue 在向导期合法（读目录页当前值 = DefaultDirName 的展开结果）；
+  // 用户改了安装位置时，NextButtonClick(wpSelectDir) 会再同步成新位置下的 assets。
+  AssetsDirPage.Values[0] := AddBackslash(WizardDirValue) + 'assets';
   AssetsDefaultApplied := False;
   AssetsLastDefault := '';
 end;
