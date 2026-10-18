@@ -172,3 +172,32 @@ begin
             and (CompareText(TrimTrailingBackslash(AssetsDirPage.Values[0]),
                              ExpandConstant('{app}\assets')) <> 0);
 end;
+
+procedure RemoveLegacyJunction(const Name: String);
+// 旧版（V0.10.x 便携布局）把 _internal\{API,assets,data,output} 做成指向
+// user_data\* 的目录联接。Inno Setup 6+ 出于安全拒绝遍历任何装入点
+// （报「Error 448: 无法遍历路径，因为它包含不兼容的装入点」），新版包
+// 要往这四个路径下写真实文件，联接必须先换成真目录。
+// 安全性：RemoveDir 对联接只摘链接本身、绝不动联接目标里的用户数据；
+// 对真目录只有空时才删得掉（非空返回 False），天然不伤任何真实内容。
+var
+  Dir: String;
+begin
+  Dir := AddBackslash(ExpandConstant('{app}\_internal')) + Name;
+  if DirExists(Dir) and RemoveDir(Dir) then
+    Log('Removed legacy junction: ' + Dir);
+end;
+
+procedure RemoveLegacyJunctions;
+begin
+  RemoveLegacyJunction('API');
+  RemoveLegacyJunction('assets');
+  RemoveLegacyJunction('data');
+  RemoveLegacyJunction('output');
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  RemoveLegacyJunctions;
+end;

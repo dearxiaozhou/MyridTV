@@ -11,10 +11,10 @@
     <Product>MyridTV</Product>
     <Company>MyridTV</Company>
     <FileDescription>MyridTV Launcher</FileDescription>
-    <Version>0.14.4</Version>
-    <FileVersion>0.14.4</FileVersion>
-    <AssemblyVersion>0.14.4</AssemblyVersion>
-    <InformationalVersion>0.14.4</InformationalVersion>
+    <Version>0.14.5</Version>
+    <FileVersion>0.14.5</FileVersion>
+    <AssemblyVersion>0.14.5</AssemblyVersion>
+    <InformationalVersion>0.14.5</InformationalVersion>
     <ApplicationIcon>..\..\_internal\static\images\myrid-icon.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
