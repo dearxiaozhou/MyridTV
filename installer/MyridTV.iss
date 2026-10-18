@@ -63,7 +63,7 @@ Name: "{code:GetAssetsDir}"; Flags: uninsneveruninstall
 [INI]
 ; 只在首装页真的改过目录时写下来：安装目录里的 assets_root.ini 是「安装器预设」，
 ; 设置页里改的路径优先级更高（写进 app_config.json）。值里的非 ASCII 已转成 \uXXXX，文件恒为纯 ASCII。
-Filename: "{app}\_internal\data\assets_root.ini"; Section: "assets"; Key: "root"; String: "{code:GetAssetsDirJson}"; Check: AssetsDirIsCustom; Flags: createkeyifdoesntexist uninsneveruninstall
+Filename: "{app}\_internal\data\assets_root.ini"; Section: "assets"; Key: "root"; String: "{code:GetAssetsDirJson}"; Check: AssetsDirIsCustom; Flags: createkeyifdoesntexist
 
 [Icons]
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\MyridTV.exe"; WorkingDir: "{app}"; IconFilename: "{app}\MyridTV.exe"

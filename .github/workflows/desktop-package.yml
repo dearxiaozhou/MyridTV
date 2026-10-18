@@ -214,7 +214,31 @@ jobs:
           python installer/make-update-release.py @updateArgs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      # Publish the signed static delta directly to the public updates repo.
+      # GITHUB_TOKEN cannot write to a separate repo, so a PAT with write
+      # access to dearxiaozhou/MyridTV-updates is required (secret
+      # MYRIDTV_UPDATES_PAT). Going straight to the release avoids the
+      # GitHub Actions artifact storage quota entirely.
+      - name: Publish static update to MyridTV-updates
+        if: startsWith(github.ref, 'refs/tags/') && secrets.MYRIDTV_UPDATES_PAT != ''
+        env:
+          GH_TOKEN: ${{ secrets.MYRIDTV_UPDATES_PAT }}
+        shell: pwsh
+        run: |
+          $V = (Get-Content VERSION -Raw).Trim()
+          $rel = "MyridTV static update $V"
+          $notes = "Front-end static resources only (html/css/js); no Python source. Unchanged files reuse this Release's URL in later versions. Do not delete."
+          gh release create "$V" -R dearxiaozhou/MyridTV-updates --title $rel --notes $notes --draft 2>$null
+          foreach ($f in Get-ChildItem 'installer/build/update-release/*') {
+            gh release upload "$V" "$($f.FullName)" -R dearxiaozhou/MyridTV-updates --clobber
+          }
+          gh release edit "$V" -R dearxiaozhou/MyridTV-updates --draft=false --title $rel --notes $notes
+          Write-Host "Published static update $V to MyridTV-updates"
+
+      # Fallback: keep the signed delta as a CI artifact for manual publishing
+      # when no PAT is configured. Subject to Actions artifact storage quota.
       - name: Upload signed static update artifact
+        if: startsWith(github.ref, 'refs/tags/') && secrets.MYRIDTV_UPDATES_PAT == ''
         uses: actions/upload-artifact@v4
         with:
           name: MyridTV-Static-Update-${{ steps.version.outputs.display }}
