@@ -99,6 +99,16 @@ with sync_playwright() as pw:
             }""")
             before = page.locator(".image-node").count()
             page.mouse.up()
+            # 2026-10-18 修复：松手会触发节点重渲替换 .image-wrap，选区框需重新挂回新 DOM 并保留可见。
+            persistence_ok = True
+            try:
+                page.wait_for_function("""() => {
+                    const box = document.querySelector('.smart-free-crop-box');
+                    return box && parseFloat(box.style.width) > 3 && parseFloat(box.style.height) > 3;
+                }""", timeout=5000)
+            except Exception:
+                persistence_ok = False
+            check("松手后选区框仍保留可见（重渲不丢框）", persistence_ok)
             page.keyboard.press("Enter")
             page.wait_for_function("""({before}) => document.querySelectorAll('.image-node').length === before + 1""", arg={"before": before})
             check("拖拽框选并按 Enter 上传裁剪结果", len(uploads) == 1 and page.locator(".image-node").count() == before + 1, uploads)

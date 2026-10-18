@@ -74,6 +74,33 @@
         });
     }
 
+    /* The node body re-renders (e.g. on selection change / click) and replaces the
+       .image-wrap element, which detaches the crop box we appended. Re-attach the box
+       to the live itemEl so the selection stays visible after a re-render.
+       Coordinates live in image-content space, so re-parenting never invalidates them. */
+    function relocate() {
+        if (!state || !state.boxEl) return;
+        var world = deps.getWorld && deps.getWorld();
+        if (!world) return;
+        var nodeEl = world.querySelector('.image-node[data-id="' + CSS.escape(state.nodeId) + '"]');
+        var itemEl = nodeEl && nodeEl.querySelector('[data-image-index="' + state.imageIndex + '"]');
+        if (!itemEl) return;
+        var imgEl = itemEl.querySelector('img');
+        if (!imgEl) return;
+        if (state.itemEl && state.itemEl !== itemEl) {
+            state.itemEl.classList.remove('free-crop-target');
+        }
+        if (itemEl !== state.itemEl) {
+            state.itemEl = itemEl;
+            state.imgEl = imgEl;
+            itemEl.classList.add('free-crop-target');
+        }
+        if (state.boxEl.parentNode !== itemEl) {
+            itemEl.appendChild(state.boxEl);
+        }
+        updateBox();
+    }
+
     function begin(nodeId, imageIndex, event) {
         if (event) {
             event.preventDefault && event.preventDefault();
@@ -98,6 +125,8 @@
         itemEl.appendChild(boxEl);
         state = { nodeId: nodeId, imageIndex: imageIndex, node: node, image: image, itemEl: itemEl, imgEl: imgEl, boxEl: boxEl, start: null, current: null };
         global.document.body.classList.add('smart-free-cropping');
+        // Catch a re-render that may follow the selection change / opening click.
+        requestAnimationFrame(relocate);
     }
 
     function startSelection(event, nodeId, itemEl) {
@@ -123,6 +152,10 @@
             global.removeEventListener('mouseup', state.upHandler, true);
             state.moveHandler = null;
             state.upHandler = null;
+            // The release may trigger a node-body re-render that swaps the .image-wrap.
+            // Re-attach the box to the fresh itemEl so the selection stays on screen.
+            requestAnimationFrame(function () { relocate(); });
+            setTimeout(relocate, 80);
         };
         global.addEventListener('mousemove', state.moveHandler, true);
         global.addEventListener('mouseup', state.upHandler, true);
