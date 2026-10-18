@@ -372,16 +372,35 @@ def check_now(app_dir: Path, public_key_file: Path, allow_local: bool = False) -
 def acquire_watcher_lock(app_dir: Path):
     lock_path = update_dir(app_dir) / "watcher.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    handle = lock_path.open("a+b")
-    handle.seek(0)
-    if not handle.read(1):
-        handle.write(b"0")
-        handle.flush()
-    handle.seek(0)
     try:
-        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        handle = lock_path.open("a+b")
     except OSError:
-        handle.close()
+        return None
+    try:
+        handle.seek(0)
+        # Windows 的 msvcrt.locking 是强制锁：另一个 watcher 锁住这 1 字节时，
+        # 本进程连 read() 都会被拒绝并抛 PermissionError。判空这一步同样必须
+        # 纳入捕获，否则第二个 watcher 会直接崩在这里，被前端误报成「更新失败」。
+        # 语义与其它分支一致：拿不到锁 == 已有 watcher 在跑，安静返回 None。
+        try:
+            needs_seed = not handle.read(1)
+        except OSError:
+            handle.close()
+            return None
+        if needs_seed:
+            handle.write(b"0")
+            handle.flush()
+        handle.seek(0)
+        try:
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        except OSError:
+            handle.close()
+            return None
+    except OSError:
+        try:
+            handle.close()
+        except OSError:
+            pass
         return None
     return handle
 

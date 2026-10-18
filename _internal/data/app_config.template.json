@@ -1,0 +1,45 @@
+{
+  "proxy": {
+    "host": "127.0.0.1",
+    "port": 3107,
+    "base_url": "http://127.0.0.1:3107"
+  },
+  "agent": {
+    "provider_id": "",
+    "model": "",
+    "preferred_model_pattern": "",
+    "upstream_base_url": "",
+    "api_key_env": "MYRIDTV_AGENT_API_KEY",
+    "fallback_api_key_env": "API_PROVIDER_CUSTOM_API_KEY"
+  },
+  "runninghub": {
+    "api_key_envs": [
+      "API_PROVIDER_CUSTOM_API_3_KEY",
+      "RUNNINGHUB_API_KEY"
+    ]
+  },
+  "paths": {
+    "env_file": "API/.env",
+    "logs_dir": "data/logs",
+    "proxy_log": "data/logs/rh_official_proxy.log",
+    "startup_log": "data/logs/startup.log",
+    "proxy_stdout_log": "data/logs/rh_official_proxy.stdout.log",
+    "proxy_stderr_log": "data/logs/rh_official_proxy.stderr.log",
+    "assets_dir": ""
+  },
+  "runtime": {
+    "python_exe": "",
+    "python_env": "MYRIDTV_PYTHON_EXE"
+  },
+  "user_data": {
+    "root_env": "MYRIDTV_USER_DATA_DIR",
+    "default_dir": "%APPDATA%\\MyridTV",
+    "mode": "junction"
+  },
+  "setup": {
+    "completed": false,
+    "completed_at": "",
+    "dismissed_at": ""
+  },
+  "version": 1
+}

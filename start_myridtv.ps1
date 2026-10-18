@@ -334,13 +334,41 @@ function Normalize-PathText($Value) {
 }
 
 function Set-ProxyPortInConfig([int]$Port) {
-    # 本安装自己换端口时，把端口写回本安装的配置 —— 桌面壳从同一份配置读端口，两边自动一致
+    # 本安装自己换端口时，把端口写回本安装的配置 —— 桌面壳从同一份配置读端口，两边自动一致。
+    # 发版有两道隐私门控：prepare-release.ps1 既跳过打包 _internal\data\app_config.json，又把它列进
+    # forbiddenFileNames 巡检（初衷是防止本机 API key/绝对路径随包外泄，合理）。副作用是**全新安装
+    # 必然没有这份配置**，原逻辑会被下面的判空静默拦掉 —— 端口写不回去、也不记日志，多份安装共存时
+    # 就会一起抢 3107，proxy 健康检查永远失败，桌面壳连到别人家的后端上，于是「打开 A 却读到 B 的资产」。
+    # 这里改用随包的 app_config.template.json 兜底生成（模板只有结构性内容、无密钥），让写回始终生效。
     try {
         $json = Read-JsonFile $ConfigFile
-        if (!$json -or !$json.proxy) { return }
+        # 用字符串记录兜底来源。不要用布尔：$true -eq 'minimal' 会把右侧字符串转成 Boolean 而成立，日志会张冠李戴。
+        $bootstrapMode = 'none'
+        if (!$json) {
+            $json = Read-JsonFile $ConfigTemplateFile
+            if ($json) { $bootstrapMode = 'template' }
+        }
+        if (!$json -or !$json.proxy) {
+            # 模板也不在（老版本安装普遍没有它）时，退化为「只含 proxy 段」的极简配置。
+            # 这是安全的：后端 load_app_config() 走 deep_merge(DEFAULT_CONFIG, 文件)，
+            # 其余段落（paths/runtime/user_data/setup/agent…）会由默认值自动补齐。
+            $json = [ordered]@{ proxy = [ordered]@{ host = '127.0.0.1'; port = 3107; base_url = 'http://127.0.0.1:3107' } }
+            $bootstrapMode = 'minimal'
+        }
+        $cfgHost = if ($json.proxy.host) { [string]$json.proxy.host } else { '127.0.0.1' }
+        $json.proxy.host = $cfgHost
         $json.proxy.port = $Port
-        $json.proxy.base_url = "http://{0}:{1}" -f [string]$json.proxy.host, $Port
+        $json.proxy.base_url = "http://{0}:{1}" -f $cfgHost, $Port
+        $configDir = Split-Path -Parent $ConfigFile
+        if ($configDir -and !(Test-Path -LiteralPath $configDir)) {
+            New-Item -ItemType Directory -Path $configDir -Force | Out-Null
+        }
         [System.IO.File]::WriteAllText($ConfigFile, ($json | ConvertTo-Json -Depth 12), (New-Object System.Text.UTF8Encoding($false)))
+        if ($bootstrapMode -eq 'minimal') {
+            Write-StartupLog ("proxy port write-back bootstrapped app_config.json (proxy-only, template absent); port={0}" -f $Port)
+        } elseif ($bootstrapMode -eq 'template') {
+            Write-StartupLog ("proxy port write-back bootstrapped app_config.json from template; port={0}" -f $Port)
+        }
     } catch {
         Write-StartupLog "proxy port write-back failed: $($_.Exception.Message)"
     }

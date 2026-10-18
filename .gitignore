@@ -1,6 +1,9 @@
 # ============ 用户数据 / 运行态：绝不入库（而且打包也禁带） ============
-_internal/data/
-_internal/data
+# 注意：整目录排除后 git 不再下探、无法用 ! 放行子集。故改为「排除内容 + 白名单模板」。
+# app_config.template.json 是发布包必需的结构性默认配置（见 AGENTS.md 与 prepare-release.ps1），
+# 只含结构与环境变量名、无密钥与本机路径，必须入库；否则 CI 全新 clone 时打包脚本拿不到源文件。
+_internal/data/**
+!_internal/data/app_config.template.json
 _internal/API/.env
 # 运行态配置：含本机绝对路径，发布包禁带，同理不入库
 _internal/static/app_config.json
