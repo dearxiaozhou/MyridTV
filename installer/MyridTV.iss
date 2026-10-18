@@ -76,6 +76,9 @@ Filename: "{app}\MyridTV.exe"; Description: "启动 {#MyAppName}"; Flags: nowait
 // ---------------------------------------------------------------------------
 // 资产目录选择页（首装时可选自定义，不改就用系统自动指定的 {app}\assets）
 // ---------------------------------------------------------------------------
+const
+  HexTable = '0123456789ABCDEF';
+
 var
   AssetsDirPage: TInputDirWizardPage;
   AssetsDefaultApplied: Boolean;
@@ -83,7 +86,7 @@ var
 
 function HexDigitChar(N: Integer): Char;
 begin
-  Result := Copy('0123456789ABCDEF', N + 1, 1);
+  Result := HexTable[N + 1];
 end;
 
 function JsonEscapePath(const S: String): String;
