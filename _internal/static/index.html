@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-CN" class="studio-route-booting">
 <head>
-    <link rel="stylesheet" href="/static/css/design-tokens.css?cb=card-hover-seven-v01317&v=2026.10.01.speech9">
+    <link rel="stylesheet" href="/static/css/design-tokens.css?cb=card-hover-seven-v01317&v=2026.10.19.thumb9">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="/static/images/myrid-icon.png" type="image/png">
@@ -12,8 +12,8 @@
       document.documentElement.classList.toggle('studio-theme-dark', theme === 'dark');
     })();
   </script>
-  <script src="/static/js/theme.js?cb=card-hover-seven-v01317&v=2026.10.01.speech9"></script>
-  <script src="/static/js/i18n.js?v=2026.10.01.speech9"></script>
+  <script src="/static/js/theme.js?cb=card-hover-seven-v01317&v=2026.10.19.thumb9"></script>
+  <script src="/static/js/i18n.js?v=2026.10.19.thumb9"></script>
   <style>
     :root {
       --line: rgba(255, 255, 255, 0.1);
@@ -543,7 +543,7 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
       user-select: none; -webkit-user-select: none;
     }
     /* 菜单条最左：软件图标（原生 Caption 图标位，DWM 不画 → 自绘；空白区仍可拖动） */
-    .tb-app-icon { flex: 0 0 auto; width: 16px; height: 16px; margin: 0 8px 0 14px; opacity: .92; pointer-events: none; }
+    .tb-app-icon { flex: 0 0 auto; width: 24px; height: 24px; margin: 0 8px 0 14px; opacity: .92; pointer-events: none; }
     .tb-menus { display: flex; align-items: center; gap: 2px; height: 100%; flex: 0 0 auto; }
     .tb-menu {
       height: 23px; padding: 0 10px; border: 0; border-radius: 6px;
@@ -638,7 +638,7 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
 
   </style>
 <link rel="stylesheet" href="/static/css/light-theme-trial.css?v=interaction-audit-v0105c">
-<link rel="stylesheet" href="/static/css/canvas-interaction-style.css?cb=card-hover-seven-v01317&v=2026.10.01.speech9">
+<link rel="stylesheet" href="/static/css/canvas-interaction-style.css?cb=card-hover-seven-v01317&v=2026.10.19.thumb9">
 </head>
 <body>
   <div id="update-notice" role="status" aria-live="polite"><span id="update-notice-text">界面更新已就绪</span><button type="button" id="update-refresh">刷新界面</button><button type="button" class="secondary" id="update-later">稍后</button></div>
@@ -646,7 +646,7 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
     <!-- 2026-10-16：自绘 HTML 标题栏。菜单由下方行内脚本按 TB_MENUS 生成；
          壳层只负责原生 Caption 按钮命中区、吃标题栏行与 postMessage 动作分发。 -->
     <div id="tb-bar" role="menubar" aria-label="标题栏菜单">
-      <img class="tb-app-icon" src="/static/images/myrid-icon-16.png" alt="" draggable="false">
+      <img class="tb-app-icon" src="/static/images/myrid-mark.svg" alt="" draggable="false">
       <div class="tb-menus" id="tb-menus"></div>
       <div class="tb-flex" id="tb-flex" title="拖动移动窗口 · 双击最大化 / 还原"></div>
       <div class="tb-winbtns" id="tb-winbtns">
@@ -674,18 +674,18 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
       <iframe id="tb-page-frame" class="tb-page-frame" title="页面弹窗内容" scrolling="yes"></iframe>
     </section>
     <section class="stage" aria-label="内容区域">
-  <iframe id="frame-canvas" data-page="canvas" data-src="/static/canvas.html?cb=backend-info-v0116&audit=interaction-v0105&v=2026.10.01.speech9" scrolling="yes"></iframe>
-      <iframe id="frame-asset-manager" data-page="asset-manager" data-src="/static/asset-manager.html?v=2026.10.01.speech9" scrolling="yes"></iframe>
-      <iframe id="frame-api-settings" data-page="api-settings" data-src="/static/api-settings.html?v=2026.10.01.speech9" scrolling="yes"></iframe>
-    <iframe id="frame-comfyui-settings" data-page="comfyui-settings" data-src="/static/comfyui-settings.html?v=2026.10.01.speech9" scrolling="yes"></iframe>
+  <iframe id="frame-canvas" data-page="canvas" data-src="/static/canvas.html?cb=backend-info-v0116&audit=interaction-v0105&v=2026.10.19.thumb9" scrolling="yes"></iframe>
+      <iframe id="frame-asset-manager" data-page="asset-manager" data-src="/static/asset-manager.html?v=2026.10.19.thumb9" scrolling="yes"></iframe>
+      <iframe id="frame-api-settings" data-page="api-settings" data-src="/static/api-settings.html?v=2026.10.19.thumb9" scrolling="yes"></iframe>
+    <iframe id="frame-comfyui-settings" data-page="comfyui-settings" data-src="/static/comfyui-settings.html?v=2026.10.19.thumb9" scrolling="yes"></iframe>
     <iframe id="frame-assets-root" data-page="assets-root" data-popup-width="760" data-src="/static/assets-root.html?v=2026.10.16.assetsroot2" scrolling="yes"></iframe>
     <iframe id="frame-home-background" data-page="home-background" data-popup-width="900" data-src="/static/home-background.html?v=2026.10.17.homebg12" scrolling="yes"></iframe>
-<iframe id="frame-smart-canvas" data-page="smart-canvas" data-src="/static/smart-canvas.html?cb=backend-info-v0116&audit=interaction-v0105&v=2026.10.01.speech9" scrolling="no"></iframe>
+<iframe id="frame-smart-canvas" data-page="smart-canvas" data-src="/static/smart-canvas.html?cb=backend-info-v0116&audit=interaction-v0105&v=2026.10.19.thumb9" scrolling="no"></iframe>
     </section>
 
     <!-- 2026-10-16：底部 dock 移除，页面导航改由自绘 HTML 标题栏（#tb-bar，菜单数据见下方 TB_MENUS）承担；
          版本号仅保留在这个隐藏节点里，供更新提示逻辑读取当前版本，可见版本见菜单「关于 → 关于 MyridTV」。 -->
-    <span class="app-version" hidden>版本：V0.14.6</span>
+    <span class="app-version" hidden>版本：V0.14.15</span>
   </main>
 
   <!-- 任务运行控制台（task-console） -->

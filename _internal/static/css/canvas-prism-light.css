@@ -28,11 +28,9 @@ body.theme-light.prism-canvas-page .canvas-item {
 html.theme-light body.prism-canvas-page .gate-icon-btn,
 html.theme-light body.prism-canvas-page .gate-back-link,
 html.theme-light body.prism-canvas-page .gate-sort,
-html.theme-light body.prism-canvas-page .smart-create-btn,
 body.theme-light.prism-canvas-page .gate-icon-btn,
 body.theme-light.prism-canvas-page .gate-back-link,
-body.theme-light.prism-canvas-page .gate-sort,
-body.theme-light.prism-canvas-page .smart-create-btn {
+body.theme-light.prism-canvas-page .gate-sort {
   border-color: rgba(0,0,0,0.08) !important;
   background: rgba(255,255,255,0.85) !important;
   color: var(--text) !important;
@@ -63,12 +61,6 @@ html.theme-light body.prism-canvas-page .gate-sort,
 body.theme-light.prism-canvas-page .gate-sort {
   background: rgba(255,255,255,0.85) padding-box,
     linear-gradient(135deg, rgba(8,145,178,.5), rgba(5,150,105,.35), rgba(99,102,241,.4)) border-box !important;
-}
-html.theme-light body.prism-canvas-page .smart-create-btn,
-body.theme-light.prism-canvas-page .smart-create-btn {
-  background: linear-gradient(135deg, #0891b2, #059669) !important;
-  color: #fff !important;
-  border-color: transparent !important;
 }
 /* Gradient-bordered cards in light mode */
 html body.prism-canvas-page .gate-list .canvas-item,

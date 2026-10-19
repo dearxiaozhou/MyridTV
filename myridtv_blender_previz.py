@@ -565,6 +565,15 @@ def run_blender_previz(payload, task_id=""):
     finalizeSmartPendingTask 写回原 3D预演 节点。插件没开 → 任务一直 running
     （控制台可手动停止），视频不会绕开插件落地。task_id 为空时行为同旧版
     （直接返回后端渲染结果，不等推送）。"""
+    if (payload or {}).get("previz_output") == "endpoints":
+        import myridtv_offline_previs
+        import myridtv_task_state
+        return myridtv_offline_previs.plugin().run(
+            payload, assets_dir=_G_ASSETS_DIR, blender_bin=_G_BLENDER_BIN,
+            ratio_size=_r_previz_ratio_size,
+            folder_name=myridtv_media_localize.canvas_output_folder_name,
+            cancelled=lambda: bool(task_id and myridtv_task_state.get_task_state(task_id).get("status") in {"cancelled", "canceled"}),
+            log=lambda message: append_log(_log_file(), message))
     import sys  # 顶层未导入 sys，这里局部引入
     canvas_id = str((payload or {}).get("canvas_id") or "").strip()
     canvas_title = str((payload or {}).get("canvas_title") or "").strip()

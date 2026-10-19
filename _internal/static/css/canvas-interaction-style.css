@@ -28,7 +28,7 @@
     border-color:var(--x-selected-line) !important; box-shadow:0 0 0 2px var(--x-selected-ring) !important;
   }
   html body .prompt-input:focus { border-color:var(--x-selected-line) !important; }
-  html body :is(button,[role="button"],.gate-icon-btn,.gate-back-link,.gate-sort-btn,.tree-row,.nav-row):not(:disabled):not([aria-disabled="true"]):not(.tc-btn-danger):not(.danger):not(.danger-btn):not(.btn-danger):not(.delete-btn):not(.node-delete):not(.mini-x):not(.canvas-delete):not(.tb-winclose):not(.is-running):not(.is-stop):not(.is-ap-running):not(.canvas-pin-btn):not(.audio-play-button):not(.canvas-color-swatch):not(.speech-generate):not(.primary):not(.save-btn):not(.run-btn):not(.api-page-save-btn):not(.smart-create-btn):not(.api-link-btn):not(#agentSendBtn):not(.agent-send):not(.smart-agent-send):not(.is-saved):not(.canvas-open):not(.active):not(.selected):not([aria-selected="true"]):not([aria-pressed="true"]):hover,
+  html body :is(button,[role="button"],.gate-icon-btn,.gate-back-link,.gate-sort-btn,.tree-row,.nav-row):not(:disabled):not([aria-disabled="true"]):not(.tc-btn-danger):not(.danger):not(.danger-btn):not(.btn-danger):not(.delete-btn):not(.node-delete):not(.mini-x):not(.canvas-delete):not(.tb-winclose):not(.is-running):not(.is-stop):not(.is-ap-running):not(.canvas-pin-btn):not(.audio-play-button):not(.canvas-color-swatch):not(.speech-generate):not(.primary):not(.save-btn):not(.run-btn):not(.api-page-save-btn):not(.api-link-btn):not(#agentSendBtn):not(.agent-send):not(.smart-agent-send):not(.is-saved):not(.canvas-open):not(.active):not(.selected):not([aria-selected="true"]):not([aria-pressed="true"]):hover,
   html body :is(.shared-native-select-trigger,.smart-pill,.speech-picker,.filter-preset-trigger,.tb-menu)[aria-expanded="true"],
   html body .tb-menu.open {
     background:var(--x-hover-bg) !important; color:var(--x-text) !important;
@@ -44,15 +44,15 @@
   html body :is(.canvas-item.active,.image-node.selected,.asset-card.selected,.tc-item.selected) {
     border-color:var(--x-selected-line) !important; box-shadow:0 0 0 1px var(--x-selected-ring) !important;
   }
-  html body :is(.smart-create-btn,.action-btn.save-btn,.api-page-save-btn,.api-link-btn,.asset-btn.primary,
+  html body :is(.action-btn.save-btn,.api-page-save-btn,.api-link-btn,.asset-btn.primary,
     .ar-btn.primary,.run-btn,.save-btn,.speech-generate,#agentSendBtn,.agent-send,.smart-agent-send):not(:disabled):not(.is-running):not(.is-stop):not(.is-ap-running):hover {
     background:var(--x-accent-hover) !important; color:var(--x-strong-text) !important; border-color:var(--x-accent-hover) !important;
   }
-  html body :is(.smart-create-btn,.action-btn.save-btn,.api-page-save-btn,.api-link-btn,.asset-btn.primary,
+  html body :is(.action-btn.save-btn,.api-page-save-btn,.api-link-btn,.asset-btn.primary,
     .ar-btn.primary,.run-btn,.save-btn,.speech-generate,#agentSendBtn,.agent-send,.smart-agent-send):not(.is-running):not(.is-stop):not(.is-ap-running) :is(span,i,svg) {
     color:inherit !important;
   }
-  html body :is(.smart-create-btn,.action-btn.save-btn,.api-page-save-btn,.api-link-btn,.asset-btn.primary,
+  html body :is(.action-btn.save-btn,.api-page-save-btn,.api-link-btn,.asset-btn.primary,
     .ar-btn.primary,.run-btn,.save-btn,.speech-generate,#agentSendBtn,.agent-send,.smart-agent-send):not(.is-running):not(.is-stop):not(.is-ap-running) svg { stroke:currentColor !important; }
   html body :is(.tc-btn-danger,.danger-btn,.btn-danger,.delete-btn,.node-delete,.mini-x,.asset-btn.danger):not(:disabled):hover {
     background:var(--x-danger-soft) !important; color:var(--x-danger) !important;
@@ -199,7 +199,7 @@ html body.prism-canvas-page .gate-list .canvas-item.active .canvas-pin-btn.activ
 html body.prism-canvas-page #canvasGate .gate-head-actions .gate-icon-btn,
 html body.prism-canvas-page #canvasGate .gate-head-actions .smart-create-btn {
   color: var(--x-text) !important;
-  background: transparent !important;
+  background-color: var(--x-soft) !important;
   background-image: none !important;
   border: 1px solid var(--x-line) !important;
   box-shadow: none !important;

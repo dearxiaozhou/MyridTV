@@ -1319,12 +1319,12 @@ function clearImageClickTimer(){
     }
 }
 function clearInputThumbDragClasses(){
-    inputThumbsRow?.querySelectorAll('.input-thumb').forEach(el => {
+    inputThumbsRow?.querySelectorAll('.input-thumb:not(.input-thumb-text)').forEach(el => {
         el.classList.remove('dragging', 'drop-before', 'drop-after');
     });
 }
 function inputThumbInsertIndexAtClientX(clientX){
-    const thumbs = [...(inputThumbsRow?.querySelectorAll('.input-thumb') || [])];
+    const thumbs = [...(inputThumbsRow?.querySelectorAll('.input-thumb:not(.input-thumb-text)') || [])];
     if(!thumbs.length) return 0;
     let insertIndex = 0;
     for(let index = 0; index < thumbs.length; index++){
@@ -1336,7 +1336,7 @@ function inputThumbInsertIndexAtClientX(clientX){
 }
 function updateInputThumbDragVisual(clientX){
     if(!inputThumbDragState) return;
-    const thumbs = [...(inputThumbsRow?.querySelectorAll('.input-thumb') || [])];
+    const thumbs = [...(inputThumbsRow?.querySelectorAll('.input-thumb:not(.input-thumb-text)') || [])];
     clearInputThumbDragClasses();
     const sourceEl = thumbs[inputThumbDragState.from];
     sourceEl?.classList.add('dragging');
@@ -3254,6 +3254,7 @@ CanvasNodeGestureController.configure({
         setResizeState: value => { resizeState = value; },
         duplicateForAltDrag: (...args) => duplicateForAltDrag(...args),
         isCanvasGroupNode: (...args) => isCanvasGroupNode(...args),
+        connectNewGroupMemberConnections: (...args) => connectNewGroupMemberConnections(...args),
         selectedNodeIds: () => selectedNodeIds(),
         bringNodesToFront: (...args) => bringNodesToFront(...args),
         getDragState: () => dragState,
@@ -3617,6 +3618,16 @@ CanvasParamEvents.configure({
 CanvasPrevizControls.configure({
     getContext: () => ({
         settings,
+        getNode: () => selectedNode(),
+        applyOfflinePatch: patch => {
+            const node = selectedNode();
+            if(!node) return;
+            Object.assign(settings, patch);
+            node.runSettings = Object.assign(node.runSettings || {}, patch);
+            scheduleSave();
+        },
+        notify: message => toast(message),
+        generateOffline: () => document.getElementById('runBtn')?.click(),
         dynamicParams,
         composerStyleModeSlot,
         promptInput,
@@ -3838,6 +3849,33 @@ function mediaNodeDefaultScale(node){
 function createImageNodeAt(point, images=[], options={}){
     const layout = imageLayout(images || [], mediaNodeDefaultScale({type:'smart-image', images:images || []}), {type:'smart-image', images:images || []});
     return createNode((point?.x || 0) - Math.round(layout.width / 2), (point?.y || 0) - Math.round(layout.height / 2), images, options);
+}
+// 2026-10-19（老王：一个节点只装一张图）——本次多出来的图各自落成独立节点，
+// 摆在基准节点右侧的空位（agentFindEmptySpot 负责避让），返回新建节点数组。
+function spawnImageNodesForExtras(baseNode, extraImages=[], options={}){
+    const extras = [...(extraImages || [])].filter(image => image && image.url);
+    if(!extras.length) return [];
+    const baseRect = baseNode ? nodeRect(baseNode) : null;
+    let cursor = baseRect
+        ? {x: Math.round(baseRect.x + baseRect.width + 24), y: Math.round(baseRect.y)}
+        : {x: Number(options.x) || 0, y: Number(options.y) || 0};
+    const created = [];
+    for(const image of extras){
+        const layout = imageLayout([image], MEDIA_NODE_DEFAULT_SCALE, {type:'smart-image', images:[image]});
+        const w = Math.max(64, Math.round(Number(layout && layout.width) || 240));
+        const h = Math.max(64, Math.round(Number(layout && layout.height) || 200));
+        const spot = agentFindEmptySpot(cursor.x, cursor.y, w, h);
+        const node = createImageNodeAt({x: spot.x + Math.round(w / 2), y: spot.y + Math.round(h / 2)}, [image], {select:false, skipUndo:true});
+        if(!node) continue;
+        delete node.w;
+        delete node.h;
+        const stem = String(image.name || '').replace(/\.[^.]+$/, '').replace(/[\/:*?"<>|]+/g, ' ').trim().slice(0, 30);
+        if(stem && !['Image','Images','Video','Videos','Audio','Audios','Group','Media'].includes(stem)) node.title = stem;
+        if(!node.outputKind) node.outputKind = 'image';
+        created.push(node);
+        cursor = {x: spot.x, y: spot.y + h + 24};
+    }
+    return created;
 }
 const AUTO_IMPORT_GROUP_CELL = 180;
 const AUTO_IMPORT_GROUP_GAP = 10;
@@ -7086,6 +7124,8 @@ async function loadCanvas(){
             }
         });
         canvas.connections = cleanedCanvas.connections;
+        // 2026-10-19 老王：载入即把历史“组线”展开成组内每张图各自的线
+        const migratedGroupLines = migrateGroupConnectionsToMemberLines();
         pruneCanvasObjectReferences();
         Object.assign(viewport, canvas.viewport || {});
         viewport.scale = safeScale(viewport.scale);
@@ -7098,7 +7138,7 @@ async function loadCanvas(){
         updateProviderModels();
         applyViewport();
         render();
-        if(migratedLegacyGroups) scheduleSave();
+        if(migratedLegacyGroups || migratedGroupLines) scheduleSave();
         try {
             const focusNodeId = params.get('focus_node') || '';
             if(focusNodeId){
@@ -7409,6 +7449,7 @@ function createSmartGeneratorNode(point, config={}){
         node.runSettings.engine = 'blender';
         node.runSettings.provider_id = 'blender';
         node.runSettings.model = 'blender-previz';
+        node.runSettings.previzOutput = 'endpoints';
         node.runSettings.count = 1;
     }
     if(config.engine === 'runninghub'){
@@ -8791,18 +8832,70 @@ function connectionHitElementsAtClientPoint(clientX, clientY){
     if(typeof document.elementsFromPoint !== 'function') return [];
     return document.elementsFromPoint(clientX, clientY).filter(el => el?.closest?.('[data-conn-index]'));
 }
+// 2026-10-19 老王：连线剪断后，提示词里已经被 @ 引用的那一段降级为普通文本（@图片1），
+// 不再是一条还能被引用/上传的引用（token 消失 = 上游拿不到这张图，就不能再引用）。
+function degradeMentionTokenToText(token){
+    if(!token) return '';
+    const name = String(token.dataset.name || '').trim() || '图片';
+    token.replaceWith(document.createTextNode(`@${name}`));
+    return name;
+}
 function removeMentionTokensFromContainer(container, sourceIds, sourceUrls){
     if(!container || (!sourceIds?.size && !sourceUrls?.size)) return 0;
-    let removed = 0;
+    let degraded = 0;
     container.querySelectorAll?.('.mention-image-token')?.forEach(token => {
         const nodeId = String(token.dataset.nodeId || '').trim();
         const url = String(token.dataset.url || '').trim();
         if((nodeId && sourceIds?.has(nodeId)) || (url && sourceUrls?.has(url))){
-            token.remove();
-            removed += 1;
+            degradeMentionTokenToText(token);
+            degraded += 1;
         }
     });
-    return removed;
+    return degraded;
+}
+// 节点当前还能从活着的上游（连线 + 无线引用）拿到的图片地址集合
+function liveInputUrlsForNode(node){
+    const urls = new Set();
+    if(!node) return urls;
+    const collect = img => ['url','originalLocalUrl','sourceUrl','localUrl'].forEach(key => {
+        const value = String(img?.[key] || '').trim();
+        if(value) urls.add(value);
+    });
+    candidateInputImagesFor(node, false, smartLoopContext).forEach(collect);
+    canvasObjectReferenceImages(node, smartLoopContext).forEach(collect);
+    return urls;
+}
+// 兜底：有来源节点 id 的引用 token，若其图片已不在存活上游里（跨节点转发被剪断等），一律降级
+function degradeStaleMentionTokensInContainer(container, node){
+    if(!container || !node) return 0;
+    const live = liveInputUrlsForNode(node);
+    let degraded = 0;
+    container.querySelectorAll?.('.mention-image-token')?.forEach(token => {
+        const nodeId = String(token.dataset.nodeId || '').trim();
+        const url = String(token.dataset.url || '').trim();
+        if(nodeId && url && !live.has(url)){
+            degradeMentionTokenToText(token);
+            degraded += 1;
+        }
+    });
+    return degraded;
+}
+function degradeStaleMentionTokensForNode(node){
+    if(!node) return 0;
+    let changed = 0;
+    if(node.promptDraftHtml && promptHtmlHasMentionToken(node.promptDraftHtml)){
+        const box = document.createElement('div');
+        box.innerHTML = node.promptDraftHtml;
+        if(degradeStaleMentionTokensInContainer(box, node)){
+            node.promptDraftHtml = box.innerHTML;
+            node.promptDraftText = box.innerText || box.textContent || '';
+            changed += 1;
+        }
+    }
+    if(promptInput && activeComposerNode()?.id === node.id){
+        if(degradeStaleMentionTokensInContainer(promptInput, node)) changed += 1;
+    }
+    return changed;
 }
 function sourceUrlsForDisconnectedIds(sourceIds){
     const urls = new Set();
@@ -8867,6 +8960,8 @@ function cleanupPromptRefsForDisconnectedConnections(pairs=[]){
         if(activeComposerNode()?.id === affectedId && promptInput){
             if(removeMentionTokensFromContainer(promptInput, sourceIds, sourceUrls)) savePromptDraftForCurrent();
         }
+        // 2026-10-19 老王：存活复验——剪断后依旧拿不到来源的引用一律降级为普通文本
+        if(degradeStaleMentionTokensForNode(node) && activeComposerNode()?.id === affectedId) savePromptDraftForCurrent();
         });
     });
 }
@@ -10731,36 +10826,215 @@ function updateComposer(){
     updateProviderModels();
     positionComposerForNode(node);
 }
+// 2026-10-19 老王：上游提示词节点只出缩略图行里的“文本1/文本2”缩略图，不再在本节点多出一个提示词框。
 function renderInputPromptPreview(node){
     if(!inputPromptPreview) return;
-    const text = node ? inputPromptTextFor(node).trim() : '';
-    inputPromptPreview.classList.toggle('has-text', Boolean(text));
-    inputPromptPreview.innerHTML = text
-        ? `<div class="input-prompt-preview-label">${escapeHtml(tr('smart.inputUpstream'))}</div><div class="input-prompt-preview-text">${escapeHtml(text)}</div>`
-        : '';
+    void node;
+    inputPromptPreview.classList.remove('has-text');
+    if(inputPromptPreview.innerHTML) inputPromptPreview.innerHTML = '';
+}
+// ===== 2026-10-19 老王：上游提示词节点不再在本节点多出一个“提示词框”，
+// 改为缩略图行里的文本缩略图（文本1、文本2…），样式对齐音频缩略图。 =====
+function inputTextThumbItems(node, ctx=smartLoopContext){
+    if(!node) return [];
+    const texts = [
+        ...canvasObjectReferenceTextNodes(node),
+        ...promptInputNodesFor(node).map(input => textForNode(input, ctx)),
+        ...(Array.isArray(ctx?.relayPromptNodeIds)
+            ? ctx.relayPromptNodeIds.map(id => nodes.find(n => n.id === id)).map(input => textForNode(input, ctx))
+            : [])
+    ];
+    const seen = new Set();
+    const items = [];
+    texts.forEach(text => {
+        const value = String(text || '').trim();
+        if(!value || seen.has(value)) return;
+        seen.add(value);
+        items.push({text:value, name:`文本${items.length + 1}`});
+    });
+    return items;
+}
+// 2026-10-19 老王：视频缩略图跟音频一样带文字标签（视频1、视频2…）
+function videoInputThumbHtml(img, label, attrs=''){
+    const name = String(label || '视频');
+    return `<div class="media-thumb video-thumb input-video-thumb"${attrs}><video src="${escapeHtml(img.url)}" muted preload="metadata" playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"></video><span class="input-video-thumb-label">${escapeHtml(name)}</span></div>`;
+}
+function inputTextThumbHtml(item, index){
+    const name = item?.name || `文本${index + 1}`;
+    const title = `${name} · ${tr('smart.inputUpstream')}`;
+    return `<div class="input-thumb input-thumb-text" draggable="false" data-text-index="${index}" data-name="${escapeHtml(name)}" title="${escapeHtml(title)}"><div class="media-thumb text-thumb"><div class="text-thumb-art" aria-hidden="true"><i data-lucide="type"></i></div><span class="text-thumb-footer">${escapeHtml(name)}</span></div></div>`;
+}
+// ❌ 语义（老王 2026-10-19 定）：上游节点只有这一张 → 剪断连线；上游是多图 → 只屏蔽这一张。
+function inputThumbMediaCount(sourceNode){
+    if(!sourceNode) return 0;
+    return imagesForNode(sourceNode).filter(img => img?.url && ['image','video','audio','file'].includes(mediaKindForItem(img))).length;
+}
+function inputThumbCutTitle(img){
+    const source = nodes.find(n => n.id === img?.nodeId);
+    return inputThumbMediaCount(source) > 1 ? tr('smart.inputClickBlock') : tr('smart.cutInputWire');
+}
+function cutOrBlockInputThumb(node, img){
+    if(!node || !img?.url) return;
+    if(isInputRefBlocked(node, img)){
+        toggleInputRefBlocked(node, img);
+        renderInputThumbsRow(node);
+        return;
+    }
+    const source = nodes.find(n => n.id === img.nodeId);
+    if(inputThumbMediaCount(source) > 1){
+        toggleInputRefBlocked(node, img);
+        renderInputThumbsRow(node);
+        return;
+    }
+    const index = (canvas?.connections || []).findIndex(conn => conn.from === img.nodeId && conn.to === node.id && ['input','flow'].includes(conn.kind || 'flow'));
+    if(index >= 0){
+        disconnectConnection(index);
+        renderInputThumbsRow(node);
+        return;
+    }
+    toggleInputRefBlocked(node, img);
+    renderInputThumbsRow(node);
+}
+function ensurePromptCaretInEditor(){
+    if(!promptInput) return;
+    promptInput.focus();
+    const sel = window.getSelection();
+    if(sel?.rangeCount){
+        const range = sel.getRangeAt(0);
+        const container = range.startContainer;
+        if(container && (container === promptInput || promptInput.contains(container))) return;
+    }
+    const range = document.createRange();
+    range.selectNodeContents(promptInput);
+    range.collapse(false);
+    if(sel){
+        sel.removeAllRanges();
+        sel.addRange(range);
+    }
+    mentionRange = range.cloneRange();
+}
+function referenceInputThumbToPrompt(node, img){
+    if(!node || !img?.url) return;
+    ensurePromptCaretInEditor();
+    insertMentionToken(img);
+}
+function bindInputThumbHoverActions(node, items){
+    if(!inputThumbsRow || !node) return;
+    inputThumbsRow.querySelectorAll('.input-thumb').forEach(el => {
+        const url = el.dataset.sourceUrl || el.dataset.url || '';
+        const kind = el.dataset.kind || '';
+        if(!url || !['image','video'].includes(kind)) return;
+        el.addEventListener('mouseenter', () => showInputThumbHoverPreview(el, url, kind));
+        el.addEventListener('mouseleave', hideInputThumbHoverPreview);
+    });
+    inputThumbsRow.querySelectorAll('[data-thumb-cut]').forEach(btn => {
+        btn.onclick = event => {
+            event.preventDefault();
+            event.stopPropagation();
+            cutOrBlockInputThumb(node, (items || [])[Number(btn.dataset.thumbCut)]);
+        };
+    });
+    inputThumbsRow.querySelectorAll('[data-thumb-at]').forEach(btn => {
+        btn.onclick = event => {
+            event.preventDefault();
+            event.stopPropagation();
+            referenceInputThumbToPrompt(node, (items || [])[Number(btn.dataset.thumbAt)]);
+        };
+    });
+}
+// 悬停缩略图：显示大图（与提示词框里 @ 引用 token 悬停同一个预览框）
+function showInputThumbHoverPreview(el, url, kind){
+    if(!mentionPreview || !url) return;
+    let media = mentionPreview.querySelector('img,video');
+    const isVideo = kind === 'video';
+    if(isVideo && media?.tagName?.toLowerCase() !== 'video'){
+        media?.replaceWith(document.createElement('video'));
+        media = mentionPreview.querySelector('video');
+    } else if(!isVideo && media?.tagName?.toLowerCase() !== 'img'){
+        media?.replaceWith(document.createElement('img'));
+        media = mentionPreview.querySelector('img');
+    }
+    if(!media) return;
+    if(isVideo){
+        media.muted = true;
+        media.loop = true;
+        media.playsInline = true;
+        media.preload = 'metadata';
+        media.disablePictureInPicture = true;
+        media.setAttribute('disablepictureinpicture', '');
+        media.setAttribute('controlslist', 'nodownload noplaybackrate noremoteplayback');
+        media.src = url;
+        media.play?.().catch(() => {});
+    } else {
+        media.src = url;
+        media.alt = 'preview';
+    }
+    const rect = el.getBoundingClientRect();
+    mentionPreview.style.left = `${Math.max(4, Math.min(window.innerWidth - 236, rect.left))}px`;
+    mentionPreview.style.top = `${Math.max(4, Math.min(window.innerHeight - 236, rect.bottom + 8))}px`;
+    mentionPreview.style.display = 'block';
+}
+function hideInputThumbHoverPreview(){
+    if(!mentionPreview) return;
+    mentionPreview.style.display = 'none';
+    const media = mentionPreview.querySelector('img,video');
+    media?.pause?.();
+    media?.removeAttribute('src');
+    media?.load?.();
+}
+// 2026-10-19 老王：屏蔽的输入不再占缩略图行的位（不渲染灰卡），改在行右端出一个「已屏蔽 X」胶囊，点它恢复该张。
+function inputThumbBlockedChipsHtml(blockedItems){
+    if(!blockedItems?.length) return '';
+    const chips = blockedItems.map((img, i) => {
+        const name = img.name || tr('smart.inputNum').replace('{n}', String(i + 1));
+        const label = `${tr('smart.inputBlocked')} ${name}`;
+        const title = `${label} · ${tr('smart.unblockInput')}`;
+        return `<button class="smart-pill input-thumb-unblock" type="button" data-thumb-unblock="${i}" title="${escapeAttr(title)}" aria-label="${escapeAttr(title)}"><i data-lucide="eye-off"></i><span>${escapeHtml(label)}</span></button>`;
+    }).join('');
+    return `<div class="input-thumb-unblock-actions">${chips}</div>`;
+}
+function bindInputThumbBlockedChips(node, blockedItems){
+    if(!inputThumbsRow || !node) return;
+    inputThumbsRow.querySelectorAll('[data-thumb-unblock]').forEach(btn => {
+        btn.onclick = event => {
+            event.preventDefault();
+            event.stopPropagation();
+            const img = (blockedItems || [])[Number(btn.dataset.thumbUnblock)];
+            if(!img) return;
+            toggleInputRefBlocked(node, img);
+            renderInputThumbsRow(node);
+        };
+    });
 }
 function renderInputThumbsRow(node){
     if(!inputThumbsRow) return;
     syncJimengModelPillForRefs();
     syncJimengVideoModelPillForRefs();
     const dedup = node ? visibleReferenceImagesFor(node) : [];
+    const textItems = inputTextThumbItems(node);
+    // 屏蔽的输入：不占位、不计数，只留右端恢复胶囊
+    const blockedItems = node ? dedup.filter(img => isInputRefBlocked(node, img)) : [];
+    const displayItems = node ? dedup.filter(img => !isInputRefBlocked(node, img)) : dedup;
+    const unblockActions = inputThumbBlockedChipsHtml(blockedItems);
     // 无线模式：即使还没有任何输入，也保留“引用结果”入口
     // 2026-09-16 老王：只留图标（文字改由 hover 的 title 说明），并浮到卡片右上角
     const objectRefActions = (node && canvasObjectsMode())
         ? `<div class="input-thumb-actions"><button class="smart-pill input-object-ref-btn" type="button" data-object-ref-open="1" title="${escapeAttr(tr('smart.objectRefTip'))}" aria-label="${escapeAttr(tr('smart.objectRef'))}"><i data-lucide="waypoints"></i></button></div>`
         : '';
-    inputThumbsRow.classList.toggle('has-items', dedup.length > 0 || Boolean(objectRefActions));
+    inputThumbsRow.classList.toggle('has-items', displayItems.length > 0 || textItems.length > 0 || Boolean(unblockActions) || Boolean(objectRefActions));
     const videoQuickActions = '';
-    if(!dedup.length){
-        inputThumbsRow.innerHTML = `${videoQuickActions}${objectRefActions}`;
-        inputThumbsRow.classList.toggle('has-items', Boolean(videoQuickActions || objectRefActions));
+    if(!displayItems.length && !textItems.length){
+        inputThumbsRow.innerHTML = `${videoQuickActions}${unblockActions}${objectRefActions}`;
+        inputThumbsRow.classList.toggle('has-items', Boolean(videoQuickActions || unblockActions || objectRefActions));
         bindInputThumbVideoActions();
         bindCanvasObjectRefActions(node);
+        bindInputThumbBlockedChips(node, blockedItems);
         if(window.lucide) lucide.createIcons();
         return;
     }
     let audioCount = 0;
-    const thumbsHtml = dedup.map((img, i) => {
+    let videoCount = 0;
+    const thumbsHtml = displayItems.map((img, i) => {
         const kind = mediaKindForItem(img);
         const isVid = kind === 'video';
         const isAudio = kind === 'audio';
@@ -10771,20 +11045,33 @@ function renderInputThumbsRow(node){
             : (smartImageMode(node) === 'workflow' ? tr('smart.inputUpstreamWorkflow') : tr('smart.inputUpstream'));
         const sourceUrl = img.originalLocalUrl || img.url || '';
         const displayName = img.name || tr('smart.inputNum').replace('{n}', String(i + 1));
+        const videoLabel = isVid ? `视频${++videoCount}` : '';
         const inner = isAudio
             ? audioThumbHtml(audioThumbLabel(img, audioIndex), ` title="${escapeAttr(displayName)}"`)
-            : thumbMediaHtml(img);
+            : (isVid ? videoInputThumbHtml(img, videoLabel, ` title="${escapeAttr(displayName)}"`) : thumbMediaHtml(img));
         const objectRefId = img.objectReferenceId || '';
         const removeBtn = objectRefId
             ? `<button class="input-thumb-unset" type="button" title="${escapeAttr(tr('smart.removeObjectRef'))}" data-object-ref-remove="${escapeAttr(objectRefId)}"><i data-lucide="x"></i></button>`
             : '';
-        return `<div class="input-thumb ${isSelf ? 'input-self' : ''} ${objectRefId ? 'input-thumb-object-ref' : ''}" draggable="false" data-thumb-index="${i}" data-node-id="${escapeHtml(img.nodeId || '')}" data-image-index="${img.imageIndex ?? ''}" data-url="${escapeHtml(img.url || '')}" data-source-url="${escapeHtml(sourceUrl)}" data-kind="${escapeHtml(kind)}" data-object-ref="${escapeAttr(objectRefId)}" data-name="${escapeHtml(displayName)}" title="${escapeHtml(`${displayName} · ${title}`)}">${inner}${removeBtn}</div>`;
+        // 2026-10-19 老王：上游素材缩略图悬停 → 右上角 ❌（剪断/屏蔽该输入）、中下 @（引用到提示词光标处）
+        const wired = !isSelf && !objectRefId && Boolean(img.nodeId);
+        const cutTitle = inputThumbCutTitle(img);
+        const cutBtn = wired
+            ? `<button class="input-thumb-cut" type="button" title="${escapeAttr(cutTitle)}" aria-label="${escapeAttr(cutTitle)}" data-thumb-cut="${i}"><i data-lucide="x"></i></button>`
+            : '';
+        const atBtn = wired && ['image','video','audio'].includes(kind)
+            ? `<button class="input-thumb-at" type="button" title="${escapeAttr(tr('smart.refToPrompt'))}" aria-label="${escapeAttr(tr('smart.refToPrompt'))}" data-thumb-at="${i}">@</button>`
+            : '';
+        return `<div class="input-thumb ${isSelf ? 'input-self' : ''} ${objectRefId ? 'input-thumb-object-ref' : ''}" draggable="false" data-thumb-index="${i}" data-node-id="${escapeHtml(img.nodeId || '')}" data-image-index="${img.imageIndex ?? ''}" data-url="${escapeHtml(img.url || '')}" data-source-url="${escapeHtml(sourceUrl)}" data-kind="${escapeHtml(kind)}" data-object-ref="${escapeAttr(objectRefId)}" data-name="${escapeHtml(displayName)}" title="${escapeHtml(`${displayName} · ${title}`)}">${inner}${removeBtn}${cutBtn}${atBtn}</div>`;
     }).join('');
     // ComfyUI 缩略图只显示上游素材本身，不额外添加说明文字。
-    inputThumbsRow.innerHTML = `<div class="input-thumb-list">${thumbsHtml}${dedup.length > 1 ? `<span class="input-thumb-count">${escapeHtml(tr('smart.inputCount').replace('{n}', String(dedup.length)))}</span>` : ''}</div>${videoQuickActions}${objectRefActions}`;
-    bindInputThumbsDrag(node, dedup);
+    const textThumbsHtml = textItems.map((item, index) => inputTextThumbHtml(item, index)).join('');
+    inputThumbsRow.innerHTML = `<div class="input-thumb-list">${thumbsHtml}${textThumbsHtml}</div>${unblockActions}${videoQuickActions}${objectRefActions}`;
+    bindInputThumbsDrag(node, displayItems);
     bindInputThumbVideoActions();
     bindCanvasObjectRefActions(node);
+    bindInputThumbHoverActions(node, displayItems);
+    bindInputThumbBlockedChips(node, blockedItems);
     if(window.lucide) lucide.createIcons();
 }
 // ===== 无线引用（引用结果）：选择器 =====
@@ -10848,6 +11135,13 @@ CanvasImageNodeMediaController.configure({
     createEmptyNodeAt: point => {
         undoSuppressed = true;
         try { return createImageNodeAt(point, []); }
+        finally { undoSuppressed = false; }
+    },
+    nodeRect: node => nodeRect(node),
+    findFreeSpot: (x, y, w, h) => agentFindEmptySpot(x, y, w, h),
+    createNodeWithImage: (point, image) => {
+        undoSuppressed = true;
+        try { return createImageNodeAt(point, [image]); }
         finally { undoSuppressed = false; }
     },
     isFile: value => typeof File !== 'undefined' && value instanceof File,
@@ -11032,7 +11326,9 @@ function mentionTokenHtml(img){
  const kind = mediaKindForItem(img);
     const media = kind === 'video'
         ? `<video src="${escapeHtml(img.url)}" muted preload="metadata" playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"></video>`
-        : `<img src="${escapeHtml(img.url)}" alt="">`;
+        : (kind === 'audio'
+            ? `<span class="mention-audio-token-art" aria-hidden="true"><i data-lucide="music"></i></span>`
+            : `<img src="${escapeHtml(img.url)}" alt="">`);
  return `<span class="mention-image-token" contenteditable="false" data-url="${escapeHtml(img.url)}" data-kind="${escapeHtml(kind)}" data-name="${escapeHtml(name)}" data-node-id="${escapeHtml(img.nodeId || '')}" data-image-index="${escapeHtml(img.imageIndex ?? '')}">${media}<span>${escapeHtml(name)}</span>${promptImageMentionRemoveButtonHtml()}</span>`;
 }
 function promptImageMentionRemoveButtonHtml(){
@@ -11106,7 +11402,7 @@ function insertImageReferenceIntoPrompt(ref){
  if(!exists){
  const thumbList = mentionThumbnailCandidates(selectedNode());
  const count = [...promptInput.querySelectorAll('.mention-image-token')].length;
- const posAlias = mentionThumbAlias(ref, thumbList) || (mediaKindForItem(ref) === 'video' ? `视频${count + 1}` : `图片${count + 1}`);
+     const posAlias = mentionThumbAlias(ref, thumbList) || `${mentionKindLabel(mediaKindForItem(ref))}${count + 1}`;
  const tokenRef = {...ref, alias:posAlias};
  const tokenHtml = mentionTokenHtml(tokenRef);
  if(!tokenHtml) return false;
@@ -11208,10 +11504,81 @@ function addConnection(fromId, toId, kind='flow'){
     if(canvas.connections.some(c => c.from === fromId && c.to === toId && (c.kind || 'flow') === kind)) return;
     canvas.connections.push({from:fromId, to:toId, kind});
 }
+// ===== 2026-10-19 老王：连“组”= 把组内每张图各自连上（不再只连一根组线）。
+// 这样缩略图行里每张图都有自己的线，❌ 直接剪它自己那根（剪断后提示词里的引用随之降级）。=====
+function groupSourceNodeIds(node, visited=new Set()){
+    if(!node || !node.id) return [];
+    if(!isCanvasGroupNode(node)) return [node.id];
+    if(visited.has(node.id)) return [];
+    visited.add(node.id);
+    return (Array.isArray(node.memberIds) ? node.memberIds : [])
+        .flatMap(id => groupSourceNodeIds(nodes.find(n => n.id === id), visited));
+}
+// 把已有的“组线”就地展开成成员线（幂等：展开后不再有组线）
+function expandGroupConnections(groupId){
+    if(!canvas || !Array.isArray(canvas.connections) || !groupId) return 0;
+    const group = nodes.find(n => n.id === groupId);
+    if(!group || !isCanvasGroupNode(group)) return 0;
+    const memberIds = groupSourceNodeIds(group).filter(id => id !== groupId);
+    if(!memberIds.length) return 0;
+    let expanded = 0;
+    const next = [];
+    canvas.connections.forEach(conn => {
+        const kind = conn.kind || 'flow';
+        if(conn.from !== groupId || !['input', 'flow'].includes(kind)){
+            next.push(conn);
+            return;
+        }
+        memberIds.forEach(id => {
+            if(id === conn.to) return;
+            if(next.some(c => c.from === id && c.to === conn.to && (c.kind || 'flow') === kind)) return;
+            next.push({...conn, from:id});
+        });
+        const toNode = nodes.find(n => n.id === conn.to);
+        if(toNode && Array.isArray(toNode.inputNodeIds)){
+            toNode.inputNodeIds = Array.from(new Set([...(toNode.inputNodeIds || []).filter(x => x !== groupId), ...memberIds.filter(id => id !== conn.to)]));
+        }
+        expanded += 1;
+    });
+    if(expanded) canvas.connections = next;
+    return expanded;
+}
+function migrateGroupConnectionsToMemberLines(){
+    if(!canvas || !Array.isArray(canvas.connections)) return 0;
+    let changed = 0;
+    nodes.filter(n => isCanvasGroupNode(n)).forEach(group => { changed += expandGroupConnections(group.id); });
+    return changed;
+}
+// 新加入组的成员：自动连到“组内其它成员已经在喂的目标”
+function connectNewGroupMemberConnections(group, memberId){
+    if(!canvas || !Array.isArray(canvas.connections) || !group || !memberId) return 0;
+    if(!isCanvasGroupNode(group)) return 0;
+    const others = groupSourceNodeIds(group).filter(id => id !== group.id && id !== memberId);
+    if(!others.length) return 0;
+    const targets = new Set();
+    canvas.connections.forEach(conn => {
+        const kind = conn.kind || 'flow';
+        if(!['input', 'flow'].includes(kind)) return;
+        if(conn.from === group.id || others.includes(conn.from)) targets.add(conn.to);
+    });
+    let added = 0;
+    targets.forEach(toId => { if(toId !== memberId && connectInputNode(memberId, toId)) added += 1; });
+    if(added) render();
+    return added;
+}
 function connectInputNode(fromId, toId){
     const from = nodes.find(n => n.id === fromId);
     const to = nodes.find(n => n.id === toId);
     if(!from || !to || from.id === to.id) return false;
+    // 连“组”= 组内每张图各自连一条线（老王 2026-10-19）
+    if(isCanvasGroupNode(from)){
+        const memberIds = groupSourceNodeIds(from).filter(id => id !== to.id);
+        if(memberIds.length){
+            let connected = 0;
+            memberIds.forEach(id => { if(connectInputNode(id, to.id)) connected += 1; });
+            return connected > 0;
+        }
+    }
     if(to.type === 'smart-loop'){
         const looksImage = isSmartImageNode(from) || (isCanvasGroupNode(from) && imagesForNode(from).some(img => img?.url)) || (from.type === 'smart-loop' && from.imageInput);
         const looksPrompt = from.type === 'smart-prompt' || (from.type === 'smart-loop' && from.showPrompt);
@@ -11270,14 +11637,33 @@ function candidateInputImagesFor(node, consume=false, ctx=smartLoopContext){
     // 节点自身有无输出图都不影响上游输入引用（用户要求 2026-08-16：有输入节点就显示输入图缩略图）
     return inputs;
 }
+// 2026-10-19 老王：缩略图行顺序 = 节点自存的扁平输入图顺序（inputImageOrder，按 url 记），
+// 这样每一张都能拖到任意位置（旧模型按“节点顺序 + 节点内图片顺序”成段排列，跨段的图拖不动）。
+function applyInputImageOrder(node, images){
+    const order = Array.isArray(node?.inputImageOrder) ? node.inputImageOrder : [];
+    if(!order.length || !Array.isArray(images) || images.length < 2) return images;
+    const rank = new Map();
+    order.forEach((url, index) => {
+        const key = String(url || '').trim();
+        if(key && !rank.has(key)) rank.set(key, index);
+    });
+    return images.map((img, index) => ({img, index}))
+        .sort((a, b) => {
+            const ra = rank.has(String(a.img?.url || '')) ? rank.get(String(a.img.url)) : Number.MAX_SAFE_INTEGER;
+            const rb = rank.has(String(b.img?.url || '')) ? rank.get(String(b.img.url)) : Number.MAX_SAFE_INTEGER;
+            if(ra !== rb) return ra - rb;
+            return a.index - b.index;   // 未登记的（新接进来的）保持在后
+        })
+        .map(item => item.img);
+}
 function defaultInputImagesFor(node, consume=false, ctx=smartLoopContext){
     // 无线引用与连线输入在这一层合流（@编号 = 缩略图行从左到右第 N 张）。
     // 顺序：有线图片在前、无线引用追加到末尾 —— 这样在无线模式下再新增引用图片会“往后排”，
     // 不会插到第一张把既有有线图片的 @编号 往后挤（老王 2026-09-29 反馈引用错乱）。
     const objectRefs = canvasObjectReferenceImages(node, ctx);
     const connected = candidateInputImagesFor(node, consume, ctx);
-    if(!objectRefs.length) return connected;
-    return uniqueReferenceImages([...connected, ...objectRefs]);
+    if(!objectRefs.length) return applyInputImageOrder(node, connected);
+    return applyInputImageOrder(node, uniqueReferenceImages([...connected, ...objectRefs]));
 }
 function splitSmartPromptItems(text){
     const trimmed = String(text || '').trim();
@@ -11353,6 +11739,8 @@ function inputImagesFor(){return CanvasSmartLoopData.inputImagesFor.apply(null, 
 function workflowInputImagesFor(){return CanvasSmartLoopData.workflowInputImagesFor.apply(null, arguments);}
 function inputRefKey(){return CanvasSmartLoopData.inputRefKey.apply(null, arguments);}
 function blockedInputRefKeys(){return CanvasSmartLoopData.blockedInputRefKeys.apply(null, arguments);}
+function isInputRefBlocked(){return CanvasSmartLoopData.isInputRefBlocked.apply(null, arguments);}
+function toggleInputRefBlocked(){return CanvasSmartLoopData.toggleInputRefBlocked.apply(null, arguments);}
 function defaultReferenceImagesFor(){return CanvasSmartLoopData.defaultReferenceImagesFor.apply(null, arguments);}
 function lineImagesFor(){return CanvasSmartLoopData.lineImagesFor.apply(null, arguments);}
 function collectMentionedImagesFromPrompt(){return CanvasSmartLoopData.collectMentionedImagesFromPrompt.apply(null, arguments);}
@@ -11364,20 +11752,25 @@ function mentionThumbnailCandidates(node){
     if(!node) return [];
     const seen = new Set();
     return visibleReferenceImagesFor(node).filter(img => {
-        if(!img?.url || !['image','video'].includes(mediaKindForItem(img))) return false;
+        if(!img?.url || !['image','video','audio'].includes(mediaKindForItem(img))) return false;
+        if(isInputRefBlocked(node, img)) return false;   // 已屏蔽 = 不参与 @ 候选与编号
         if(seen.has(img.url)) return false;
         seen.add(img.url);
         return true;
     });
 }
+// 2026-10-19 老王：类型按节点里的素材定 —— 图片/视频/音频/文本，不再一律当图片
+function mentionKindLabel(kind){
+    return kind === 'video' ? '视频' : (kind === 'audio' ? '音频' : (kind === 'text' ? '文本' : '图片'));
+}
 function mentionThumbAlias(img, list){
-    const label = mediaKindForItem(img) === 'video' ? '视频' : '图片';
-    const same = (list || []).filter(x => (mediaKindForItem(x) === 'video' ? '视频' : '图片') === label);
+    const label = mentionKindLabel(mediaKindForItem(img));
+    const same = (list || []).filter(x => mentionKindLabel(mediaKindForItem(x)) === label);
     const pos = same.findIndex(x => x.url === img?.url);
     return pos >= 0 ? `${label}${pos + 1}` : '';
 }
 function inputMentionCandidateImages(node){
-    const current = node ? lineImagesFor(node) : [];
+    const current = node ? lineImagesFor(node).filter(img => !isInputRefBlocked(node, img)) : [];
     const thumbs = mentionThumbnailCandidates(node);
     const thumbOrder = new Map(thumbs.map((img, index) => [img.url, index]));
     const seen = new Set();
@@ -11392,7 +11785,7 @@ function inputMentionCandidateImages(node){
         seen.add(img.url);
         return true;
     }).map((img, index) => {
-        const label = mediaKindForItem(img) === 'video' ? '视频' : '图片';
+        const label = mentionKindLabel(mediaKindForItem(img));
         kindCounters[label] = (kindCounters[label] || 0) + 1;
         return {
             ...img,
@@ -11481,7 +11874,11 @@ function renderMentionPicker(source){
     const candidates = (mentionSource === 'asset' ? assetItems : inputItems).slice(0, 36);
     const body = candidates.length ? `<div class="mention-option-grid">${candidates.map((img, i) => `
             <button class="mention-option" type="button" data-mention-index="${i}" title="${escapeHtml(img.name || canvasAgentRefFileName(img) || '')}">
-                ${mediaKindForItem(img) === 'video' ? `<video src="${escapeHtml(img.url)}" muted preload="metadata" playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"></video>` : `<img src="${escapeHtml(img.url)}" alt="">`}
+                ${mediaKindForItem(img) === 'video'
+                    ? `<video src="${escapeHtml(img.url)}" muted preload="metadata" playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"></video>`
+                    : (mediaKindForItem(img) === 'audio'
+                        ? `<span class="media-audio-art" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></span>`
+                        : `<img src="${escapeHtml(img.url)}" alt="">`)}
                 <span>${escapeHtml(img.alias)}</span>
             </button>
         `).join('')}</div>` : `<div class="mention-empty">${escapeHtml(tr('smart.mentionEmpty'))}</div>`;
@@ -11594,7 +11991,7 @@ function insertMentionToken(img){
     const thumbList = mentionThumbnailCandidates(selectedNode());
     const posAlias = mentionThumbAlias(img, thumbList) || inputMentionCandidateImages(selectedNode()).find(c => c.url === img.url)?.alias;
     const count = [...promptInput.querySelectorAll('.mention-image-token')].length;
-    img = {...img, alias:posAlias || (mediaKindForItem(img) === 'video' ? `视频${count + 1}` : `图片${count + 1}`)};
+    img = {...img, alias:posAlias || `${mentionKindLabel(mediaKindForItem(img))}${count + 1}`};
     const range = sel.rangeCount ? sel.getRangeAt(0) : document.createRange();
     let removedAt = false;
     if(range.startContainer?.nodeType === Node.TEXT_NODE && range.startOffset > 0){
@@ -11626,7 +12023,9 @@ function insertMentionToken(img){
     token.dataset.assetUris = JSON.stringify(img.asset_uris || {});
     token.innerHTML = token.dataset.kind === 'video'
         ? `<video src="${escapeHtml(img.url)}" muted preload="metadata" playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"></video><span>${escapeHtml(token.dataset.name)}</span>`
-        : `<img src="${escapeHtml(img.url)}" alt=""><span>${escapeHtml(token.dataset.name)}</span>`;
+        : (token.dataset.kind === 'audio'
+            ? `<span class="mention-audio-token-art" aria-hidden="true"><i data-lucide="music"></i></span><span>${escapeHtml(token.dataset.name)}</span>`
+            : `<img src="${escapeHtml(img.url)}" alt=""><span>${escapeHtml(token.dataset.name)}</span>`);
     token.insertAdjacentHTML('beforeend', promptImageMentionRemoveButtonHtml());
     range.insertNode(token);
     const spacer = document.createTextNode(' ');
@@ -12454,8 +12853,21 @@ function appendOutputsToNode(node, additions, kind='image', options={}){
     preserveNodeCardForRun(node);
     const beforeRight = (Number(node.x) || 0) + nodeRect(node).width;
     const existing = (node.images || []).filter(img => img?.url).map(img => stripImageGenerationMeta(img));
-    const next = additions.map(img => stripImageGenerationMeta({...img}));
-    node.images = CanvasGenerationResultModel.uniqueMediaItems([...existing, ...next]);
+    let next = additions.map(img => stripImageGenerationMeta({...img}));
+    // 2026-10-19（老王：一个节点只装一张图，旧的进历史）
+    if(kind === 'image'){
+        if(next.length > 1){
+            const extras = next.slice(0, -1);
+            next = [next[next.length - 1]];
+            spawnImageNodesForExtras(node, extras, options);
+        }
+        if(existing.length){
+            try { Promise.resolve(moveOutputImagesToHistoryForRun(existing, {})).catch(() => {}); } catch(_){}
+        }
+        node.images = CanvasGenerationResultModel.uniqueMediaItems(next);
+    } else {
+        node.images = CanvasGenerationResultModel.uniqueMediaItems([...existing, ...next]);
+    }
     node.pending = 0;
     node.running = false;
     node.runFinishedAt = nowMs();
@@ -13200,6 +13612,8 @@ if(globalThis.CanvasSmartTaskSupervisor){CanvasSmartTaskSupervisor.configure({
         nowMs: (...a) => nowMs(...a),
         render: (...a) => render(...a),
         replaceOutputsToNodeWithHistory: (...a) => replaceOutputsToNodeWithHistory(...a),
+        spawnImageNodesForExtras: (...a) => spawnImageNodesForExtras(...a),
+        moveOutputImagesToHistoryForRun: (...a) => moveOutputImagesToHistoryForRun(...a),
         restoreNodeBoxAfterFailure: (...a) => restoreNodeBoxAfterFailure(...a),
         resultMediaUrls: (...a) => resultMediaUrls(...a),
         scheduleSave: (...a) => scheduleSave(...a),

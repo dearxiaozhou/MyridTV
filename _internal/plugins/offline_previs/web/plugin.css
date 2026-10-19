@@ -1,0 +1,15 @@
+.pv-plugin-entry{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.pv-plugin-entry select{max-width:116px;font-size:12px;color:var(--x-text,var(--text));background:var(--x-panel-solid,var(--panel));border:1px solid var(--x-line,var(--line));border-radius:8px;padding:4px}
+.pv-plugin-entry [hidden]{display:none!important}
+.pv-plugin-overlay{position:fixed;inset:0;z-index:100500;background:rgba(0,0,0,.42);display:flex;align-items:center;justify-content:center;padding:20px}
+.pv-plugin-dialog{width:min(850px,96vw);max-height:90vh;overflow:auto;background:var(--x-panel-solid,var(--panel,#20242b));color:var(--x-text,var(--text,#eee));border:1px solid var(--x-line,var(--line));border-radius:16px;box-shadow:0 20px 70px rgba(0,0,0,.3);padding:22px}
+.pv-plugin-dialog header{display:flex;justify-content:space-between;gap:20px;margin-bottom:18px}
+.pv-plugin-dialog h2{font-size:20px;margin:0 0 7px}.pv-plugin-dialog p{font-size:12px;color:var(--x-muted,var(--muted));margin:4px 0}
+.pv-plugin-dialog section{border-top:1px solid var(--x-line,var(--line));padding:12px 0}.pv-plugin-dialog h3{font-size:14px;margin:0 0 10px}.pv-plugin-dialog h3 span{font-size:11px;font-weight:400;color:var(--x-muted,var(--muted))}
+.pv-top-fields{display:flex;gap:12px;flex-wrap:wrap;margin:8px 0}.pv-plugin-dialog label{display:flex;flex-direction:column;gap:5px;font-size:12px;flex:1;min-width:95px}
+.pv-plugin-dialog input,.pv-plugin-dialog select{width:100%;box-sizing:border-box;border:1px solid var(--x-line,var(--line));border-radius:7px;padding:7px 9px;background:var(--x-soft,var(--bg,#181b21));color:inherit;font:inherit;min-width:0}
+.pv-vector-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.pv-vector{display:flex;gap:8px;border:1px solid var(--x-line,var(--line));border-radius:8px;padding:8px;margin:0;min-width:0}.pv-vector legend{font-size:12px;padding:0 4px}.pv-vector label{min-width:0}
+.pv-actor{border:1px solid var(--x-line,var(--line));border-radius:9px;padding:10px;margin-top:8px}.pv-actor summary{cursor:pointer;font-size:13px}
+.pv-plugin-dialog button{border:1px solid var(--x-line,var(--line));border-radius:8px;background:transparent;color:inherit;padding:7px 12px;cursor:pointer;font-size:12px}.pv-plugin-dialog button.primary{background:var(--x-accent,var(--accent));color:var(--x-strong-text,var(--text))}
+.pv-plugin-dialog footer{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:15px}.pv-artifacts{margin-right:auto;font-size:12px}.pv-artifacts a{color:inherit}.pv-plugin-dialog .pv-note{line-height:1.6}.pv-plugin-dialog .pv-error{color:var(--x-danger,#d66969)}
+@media(max-width:650px){.pv-vector-grid{grid-template-columns:1fr}.pv-plugin-dialog{padding:15px}.pv-top-fields{gap:8px}}

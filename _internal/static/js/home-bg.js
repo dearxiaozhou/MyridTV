@@ -30,7 +30,26 @@
    * 两层都透时 CSS 背景是**顺序混合**（dst'=src*a+dst*(1-a)），两层同 x 的复合
    * 不透明度 = x+(1-x)*x = 2x-x²（不是 1-(1-x)²！），故每层取 1-√(1-a)，
    * 复合恰为 a，滑块值=观感（实测 50% → 两层 0.293 → 灰底上 (77,78,80)）。
-   * has-cover 卡的封面图盖满主体区（内容，不参与透明度），只透卡片自身那层。 */
+   * has-cover 卡的封面图盖满主体区（内容，不参与透明度），只透卡片自身那层。
+   * ⚠ 2026-10-18 V0.13.20：卡片内部还有「第三层」——ID 行 / meta 行
+   * （.canvas-card-id-row / .canvas-card-meta，application-palette.css L129
+   * `background:var(--x-soft)!important` 实心底）。V0.13.22 只修了卡片两层，
+   * 这两条透明卡里嵌死黑条。数学：卡片两层已把复合不透明度精确褪到 a，
+   * 标签层再叠任何底都会超出 a（顺序混合单调递增），故此层只能清成全透
+   * （inline rgba(0,0,0,0) !important 压过简写的 background-color 部分）。
+   * has-cover 卡的这两条是封面图上的白字 scrim（palette L133/L139），
+   * 属内容层不参与透明度，skip。
+   * ⚠ 2026-10-18 V0.14.5 实测翻转：has-cover 卡的 ID/meta 行**不在封面图上**
+   * （截图坐实：封面图只盖上部，两条在图下方无图区）——图片背景下半透明卡上
+   * 挂两块 0.74 死黑（CDP 实测：卡片层已 0.294，这两条仍 0.74），即"一用图片
+   * 背景就挂"。改为**跟着滑块联动**：scrim alpha = 0.74*a（a=1 时恢复原 0.74，
+   * removeProperty），区域复合 = a+0.74a(1-a) ≤ 1，a=0.5 时 0.685——白字有
+   * 依托且不再死黑。颜色 21,25,28 = --x-media-overlay-bg 实测 rgb。
+   * ⚠ 2026-10-18 V0.14.8：封面卡还有「图片壳」两层——.canvas-card-bg
+   * （不透明背景图 inset:0 盖满整卡）+ .canvas-card-bg-shade（渐变）。卡片两层
+   * 底色透得再好也被实图压死（CDP：卡片层 0.224、封面图仍 1.0 满盖 337×337），
+   * 即"一用图片做背景 transparency 就挂"。滑块 <100% 时图片壳整体 opacity=a
+   * 随滑块褪，a=1 removeProperty 恢复；复合 = 页面背景 + a 份封面图。 */
   function applyCardAlpha(alpha) {
     var cards = document.querySelectorAll('#canvasGate .canvas-item, .gate-list .canvas-item');
     if (!cards.length) return;
@@ -42,13 +61,35 @@
       var c = cards[i];
       var open = c.querySelector('.canvas-open');
       var hasCover = !!(open && open.classList.contains('has-cover'));
+      var inner = c.querySelectorAll('.canvas-card-id-row, .canvas-card-meta');
+      // 封面卡的「图片壳」（V0.14.8）：.canvas-card-bg 是不透明背景图、inset:0
+      // 盖满整卡，.canvas-card-bg-shade 是渐变 scrim。卡片底色两层透得再好也被这层
+      // 实图压死——"用图片做背景透明度就挂"的根因（CDP 实测：卡片层已 0.224，
+      // 封面图仍 1.0 满盖）。滑块 <100% 时让图片壳整体 opacity=a 随滑块褪，
+      // a=1 时 removeProperty 恢复原样；无封面图的卡（coverLayers 为空）天然跳过。
+      var coverLayers = c.querySelectorAll('.canvas-card-bg, .canvas-card-bg-shade');
       if (a >= 1) {
         c.style.removeProperty('background-color');
         if (open) open.style.removeProperty('background-color');
+        for (var j = 0; j < inner.length; j++) inner[j].style.removeProperty('background-color');
+        for (var m = 0; m < coverLayers.length; m++) coverLayers[m].style.removeProperty('opacity');
       } else {
         c.style.setProperty('background-color', val, 'important');
         if (open && !hasCover) open.style.setProperty('background-color', val, 'important');
         else if (open) open.style.removeProperty('background-color');
+        for (var k = 0; k < inner.length; k++) {
+          if (hasCover) {
+            // 封面卡：白字 scrim 跟滑块联动（0.74 → 0.74*a），别在半透明卡上死黑
+            inner[k].style.setProperty('background-color', 'rgba(21, 25, 28, ' + (0.74 * a) + ')', 'important');
+          } else {
+            // 非封面卡：卡片两层已把复合不透明度精确褪到 a，此层只能全透
+            inner[k].style.setProperty('background-color', 'rgba(0, 0, 0, 0)', 'important');
+          }
+        }
+        // 封面图壳跟着滑块褪：复合 = 页面背景 + a 份封面图，与普通卡的 a 份卡片底色观感一致
+        for (var n = 0; n < coverLayers.length; n++) {
+          coverLayers[n].style.setProperty('opacity', String(a), 'important');
+        }
       }
     }
   }
@@ -141,6 +182,21 @@
         var at = -1;
         for (var k = 0; k < items.length; k++) { if (items[k].name === cfg.selected) { at = k; break; } }
         if (at >= 0) return at;
+        /* V0.14.7：选中的文件丢了/改名了（如用户改名加前缀）→ 容错匹配救回：
+           忽略大小写；配置名是磁盘名的子串也认（f512b503... vs 512b503...）。
+           命中就把配置纠正成真实名并写回，否则用户选的图永远不显示。 */
+        var want = String(cfg.selected).toLowerCase();
+        for (var m = 0; m < items.length; m++) {
+          var nm = String(items[m].name).toLowerCase();
+          if (nm === want || (want.length >= 8 && nm.indexOf(want) >= 0)) {
+            try { cfg.selected = items[m].name; writeConfig(cfg); } catch (e) {}
+            return m;
+          }
+        }
+      }
+      /* 彻底失联：回落后把生效名写回配置（弹窗高亮/下次启动才对得上） */
+      if (items.length && cfg.selected !== items[0].name) {
+        try { cfg.selected = items[0].name; writeConfig(cfg); } catch (e) {}
       }
       return 0;
     }
@@ -246,8 +302,9 @@
           gate.classList.remove('home-bg-on');
           document.body.classList.remove('has-home-bg');
           punchThrough(false);
-          var cards0 = document.querySelectorAll('#canvasGate .canvas-item, .gate-list .canvas-item');
-          for (var i = 0; i < cards0.length; i++) { cards0[i].style.removeProperty('background-color'); }
+          // 素材清空 → 卡片整体恢复默认。不能只清 .canvas-item 一层：
+          // .canvas-open / 标签行 / 封面图壳的 inline 都要撤（V0.14.8）
+          applyCardAlpha(100);
           return;
         }
         gate.classList.add('home-bg-on');

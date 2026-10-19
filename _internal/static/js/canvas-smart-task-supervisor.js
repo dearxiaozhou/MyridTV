@@ -376,7 +376,20 @@ async function finalizeSmartPendingTask(node, taskId, images, kind='image', expe
         keys.forEach(key => seenUrls.add(key));
         return true;
     }).map(img => ({...img, generationTaskId:taskId}));
-    node.images = [...existing, ...additions];
+    if(kind === 'image'){
+        // 2026-10-19（老王：一个节点只装一张图，旧的进历史）
+        if(additions.length > 1){
+            const extras = additions.slice(0, -1);
+            additions = [additions[additions.length - 1]];
+            if(deps.spawnImageNodesForExtras) deps.spawnImageNodesForExtras(node, extras, {});
+        }
+        if(existing.length && deps.moveOutputImagesToHistoryForRun){
+            try { Promise.resolve(deps.moveOutputImagesToHistoryForRun(existing, {})).catch(() => {}); } catch(_){}
+        }
+        node.images = additions;
+    } else {
+        node.images = [...existing, ...additions];
+    }
     if(node.__origin === 'agent_tool_generation'){
         deps.addSmartGenerationLog({
             taskId,
@@ -439,6 +452,10 @@ async function resumeSmartPendingNode(node){
         try {
             const result = await pollSmartCanvasTask(task.taskId);
             if(!isCurrent()) return;
+            if(result?.backend === 'blender-offline-endpoints'){
+                node.offlinePrevisArtifacts = {blend_url:result.previs_blend_url, spec_url:result.previs_data_url, validation_url:result.validation_url};
+                task.kind = 'image';
+            }
             await finalizeSmartPendingTask(node, task.taskId, result?.images || result?.videos || deps.resultMediaUrls(result), task.kind || 'image', attempt);
             if(!isCurrent()) return;
             deps.render();

@@ -27,6 +27,8 @@
         const memberIds = Array.isArray(group.memberIds) ? group.memberIds : [];
         if(memberIds.includes(node.id)) return false;
         group.memberIds = [...memberIds, node.id];
+        // 2026-10-19 老王：新入组的成员自动连到组内其它成员已经在喂的目标
+        try { ctx.connectNewGroupMemberConnections?.(group, node.id); } catch(e) {}
         return true;
     }
 

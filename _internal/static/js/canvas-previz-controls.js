@@ -7,7 +7,10 @@
     function renderBlenderControls() {
         var context = deps.getContext ? deps.getContext() : {};
         var settings = context.settings;
-        if (!settings || settings.engine !== 'blender') return false;
+        if (!settings || settings.engine !== 'blender') {
+            global.document.querySelectorAll('.pv-plugin-entry').forEach(el => el.remove());
+            return false;
+        }
         var dynamicParams = context.dynamicParams;
         var composerStyleModeSlot = context.composerStyleModeSlot;
         var promptInput = context.promptInput;
@@ -212,6 +215,10 @@
         const cascadeBtn = document.getElementById('cascadeRunBtn');
         if(cascadeBtn) cascadeBtn.style.display = 'none';
         if(typeof syncEngineSelectOptions === 'function') syncEngineSelectOptions();
+        if(global.CanvasOfflinePrevis){
+            global.CanvasOfflinePrevis.mount({settings:settings,getNode:context.getNode,
+                apply:context.applyOfflinePatch,notify:context.notify,generate:context.generateOffline});
+        }
         return true;
     }
 

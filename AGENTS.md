@@ -38,6 +38,14 @@ group MCP/Agent multi-image results during render, sync or loading. Multi-file
 imports must not create a smart-group, and legacy multi-image nodes must not be
 converted to groups on load. Preserve existing saved groups and their contents.
 
+
+## Single-image Nodes
+
+A canvas node holds at most one image. Imports, uploads, pastes and generation
+results must never accumulate multiple images in one node: the first image keeps
+the node, every additional image becomes its own node, and the node's previous
+images move to history (`/api/move-to-history`) instead of stacking.
+
 ## Packaging Rule
 
 1. Release builds must be produced through `installer/prepare-release.ps1` or `installer/build-installer.ps1`. Do not manually copy the app tree into a release folder.

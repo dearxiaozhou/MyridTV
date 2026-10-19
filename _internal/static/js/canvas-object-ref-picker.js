@@ -37,8 +37,15 @@ function canvasObjectRefCandidateHtml(item, selected){
         : item.kind === 'video' ? 'smart.kindVideo'
         : item.kind === 'audio' ? 'smart.kindAudio'
         : item.kind === 'text' ? 'smart.kindText' : 'smart.kindFile';
-    const thumb = item.thumb
-        ? `<img src="${deps.escapeHtml(deps.canvasThumbnailUrl(item.thumb, 96))}" data-original-src="${D("escapeAttr")(item.thumb.url || '')}" alt="" draggable="false" loading="lazy">`
+    // 2026-10-19 老王：按素材类型渲染缩略图；音频/视频不再当图片塞 <img>（会出破图）
+    const thumbItem = item.thumb;
+    const thumb = !thumbItem ? `<span class="object-ref-icon"><i data-lucide="${item.kind === 'text' ? 'file-text' : 'file'}"></i></span>`
+        : item.kind === 'image'
+        ? `<img src="${deps.escapeHtml(deps.canvasThumbnailUrl(thumbItem, 96))}" data-original-src="${D("escapeAttr")(thumbItem.url || '')}" alt="" draggable="false" loading="lazy">`
+        : item.kind === 'video'
+        ? `<video src="${deps.escapeHtml(thumbItem.url || '')}" muted preload="metadata" playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"></video>`
+        : item.kind === 'audio'
+        ? `<span class="media-audio-art" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></span>`
         : `<span class="object-ref-icon"><i data-lucide="${item.kind === 'text' ? 'file-text' : 'file'}"></i></span>`;
     return `<button class="object-ref-item ${selected ? 'is-selected' : ''}" type="button" data-object-ref-pick="${D("escapeAttr")(item.node.id)}"><span class="object-ref-thumb">${thumb}</span><span class="object-ref-meta"><span class="object-ref-title">${deps.escapeHtml(item.node.title || tr('smart.title'))}</span><span class="object-ref-kind">${deps.escapeHtml(tr(kindKey))}</span></span><span class="object-ref-check">${selected ? '<i data-lucide="check"></i>' : ''}</span></button>`;
 }
@@ -134,11 +141,13 @@ function bindCanvasObjectRefActions(node){
 }
 function bindInputThumbsDrag(node, items){
     if(!D("inputThumbsRow")) return;
-    D("inputThumbsRow").querySelectorAll('.input-thumb').forEach(el => {
+    D("inputThumbsRow").querySelectorAll('.input-thumb:not(.input-thumb-text)').forEach(el => {
         const index = Number(el.dataset.thumbIndex || 0);
         el.setAttribute('draggable', 'false');
         el.addEventListener('mousedown', e => {
             if(e.button !== 0 || !node || !items?.length) return;
+            // 缩略图上的 ❌/@ 按钮不触发拖拽重排
+            if(e.target?.closest?.('.input-thumb-cut, .input-thumb-at')) return;
             if(el.classList.contains('input-self')) return;
             e.preventDefault();
             e.stopPropagation();
@@ -195,6 +204,10 @@ function applyInputOrderFromImageList(currentNode, items){
     currentNode.inputNodeIds = order;
     return order;
 }
+// 2026-10-19 老王：拖动缩略图 = 直接改写节点自存的扁平输入图顺序（行顺序以此为准）
+function inputImageOrderKeys(items){
+    return (items || []).map(img => String(img?.url || '').trim()).filter(Boolean);
+}
 function reorderInputThumb(currentNode, items, from, to){
     // items are already sourced from inputImagesFor → multiple source D("nodes") possible.
     // Same source node: reorder images inside that node.
@@ -220,6 +233,7 @@ function reorderInputThumb(currentNode, items, from, to){
         }
         // 同节点内换序也要让连线顺序跟上缩略图视觉顺序（用户要求 2026-09-11）
         applyInputOrderFromImageList(currentNode, applied);
+        currentNode.inputImageOrder = inputImageOrderKeys(applied);
         render();
         scheduleSave();
         return;
@@ -232,6 +246,7 @@ function reorderInputThumb(currentNode, items, from, to){
         discardPendingUndo?.();
         return;
     }
+    currentNode.inputImageOrder = inputImageOrderKeys(applied);
     if(canvas?.connections){
         const ranked = new Map(order.map((id, index) => [id, index]));
         const indexed = canvas.connections.map((conn, index) => ({conn, index}));

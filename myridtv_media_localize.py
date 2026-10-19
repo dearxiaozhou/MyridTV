@@ -36,6 +36,8 @@ from myridtv_core import ApiError, append_log
 _ASSETS_DIR = None
 _USER_DATA_DIR = None
 _ROOT = None
+# URL 里出现空白/控制字符时不能直发 http.client（见 iri_to_uri）
+WHITESPACE_OR_CONTROL_RE = re.compile(r"[\s\x00-\x1f\x7f]")
 _log_file = lambda: None
 _r_comfy_instance_base = None
 _r_get_task_state = lambda tid: {}
@@ -705,6 +707,37 @@ def guess_upload_filename(source_url, content_type="application/octet-stream", f
     return f"{fallback_prefix}-{uuid.uuid4().hex[:8]}{ext}"
 
 
+def iri_to_uri(url):
+    """把含非 ASCII／空格的 URL 转成 http.client 能发出去的 ASCII URI。
+
+    画布远程产物名常带中文（如 seedvr2_修复_00001_xxx.png）或空格；
+    http.client 写请求行时按 ascii 编码、且拒绝控制字符，未转义会直接抛
+    `'ascii' codec can't encode characters in position N-M` 或
+    `URL can't contain control characters … found at least ' '`，
+    导致远程图永远本地化不了（节点只剩 remoteFallback）。
+    纯 ASCII 且无空白/控制字符的 URL 原样返回，不改既有行为。
+    """
+    text = str(url or "").strip()
+    if not text:
+        return text
+    if not WHITESPACE_OR_CONTROL_RE.search(text):
+        try:
+            text.encode("ascii")
+            return text
+        except UnicodeEncodeError:
+            pass
+    parts = urllib.parse.urlsplit(text)
+    safe_path = "/%:@&=+$,;~()*!'"
+    safe_query = "/?&=+$,;~()*!'%:@"
+    return urllib.parse.urlunsplit((
+        parts.scheme,
+        parts.netloc,
+        urllib.parse.quote(parts.path, safe=safe_path),
+        urllib.parse.quote(parts.query, safe=safe_query),
+        urllib.parse.quote(parts.fragment, safe=safe_query),
+    ))
+
+
 def local_media_source_bytes(source_url):
     text = str(source_url or "").strip()
     if not text:
@@ -738,7 +771,7 @@ def local_media_source_bytes(source_url):
         target = Path(text)
         return target.read_bytes(), target.name, mimetypes.guess_type(str(target))[0] or "application/octet-stream"
     request = urllib.request.Request(
-        text,
+        iri_to_uri(text),
         headers={
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36"
         },
@@ -842,7 +875,7 @@ def cloud_media_url_downloadable(url, timeout=15):
         return False
     try:
         req = urllib.request.Request(
-            text,
+            iri_to_uri(text),
             headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:

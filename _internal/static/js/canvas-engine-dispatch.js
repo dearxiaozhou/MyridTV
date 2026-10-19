@@ -109,7 +109,9 @@ async function runApiGeneration(prompt, refs, runSettings=D("settings"), sourceN
         payload.n = 1;
         payload.count = 1;
         payload.aspectRatio = deps.rhOfficialAspectRatioForRun(runSettings);
-        payload.previz_llm_enabled = runSettings.previzLlmEnabled === true;
+        payload.previz_output = runSettings.previzOutput || 'animation';
+        if(payload.previz_output === 'endpoints') payload.offline_previs_spec = await global.CanvasOfflinePrevis.ensureSpec(runSettings);
+        payload.previz_llm_enabled = payload.previz_output !== 'endpoints' && runSettings.previzLlmEnabled === true;
         payload.previz_llm_provider = runSettings.previzLlmProvider || '';
         payload.previz_llm_model = runSettings.previzLlmModel || '';
         delete payload.size;

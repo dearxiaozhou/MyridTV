@@ -1,0 +1,14 @@
+{
+  "id": "offline-previs",
+  "name": "离线起落幅预演",
+  "version": "1.0.0",
+  "host": "MyridTV",
+  "backend": "plugin.py",
+  "frontend": "web/plugin.js",
+  "stylesheet": "web/plugin.css",
+  "runtime": "offline_previs_cli.py",
+  "requires_agent": false,
+  "requires_network": false,
+  "entry": "画布 → 3D预演节点 → 起落幅设置",
+  "result": "two_images_on_original_node"
+}

@@ -27,7 +27,7 @@ async function runGeneration(){
     catch(error){ if(isCurrent()) lifecycle.finish(node,attempt,'failed',error.message); throw error; }
     if(!isCurrent()) return;
     const request = withRunSettings(() => deps.buildPromptRequest(node, null, true, D("smartLoopContext")));
-    const prompt = request.prompt.trim();
+    const prompt = request.prompt.trim() || (executionSettings.engine === 'blender' && executionSettings.previzOutput === 'endpoints' ? '离线起落幅预演' : '');
     if(!prompt && !deps.allowsPromptlessCustomComfy(executionSettings)){ deps.toast(tr('smart.toastNeedPrompt')); lifecycle.finish(node,attempt,'cancelled'); return; }
     let refs = request.refs;
     const outpaintSize = node?.outpaintSize && Number(node.outpaintSize.width) > 0 && Number(node.outpaintSize.height) > 0
@@ -136,6 +136,7 @@ async function runGeneration(){
             return;
         }
         if((deps.isApiLikeEngine(executionSettings.engine) && executionSettings.apiKind === 'video') || executionSettings.engine === 'blender'){
+            const generationKind = executionSettings.engine === 'blender' && executionSettings.previzOutput === 'endpoints' ? 'image' : 'video';
             const videoResult = executionSettings.engine === 'blender'
                 ? await deps.runApiGeneration(prompt, refs, executionSettings, node)
                 : await deps.runApiVideoGeneration(prompt, refs, executionSettings);
@@ -143,7 +144,7 @@ async function runGeneration(){
             const taskIds = deps.taskIdsFromResult(videoResult);
             const outVideos = videoResult?.urls || deps.resultMediaUrls(videoResult);
             if(taskIds.length && !outVideos.length){
-                pendingNode.pendingTasks = taskIds.map(taskId => ({taskId, kind:'video'}));
+                pendingNode.pendingTasks = taskIds.map(taskId => ({taskId, kind:generationKind}));
                 deps.rememberSmartTaskIds(pendingNode, taskIds);
                 pendingNode.pending = taskIds.length;
                 pendingNode.runStartedAt = deps.nowMs();
@@ -165,7 +166,7 @@ async function runGeneration(){
                 return;
             }
             if(!outVideos.length) throw new Error(tr('smart.errNoOutVideos'));
-            await deps.finalizePendingNode(pendingNode, outVideos, pendingMeta, 'video');
+            await deps.finalizePendingNode(pendingNode, outVideos, pendingMeta, generationKind);
             if(!isCurrent()) return;
             if(sourceVisualState) deps.restoreSourceVisualState(node, sourceVisualState);
             deps.addSmartGenerationLog({run:runLog, outputs:outVideos, runMs:deps.nowMs() - runLogStart});

@@ -4896,3 +4896,41 @@ body.canvas-mode-objects .node-port { display:none !important; }
 .style-panel-head-row:empty {display:none;}
 @media(max-width:560px){.shot-popover .style-tile-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.style-popover-head{gap:5px;}.style-popover-head .style-library-search{flex-basis:130px;}.shot-categories button{padding:5px 6px;}}
 @media(max-width:720px){.style-mode-control .style-tile-grid {grid-template-columns:repeat(3,minmax(0,1fr));}}
+/* ===== 2026-10-19 上游素材缩略图：悬停 ❌ 剪断/屏蔽、@ 引用到光标 + 文本缩略图（文本1/文本2） ===== */
+.input-thumb .input-thumb-cut,
+.input-thumb .input-thumb-at { position:absolute; z-index:4; display:none; align-items:center; justify-content:center; padding:0; border:1px solid rgba(255,255,255,.25); background:#1f1f1f; color:#f8fafc; cursor:pointer; }
+.input-thumb:hover .input-thumb-cut,
+.input-thumb:hover .input-thumb-at { display:inline-flex; }
+.input-thumb .input-thumb-cut { right:1px; top:1px; width:15px; height:15px; border-radius:999px; }
+.input-thumb .input-thumb-cut:hover { background:var(--x-danger-soft); border-color:var(--x-danger); color:var(--x-danger); }
+.input-thumb .input-thumb-cut i, .input-thumb .input-thumb-cut svg { width:9px; height:9px; stroke-width:3; }
+.input-thumb .input-thumb-at { left:50%; bottom:1px; transform:translateX(-50%); min-width:19px; height:15px; border-radius:999px; font-size:10px; font-weight:800; line-height:1; }
+.input-thumb .input-thumb-at:hover { background:var(--x-selected-fill); border-color:var(--x-selected-line); color:var(--x-selected-text); }
+.input-thumb.input-blocked .input-thumb-cut { background:var(--x-danger-soft); border-color:var(--x-danger); color:var(--x-danger); }
+/* 文本缩略图（上游提示词节点）：规格对齐音频缩略图 */
+.input-thumb.input-thumb-text { cursor:default; }
+.input-thumb .text-thumb { position:relative; width:100%; height:100%; display:flex; flex-direction:column; align-items:stretch; overflow:hidden; border-radius:10px; background:linear-gradient(145deg,#2f2f2f 0%,#1f1f1f 100%); border:1px solid #404040; color:var(--text); }
+.input-thumb .text-thumb .text-thumb-art { flex:1 1 auto; min-height:0; display:flex; align-items:center; justify-content:center; padding:7px 5px 3px; }
+.input-thumb .text-thumb .text-thumb-art i, .input-thumb .text-thumb .text-thumb-art svg { width:15px; height:15px; stroke-width:1.6; color:var(--muted); }
+.input-thumb .text-thumb .text-thumb-footer { flex:0 0 auto; display:flex; align-items:center; justify-content:center; width:100%; min-height:15px; padding:2px 4px 3px; background:#1f1f1f; border-top:1px solid #404040; color:var(--muted); text-align:center; font-size:8px; font-weight:900; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* 2026-10-19 屏蔽的输入不占缩略图行位：右端「已屏蔽 X」胶囊，点一下恢复 */
+.input-thumb-unblock-actions { flex:0 0 auto; display:flex; align-items:center; gap:6px; margin-left:auto; }
+.input-thumb-unblock { height:28px; max-width:none; padding:0 9px; border-style:dashed; border-color:var(--line); background:transparent; color:var(--muted); font-size:11px; font-weight:700; }
+.input-thumb-unblock:hover { border-style:solid; border-color:var(--x-selected-line); background:var(--x-hover-bg); color:var(--x-text); }
+.input-thumb-unblock i, .input-thumb-unblock svg { width:12px; height:12px; opacity:.75; }
+/* 2026-10-19 提示词里的音频引用片（万能节点按素材定类型：放音频=音频） */
+.mention-image-token .mention-audio-token-art { display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:5px; background:linear-gradient(145deg,#2f2f2f 0%,#1f1f1f 100%); border:1px solid #404040; vertical-align:middle; }
+.mention-image-token .mention-audio-token-art i, .mention-image-token .mention-audio-token-art svg { width:10px; height:10px; stroke-width:2; color:var(--muted); }
+/* 2026-10-19 音频缩略统一块（@列表/无线引用列表/Agent @列表共用）：禁止用 <img src=音频>（必破图） */
+.media-audio-art { display:inline-flex; align-items:center; justify-content:center; gap:3px; border-radius:7px; border:1px solid var(--line); background:linear-gradient(145deg,#2f2f2f 0%,#1f1f1f 100%); }
+.media-audio-art > span { display:block; width:3px; border-radius:999px; background:linear-gradient(180deg,#c8c8c8 0%,#7a7a7a 100%); }
+.media-audio-art > span:nth-child(1), .media-audio-art > span:nth-child(5) { height:8px; opacity:.86; }
+.media-audio-art > span:nth-child(2), .media-audio-art > span:nth-child(4) { height:14px; }
+.media-audio-art > span:nth-child(3) { height:20px; }
+.mention-option .media-audio-art { width:100%; aspect-ratio:1; max-width:54px; max-height:54px; }
+.object-ref-thumb .media-audio-art { width:100%; height:100%; border-radius:0; border:0; }
+.canvas-agent-mention .media-audio-art { width:34px; height:34px; border-radius:8px; }
+/* 2026-10-19 提示词框上方缩略图行：视频缩略图带文字标签（规格对齐音频缩略图） */
+.input-thumb .input-video-thumb { display:flex; flex-direction:column; align-items:stretch; justify-content:stretch; border-radius:10px; overflow:hidden; }
+.input-thumb .input-video-thumb video { flex:1 1 auto; min-height:0; width:100%; height:auto; object-fit:cover; border-radius:0; display:block; }
+.input-thumb .input-video-thumb .input-video-thumb-label { flex:0 0 auto; display:flex; align-items:center; justify-content:center; min-height:15px; padding:2px 4px 3px; background:#1f1f1f; border-top:1px solid #404040; color:var(--muted); text-align:center; font-size:8px; font-weight:900; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }

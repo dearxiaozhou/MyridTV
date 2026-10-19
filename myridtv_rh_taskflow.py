@@ -173,6 +173,8 @@ def run_task(task_id, payload):
         if provider_id == "blender":
             myridtv_task_state.update_task_state(task_id, status="running", backend="blender-previz", provider_id="blender", checked_at=time.time())
             result = run_blender_previz(payload, task_id)
+            if myridtv_task_console._task_console_is_cancelled(task_id):
+                return
             myridtv_task_state.update_task_state(task_id, status="succeeded", result=result, completed_at=time.time(), localized_at=time.time())
             return
         if provider_id == "volcengine":

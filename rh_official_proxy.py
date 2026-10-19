@@ -274,7 +274,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.10.01.speech9"
+STATIC_VERSION = "2026.10.19.thumb9"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 # Windows 版 Python 的 mimetypes 不带 webp，猜不出来会回落成
 # application/octet-stream，浏览器按未知类型拒绝渲染（风格缩略图会全变空白）。
@@ -464,6 +464,7 @@ import myridtv_agent_generation
 import myridtv_runninghub_build
 import myridtv_task_console
 import myridtv_blender_previz
+import myridtv_offline_previs
 import myridtv_comfy
 import myridtv_runninghub
 import myridtv_rh_catalog
@@ -1771,7 +1772,7 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(source_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise ApiError(400, "无效的输出地址")
-        request = urllib.request.Request(source_url, headers={
+        request = urllib.request.Request(myridtv_media_localize.iri_to_uri(source_url), headers={
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0 Safari/537.36"
         })
         with urllib.request.urlopen(request, timeout=180) as response:
@@ -2118,6 +2119,13 @@ class Handler(BaseHTTPRequestHandler):
             request_path = self.path.split("?", 1)[0]
             canvas_route, canvas_id = parse_canvas_route(request_path)
             workflow_route, workflow_name = parse_workflow_route(request_path)
+            if request_path == "/api/plugins/offline-previs":
+                self._send(200, myridtv_offline_previs.plugin().metadata())
+                return
+            if request_path.startswith("/api/plugins/offline-previs/web/"):
+                raw, content_type = myridtv_offline_previs.plugin().web_asset(request_path.rsplit("/", 1)[-1])
+                self._send_bytes(200, raw, content_type)
+                return
             _GET_ROUTES = {
                 '/health': '_get_health',
                 '/api/update-status': '_get_update_status',

@@ -166,7 +166,7 @@
     background-color:var(--x-soft) !important; color:var(--x-text) !important; border-color:var(--x-line) !important;
   }
   html body .dock-icon { color:var(--x-muted) !important; }
-  html body :is(.smart-create-btn,.action-btn.save-btn,.api-page-save-btn,.api-link-btn,.asset-btn.primary,
+  html body :is(.action-btn.save-btn,.api-page-save-btn,.api-link-btn,.asset-btn.primary,
     .ar-btn.primary,.run-btn,.save-btn,.speech-generate,#agentSendBtn,.agent-send,.smart-agent-send):not(:disabled):not(.is-running):not(.is-stop):not(.is-ap-running) {
     background:var(--x-strong) !important; color:var(--x-strong-text) !important; border-color:var(--x-strong) !important;
   }

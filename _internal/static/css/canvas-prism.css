@@ -677,12 +677,6 @@ color:var(--text) !important;
 box-shadow:0 10px 24px rgba(170,170,170,0.072) !important;
 }
 
-body.prism-canvas-page .smart-create-btn:hover {
-background:
-rgba(38,38,38,.95) padding-box,
-#7a7a7a border-box !important;
-box-shadow:0 12px 28px rgba(170,170,170,0.104) !important;
-}
 
 /* UI polish 4 final: no inner window frame, only the app frame and cards remain. */
 html body.prism-canvas-page .canvas-gate,
@@ -1005,20 +999,7 @@ transform:translateY(-2px) !important;
 box-shadow:0 0 0 1px var(--x-selected-ring), 0 16px 30px rgba(0,0,0,.18) !important;
 }
 
-body.prism-canvas-page .smart-create-btn {
-background:
-rgba(31,31,31,.9) padding-box,
-#2f2f2f border-box !important;
-color:var(--text) !important;
-box-shadow:0 10px 24px rgba(170,170,170,0.072) !important;
-}
 
-body.prism-canvas-page .smart-create-btn:hover {
-background:
-rgba(38,38,38,.95) padding-box,
-#7a7a7a border-box !important;
-box-shadow:0 12px 28px rgba(170,170,170,0.104) !important;
-}
 /* Fine tune homepage hero entry pills position. */
 body.prism-canvas-page .prism-canvas-gate-pills {
   margin-top: 14px !important;
