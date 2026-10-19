@@ -389,24 +389,27 @@ if ($Config -and $Config.proxy) {
     }
 }
 
-# —— 多份安装共存：目标端口上那个后端如果属于「别的安装」，换到本安装自己的空闲端口 ——
+# —— 多份安装共存：目标端口上那个后端只有确认属于「本安装」才直连 ——
+# 认不出归属（外来服务 / 老版本没有 user_data_dir 字段）时也必须换端口：
+# 直连别人的后端 = 读到别人的画布/资产/模型，正是「打开 A 却看到 B 的数据」。
 $portHealth = Get-ProxyHealth ("http://{0}:{1}/health" -f $ProxyHost, $ProxyPort)
 if ($portHealth -and $portHealth.ok) {
     $ownerPath = Normalize-PathText $portHealth.user_data_dir
     $myPath = Normalize-PathText $UserDataRoot
-    if ($ownerPath -and $myPath -and $ownerPath -ne $myPath) {
+    if ($ownerPath -and $myPath -and $ownerPath -eq $myPath) {
+        Write-StartupLog "proxy on port $ProxyPort belongs to this install (user_data=$($portHealth.user_data_dir))"
+    } else {
+        $who = if ($portHealth.user_data_dir) { "user_data=$($portHealth.user_data_dir)" } else { "unidentified service" }
         $shifted = $false
         for ($candidatePort = $ProxyPort + 1; $candidatePort -le $ProxyPort + 20; $candidatePort++) {
             if (Test-PortBindable $ProxyHost $candidatePort) { $ProxyPort = $candidatePort; $shifted = $true; break }
         }
         if ($shifted) {
-            Write-StartupLog ("proxy port conflict: port used by another MyridTV install (user_data={0}); this install switches to port {1}" -f $portHealth.user_data_dir, $ProxyPort)
+            Write-StartupLog ("proxy port occupied by another MyridTV install ({0}); this install switches to port {1}" -f $who, $ProxyPort)
             Set-ProxyPortInConfig $ProxyPort
         } else {
-            Write-StartupLog ("proxy port conflict: port used by another MyridTV install (user_data={0}) and no free port in +20; keeping port {0}" -f $portHealth.user_data_dir, $ProxyPort)
+            Write-StartupLog ("proxy port occupied by another MyridTV install ({0}) and no free port in +20; keeping port {1}" -f $who, $ProxyPort)
         }
-    } else {
-        Write-StartupLog "proxy on port $ProxyPort belongs to this install (user_data=$($portHealth.user_data_dir))"
     }
 }
 if (!($portHealth -and $portHealth.ok) -and !(Test-PortBindable $ProxyHost $ProxyPort)) {
@@ -444,9 +447,36 @@ for ($i = 0; $i -lt 3 -and -not ($health -and $health.ok); $i++) {
     $health = Get-ProxyHealth $ProxyHealthUrl
     if (!($health -and $health.ok)) { Start-Sleep -Milliseconds 300 }
 }
+# —— 复用已有 proxy 前，先核对它实际生效的资产目录 ——
+# ASSETS_DIR 是 proxy 进程 import 期定值（改配置热切不可靠）。若用户在设置页改过
+# 资产目录后只重启了前端，旧 proxy 还活着 → 新目录永远不生效，设置页的
+# 「已保存为 X，重启后生效」提示会一直挂着（实测重启两次依旧）。
+# 认出不匹配就重启 proxy，让新配置真正生效。
+$ProxyNeedsStart = $false
 if ($health -and $health.ok) {
-    Write-StartupLog "proxy already running pid=$($health.pid) version=$($health.version)"
-} elseif ($PythonExe) {
+    $expectedAssets = [string]$env:MYRIDTV_ASSETS_DIR
+    if (!$expectedAssets -and $Config -and $Config.paths -and $Config.paths.assets_dir) { $expectedAssets = [string]$Config.paths.assets_dir }
+    if (!$expectedAssets) { $expectedAssets = Join-Path $AppDir 'assets' }
+    $runningAssets = ''
+    try {
+        $assetsState = Invoke-RestMethod -Uri ("$ProxyBase/api/assets-root") -TimeoutSec 5 -ErrorAction Stop
+        $runningAssets = [string]$assetsState.assets_dir
+    } catch {
+        # 老版本 proxy 没有这个端点 → 探不到就当匹配，保持原行为（复用）
+        Write-StartupLog "proxy assets probe failed: $($_.Exception.Message)"
+    }
+    if ($runningAssets -and (Normalize-PathText $runningAssets) -ne (Normalize-PathText $expectedAssets)) {
+        Write-StartupLog "proxy assets dir mismatch (running=$runningAssets expected=$expectedAssets); restarting proxy so the new assets dir takes effect"
+        try { Stop-Process -Id $health.pid -Force -ErrorAction Stop } catch { Write-StartupLog "failed to stop proxy pid=$($health.pid): $($_.Exception.Message)" }
+        Start-Sleep -Milliseconds 400
+        $ProxyNeedsStart = $true
+    } else {
+        Write-StartupLog "proxy already running pid=$($health.pid) version=$($health.version)"
+    }
+} else {
+    $ProxyNeedsStart = $true
+}
+if ($ProxyNeedsStart -and $PythonExe) {
     $existingProxyProcesses = Get-ProxyProcesses
     if ($existingProxyProcesses.Count -gt 0) {
         Write-StartupLog "proxy process exists but health failed; stopping stale pids=$($existingProxyProcesses.ProcessId -join ',')"
