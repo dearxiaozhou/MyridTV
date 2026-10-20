@@ -146,7 +146,10 @@ def main():
                             '',{forceNew:true,point:{x:100,y:900}});
                         return {id:n.id,type:n.type,count:n.images.length,groups:nodes.filter(n=>n.type==='smart-group').length};
                     }""",fourth['url'])
-                    assert imported['type']=='smart-image' and imported['count']==2 and imported['groups']==0,imported
+                    # 2026-10-20：单图节点规则——一个节点只装第一张，第二张独立成节点，均不建组
+                    assert imported['type']=='smart-image' and imported['count']==1 and imported['groups']==0,imported
+                    extra=page.evaluate("()=>nodes.filter(n=>(n.images||[]).some(i=>(i.url||'').endsWith('?import')))")
+                    assert len(extra)==1 and extra[0]['type']=='smart-image' and len(extra[0]['images'])==1,extra
                     # Explicit manual grouping remains available and persists.
                     page.evaluate("selectedIds=['multi_0','multi_1'];selectedId='';handleSmartNodeToolAction('group')")
                     group=page.evaluate("nodes.find(n=>n.type==='smart-group')")
