@@ -1,7 +1,7 @@
 {
   "id": "offline-previs",
   "name": "运镜动画预设",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "host": "MyridTV",
   "backend": "plugin.py",
   "frontend": "web/motion.js",

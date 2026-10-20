@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import threading
+import tempfile
 import time
 import uuid
 import importlib.util
@@ -25,7 +26,7 @@ def motion_model():
 
 def metadata():
     library=motion_model().catalog()
-    return {'id':'offline-previs','version':'2.0.0','name':'运镜动画预设',
+    return {'id':'offline-previs','version':'2.1.0','name':'运镜动画预设',
             'available':(ROOT/'offline_previs_cli.py').is_file(),
             'camera_presets':PRESETS,'character_assets':['x_bot','y_bot'],
             'default_spec':json.loads((ROOT/'default-shot.json').read_text(encoding='utf8')),
@@ -60,7 +61,14 @@ def resolve_blender(configured):
     return shutil.which('blender') or configured or 'blender'
 
 
-def run(payload, *, assets_dir, blender_bin, ratio_size, folder_name, cancelled, log):
+def run(payload, **dependencies):
+    if payload.get('previz_output')=='motion':
+        with tempfile.TemporaryDirectory(prefix='myridtv_motion_') as workspace:
+            return _run(payload,_temporary_output=Path(workspace),**dependencies)
+    return _run(payload,**dependencies)
+
+
+def _run(payload, *, assets_dir, blender_bin, ratio_size, folder_name, cancelled, log, _temporary_output=None):
     motion=payload.get('previz_output')=='motion'
     spec=motion_model().validate(payload.get('offline_motion_spec')) if motion else copy.deepcopy(payload.get('offline_previs_spec'))
     if not motion and (not isinstance(spec,dict) or spec.get('schema_version')!='1.0'):
@@ -79,8 +87,8 @@ def run(payload, *, assets_dir, blender_bin, ratio_size, folder_name, cancelled,
     name=folder_name(payload.get('canvas_title') or '离线预演',payload.get('canvas_id') or '')
     run_id=('motion_' if motion else 'offline_')+time.strftime('%Y%m%d_%H%M%S')+'_'+uuid.uuid4().hex[:8]
     assets_dir=Path(assets_dir)
-    output=assets_dir/'output'/name/'previs_data'/run_id
-    output.mkdir(parents=True)
+    output=_temporary_output if motion else assets_dir/'output'/name/'previs_data'/run_id
+    output.mkdir(parents=True,exist_ok=True)
     input_file=output/'input.json'
     input_file.write_text(json.dumps(spec,ensure_ascii=False,indent=2),encoding='utf8')
     command=[resolve_blender(blender_bin),'--background','--factory-startup','--python-exit-code','1',
@@ -89,7 +97,7 @@ def run(payload, *, assets_dir, blender_bin, ratio_size, folder_name, cancelled,
         previous=unquote(urlsplit(str(payload.get('offline_motion_previous') or '')).path)
         if previous.startswith('/assets/'):
             candidate=(assets_dir/previous[len('/assets/'):]).resolve()
-            if candidate.is_relative_to((assets_dir/'output'/name).resolve()) and candidate.name=='previs.blend' and candidate.is_file():
+            if candidate.is_relative_to((assets_dir/'output'/name).resolve()) and candidate.suffix.lower()=='.blend' and candidate.is_file():
                 command+=['--previous-blend',str(candidate)]
         encoder=shutil.which('ffmpeg')
         if encoder:command+=['--ffmpeg',encoder]
@@ -122,14 +130,19 @@ def run(payload, *, assets_dir, blender_bin, ratio_size, folder_name, cancelled,
     checks=json.loads((output/'checks.json').read_text(encoding='utf8'))
     if checks.get('errors'):
         raise RuntimeError('起落幅约束检查未通过')
+    published={}
+    if motion:
+        for source,folder,suffix in [('preview.mp4','videos','.mp4'),('previs.blend','blender','.blend')]:
+            destination=assets_dir/'output'/name/folder/(run_id+suffix)
+            destination.parent.mkdir(parents=True,exist_ok=True)
+            shutil.move(str(output/source),str(destination));published[source]=destination
     def url(file):
-        return '/assets/'+quote((output/file).relative_to(assets_dir).as_posix(),safe='/')
+        return '/assets/'+quote(published.get(file,output/file).relative_to(assets_dir).as_posix(),safe='/')
     log('offline-previs completed: '+run_id)
     if motion:
-        return {'backend':'blender-motion-presets','plugin':'offline-previs','plugin_version':'2.0.0',
+        return {'backend':'blender-motion-presets','plugin':'offline-previs','plugin_version':'2.1.0',
             'images':[{'url':url('preview.mp4'),'name':run_id+'.mp4','kind':'video','display_name':next(p['name'] for p in motion_model().catalog()['presets'] if p['id']==spec['preset'])}],
-            'video_url':url('preview.mp4'),'previs_blend_url':url('previs.blend'),'previs_data_url':url('shot.json'),
-            'validation_url':url('checks.json'),'poster_url':url('poster.png'),'motion_preset':spec['preset'],
+            'video_url':url('preview.mp4'),'previs_blend_url':url('previs.blend'),'motion_preset':spec['preset'],
             'validation':checks,'output_kind':'video','duration_seconds':round(round(spec['duration']*spec['fps'])/spec['fps'],3),'pushed_by_plugin':False}
     return {'backend':'blender-offline-endpoints','plugin':'offline-previs','plugin_version':'1.0.0',
         'images':[{'url':url(file),'name':run_id+'_'+file,'kind':'image',

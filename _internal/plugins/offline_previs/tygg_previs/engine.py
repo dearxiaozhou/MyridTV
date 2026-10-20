@@ -79,7 +79,7 @@ def validate_spec(value):
     fixed = camera["preset"] == "01_慢镜头感" or bool(camera.get("hold_position"))
     if fixed and (Vector(camera["end"])-Vector(camera["start"])).length > .001:
         raise ValueError("Fixed camera requires identical start and end positions")
-    if not fixed and (Vector(camera["end"]) - Vector(camera["start"])).length < .001:
+    if not fixed and not camera.get("via") and (Vector(camera["end"]) - Vector(camera["start"])).length < .001:
         raise ValueError("Use distinct camera endpoints; a tiny path can be held at progress 0")
     for camera_point, aim_point in (("start", "aim_start"), ("end", "aim_end")):
         if (Vector(camera[camera_point])-Vector(camera[aim_point])).length < .05:
@@ -89,8 +89,8 @@ def validate_spec(value):
         raise ValueError("lens_mm must be between 5 and 300")
     for via in camera.get("via", []):
         _vector(via, "camera.via")
-    if len(camera.get("via", [])) > 8:
-        raise ValueError("At most eight intermediate curve controls")
+    if len(camera.get("via", [])) > 32:
+        raise ValueError("At most 32 intermediate curve controls")
     if camera.get("timing", "LINEAR") not in {"LINEAR", "BEZIER"}:
         raise ValueError("Timing must be LINEAR or BEZIER")
     return spec

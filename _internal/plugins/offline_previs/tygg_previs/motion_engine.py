@@ -6,6 +6,7 @@ from mathutils import Vector,Quaternion
 from bpy_extras.object_utils import world_to_camera_view
 from . import engine
 from . import motion_model as model
+from . import actor_motion
 
 ROOT=Path(__file__).resolve().parent
 CROP={'wide':(1.45,.50),'full':(1.08,.50),'medium':(.62,.70),'close':(.34,.83),'detail':(.18,.91)}
@@ -16,12 +17,14 @@ def _pose_and_bounds(scene,config):
  ref=engine.refs(scene)
  for actor in ref['actors']:
   start=bpy.data.objects[actor['start']];end=bpy.data.objects[actor['end']]
+  root=bpy.data.objects[actor['root']];root.animation_data_clear();root.location=start.location;root.rotation_euler.z=math.pi
   end.location=start.location
   start['pose']=end['pose']=config['pose']
  engine.apply_poses(scene)
  scene.frame_set(scene.frame_start);bpy.context.view_layer.update()
  dg=bpy.context.evaluated_depsgraph_get();points=[]
- rigs={bpy.data.objects[a['rig']] for a in ref['actors']}
+ selected=ref['actors'][1] if config['focus_subject']=='second' and len(ref['actors'])>1 else ref['actors'][0]
+ rigs={bpy.data.objects[selected['rig']]}
  for obj in scene.objects:
   if obj.type=='MESH' and obj.find_armature() in rigs:
    evaluated=obj.evaluated_get(dg);points.extend(evaluated.matrix_world@Vector(p) for p in evaluated.bound_box)
@@ -32,6 +35,8 @@ def _pose_and_bounds(scene,config):
 
 def _fit(config,low,high,framing):
  height=high.z-low.z;scale,center=CROP[framing]
+ part=config.get('_fit_part',config['target_start'])
+ if part!='auto':center={'head':.92,'chest':.72,'hips':.52,'feet':.065}[part]
  focus=Vector(((low.x+high.x)/2,(low.y+high.y)/2,low.z+height*center))
  aspect=config['resolution'][0]/config['resolution'][1]
  tan_h=36/(2*config['lens_mm']);tan_v=tan_h/aspect
@@ -58,7 +63,7 @@ def _resolve(config,low,high):
  if kind in {'push','dolly_zoom'} and amount>=distance-minimum:
   raise ValueError(f'距离过大：当前景别最多推进约{max(0,distance-minimum):.2f}米，请减小距离或选择更远景别')
  if kind in {'tilt_up','tilt_down'} and amount>60:raise ValueError('上摇／下摇角度请不超过60度')
- elevation=height*.08
+ elevation=0 if config['target_start']=='feet' else height*.08
  if kind=='first_person':elevation=height*.40
  if kind=='crane_down':elevation=min(distance*.65,amount+height*.12)
  radial=math.sqrt(max(.01,distance*distance-elevation*elevation))
@@ -69,7 +74,8 @@ def _resolve(config,low,high):
   end=start+(focus-start).normalized()*amount*(1 if kind!='pull' else -1)
  elif kind in {'lateral','lateral_fast','reveal'}:end.x+=direction*amount
  elif kind=='orbit':
-  points=[focus+Vector((radial*math.sin(direction*math.radians(amount)*i/8),radial*math.cos(direction*math.radians(amount)*i/8),elevation)) for i in range(9)]
+  steps=max(8,math.ceil(amount/15))
+  points=[focus+Vector((radial*math.sin(direction*math.radians(amount)*i/steps),radial*math.cos(direction*math.radians(amount)*i/steps),elevation)) for i in range(steps+1)]
   end=points[-1]
  elif kind in {'crane_up','crane_down'}:
   end.z+=amount*(1 if kind=='crane_up' else -1)
@@ -80,8 +86,9 @@ def _resolve(config,low,high):
   axis=Vector((0,0,1)) if kind=='pan' else Vector((1,0,0))
   aim1=start+Quaternion(axis,angle)@(focus-start)
  elif kind=='follow':
-  actor_delta=Vector((0,amount,0));end+=actor_delta;aim1+=actor_delta
+  actor_delta=Vector((0,0,0))
   # A three-quarter front follow preserves face visibility and readable ground travel.
+  fixed=True
   offset=Vector((distance*.65,distance*.75,elevation));offset.normalize();offset*=distance
   start=focus+offset;end=start+actor_delta
  else:
@@ -90,7 +97,7 @@ def _resolve(config,low,high):
   if travel<.001:raise ValueError('该预设缺少有效移动路线')
   points=[start+Vector((-(p-source[0]).x,-(p-source[0]).y,(p-source[0]).z))*amount/travel for p in source]
   end=points[-1]
- if kind in {'push','pull'}:
+ if kind in {'push','pull'} and config['target_start']=='auto':
   if config['end_framing']!='auto':
    aim1=ending_focus
    vertical=start.z-aim1.z
@@ -104,10 +111,18 @@ def _resolve(config,low,high):
    # Reframe toward the upper body as the crop tightens. A full-to-medium dolly
    # should reveal expression rather than cut the head while centering the waist.
    aim1.z=max(low.z+height*.5,min(low.z+height*.95,high.z+height*.02-visible_height/2))
+ target_end=config['target_start'] if config['target_end']=='same' else config['target_end']
+ if target_end!=config['target_start']:
+  end_config={**config,'_fit_part':target_end}
+  aim1,_=_fit(end_config,low,high,config['framing'] if config['end_framing']=='auto' else config['end_framing'])
+ yaw=math.radians({'front':0,'back':180,'left':90,'right':-90}[config['view']]);rotation=Quaternion(Vector((0,0,1)),yaw)
+ start=focus+rotation@(start-focus);end=focus+rotation@(end-focus)
+ aim0=focus+rotation@(aim0-focus);aim1=focus+rotation@(aim1-focus)
+ points=[focus+rotation@(point-focus) for point in points]
  if len(points)==1:points=[start.copy(),end.copy()]
  if fixed:points=[start.copy(),start+Vector((.001,0,0))]
  for point in points:
-  if point.z<.12:raise ValueError('移动幅度会使相机进入地面，请减小幅度')
+  if point.z<.03:raise ValueError('移动幅度会使相机进入地面，请减小幅度')
  pace=entry['default_pace'] if config['pace']=='preset' else config['pace']
  return {'entry':entry,'focus':focus,'start':start,'end':end,'aim_start':aim0,'aim_end':aim1,'points':points,'fixed':fixed,
   'amount':amount,'start_distance':distance,'end_distance':(end-aim1).length,'actor_delta':actor_delta,'pace':pace}
@@ -135,23 +150,64 @@ def _path(scene,resolved):
   modifier.vertex_indices_set([3*index,3*index+1,3*index+2]);modifier.matrix_inverse=control.matrix_world.inverted()@path.matrix_world
  return refs
 
-def _walk(scene,actor,delta):
- rig=bpy.data.objects[actor['rig']];rig.animation_data_clear();rig.animation_data_create()
- info=json.loads((ROOT/'assets/walk_actions.json').read_text(encoding='utf8'));name=info['actions'][actor['asset']]
- action=bpy.data.actions.get(name)
- if not action:
-  with bpy.data.libraries.load(str(ROOT/'assets/walk_actions.blend'),link=False) as (source,target):target.actions=[name]
-  action=target.actions[0]
- track=rig.animation_data.nla_tracks.new();track.name='Library walk cycle'
- strip=track.strips.new('Reusable Walk',scene.frame_start,action)
- if hasattr(strip,'action_slot') and action.slots:strip.action_slot=action.slots[0]
- period=info['frame_end']-info['frame_start'];cycles=delta.length/info['stride_m']
- strip.scale=(scene.frame_end-scene.frame_start+1)/period
- strip.use_animated_time=True
- driver=strip.driver_add('strip_time').driver
- progress=bpy.data.objects[engine.refs(scene)['progress']]
- engine._var(driver,'u',progress,'["progress"]')
- driver.expression=f'{info["frame_start"]}+((u*{cycles!r}*{period})%{period})'
+def _world_var(driver,name,obj,axis):
+ var=driver.variables.new();var.name=name;var.type='TRANSFORMS';target=var.targets[0]
+ target.id=obj;target.transform_type='LOC_'+axis;target.transform_space='WORLD_SPACE'
+
+def _targets(scene,config,resolved):
+ ref=engine.refs(scene);record=ref['camera'];actors=ref['actors']
+ actor=actors[1] if config['focus_subject']=='second' and len(actors)>1 else actors[0]
+ rig=bpy.data.objects[actor['rig']];root=bpy.data.objects[actor['root']]
+ names={b.name.split(':')[-1]:b.name for b in rig.pose.bones}
+ camera=bpy.data.objects[record['camera']]
+ for obj in list(scene.objects):
+  if obj.get('pv_motion_target'):bpy.data.objects.remove(obj,do_unlink=True)
+ for which,part in [('start',config['target_start']),('end',config['target_start'] if config['target_end']=='same' else config['target_end'])]:
+  control=bpy.data.objects[record['aim_'+which]];control.animation_data_clear();control.constraints.clear()
+  control.location=resolved['aim_'+which]
+  if config['target_motion']=='fixed':continue
+  anchor=bpy.data.objects.new(scene.name+'.TARGET_'+which,None);scene.collection.objects.link(anchor)
+  anchor['pv_motion_target']=True;anchor.hide_render=True;anchor.empty_display_size=.08
+  bones={'head':['Head'],'chest':['Spine2'],'hips':['Hips'],'feet':['LeftToeBase','RightToeBase']}.get(part)
+  if bones:
+   for index,bone in enumerate(bones):
+    constraint=anchor.constraints.new('COPY_LOCATION');constraint.target=rig;constraint.subtarget=names[bone];constraint.influence=1 if index==0 else .5
+  else:
+   constraint=anchor.constraints.new('COPY_LOCATION');constraint.target=root
+  scene.frame_set(1);bpy.context.view_layer.update();initial=anchor.evaluated_get(bpy.context.evaluated_depsgraph_get()).matrix_world.translation.copy()
+  for axis,label in enumerate('XYZ'):
+   fc=control.driver_add('location',axis);_world_var(fc.driver,'anchor',anchor,label)
+   fc.driver.expression=f'anchor+{float(resolved["aim_"+which][axis]-initial[axis])!r}'
+ # A following camera gets the actor's root displacement on top of its preset path.
+ for constraint in list(camera.constraints):
+  if constraint.name=='02_SUBJECT_TRAVEL':camera.constraints.remove(constraint)
+ if resolved['entry']['kind']=='follow' or config['travel_reference']=='subject':
+  delta=bpy.data.objects.new(scene.name+'.FOLLOW_DELTA',None);scene.collection.objects.link(delta);delta['pv_motion_target']=True;delta.hide_render=True
+  initial=bpy.data.objects[actor['start']].location
+  for axis,label in enumerate('XYZ'):
+   fc=delta.driver_add('location',axis);_world_var(fc.driver,'root',root,label);fc.driver.expression=f'root-{float(initial[axis])!r}'
+  c=camera.constraints.new('COPY_LOCATION');c.name='02_SUBJECT_TRAVEL';c.target=delta;c.use_offset=True
+  index=list(camera.constraints).index(c);camera.constraints.move(index,1)
+ scene.frame_set(1);bpy.context.view_layer.update()
+
+
+def _seating(scene,config):
+ for obj in list(scene.objects):
+  if obj.get('pv_motion_seat'):bpy.data.objects.remove(obj,do_unlink=True)
+ timeline=json.loads(scene.get('pv_actor_timeline','[]'))
+ for item in timeline:
+  if item['action']!='sit':continue
+  scene.frame_set(min(scene.frame_end,round(1+(item['start']+item['duration'])*config['fps'])))
+  dg=bpy.context.evaluated_depsgraph_get()
+  for actor in engine.refs(scene)['actors']:
+   rig=bpy.data.objects[actor['rig']].evaluated_get(dg);bone=next(b for b in rig.pose.bones if b.name.split(':')[-1]=='Hips')
+   hip=rig.matrix_world@bone.head;top=max(.2,hip.z-.10)
+   bpy.ops.mesh.primitive_cube_add(size=1,location=(hip.x,hip.y,top/2))
+   seat=bpy.context.object;seat.name=scene.name+'.SIT_SUPPORT';seat.dimensions=(.48,.48,top);seat['pv_motion_seat']=True
+   bpy.ops.object.transform_apply(location=False,rotation=False,scale=True)
+   mat=bpy.data.materials.get('Seat neutral') or bpy.data.materials.new('Seat neutral');mat.diffuse_color=(.24,.26,.28,1);seat.data.materials.append(mat)
+ scene.frame_set(1)
+
 
 def _stage(scene,extent=0):
  floor=bpy.data.objects.get(scene.name+'.GROUND')
@@ -213,15 +269,20 @@ def _configure(scene,config):
  else:fc.driver.expression='focal'
  _timing(scene,resolved['pace'])
  for actor in refs['actors']:
-  start=bpy.data.objects[actor['start']];end=bpy.data.objects[actor['end']];end.location=start.location+resolved['actor_delta']
-  if resolved['entry']['kind']=='follow':_walk(scene,actor,resolved['actor_delta'])
- _stage(scene,resolved['actor_delta'].length)
+  start=bpy.data.objects[actor['start']];end=bpy.data.objects[actor['end']]
+  root=bpy.data.objects[actor['root']];root.animation_data_clear();root.location=start.location;root.rotation_euler.z=math.pi;end.location=start.location+resolved['actor_delta']
+
+ actor_delta=actor_motion.apply(scene,config)
+ _targets(scene,config,resolved)
+ _seating(scene,config)
+ _stage(scene,actor_delta.length)
  scene['pv_motion_owned']=True;scene['pv_motion_version']=model.VERSION;scene['pv_motion_spec']=json.dumps(config,ensure_ascii=False)
  scene['pv_motion_resolved']=json.dumps({'preset':config['preset'],'source_name':resolved['entry']['source_name'],
   'amount':resolved['amount'],'amount_type':resolved['entry']['amount_type'],'start_distance_m':resolved['start_distance'],
   'end_distance_m':resolved['end_distance'],'focus_start':list(resolved['focus']),'focus_end':list(resolved['aim_end']),
   'subject_bounds_low':list(low),'subject_bounds_high':list(high),
-  'pace':resolved['pace'],'framing':config['framing'],'actor_motion_m':resolved['actor_delta'].length},ensure_ascii=False)
+  'pace':resolved['pace'],'framing':config['framing'],'actor_motion_m':actor_delta.length,'actor_travel_m':sum(i['distance'] for i in actor_motion.segments(config)),
+  'target_start':config['target_start'],'target_end':config['target_end'],'target_motion':config['target_motion'],'view':config['view']},ensure_ascii=False)
  scene.frame_set(1);controller.update_tag();bpy.context.view_layer.update()
  return scene
 
@@ -257,7 +318,8 @@ def inspect(scene):
    rows.append({'progress_fraction':fraction,'camera_position':list(cam.matrix_world.translation),
     'camera_rotation':list(cam.matrix_world.to_quaternion()),'lens_mm':cam.data.lens,
     'up_z':(cam.matrix_world.to_quaternion()@Vector((0,1,0))).z,
-    'actors':[list(bpy.data.objects[a['root']].evaluated_get(dg).matrix_world.translation) for a in refs['actors']]})
+    'actors':[list(bpy.data.objects[a['root']].evaluated_get(dg).matrix_world.translation) for a in refs['actors']],
+    'aim':list(next(c.target for c in camera.constraints if c.type=='DAMPED_TRACK').evaluated_get(dg).matrix_world.translation)})
  finally:scene.frame_set(old_frame,subframe=old_sub)
  first=Vector(rows[0]['camera_position']);distance=max((Vector(r['camera_position'])-first).length for r in rows)
  q0=Quaternion(rows[0]['camera_rotation']);angle=max(min(q0.rotation_difference(Quaternion(r['camera_rotation'])).angle,math.tau-q0.rotation_difference(Quaternion(r['camera_rotation'])).angle) for r in rows)
@@ -267,6 +329,7 @@ def inspect(scene):
  return {'status':'sampled_motion_checks_passed','module_version':model.VERSION,'camera_action_keys':keys,'progress_keys':sum(len(fc.keyframe_points) for fc in engine.action_curves(bpy.data.objects[refs['progress']])),
   'scene_reused':bool(scene.get('pv_motion_reused')),'actor_objects':[{'root':a['root'],'rig':a['rig']} for a in refs['actors']],
   'translation_range_m':distance,'rotation_range_deg':math.degrees(angle),'samples':rows,
+  'actor_timeline':json.loads(scene.get('pv_actor_timeline','[]')),
   'resolved':json.loads(scene['pv_motion_resolved']),'unverified':['continuous_collision','aesthetic_quality']}
 
 def export(scene,output,ffmpeg=None):
@@ -286,3 +349,4 @@ def export(scene,output,ffmpeg=None):
  # Temporary frames are safe to remove only after successful encoding and save.
  if frames.resolve().parent==output:shutil.rmtree(frames)
  return checks
+
