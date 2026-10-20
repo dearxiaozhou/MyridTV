@@ -7449,7 +7449,7 @@ function createSmartGeneratorNode(point, config={}){
         node.runSettings.engine = 'blender';
         node.runSettings.provider_id = 'blender';
         node.runSettings.model = 'blender-previz';
-        node.runSettings.previzOutput = 'endpoints';
+        node.runSettings.previzOutput = 'motion';
         node.runSettings.count = 1;
     }
     if(config.engine === 'runninghub'){

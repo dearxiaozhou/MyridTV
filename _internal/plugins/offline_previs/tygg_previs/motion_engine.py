@@ -35,23 +35,24 @@ def _fit(config,low,high,framing):
  focus=Vector(((low.x+high.x)/2,(low.y+high.y)/2,low.z+height*center))
  aspect=config['resolution'][0]/config['resolution'][1]
  tan_h=36/(2*config['lens_mm']);tan_v=tan_h/aspect
- distance=max(height*scale/(2*tan_v*.80),(high.x-low.x)*1.08/(2*tan_h*.84))
+ crop_width=(high.x-low.x)*(1 if config['subject']=='both' else {'wide':1,'full':1,'medium':.95,'close':.70,'detail':.40}[framing])
+ distance=max(height*scale/(2*tan_v*.80),crop_width*1.08/(2*tan_h*.84))
  return focus,distance
 
 def _resolve(config,low,high):
  entry=_entry(config);kind=entry['kind'];height=high.z-low.z
  focus,distance=_fit(config,low,high,config['framing'])
- minimum=max(.40,(high.x-low.x)*.56)
+ minimum={'wide':.40,'full':.40,'medium':.32,'close':.24,'detail':.18}[config['framing']]
  if config['amount'] is None:
   if kind=='orbit':amount=90.
   elif entry['amount_type']=='angle':amount=10.
   elif kind in {'crane_up','crane_down'}:amount=height*.6
-  elif kind=='follow':amount=3.
+  elif kind=='follow':amount=min(15.,config['duration']*1.35)
   elif kind in {'push','dolly_zoom'}:amount=min(distance*.30,max(.02,distance-minimum-.08))
   else:amount=distance*.35
  else:amount=float(config['amount'])
  if config['end_framing']!='auto' and kind in {'push','pull','dolly_zoom'}:
-  _,target_distance=_fit(config,low,high,config['end_framing'])
+  ending_focus,target_distance=_fit(config,low,high,config['end_framing'])
   amount=distance-target_distance if kind in {'push','dolly_zoom'} else target_distance-distance
   if amount<=.01:raise ValueError('结束景别与运镜方向矛盾：推近需更近，拉远需更远')
  if kind in {'push','dolly_zoom'} and amount>=distance-minimum:
@@ -89,6 +90,20 @@ def _resolve(config,low,high):
   if travel<.001:raise ValueError('该预设缺少有效移动路线')
   points=[start+Vector((-(p-source[0]).x,-(p-source[0]).y,(p-source[0]).z))*amount/travel for p in source]
   end=points[-1]
+ if kind in {'push','pull'}:
+  if config['end_framing']!='auto':
+   aim1=ending_focus
+   vertical=start.z-aim1.z
+   vertical=max(-target_distance*.5,min(target_distance*.5,vertical))
+   outward=Vector((start.x-focus.x,start.y-focus.y,0)).normalized()
+   end=aim1+outward*math.sqrt(max(.001,target_distance*target_distance-vertical*vertical))+Vector((0,0,vertical))
+   amount=(end-start).length
+  else:
+   aspect=config['resolution'][0]/config['resolution'][1]
+   visible_height=2*(end-focus).length*(36/(2*config['lens_mm'])/aspect)*.8
+   # Reframe toward the upper body as the crop tightens. A full-to-medium dolly
+   # should reveal expression rather than cut the head while centering the waist.
+   aim1.z=max(low.z+height*.5,min(low.z+height*.95,high.z+height*.02-visible_height/2))
  if len(points)==1:points=[start.copy(),end.copy()]
  if fixed:points=[start.copy(),start+Vector((.001,0,0))]
  for point in points:
@@ -138,11 +153,13 @@ def _walk(scene,actor,delta):
  engine._var(driver,'u',progress,'["progress"]')
  driver.expression=f'{info["frame_start"]}+((u*{cycles!r}*{period})%{period})'
 
-def _stage(scene):
+def _stage(scene,extent=0):
+ floor=bpy.data.objects.get(scene.name+'.GROUND')
+ if floor:floor.location.y=extent/2;floor.scale.y=(20+extent)/20
  if scene.get('pv_motion_stage'):return
  verts=[];faces=[]
  for axis in range(2):
-  for i in range(-8,9):
+  for i in range(-8,41):
    strip=[(-8,i-.008,.001),(8,i-.008,.001),(8,i+.008,.001),(-8,i+.008,.001)]
    if axis:strip=[(y,x,z) for x,y,z in strip]
    n=len(verts);verts+=strip;faces.append(tuple(range(n,n+4)))
@@ -177,6 +194,8 @@ def _configure(scene,config):
  scene.frame_start=1;scene.frame_end=core['frame_end']
  scene.render.resolution_x,scene.render.resolution_y=config['resolution']
  refs=_path(scene,resolved);camera_obj=bpy.data.objects[refs['camera']['camera']];scene.camera=camera_obj
+ camera_obj['SOURCE_PRESET']=config['preset'];camera_obj['PATH_GUIDE']=refs['camera']['path']
+ camera_obj['TIMELINE']=f"Frames {scene.frame_start}–{scene.frame_end}; edit progress, not camera transforms"
  camera_obj.data.sensor_fit='HORIZONTAL';camera_obj.data.shift_x={'center':0,'left':1/6,'right':-1/6}[config['composition']]
  # Stabilize the up axis for vertical routes and 180-degree orbits. The original
  # library aim constraint stays in place; this only removes unintended roll.
@@ -196,11 +215,12 @@ def _configure(scene,config):
  for actor in refs['actors']:
   start=bpy.data.objects[actor['start']];end=bpy.data.objects[actor['end']];end.location=start.location+resolved['actor_delta']
   if resolved['entry']['kind']=='follow':_walk(scene,actor,resolved['actor_delta'])
- _stage(scene)
- scene['pv_motion_owned']=True;scene['pv_motion_spec']=json.dumps(config,ensure_ascii=False)
+ _stage(scene,resolved['actor_delta'].length)
+ scene['pv_motion_owned']=True;scene['pv_motion_version']=model.VERSION;scene['pv_motion_spec']=json.dumps(config,ensure_ascii=False)
  scene['pv_motion_resolved']=json.dumps({'preset':config['preset'],'source_name':resolved['entry']['source_name'],
   'amount':resolved['amount'],'amount_type':resolved['entry']['amount_type'],'start_distance_m':resolved['start_distance'],
-  'end_distance_m':resolved['end_distance'],'focus_start':list(resolved['focus']),'focus_end':list(resolved['focus']+resolved['actor_delta']),
+  'end_distance_m':resolved['end_distance'],'focus_start':list(resolved['focus']),'focus_end':list(resolved['aim_end']),
+  'subject_bounds_low':list(low),'subject_bounds_high':list(high),
   'pace':resolved['pace'],'framing':config['framing'],'actor_motion_m':resolved['actor_delta'].length},ensure_ascii=False)
  scene.frame_set(1);controller.update_tag();bpy.context.view_layer.update()
  return scene
@@ -212,6 +232,7 @@ def build(value,existing=None):
   old=json.loads(existing['pv_motion_spec'])
   if old['subject']==config['subject']:
    bpy.context.window.scene=existing
+   existing['pv_motion_reused']=True
    return _configure(existing,config)
  assets=['x_bot','y_bot'] if config['subject']=='both' else [config['subject']]
  actors=[]
@@ -222,6 +243,7 @@ def build(value,existing=None):
   'resolution':config['resolution'],'actors':actors,
   'camera':{'preset':'08_中景跟拍','start':[0,8,2],'end':[0,7,2],'aim_start':[0,0,1],'aim_end':[0,0,1],'via':[],'lens_mm':config['lens_mm'],'timing':'LINEAR'}}
  scene=engine.build(base)
+ scene['pv_motion_reused']=False
  return _configure(scene,config)
 
 def inspect(scene):
@@ -242,7 +264,8 @@ def inspect(scene):
  keys=sum(len(fc.keyframe_points) for fc in engine.action_curves(camera))
  if distance<.005 and angle<math.radians(.2):raise ValueError('该预览未产生有效镜头运动')
  if keys:raise ValueError('相机出现了逐帧动画通道')
- return {'status':'sampled_motion_checks_passed','camera_action_keys':keys,'progress_keys':sum(len(fc.keyframe_points) for fc in engine.action_curves(bpy.data.objects[refs['progress']])),
+ return {'status':'sampled_motion_checks_passed','module_version':model.VERSION,'camera_action_keys':keys,'progress_keys':sum(len(fc.keyframe_points) for fc in engine.action_curves(bpy.data.objects[refs['progress']])),
+  'scene_reused':bool(scene.get('pv_motion_reused')),'actor_objects':[{'root':a['root'],'rig':a['rig']} for a in refs['actors']],
   'translation_range_m':distance,'rotation_range_deg':math.degrees(angle),'samples':rows,
   'resolved':json.loads(scene['pv_motion_resolved']),'unverified':['continuous_collision','aesthetic_quality']}
 

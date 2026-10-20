@@ -55,6 +55,7 @@ def validate(value):
   raise ValueError('景别无效')
  if result['subject'] not in {'x_bot','y_bot','both'}:raise ValueError('请选择主体')
  if result['pose'] not in {'STAND','WALK','RUN','SIT'}:raise ValueError('姿态无效')
+ if entries[result['preset']]['kind']=='follow':result['pose']='STAND'
  if result['direction'] not in {'left','right'}:raise ValueError('方向无效')
  if result['pace'] not in {'preset','smooth','linear','accelerate','decelerate'}:raise ValueError('节奏无效')
  if result['composition'] not in {'center','left','right'}:raise ValueError('构图无效')

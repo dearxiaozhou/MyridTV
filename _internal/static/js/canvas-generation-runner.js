@@ -27,7 +27,7 @@ async function runGeneration(){
     catch(error){ if(isCurrent()) lifecycle.finish(node,attempt,'failed',error.message); throw error; }
     if(!isCurrent()) return;
     const request = withRunSettings(() => deps.buildPromptRequest(node, null, true, D("smartLoopContext")));
-    const prompt = request.prompt.trim() || (executionSettings.engine === 'blender' && executionSettings.previzOutput === 'endpoints' ? '离线起落幅预演' : '');
+    const prompt = request.prompt.trim() || (executionSettings.engine === 'blender' && ['endpoints','motion'].includes(executionSettings.previzOutput) ? '运镜预设预览' : '');
     if(!prompt && !deps.allowsPromptlessCustomComfy(executionSettings)){ deps.toast(tr('smart.toastNeedPrompt')); lifecycle.finish(node,attempt,'cancelled'); return; }
     let refs = request.refs;
     const outpaintSize = node?.outpaintSize && Number(node.outpaintSize.width) > 0 && Number(node.outpaintSize.height) > 0

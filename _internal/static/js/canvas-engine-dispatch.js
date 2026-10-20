@@ -111,7 +111,12 @@ async function runApiGeneration(prompt, refs, runSettings=D("settings"), sourceN
         payload.aspectRatio = deps.rhOfficialAspectRatioForRun(runSettings);
         payload.previz_output = runSettings.previzOutput || 'animation';
         if(payload.previz_output === 'endpoints') payload.offline_previs_spec = await global.CanvasOfflinePrevis.ensureSpec(runSettings);
-        payload.previz_llm_enabled = payload.previz_output !== 'endpoints' && runSettings.previzLlmEnabled === true;
+        if(payload.previz_output === 'motion'){
+            if(!global.CanvasOfflinePrevis) throw new Error('运镜插件未加载，请刷新画布');
+            payload.offline_motion_spec = await global.CanvasOfflinePrevis.ensureMotionSpec(runSettings);
+            payload.offline_motion_previous = sourceNode?.offlinePrevisArtifacts?.blend_url || '';
+        }
+        payload.previz_llm_enabled = !['endpoints','motion'].includes(payload.previz_output) && runSettings.previzLlmEnabled === true;
         payload.previz_llm_provider = runSettings.previzLlmProvider || '';
         payload.previz_llm_model = runSettings.previzLlmModel || '';
         delete payload.size;

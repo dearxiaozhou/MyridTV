@@ -452,9 +452,9 @@ async function resumeSmartPendingNode(node){
         try {
             const result = await pollSmartCanvasTask(task.taskId);
             if(!isCurrent()) return;
-            if(result?.backend === 'blender-offline-endpoints'){
-                node.offlinePrevisArtifacts = {blend_url:result.previs_blend_url, spec_url:result.previs_data_url, validation_url:result.validation_url};
-                task.kind = 'image';
+            if(['blender-offline-endpoints','blender-motion-presets'].includes(result?.backend)){
+                node.offlinePrevisArtifacts = {blend_url:result.previs_blend_url, spec_url:result.previs_data_url, validation_url:result.validation_url,video_url:result.video_url||'',preset_id:result.motion_preset||''};
+                task.kind = result.output_kind || 'image';
             }
             await finalizeSmartPendingTask(node, task.taskId, result?.images || result?.videos || deps.resultMediaUrls(result), task.kind || 'image', attempt);
             if(!isCurrent()) return;

@@ -13,3 +13,11 @@
 .pv-plugin-dialog button{border:1px solid var(--x-line,var(--line));border-radius:8px;background:transparent;color:inherit;padding:7px 12px;cursor:pointer;font-size:12px}.pv-plugin-dialog button.primary{background:var(--x-accent,var(--accent));color:var(--x-strong-text,var(--text))}
 .pv-plugin-dialog footer{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:15px}.pv-artifacts{margin-right:auto;font-size:12px}.pv-artifacts a{color:inherit}.pv-plugin-dialog .pv-note{line-height:1.6}.pv-plugin-dialog .pv-error{color:var(--x-danger,#d66969)}
 @media(max-width:650px){.pv-vector-grid{grid-template-columns:1fr}.pv-plugin-dialog{padding:15px}.pv-top-fields{gap:8px}}
+.pv-motion-dialog{width:min(730px,94vw)}
+.pv-motion-dialog header{margin-bottom:14px}
+.pv-motion-dialog>.pv-select-label{margin-bottom:14px}
+.pv-motion-dialog .pv-top-fields{margin:12px 0}
+.pv-motion-dialog [hidden]{display:none!important}
+.pv-motion-more{margin:16px 0 10px}
+.pv-motion-last{font-size:12px;margin-top:12px}
+.pv-motion-last video{display:block;width:100%;max-height:230px;margin-top:8px;border-radius:8px;background:var(--x-soft)}

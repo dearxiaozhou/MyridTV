@@ -565,7 +565,7 @@ def run_blender_previz(payload, task_id=""):
     finalizeSmartPendingTask 写回原 3D预演 节点。插件没开 → 任务一直 running
     （控制台可手动停止），视频不会绕开插件落地。task_id 为空时行为同旧版
     （直接返回后端渲染结果，不等推送）。"""
-    if (payload or {}).get("previz_output") == "endpoints":
+    if (payload or {}).get("previz_output") in {"endpoints", "motion"}:
         import myridtv_offline_previs
         import myridtv_task_state
         return myridtv_offline_previs.plugin().run(
