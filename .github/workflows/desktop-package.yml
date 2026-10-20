@@ -85,7 +85,10 @@ jobs:
           exit $LASTEXITCODE
 
       - name: Preserve UI baseline evidence
-        if: always()
+        # 2026-10-20：GitHub Actions artifact 配额爆（池实为空、等 GH 重算），上传必失败纯刷红叉；
+        # 发布链路走 GitHub Release + MyridTV-updates 仓，不依赖 artifact。配额恢复后删掉下一行
+        # if: false 即可恢复上传。
+        if: false # disabled 2026-10-20: artifact storage quota hit
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
@@ -182,6 +185,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload installer artifact
+        # 2026-10-20 同上：artifact 配额爆，上传必失败；正式包走 softprops/action-gh-release，不走 artifact。
+        # 配额恢复后删掉下一行 if: false 即可恢复。
+        if: false # disabled 2026-10-20: artifact storage quota hit
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
