@@ -49,7 +49,8 @@ async function runComfyGeneration(node, prompt, refs, pendingNode, meta, capture
         deps.syncRunButtonAvailability();
         deps.render();
     } else {
-        const created = deps.createNode((node.x || 0) + deps.nodeRect(node).width + 40, node.y || 0, out);
+        const created = deps.createNode((node.x || 0) + deps.nodeRect(node).width + 40, node.y || 0, out.slice(0, 1));
+        deps.spawnImageNodesForExtras(created, out.slice(1), {});
         deps.attachRunMeta(created, meta);
         deps.addConnection(node.id, created.id);
     }
@@ -69,7 +70,9 @@ async function runComfyText(node, prompt, pendingNode, meta, runSettings=D("sett
         await deps.finalizePendingNode(pendingNode, out, meta);
         if(!isCurrentComfyResult(pendingNode,meta)) return;
     } else {
-        const created = deps.createNode((node.x || 0) + deps.nodeRect(node).width + 40, node.y || 0, out.map((url, i) => ({url, name:`comfy-${i + 1}.png`})));
+        const comfyItems = out.map((url, i) => ({url, name:`comfy-${i + 1}.png`}));
+        const created = deps.createNode((node.x || 0) + deps.nodeRect(node).width + 40, node.y || 0, comfyItems.slice(0, 1));
+        deps.spawnImageNodesForExtras(created, comfyItems.slice(1), {});
         deps.attachRunMeta(created, meta);
         deps.addConnection(node.id, created.id);
     }
@@ -92,7 +95,9 @@ async function runComfyEnhance(node, refs, pendingNode, meta, runSettings=D("set
         await deps.finalizePendingNode(pendingNode, out, meta);
         if(!isCurrentComfyResult(pendingNode,meta)) return;
     } else {
-        const created = deps.createNode((node.x || 0) + deps.nodeRect(node).width + 40, node.y || 0, out.map((url, i) => ({url, name:`enhance-${i + 1}.png`})));
+        const enhanceItems = out.map((url, i) => ({url, name:`enhance-${i + 1}.png`}));
+        const created = deps.createNode((node.x || 0) + deps.nodeRect(node).width + 40, node.y || 0, enhanceItems.slice(0, 1));
+        deps.spawnImageNodesForExtras(created, enhanceItems.slice(1), {});
         deps.attachRunMeta(created, meta);
         deps.addConnection(node.id, created.id);
     }
@@ -115,7 +120,9 @@ async function runComfyEdit(node, prompt, refs, pendingNode, meta, runSettings=D
         await deps.finalizePendingNode(pendingNode, out, meta);
         if(!isCurrentComfyResult(pendingNode,meta)) return;
     } else {
-        const created = deps.createNode((node.x || 0) + deps.nodeRect(node).width + 40, node.y || 0, out.map((url, i) => ({url, name:`edit-${i + 1}.png`})));
+        const editItems = out.map((url, i) => ({url, name:`edit-${i + 1}.png`}));
+        const created = deps.createNode((node.x || 0) + deps.nodeRect(node).width + 40, node.y || 0, editItems.slice(0, 1));
+        deps.spawnImageNodesForExtras(created, editItems.slice(1), {});
         deps.attachRunMeta(created, meta);
         deps.addConnection(node.id, created.id);
     }

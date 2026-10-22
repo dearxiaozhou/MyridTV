@@ -134,7 +134,7 @@ async function runApiGeneration(prompt, refs, runSettings=D("settings"), sourceN
     })));
     return {taskIds:tasks.map(task => task.task_id).filter(Boolean), count};
 }
-async function runRunningHubGeneration(prompt, refs, runSettings=D("settings")){
+async function runRunningHubGeneration(prompt, refs, runSettings=D("settings"), sourceNode=null){
     const ref = deps.selectedRunningHubRef(runSettings);
     if(!ref) throw new Error(tr('smart.rhNeedConfig'));
     const fields = deps.rhActiveFields(runSettings);
@@ -145,9 +145,17 @@ async function runRunningHubGeneration(prompt, refs, runSettings=D("settings")){
     const nodeInfoList = await deps.rhBuildNodeInfoList(media, runSettings, randomValues);
     const workflowExtras = mode === 'workflow' ? await deps.rhBuildWorkflowRequestExtras(media, nodeInfoList, runSettings) : {};
     const endpoint = mode === 'workflow' ? '/api/runninghub/workflow-submit' : '/api/runninghub/submit';
+    // 2026-10-21：提交时就带画布/节点身份，任务控制台才能定位到这是谁跑的工作流
+    // （此前透传不带，控制台记录里画布/节点永远是空）。
+    const runIdentity = {
+        canvas_id:String(D("canvasId") || ''),
+        canvas_title:String(D("canvas")?.title || document.getElementById('smartTitle')?.textContent || '').trim(),
+        node_id:String(sourceNode?.id || ''),
+        node_title:String(sourceNode?.title || ''),
+    };
     const body = mode === 'workflow'
-        ? {workflowId:ref.id, nodeInfoList, useWallet:runSettings.rhPayment === 'wallet', ...workflowExtras}
-        : {webappId:ref.id, nodeInfoList, instanceType:runSettings.rhInstanceType || '', useWallet:runSettings.rhPayment === 'wallet'};
+        ? {workflowId:ref.id, nodeInfoList, useWallet:runSettings.rhPayment === 'wallet', ...runIdentity, ...workflowExtras}
+        : {webappId:ref.id, nodeInfoList, instanceType:runSettings.rhInstanceType || '', useWallet:runSettings.rhPayment === 'wallet', ...runIdentity};
     const submit = await fetch(endpoint, {
         method:'POST',
         headers:{'Content-Type':'application/json'},

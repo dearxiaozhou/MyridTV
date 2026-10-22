@@ -7,6 +7,34 @@
 
     function D(name){return typeof deps[name] === 'function' ? deps[name]() : deps[name];}
 
+// 2026-10-20 老王拍板：比例由画布「视频比例」决定，写进工作流时用工作流自己的写法。
+// 取值来自 ComfyUI 内置 ResolutionSelector 的 aspect_ratio 枚举（8 个，官方源码/文档核对过）；
+// 画布「视频比例」的 6 个真比例全部对得上；画布选「保持比例/自适应」时不覆盖，交给工作流原生值。
+const RH_ASPECT_VALUE_BY_RATIO = {
+    '21:9': '21:9 (Ultrawide)',
+    '16:9': '16:9 (Widescreen)',
+    '9:16': '9:16 (Portrait Widescreen)',
+    '4:3': '4:3 (Standard)',
+    '3:4': '3:4 (Portrait Standard)',
+    '3:2': '3:2 (Photo)',
+    '2:3': '2:3 (Portrait Photo)',
+    '1:1': '1:1 (Square)'
+};
+function rhAspectRatioField(field){
+    const name = String(field?.fieldName || '').trim().toLowerCase();
+    const label = String(field?.label || '').trim();
+    return /^(aspect_?ratio|ratio|aspect)$/.test(name) || /比例|aspect\s*ratio/i.test(label);
+}
+function rhCanvasAspectValue(sourceSettings){
+    const ratio = String(sourceSettings?.videoAspect || '').trim();
+    return RH_ASPECT_VALUE_BY_RATIO[ratio] || '';
+}
+function rhCleanNumberLocal(value){
+    if(typeof value === 'number' && Number.isFinite(value)) return Number(value.toPrecision(6));
+    const text = String(value ?? '').trim();
+    if(/^-?\d+(\.\d+)?$/.test(text)){ const n = Number(text); if(Number.isFinite(n)) return Number(n.toPrecision(6)); }
+    return value;
+}
 function rhRequiredLabel(field){
     return field?.label || field?.fieldName || `#${field?.nodeId || ''}`;
 }
@@ -162,9 +190,18 @@ async function rhBuildNodeInfoList(media, sourceSettings=D("settings"), randomVa
             if(field.required !== true && !media?.[kind]?.[idx]?.url) continue;
         }
         let value = deps.rhParamValue(field, media, sourceSettings, fields, randomValues);
+        // 比例字段：用户在参数里显式选过 → 以参数为准；没选过 → 用画布那颗「视频比例」映射写入
+        // （画布选「保持/自适应」时映射为空 → 不覆盖，交给工作流原生值）。
+        if(rhAspectRatioField(field)){
+            const userPicked = String(sourceSettings?.rhParams?.[key]?.value ?? '').trim() !== '';
+            const aspectValue = userPicked ? '' : rhCanvasAspectValue(sourceSettings);
+            if(aspectValue) value = aspectValue;
+        }
         if(deps.rhFieldRole(field) === 'prompt' && !String(value || '').trim()) value = deps.rhDefaultValue(field);
         if(['image','video','audio'].includes(kind)) value = await rhUploadValueIfNeeded(value, sourceSettings);
         if(['number','slider'].includes(kind) && String(value ?? '').trim() !== '' && !Number.isNaN(Number(value))) value = Number(value);
+        // 数值传干净（去掉 0.6000000000000001 这种浮点尾巴），字符串原样
+        if(typeof value === 'number'){ const clean = (typeof global.CanvasDynamicParamEngine !== 'undefined' && global.CanvasDynamicParamEngine.rhCleanNumber) || rhCleanNumberLocal; value = clean(value); }
         if(typeof value === 'string' && /[\r\n]/.test(value)) value = value.split(/\r?\n/).map(s => s.trim()).filter(Boolean)[0] || '';
         result.push({nodeId:field.nodeId, fieldName:field.fieldName, fieldValue:value});
     }
@@ -219,35 +256,35 @@ function renderRhSettingField(field){
     const key = deps.rhParamKey(field.nodeId, field.fieldName);
     const kind = deps.rhFieldRole(field);
     const label = field.label || field.fieldName || 'Field';
-    const value = deps.rhParamValue(field, null);
+    const rawValue = deps.rhParamValue(field, null);
+    const value = rhCleanNumberLocal(rawValue);
     const options = deps.rhExtractFieldOptions(field);
     if(kind === 'boolean'){
         const active = String(value).toLowerCase() === 'true';
         return `<button type="button" class="setting-check ${active ? 'active' : ''}" data-rh-bool="${deps.escapeHtml(key)}"><span class="check-box"></span><span>${deps.escapeHtml(label)}</span></button>`;
     }
     if(kind === 'slider'){
+        // 2026-10-20 老王：照抄本地工作流的写法 —— 滑杆就是参数行里的一个内联 range，
+        // 不再做成 pill + 二级弹窗（那种嵌套弹窗会被外层参数弹层裁掉，也是前几轮反复出问题的地方）。
         const min = Number.isFinite(Number(field.min)) ? Number(field.min) : 0;
         const max = Number.isFinite(Number(field.max)) && Number(field.max) > min ? Number(field.max) : 1;
         const step = Number.isFinite(Number(field.step)) && Number(field.step) > 0 ? Number(field.step) : 0.01;
         const numericValue = Number.isFinite(Number(value)) ? Number(value) : min;
-        return `<div class="smart-control rh-slider-control" title="${deps.escapeHtml(label)}">
-            <button class="smart-pill" type="button"><span class="sub">${deps.escapeHtml(label)}</span><span class="rh-slider-pill-value">${deps.escapeHtml(numericValue)}</span></button>
-            <div class="smart-popover compact-popover rh-picker-popover rh-param-popover rh-slider-popover">
-                <div class="smart-popover-title"><span>${deps.escapeHtml(label)}</span><span class="rh-slider-value">${deps.escapeHtml(numericValue)}</span></div>
-                <input type="range" class="smart-range rh-slider-input" data-rh-param="${deps.escapeHtml(key)}" data-rh-type="slider" min="${deps.escapeHtml(min)}" max="${deps.escapeHtml(max)}" step="${deps.escapeHtml(step)}" value="${deps.escapeHtml(numericValue)}">
-            </div>
+        return `<div class="num-compact rh-range-param" title="${deps.escapeHtml(label)}">
+            <span class="num-label">${deps.escapeHtml(label)}</span>
+            <input type="range" class="pfield-slider rh-param-range" data-rh-param="${deps.escapeHtml(key)}" data-rh-type="slider" min="${deps.escapeHtml(min)}" max="${deps.escapeHtml(max)}" step="${deps.escapeHtml(step)}" value="${deps.escapeHtml(numericValue)}">
+            <span class="rh-range-value" data-rh-range-value="${deps.escapeHtml(key)}">${deps.escapeHtml(numericValue)}</span>
         </div>`;
     }
     if(options?.length){
-        const curLabel = String(value || options[0] || label);
-        return `<div class="smart-control rh-dropdown-control" title="${deps.escapeHtml(label)}">
-            <button class="smart-pill" type="button"><span class="sub">${deps.escapeHtml(curLabel)}</span><i data-lucide="chevron-down" class="pill-caret"></i></button>
-            <div class="smart-popover compact-popover rh-picker-popover rh-param-popover">
-                <div class="smart-popover-title">${deps.escapeHtml(label)}</div>
-                <div class="model-list rh-param-list">
-                    ${options.map(o => `<button type="button" class="direct-option ${String(o) === String(value) ? 'active' : ''}" data-rh-pick="${deps.escapeHtml(key)}" data-rh-value="${deps.escapeHtml(o)}"><span>${deps.escapeHtml(o)}</span></button>`).join('') || `<div class="muted-note">${deps.escapeHtml(tr('smart.noOption'))}</div>`}
-                </div>
-            </div>
+        // 2026-10-20 老王：照抄本地工作流 —— 下拉就是参数行里的一个内联 <select>
+        // （本地 renderComfySettingField 的 dropdown 分支同款：.pfield-select.pfield-inline-select），
+        // 选项直接列在选择器里，不再走 pill + 二级弹窗。
+        const cur = String(value ?? (options[0] ?? ''));
+        const optsHtml = options.map(o => `<option value="${deps.escapeHtml(o)}"${String(o) === cur ? ' selected' : ''}>${deps.escapeHtml(o)}</option>`).join('');
+        return `<div class="num-compact rh-select-param" title="${deps.escapeHtml(label)}">
+            <span class="num-label">${deps.escapeHtml(label)}</span>
+            <select class="pfield-select pfield-inline-select rh-param-select" data-rh-param="${deps.escapeHtml(key)}" data-rh-type="select" aria-label="${deps.escapeHtml(label)}">${optsHtml}</select>
         </div>`;
     }
     const type = kind === 'number' ? 'number' : 'text';

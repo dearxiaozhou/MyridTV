@@ -2,7 +2,12 @@
 .image-node.speech-smart-node .node-body {height:100%; padding:20px !important; box-sizing:border-box; overflow:auto; display:block;}
 .speech-smart-node .node-head, .speech-smart-node .node-hint, .speech-smart-node .smart-node-toolbar {display:none;}
 .speech-card {display:flex; flex-direction:column; gap:14px; height:100%; color:var(--x-text); font-size:13px; cursor:default;}
+/* 2026-10-21 老王：语音生成面板 —— 生成按钮与「停顿」那一排同排（靠右）；底部平时不出字（框线收拢）；
+   面板在生成前后不做任何变化（下载/优化台词不再出现在面板里，产物由下游节点承接）。 */
 .speech-heading {font-size:16px; font-weight:600; cursor:move;}
+.speech-tagbar {display:flex; align-items:center; justify-content:space-between; gap:12px;}
+.speech-tagbar .speech-actions {cursor:default; align-items:center;}
+.speech-tagbar .speech-actions button {padding:6px 14px; font-size:12.5px; border-radius:8px;}
 .speech-workspace {display:grid; grid-template-columns:320px minmax(0,1fr); gap:20px; flex:1; min-height:0;}
 .speech-design, .speech-script {display:flex; flex-direction:column; gap:12px; min-width:0; min-height:0;}
 .speech-design {padding-right:20px; border-right:1px solid var(--x-line);}

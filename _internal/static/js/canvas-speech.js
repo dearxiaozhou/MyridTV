@@ -51,11 +51,9 @@
             ${input('speechStyle', design ? '声音描述' : '表演指导（可选）', design ? '例如：三十岁左右的女性，声音清冷、略带沙哑，语速缓慢。' : '例如：轻声说话，带着疲惫，在句尾稍作停顿。')}
             </div><div class="speech-script">
             ${clone ? `<div class="speech-reference"><button type="button" data-speech-upload ${busy ? 'disabled' : ''}>${node.speechReference ? '更换音色样本' : '上传音色样本'}</button><input type="file" data-speech-file accept=".mp3,.wav,audio/mpeg,audio/wav" hidden>${node.speechReference ? `<span title="${e(node.speechReference.name)}">${e(node.speechReference.name)}</span>${deps.audioPlayerHtml(node.speechReference,300,64)}` : ''}</div>` : ''}
-<div class="speech-tags">${['吸气','叹气','轻笑','哽咽','停顿'].map(tag=>`<button type="button" data-speech-tag="${tag}" ${busy || node.speechTextSource ? 'disabled' : ''}>${tag}</button>`).join('')}</div>${input('speechText','朗读文本',design && String(node.speechOptimize)==='true' ? '可留空，由模型根据声音描述生成台词。' : '填写需要朗读的台词。')}
-            ${node.images?.[0] ? `<div class="speech-output">${deps.audioPlayerHtml(node.images[0], 540, 92)}<a class="speech-download" href="${e(node.images[0].url)}" download="${e(node.images[0].name)}">下载 ${node.images[0].format?.toUpperCase() || (/\.mp3(?:[?#]|$)/i.test(node.images[0].url) ? 'MP3' : 'WAV')}</a></div>` : ''}
-            ${node.speechFinalText ? `<details class="speech-preview"><summary>优化后的台词</summary><div>${e(node.speechFinalText)}</div></details>` : ''}
+<div class="speech-tagbar"><div class="speech-tags">${['吸气','叹气','轻笑','哽咽','停顿'].map(tag=>`<button type="button" data-speech-tag="${tag}" ${busy || node.speechTextSource ? 'disabled' : ''}>${tag}</button>`).join('')}</div><div class="speech-actions"><button type="button" class="speech-generate" data-speech-run ${busy ? 'disabled' : ''}>${busy ? '正在生成…' : '生成语音'}</button></div></div>${input('speechText','朗读文本',design && String(node.speechOptimize)==='true' ? '可留空，由模型根据声音描述生成台词。' : '填写需要朗读的台词。')}
             </div></div>
-            <div class="speech-footer"><div class="speech-status ${node.speechError ? 'error' : ''}" role="status">${e(busy ? '正在生成…' : node.speechError || (node.images?.length ? '已生成' : !provider?.has_key ? '未配置 API Key' : ''))}</div><div class="speech-actions"><button type="button" class="speech-generate" data-speech-run ${busy ? 'disabled' : ''}>${busy ? '正在生成…' : '生成语音'}</button></div></div>
+            ${node.speechError ? `<div class="speech-footer"><div class="speech-status error" role="status">${e(node.speechError)}</div></div>` : ''}
         </div>`;
     }
     let picker = null;

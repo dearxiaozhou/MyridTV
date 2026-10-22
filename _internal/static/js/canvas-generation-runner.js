@@ -11,6 +11,11 @@ async function runGeneration(){
     const node = deps.selectedNode();
     if(!node) return;
     if(node.type === 'smart-speech') return global.CanvasSpeech.run(node);
+    const previewSettings=deps.smartSettingsForNode(node);
+    if(previewSettings.engine==='blender'&&previewSettings.previzOutput==='motion'&&global.CanvasOfflinePrevis?.prepare){
+        try{if(!await global.CanvasOfflinePrevis.prepare(node))return;}catch(error){deps.toast(error.message);return;}
+        if(deps.selectedNode()?.id!==node.id)return;
+    }
     const executionSettings = deps.cloneSmartSettings(deps.smartSettingsForNode(node));
     const lifecycle = global.CanvasGenerationLifecycle;
     const attempt = lifecycle.begin(node, {id:deps.uid('generation_run')});
@@ -185,7 +190,7 @@ async function runGeneration(){
             deps.updateComfyNodeLiveState(pendingNode);
         }
         const outImages = executionSettings.engine === 'runninghub'
-            ? await deps.runRunningHubGeneration(prompt, refs, executionSettings): await deps.runApiGeneration(prompt, refs, executionSettings, node);
+            ? await deps.runRunningHubGeneration(prompt, refs, executionSettings, node): await deps.runApiGeneration(prompt, refs, executionSettings, node);
         if(!isCurrent()) return;
         if(deps.isApiLikeEngine(executionSettings.engine)){
             const taskIds = Array.isArray(outImages?.taskIds) ? outImages.taskIds : [];
@@ -219,10 +224,24 @@ async function runGeneration(){
         }
         if(!outImages.length) throw new Error(tr('smart.errNoOutImages'));
         if(outpaintSize) delete node.outpaintSize;
-        await deps.finalizePendingNode(pendingNode, outImages, pendingMeta);
+        // 2026-10-21（老王：云端工作流出的视频素材半天不下载）：RH app/工作流这条路径
+        // 没有后端 task 记录，产出若不就地本地化就会永远停在 remoteFallback + localizePending。
+        // 这里按 URL 判媒体类型（mp4→video）并立刻落地，新增工作流同样适用。
+        const workflowKind = deps.mediaKindForUrls ? deps.mediaKindForUrls(outImages, runLog?.kind || 'image') : 'image';
+        let workflowOutputs = outImages;
+        if(deps.localizeGeneratedOutputItems){
+            try {
+                const localized = await deps.localizeGeneratedOutputItems(outImages, workflowKind);
+                if(Array.isArray(localized) && localized.length) workflowOutputs = localized;
+            } catch(err) {
+                if(deps.toast) deps.toast(err?.message || String(err));
+            }
+        }
+        if(!isCurrent()) return;
+        await deps.finalizePendingNode(pendingNode, workflowOutputs, pendingMeta, workflowKind);
             if(!isCurrent()) return;
         if(sourceVisualState) deps.restoreSourceVisualState(node, sourceVisualState);
-        deps.addSmartGenerationLog({run:runLog, outputs:outImages, runMs:deps.nowMs() - runLogStart});
+        deps.addSmartGenerationLog({run:runLog, outputs:(workflowOutputs || []).map(item => (item && item.url) || item).filter(Boolean), runMs:deps.nowMs() - runLogStart});
         if(ownsEditor()) deps.clearPromptInput({preserveDraft:true});
 
         deps.scheduleSave();

@@ -840,7 +840,9 @@ internal sealed class MainWindow : Form
     {
         try
         {
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+            // 后端 /api/update-check 同步跑「检查 + 下载全部更新文件」，国内网络下每个文件先试 GitHub（8s 超时）再回退 Gitee 镜像，
+            // 大版本可耗时数分钟（实测 V0.14.15＞V0.14.17 十个文件约 3.5 分钟）。20s 壳层必然先超时弹窗，而后端其实还在继续并最终成功。
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(240) };
             var content = new StringContent("{}", System.Text.Encoding.UTF8, "application/json");
             var response = await client.PostAsync(ProxyBaseUrl + "/api/update-check", content);
             var body = await response.Content.ReadAsStringAsync();
@@ -860,6 +862,11 @@ internal sealed class MainWindow : Form
             {
                 MessageBox.Show(this, "当前已是最新版本（" + current + "）。", "检查更新", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
+        }
+        catch (OperationCanceledException)
+        {
+            // 超时/取消给中文提示，不把英文 HttpClient.Timeout 原文甩给用户。
+            MessageBox.Show(this, "检查更新超时：更新源响应过慢，请稍后重试。", "检查更新", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         catch (Exception ex)
         {

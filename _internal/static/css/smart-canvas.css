@@ -615,12 +615,22 @@ audio { display:none !important; width:0 !important; height:0 !important; min-wi
 /* 2026-10-17 老王：+ 号（端口）不随画布缩放——所有尺寸与外伸偏移都除以缩放系数
    （--canvas-fixed-zoom = 1/scale，由 canvas-viewport-engine 在 applyViewport 设置），
    屏幕上恒为一个大小、且始终贴在节点边缘固定距离处。 */
-.node-port { position:absolute; top:50%; width:calc(84px * var(--canvas-fixed-zoom, 1)); height:calc(84px * var(--canvas-fixed-zoom, 1)); border-radius:50%; background:transparent; border:0; transform:translateY(-50%); z-index:6; cursor:crosshair; color:var(--muted); opacity:0; pointer-events:auto; transition:opacity .15s ease, color .15s ease; }
-.node-port::after { content:""; position:absolute; left:var(--port-x, 50%); top:var(--port-y, 50%); width:calc(26px * var(--canvas-fixed-zoom, 1)); height:calc(26px * var(--canvas-fixed-zoom, 1)); border-radius:50%; background:var(--card); border:calc(1.8px * var(--canvas-fixed-zoom, 1)) solid currentColor; transform:translate(-50%, -50%); transition:background .15s ease, border-color .15s ease; pointer-events:none; }
+.node-port { position:absolute; top:50%; width:calc(84px * var(--canvas-fixed-zoom, 1)); height:calc(84px * var(--canvas-fixed-zoom, 1)); border-radius:50%; background:transparent; border:0; transform:translateY(-50%); z-index:6; cursor:crosshair; color:var(--muted); opacity:0; pointer-events:none; transition:opacity .15s ease, color .15s ease; }
+.node-port::after { content:""; position:absolute; left:var(--port-x, 50%); top:var(--port-y, 50%); width:calc(26px * var(--canvas-fixed-zoom, 1)); height:calc(26px * var(--canvas-fixed-zoom, 1)); border-radius:50%; background:var(--card); border:calc(1.8px * var(--canvas-fixed-zoom, 1)) solid currentColor; transform:translate(-50%, -50%); transition:background .15s ease, border-color .15s ease; pointer-events:auto; }
 .node-port::before { content:""; position:absolute; left:var(--port-x, 50%); top:var(--port-y, 50%); width:calc(14px * var(--canvas-fixed-zoom, 1)); height:calc(14px * var(--canvas-fixed-zoom, 1)); background:linear-gradient(currentColor,currentColor) center/calc(2px * var(--canvas-fixed-zoom, 1)) 100% no-repeat,linear-gradient(currentColor,currentColor) center/100% calc(2px * var(--canvas-fixed-zoom, 1)) no-repeat; transform:translate(-50%, -50%); z-index:1; pointer-events:none; }
 .node-port.port-in { left:calc(-84px * var(--canvas-fixed-zoom, 1)); }
 .node-port.port-out { right:calc(-84px * var(--canvas-fixed-zoom, 1)); }
-.image-node:hover .node-port, .image-node.selected .node-port, .image-node.port-hover .node-port { opacity:1; }
+/* 2026-10-21 老王：+ 号只在三种情况显示——① 鼠标在节点身体里（.body-hover，JS 用
+   elementFromPoint 判，84px 外伸命中区不算身体）；② 节点被选中（常驻）；③ 鼠标正压在
+   那个 + 的圆环上（.node-port:hover——只有 26px 圆环可点，命中区其余部分是
+   pointer-events:none，不会再出现"节点外一片区域乱亮"）。
+   旧规则 .image-node:hover 把 84px 命中区也算进悬停：鼠标压在挨着的节点上、或在节点旁
+   空地蹭，都会亮一片 +，还专亮错那个。
+   拖线悬停目标节点仍走 .port-hover（JS portDragState 逻辑）。 */
+.image-node.selected .node-port, .image-node.body-hover .node-port, .image-node.port-hover .node-port, .node-port:hover { opacity:1; }
+/* 2026-10-19 老王：鼠标在 + 号区域（几何裁决命中的那个节点）→ 点亮它并把该节点提到最前，
+   否则旁边节点的盒子会盖住端口，导致亮错 + 、点错节点（节点挨在一起时尤其明显）。 */
+.image-node.port-hover { z-index:7 !important; }
 .node-port:hover, .node-port.is-active { color:var(--x-selected-line); }
 .node-port:hover::after, .node-port.is-active::after { background:var(--x-hover-bg); }
 .image-node.dragging .node-port { opacity:0 !important; pointer-events:none !important; }
@@ -3039,6 +3049,10 @@ body.studio-theme-dark .dynamic-params .pfield-bool-thumb { background:#000000; 
     border-color:rgba(200,200,200,.24);
     background:#1f1f1f;
     box-shadow:0 18px 38px rgba(0,0,0,.28);
+    padding:10px 10px 6px;
+    grid-template-areas:"thumbs thumbs" "prompt-preview prompt-preview" "prompt prompt" "head run";
+    gap:6px 8px;
+    align-items:center;
 }
 .blender-layout .composer-head,
 .blender-layout .composer-head-left {
@@ -3046,12 +3060,18 @@ body.studio-theme-dark .dynamic-params .pfield-bool-thumb { background:#000000; 
     flex-wrap:nowrap !important;
 }
 .blender-layout .composer-head-left {
-    gap:8px;
+    gap:6px;
     flex:1 1 auto;
 }
 .blender-layout .param-row {
-    border-top:0;
-    padding-top:2px;
+    display:none;
+}
+.blender-layout .composer-head { padding:0; }
+/* Match the 30px parameter controls used by API/Comfy nodes, including plugins. */
+.blender-layout :is(.blender-ratio-pill, .pv-plugin-entry > .smart-pill) {
+    height:30px !important; min-height:30px !important; max-height:30px !important;
+    box-sizing:border-box; font-size:11px; line-height:1; font-weight:500;
+    padding:0 9px; display:inline-flex; align-items:center; justify-content:center;
 }
 .blender-layout .blender-ratio-item,
 .blender-layout .blender-asset-item,
@@ -3109,16 +3129,14 @@ body.studio-theme-dark .dynamic-params .pfield-bool-thumb { background:#000000; 
 .blender-layout .blender-ratio-pill svg { width:12px !important; height:12px !important; flex:0 0 auto; }
 .previz-llm-select,
 .blender-ratio-control{ position:relative; display:inline-flex; align-items:center; }
-.blender-ratio-popover { width:max-content; min-width:118px; max-height:min(360px, 55vh); overflow-y:auto; overscroll-behavior:contain; background:#1f1f1f; backdrop-filter:none; border-radius:8px; }
+.blender-ratio-popover { width:max-content; min-width:118px; max-height:min(360px, 55vh); overflow-y:auto; overscroll-behavior:contain; background:var(--x-panel-solid); color:var(--x-text); border-color:var(--x-line); backdrop-filter:none; border-radius:8px; }
 .blender-ratio-control .blender-ratio-popover { top:calc(100% + 8px); bottom:auto; left:50%; transform:translateX(-50%); }
 .blender-ratio-control .blender-ratio-popover::after { top:auto; bottom:100%; }
 .blender-ratio-control.blender-ratio-pop-above .blender-ratio-popover { top:auto; bottom:calc(100% + 8px); left:50%; transform:translateX(-50%); }
 .blender-ratio-control.blender-ratio-pop-above .blender-ratio-popover::after { top:100%; bottom:auto; }
-html:not(.theme-dark) .blender-ratio-popover, body:not(.theme-dark) .blender-ratio-popover { background:#f8fafc; }
 .previz-llm-select-list,
 .blender-ratio-list{ display:grid; grid-template-columns:1fr; gap:2px; padding:4px 8px 8px; }
 .blender-ratio-opt { display:flex; align-items:center; justify-content:space-between; width:100%; min-height:30px; padding:5px 10px; border:0; border-radius:8px; background:transparent; color:var(--text, #e5e5e5); text-align:left; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.blender-ratio-opt:hover { background:var(--x-hover-bg); }
 .previz-llm-opt.active,
 .blender-ratio-opt.active{ background:var(--x-selected-fill); border-color:var(--x-selected-line); color:var(--x-selected-text); box-shadow:inset 0 0 0 1px var(--x-selected-ring); }
 
@@ -3200,16 +3218,14 @@ html:not(.theme-dark) .blender-ratio-popover, body:not(.theme-dark) .blender-rat
 .blender-layout .previz-lens-pill svg { width:12px !important; height:12px !important; flex:0 0 auto; }
 .blender-layout .previz-lens-pill .pill-caret { opacity:.7; }
 .blender-layout .previz-lens-pill span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.previz-lens-popover { width:min(460px, calc(100vw - 40px)); min-width:300px; max-height:min(460px, 55vh); overflow-y:auto; overscroll-behavior:contain; background:#1f1f1f; backdrop-filter:none; }
+.previz-lens-popover { width:min(460px, calc(100vw - 40px)); min-width:300px; max-height:min(460px, 55vh); overflow-y:auto; overscroll-behavior:contain; background:var(--x-panel-solid); color:var(--x-text); border-color:var(--x-line); backdrop-filter:none; }
 .previz-lens-control .previz-lens-popover { top:calc(100% + 8px); bottom:auto; left:50%; transform:translateX(-50%); }
 .previz-lens-control .previz-lens-popover::after { top:auto; bottom:100%; }
 .previz-lens-control.previz-lens-pop-above .previz-lens-popover { top:auto; bottom:calc(100% + 8px); }
 .previz-lens-control.previz-lens-pop-above .previz-lens-popover::after { top:100%; bottom:auto; }
-html:not(.theme-dark) .previz-lens-popover, body:not(.theme-dark) .previz-lens-popover { background:#f8fafc; }
 .previz-lens-list { display:grid; grid-template-columns:1fr 1fr; gap:2px; padding:4px 8px 8px; }
 .previz-lens-section { grid-column:1 / -1; padding:7px 8px 3px; color:var(--muted, #9ca3af); font-size:10px; font-weight:750; letter-spacing:.02em; }
 .previz-lens-opt { display:flex; align-items:center; justify-content:flex-start; width:100%; min-height:30px; padding:5px 10px; border:0; border-radius:8px; background:transparent; color:var(--text, #e5e5e5); text-align:left; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.previz-lens-opt:hover { background:var(--x-hover-bg); }
 .blender-ratio-opt-name,
 .previz-lens-opt-name{ font-size:11.5px; font-weight:750; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .previz-lens-popover::-webkit-scrollbar { width:7px; }
@@ -4218,6 +4234,28 @@ body.canvas-mode-objects .node-port { display:none !important; }
 .rh-single-row .rh-params-popover .num-compact input,
 .rh-single-row .rh-params-popover .num-with-dice input { flex:0 0 52px; width:52px !important; font-size:12.5px; }
 .rh-single-row .rh-params-popover .num-compact.rh-text-param input { flex:0 0 150px; width:150px !important; text-align:left; }
+/* 2026-10-20 老王：照抄本地工作流 —— 参数里的下拉/滑杆是**内联控件**（选择器 / range），
+   不是 pill + 二级弹窗；所以参数弹层里不再有会被外层裁切的嵌套弹窗。
+   排版按同排其它参数行对齐：标签吃剩余宽度且单行不换行，控件压窄后右缘贴齐（同 9px 内侧）。 */
+.rh-single-row .rh-params-popover .rh-select-param { justify-content:space-between; gap:5px; }
+.rh-single-row .rh-params-popover .rh-select-param .num-label {
+    flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.rh-single-row .rh-params-popover .rh-param-select {
+    flex:0 0 112px; width:112px !important; min-width:0; max-width:112px;
+    height:22px; min-height:22px; max-height:22px; box-sizing:border-box; line-height:20px;
+    padding:0 18px 0 6px; border:0 none; border-radius:999px;
+    background:var(--card); color:var(--text); font-size:12.5px; text-align:right;
+}
+.rh-single-row .rh-params-popover .rh-range-param { justify-content:space-between; gap:5px; }
+.rh-single-row .rh-params-popover .rh-range-param .num-label { flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rh-single-row .rh-params-popover .rh-range-param .rh-param-range { flex:0 1 auto; min-width:0; width:112px; }
+.rh-single-row .rh-params-popover .rh-range-param .rh-range-value { flex:0 0 26px; text-align:right; font-size:12px; color:var(--text); }
+.rh-single-row .rh-params-popover .rh-param-select option { background:var(--panel); color:var(--text); }
+/* 所有参数行的名称一律单行显示，别被挤成两行/截断 */
+.rh-single-row .rh-params-popover .cfn-params-body .num-label {
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
 .rh-single-row .rh-params-popover .rh-dropdown-control { width:100%; }
 .rh-single-row .rh-params-popover .rh-dropdown-control .smart-pill { width:100%; max-width:100%; }
 .rh-single-row .rh-params-popover .rh-slider-control { width:100%; }

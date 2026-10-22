@@ -147,8 +147,35 @@ async function ensureCustomComfyWorkflowReady(runSettings=D("settings")){
  if(!workflowName) return null;
  return ensureComfyWorkflow(workflowName);
 }
+// 2026-10-21（老王：SeedVR2 高清放大这类云端工作流凭什么要提示词）：
+// 判据改成看工作流定义本身 —— 定义里没有任何提示词节点（Text/CLIPTextEncode/…
+// 且带 text/prompt 输入）就允许空提示词。新增工作流自动适用，不用逐个登记。
+function rhWorkflowNeedsPrompt(entry){
+ try{
+  let wf = entry?.workflowJson;
+  if(typeof wf === 'string') wf = JSON.parse(wf);
+  if(!wf || typeof wf !== 'object') return true;   // 拿不到定义 -> 保守要求提示词
+  for(const node of Object.values(wf)){
+   if(!node || typeof node !== 'object') continue;
+   const ct = String(node.class_type || '').toLowerCase();
+   const inputs = node.inputs || {};
+   const isPromptNode = /(text|prompt|clip|string|llm)/.test(ct) &&
+    ('text' in inputs || 'prompt' in inputs || 'string' in inputs || 'text_positive' in inputs || 'value' in inputs);
+   if(isPromptNode && !String(ct).includes('clipsetlastlayer')) return true;
+  }
+  return false;
+ }catch(_){ return true; }
+}
+function allowsPromptlessRunningHub(runSettings=D("settings")){
+ if((runSettings?.engine || D("settings").engine) !== 'runninghub') return false;
+ try{
+  const ref = (typeof selectedRunningHubRef === 'function') ? selectedRunningHubRef(runSettings) : null;
+  if(!ref) return false;
+  return !rhWorkflowNeedsPrompt(ref.entry);
+ }catch(_){ return false; }
+}
 function allowsPromptlessCustomComfy(runSettings=D("settings")){
- if((runSettings?.engine || D("settings").engine) !== 'comfy') return false;
+ if((runSettings?.engine || D("settings").engine) !== 'comfy') return allowsPromptlessRunningHub(runSettings);
  normalizeComfyWorkflowSelection(runSettings);
  return customComfyPromptFields(runSettings).length === 0;
 }

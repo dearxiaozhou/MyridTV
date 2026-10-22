@@ -274,7 +274,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.10.19.thumb9"
+STATIC_VERSION = "2026.10.22.float2"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 # Windows 版 Python 的 mimetypes 不带 webp，猜不出来会回落成
 # application/octet-stream，浏览器按未知类型拒绝渲染（风格缩略图会全变空白）。

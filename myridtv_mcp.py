@@ -261,11 +261,19 @@ def _mcp_handle(name, args):
         # 挂图（2026-10-09）：images=替换整组，add_images=追加；本地/远程来源统一规范化
         if isinstance(args.get("images"), list) or isinstance(args.get("add_images"), list):
             _cv_title = str(d.get("title") or cv.get("title") or "").strip()
+            _items = []
             if isinstance(args.get("images"), list):
-                hit["images"] = _mcp_attach_image_items(args.get("images"), cid, _cv_title)
+                _items = _mcp_attach_image_items(args.get("images"), cid, _cv_title)
             if isinstance(args.get("add_images"), list):
                 _cur = hit.get("images") if isinstance(hit.get("images"), list) else []
-                hit["images"] = _cur + _mcp_attach_image_items(args.get("add_images"), cid, _cv_title)
+                _items = _cur + _mcp_attach_image_items(args.get("add_images"), cid, _cv_title)
+            # 单图节点规则（2026-10-19 老王定案，见 AGENTS.md「Single-image Nodes」）：
+            # 一个节点最多一张图，多出来的图各自落成独立节点。
+            if len(_items) > 1:
+                hit["images"] = _items[:1]
+                myridtv_agent_generation.spawn_single_image_nodes(cid, d, hit, _items[1:], origin="mcp_image_split")
+            else:
+                hit["images"] = _items
         ok, _nid, save_ok, _dd = myridtv_agent_artifact._agent_canvas_repo_upsert_node(cid, cv, hit, "mcp_update", args)
         if not ok: return {"error": _nid}
         if not save_ok: return {"error": "更新未保存：画布保存失败或发生并发冲突"}

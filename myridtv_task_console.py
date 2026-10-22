@@ -74,6 +74,9 @@ def _task_console_kind(task_id, state):
 def _task_media_type(item):
     """任务级媒体归类：所有任务强制二分 image / video，保证明细加和=总数。
     判定源=kind 优先，工作流/未知类看产出条目；智能体任务(短片流水线)按视频计。"""
+    workflow_media = str(item.get("workflow_media") or "").strip().lower()
+    if workflow_media in ("video", "image", "audio"):
+        return workflow_media
     kind = str(item.get("kind") or "")
     if kind == "语音":
         return "audio"
@@ -292,6 +295,10 @@ def task_console_snapshot():
             "node_id": str(st.get("node_id") or ""),
             "node_title": str(st.get("node_title") or ""),
             "mode": str(st.get("mode") or ("i2i" if (st.get("reference_images") or st.get("reference_image_urls")) else "t2i")),
+            # 云端工作流身份（2026-10-21）：新增工作流只要在 api_providers 登记就自动带出来
+            "workflow_id": str(st.get("workflow_id") or ""),
+            "workflow_title": str(st.get("workflow_title") or ""),
+            "workflow_media": str(st.get("workflow_media") or ""),
             "ratio": str(st.get("ratio") or submit.get("ratio") or "").strip(),
             "quality": str(st.get("quality") or submit.get("quality") or "").strip(),
             "provider_task_id": str(st.get("provider_task_id") or st.get("rh_task_id") or ""),

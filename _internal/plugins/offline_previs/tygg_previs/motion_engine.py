@@ -6,7 +6,7 @@ from mathutils import Vector,Quaternion
 from bpy_extras.object_utils import world_to_camera_view
 from . import engine
 from . import motion_model as model
-from . import actor_motion
+from . import actor_motion,scene_layout,environment
 
 ROOT=Path(__file__).resolve().parent
 CROP={'wide':(1.45,.50),'full':(1.08,.50),'medium':(.62,.70),'close':(.34,.83),'detail':(.18,.91)}
@@ -15,16 +15,18 @@ def _entry(config):return next(p for p in model.catalog()['presets'] if p['id']=
 
 def _pose_and_bounds(scene,config):
  ref=engine.refs(scene)
+ people={p['id']:p for p in scene_layout.characters(config)}
  for actor in ref['actors']:
+  person=people[actor['id']]
   start=bpy.data.objects[actor['start']];end=bpy.data.objects[actor['end']]
-  root=bpy.data.objects[actor['root']];root.animation_data_clear();root.location=start.location;root.rotation_euler.z=math.pi
+  root=bpy.data.objects[actor['root']];root.animation_data_clear();root.location=(*person['position'],0);start.location=root.location;start.rotation_euler.z={'forward':0,'backward':math.pi,'left':math.pi/2,'right':-math.pi/2}[person['facing']];root.rotation_euler.z=math.pi+start.rotation_euler.z
   end.location=start.location
-  start['pose']=end['pose']=config['pose']
+  start['pose']=end['pose']='SIT' if person['motion']=='sit' else config['pose']
  engine.apply_poses(scene)
  scene.frame_set(scene.frame_start);bpy.context.view_layer.update()
  dg=bpy.context.evaluated_depsgraph_get();points=[]
- selected=ref['actors'][1] if config['focus_subject']=='second' and len(ref['actors'])>1 else ref['actors'][0]
- rigs={bpy.data.objects[selected['rig']]}
+ selected=scene_layout.focus_id(config)
+ rigs={bpy.data.objects[a['rig']] for a in ref['actors'] if selected=='group' or a['id']==selected}
  for obj in scene.objects:
   if obj.type=='MESH' and obj.find_armature() in rigs:
    evaluated=obj.evaluated_get(dg);points.extend(evaluated.matrix_world@Vector(p) for p in evaluated.bound_box)
@@ -40,7 +42,7 @@ def _fit(config,low,high,framing):
  focus=Vector(((low.x+high.x)/2,(low.y+high.y)/2,low.z+height*center))
  aspect=config['resolution'][0]/config['resolution'][1]
  tan_h=36/(2*config['lens_mm']);tan_v=tan_h/aspect
- crop_width=(high.x-low.x)*(1 if config['subject']=='both' else {'wide':1,'full':1,'medium':.95,'close':.70,'detail':.40}[framing])
+ crop_width=(max(high.x-low.x,high.y-low.y) if config['focus_subject']=='group' else high.x-low.x)*(1 if config['subject']=='both' else {'wide':1,'full':1,'medium':.95,'close':.70,'detail':.40}[framing])
  distance=max(height*scale/(2*tan_v*.80),crop_width*1.08/(2*tan_h*.84))
  return focus,distance
 
@@ -66,6 +68,11 @@ def _resolve(config,low,high):
  elevation=0 if config['target_start']=='feet' else height*.08
  if kind=='first_person':elevation=height*.40
  if kind=='crane_down':elevation=min(distance*.65,amount+height*.12)
+ if config['camera_angle']!='auto':
+  elevation=distance*math.sin(math.radians({'eye':0,'low':-20,'high':35,'overhead':75}[config['camera_angle']]))
+  elevation=max(.08-focus.z,elevation)
+ if config['camera_height'] is not None:elevation=config['camera_height']-focus.z
+ distance=max(distance,abs(elevation)*1.02)
  radial=math.sqrt(max(.01,distance*distance-elevation*elevation))
  start=focus+Vector((0,radial,elevation));end=start.copy();aim0=focus.copy();aim1=focus.copy()
  direction=-1 if config['direction']=='left' else 1
@@ -89,7 +96,7 @@ def _resolve(config,low,high):
   actor_delta=Vector((0,0,0))
   # A three-quarter front follow preserves face visibility and readable ground travel.
   fixed=True
-  offset=Vector((distance*.65,distance*.75,elevation));offset.normalize();offset*=distance
+  offset=Vector((radial*.65/.99247,radial*.75/.99247,elevation))
   start=focus+offset;end=start+actor_delta
  else:
   source=[Vector(p) for p in entry['source_path']]
@@ -156,7 +163,7 @@ def _world_var(driver,name,obj,axis):
 
 def _targets(scene,config,resolved):
  ref=engine.refs(scene);record=ref['camera'];actors=ref['actors']
- actor=actors[1] if config['focus_subject']=='second' and len(actors)>1 else actors[0]
+ selected=scene_layout.focus_id(config);chosen=[a for a in actors if selected=='group' or a['id']==selected];actor=chosen[0]
  rig=bpy.data.objects[actor['rig']];root=bpy.data.objects[actor['root']]
  names={b.name.split(':')[-1]:b.name for b in rig.pose.bones}
  camera=bpy.data.objects[record['camera']]
@@ -169,11 +176,13 @@ def _targets(scene,config,resolved):
   anchor=bpy.data.objects.new(scene.name+'.TARGET_'+which,None);scene.collection.objects.link(anchor)
   anchor['pv_motion_target']=True;anchor.hide_render=True;anchor.empty_display_size=.08
   bones={'head':['Head'],'chest':['Spine2'],'hips':['Hips'],'feet':['LeftToeBase','RightToeBase']}.get(part)
-  if bones:
-   for index,bone in enumerate(bones):
-    constraint=anchor.constraints.new('COPY_LOCATION');constraint.target=rig;constraint.subtarget=names[bone];constraint.influence=1 if index==0 else .5
-  else:
-   constraint=anchor.constraints.new('COPY_LOCATION');constraint.target=root
+  targets=[]
+  for selected_actor in chosen:
+   selected_rig=bpy.data.objects[selected_actor['rig']];bone_names={b.name.split(':')[-1]:b.name for b in selected_rig.pose.bones}
+   targets.extend([(selected_rig,bone_names[bone]) for bone in bones] if bones else [(bpy.data.objects[selected_actor['root']],None)])
+  for index,(obj,bone) in enumerate(targets):
+   constraint=anchor.constraints.new('COPY_LOCATION');constraint.target=obj;constraint.influence=1/(index+1)
+   if bone:constraint.subtarget=bone
   scene.frame_set(1);bpy.context.view_layer.update();initial=anchor.evaluated_get(bpy.context.evaluated_depsgraph_get()).matrix_world.translation.copy()
   for axis,label in enumerate('XYZ'):
    fc=control.driver_add('location',axis);_world_var(fc.driver,'anchor',anchor,label)
@@ -183,9 +192,11 @@ def _targets(scene,config,resolved):
   if constraint.name=='02_SUBJECT_TRAVEL':camera.constraints.remove(constraint)
  if resolved['entry']['kind']=='follow' or config['travel_reference']=='subject':
   delta=bpy.data.objects.new(scene.name+'.FOLLOW_DELTA',None);scene.collection.objects.link(delta);delta['pv_motion_target']=True;delta.hide_render=True
-  initial=bpy.data.objects[actor['start']].location
+  initial=sum((bpy.data.objects[a['start']].location for a in chosen),Vector((0,0,0)))/len(chosen)
   for axis,label in enumerate('XYZ'):
-   fc=delta.driver_add('location',axis);_world_var(fc.driver,'root',root,label);fc.driver.expression=f'root-{float(initial[axis])!r}'
+   fc=delta.driver_add('location',axis)
+   for index,selected_actor in enumerate(chosen):_world_var(fc.driver,'r'+str(index),bpy.data.objects[selected_actor['root']],label)
+   fc.driver.expression='('+ '+'.join('r'+str(i) for i in range(len(chosen)))+f')/{len(chosen)}-{float(initial[axis])!r}'
   c=camera.constraints.new('COPY_LOCATION');c.name='02_SUBJECT_TRAVEL';c.target=delta;c.use_offset=True
   index=list(camera.constraints).index(c);camera.constraints.move(index,1)
  scene.frame_set(1);bpy.context.view_layer.update()
@@ -195,23 +206,28 @@ def _seating(scene,config):
  for obj in list(scene.objects):
   if obj.get('pv_motion_seat'):bpy.data.objects.remove(obj,do_unlink=True)
  timeline=json.loads(scene.get('pv_actor_timeline','[]'))
- for item in timeline:
-  if item['action']!='sit':continue
-  scene.frame_set(min(scene.frame_end,round(1+(item['start']+item['duration'])*config['fps'])))
-  dg=bpy.context.evaluated_depsgraph_get()
-  for actor in engine.refs(scene)['actors']:
+ for actor in engine.refs(scene)['actors']:
+  person=next(p for p in scene_layout.characters(config) if p['id']==actor['id'])
+  frames=[1] if person['motion']=='sit' else [min(scene.frame_end,round(1+(item['start']+item['duration'])*config['fps'])) for item in timeline if item['action']=='sit'] if person['motion']=='sequence' else []
+  for frame in frames:
+   scene.frame_set(frame);bpy.context.view_layer.update();dg=bpy.context.evaluated_depsgraph_get()
    rig=bpy.data.objects[actor['rig']].evaluated_get(dg);bone=next(b for b in rig.pose.bones if b.name.split(':')[-1]=='Hips')
    hip=rig.matrix_world@bone.head;top=max(.2,hip.z-.10)
-   bpy.ops.mesh.primitive_cube_add(size=1,location=(hip.x,hip.y,top/2))
-   seat=bpy.context.object;seat.name=scene.name+'.SIT_SUPPORT';seat.dimensions=(.48,.48,top);seat['pv_motion_seat']=True
+   bpy.ops.mesh.primitive_cube_add(size=1,location=(hip.x,hip.y,top/2));seat=bpy.context.object;seat.name=scene.name+'.SIT_SUPPORT';seat.dimensions=(.48,.48,top);seat['pv_motion_seat']=True
    bpy.ops.object.transform_apply(location=False,rotation=False,scale=True)
    mat=bpy.data.materials.get('Seat neutral') or bpy.data.materials.new('Seat neutral');mat.diffuse_color=(.24,.26,.28,1);seat.data.materials.append(mat)
+
  scene.frame_set(1)
 
 
 def _stage(scene,extent=0):
  floor=bpy.data.objects.get(scene.name+'.GROUND')
- if floor:floor.location.y=extent/2;floor.scale.y=(20+extent)/20
+ if floor:
+  timeline=json.loads(scene.get('pv_actor_timeline','[]'));points=[Vector((0,0,0))]+[Vector(item[key]) for item in timeline for key in ['from','to']]
+  minx,maxx=min(p.x for p in points),max(p.x for p in points);miny,maxy=min(p.y for p in points),max(p.y for p in points)
+  floor.location=( (minx+maxx)/2,(miny+maxy)/2,0);floor.scale=(max(30,maxx-minx+30)/20,max(30,maxy-miny+30)/20,1)
+ for obj in list(scene.objects):
+  if '.DEPTH_' in obj.name:bpy.data.objects.remove(obj,do_unlink=True)
  if scene.get('pv_motion_stage'):return
  verts=[];faces=[]
  for axis in range(2):
@@ -222,10 +238,6 @@ def _stage(scene,extent=0):
  mesh=bpy.data.meshes.new(scene.name+'.GRID');mesh.from_pydata(verts,[],faces)
  obj=bpy.data.objects.new(scene.name+'.GRID',mesh);scene.collection.objects.link(obj)
  mat=bpy.data.materials.new('Stage grid');mat.diffuse_color=(.38,.43,.46,1);mesh.materials.append(mat)
- for i,(x,y,z) in enumerate([(-2.5,1.7,.5),(2.5,2.2,.9),(-1.6,-2.3,.28)]):
-  bpy.ops.mesh.primitive_cube_add(size=1,location=(x,y,z/2));box=bpy.context.object;box.name=scene.name+'.DEPTH_'+str(i)
-  box.dimensions=(.45,.45,z);bpy.ops.object.transform_apply(location=False,rotation=False,scale=True)
-  material=bpy.data.materials.new('Depth marker');material.diffuse_color=(.32+.035*i,.34+.025*i,.36+.015*i,1);box.data.materials.append(material)
  scene['pv_motion_stage']=True
 
 def _configure(scene,config):
@@ -276,13 +288,20 @@ def _configure(scene,config):
  _targets(scene,config,resolved)
  _seating(scene,config)
  _stage(scene,actor_delta.length)
+ environment.apply(scene,config,camera_obj)
+ for index,record in enumerate(refs['actors']):
+  rig=bpy.data.objects[record['rig']]
+  for obj in scene.objects:
+   if obj.type=='MESH' and obj.find_armature()==rig:
+    for material in obj.data.materials:material.diffuse_color=scene_layout.COLORS[index]
+  bpy.data.objects[record['root']]['character_name']=next(p['name'] for p in scene_layout.characters(config) if p['id']==record['id'])
  scene['pv_motion_owned']=True;scene['pv_motion_version']=model.VERSION;scene['pv_motion_spec']=json.dumps(config,ensure_ascii=False)
  scene['pv_motion_resolved']=json.dumps({'preset':config['preset'],'source_name':resolved['entry']['source_name'],
   'amount':resolved['amount'],'amount_type':resolved['entry']['amount_type'],'start_distance_m':resolved['start_distance'],
   'end_distance_m':resolved['end_distance'],'focus_start':list(resolved['focus']),'focus_end':list(resolved['aim_end']),
   'subject_bounds_low':list(low),'subject_bounds_high':list(high),
   'pace':resolved['pace'],'framing':config['framing'],'actor_motion_m':actor_delta.length,'actor_travel_m':sum(i['distance'] for i in actor_motion.segments(config)),
-  'target_start':config['target_start'],'target_end':config['target_end'],'target_motion':config['target_motion'],'view':config['view']},ensure_ascii=False)
+  'target_start':config['target_start'],'target_end':config['target_end'],'target_motion':config['target_motion'],'view':config['view'],'camera_angle':config['camera_angle'],'camera_height_m':resolved['start'].z,'scene_mode':config['scene_mode'],'characters':scene_layout.characters(config)},ensure_ascii=False)
  scene.frame_set(1);controller.update_tag();bpy.context.view_layer.update()
  return scene
 
@@ -291,15 +310,14 @@ def build(value,existing=None):
  entries=model.catalog()['presets'];engine.PRESETS=list(dict.fromkeys(engine.PRESETS+[p['id'] for p in entries]));engine.CAMERA_LIBRARY=ROOT/'assets/motion_cameras.blend'
  if existing and existing.get('pv_motion_owned'):
   old=json.loads(existing['pv_motion_spec'])
-  if old['subject']==config['subject']:
+  if [(p['id'],p['asset']) for p in scene_layout.characters(old)]==[(p['id'],p['asset']) for p in scene_layout.characters(config)]:
    bpy.context.window.scene=existing
    existing['pv_motion_reused']=True
    return _configure(existing,config)
- assets=['x_bot','y_bot'] if config['subject']=='both' else [config['subject']]
  actors=[]
- for index,asset in enumerate(assets):
-  state={'position':[(-.75 if index==0 else .75) if len(assets)>1 else 0,0,0],'yaw_deg':0,'pose':config['pose']}
-  actors.append({'id':'subject_'+str(index+1),'asset':asset,'start':dict(state),'end':dict(state)})
+ for person in scene_layout.characters(config):
+  state={'position':[*person['position'],0],'yaw_deg':{'forward':0,'backward':180,'left':90,'right':-90}[person['facing']],'pose':'SIT' if person['motion']=='sit' else config['pose']}
+  actors.append({'id':person['id'],'asset':person['asset'],'start':dict(state),'end':dict(state)})
  base={'schema_version':'1.0','id':'MotionPreview','fps':config['fps'],'frame_start':1,'frame_end':round(config['duration']*config['fps']),
   'resolution':config['resolution'],'actors':actors,
   'camera':{'preset':'08_中景跟拍','start':[0,8,2],'end':[0,7,2],'aim_start':[0,0,1],'aim_end':[0,0,1],'via':[],'lens_mm':config['lens_mm'],'timing':'LINEAR'}}
@@ -329,7 +347,7 @@ def inspect(scene):
  return {'status':'sampled_motion_checks_passed','module_version':model.VERSION,'camera_action_keys':keys,'progress_keys':sum(len(fc.keyframe_points) for fc in engine.action_curves(bpy.data.objects[refs['progress']])),
   'scene_reused':bool(scene.get('pv_motion_reused')),'actor_objects':[{'root':a['root'],'rig':a['rig']} for a in refs['actors']],
   'translation_range_m':distance,'rotation_range_deg':math.degrees(angle),'samples':rows,
-  'actor_timeline':json.loads(scene.get('pv_actor_timeline','[]')),
+  'actor_timeline':json.loads(scene.get('pv_actor_timeline','[]')),'character_timelines':json.loads(scene.get('pv_character_timelines','{}')),
   'resolved':json.loads(scene['pv_motion_resolved']),'unverified':['continuous_collision','aesthetic_quality']}
 
 def export(scene,output,ffmpeg=None):
@@ -345,7 +363,9 @@ def export(scene,output,ffmpeg=None):
  subprocess.run([str(command),'-hide_banner','-loglevel','error','-y','-framerate',str(scene.render.fps),'-start_number','1',
   '-i',str(frames/'frame_%04d.png'),'-frames:v',str(scene.frame_end),'-c:v','libx264','-crf','20','-pix_fmt','yuv420p','-movflags','+faststart',str(output/'preview.mp4')],check=True)
  shutil.copy2(frames/'frame_0001.png',output/'poster.png')
- scene.frame_set(1);bpy.data.libraries.write(str(output/'previs.blend'),{scene},path_remap='RELATIVE',fake_user=True)
+ scene.frame_set(1)
+ bpy.ops.file.pack_all()
+ bpy.data.libraries.write(str(output/'previs.blend'),{scene},path_remap='RELATIVE',fake_user=True)
  # Temporary frames are safe to remove only after successful encoding and save.
  if frames.resolve().parent==output:shutil.rmtree(frames)
  return checks

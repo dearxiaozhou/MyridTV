@@ -11,7 +11,9 @@ myridtv_task_state（任务账本读写 API）。configure() 注入：TASKS/TASK
 3 个 RH helper 闭包（runninghub_api_url/runninghub_task_key/runninghub_task_auth_headers，
 仍留主文件）。主文件对块外仍调用的 11 函数留同名薄代理，调用点不改。
 """
+import io
 import json
+import os
 import re
 import time
 import uuid
@@ -240,6 +242,88 @@ def _rh_sync_task_console_state(rh_task_id, queried):
         append_log(_log_file(), f"rh task console sync failed: {exc}")
 
 
+def _rh_workflow_media_kind(entry):
+    """从工作流定义推断产出媒体类型（通用判据，新增工作流无需登记）。
+
+    看 workflowJson 里各节点 class_type：出现视频合成/保存类节点即 video；
+    否则若只有图片/音频保存类节点即 image；认不出返回空串（控制台按原逻辑归类）。
+    """
+    try:
+        wf = entry.get("workflowJson") if isinstance(entry, dict) else None
+        if isinstance(wf, str):
+            wf = json.loads(wf)
+        if not isinstance(wf, dict):
+            return ""
+        types = [str((n or {}).get("class_type") or "").lower() for n in wf.values() if isinstance(n, dict)]
+        joined = " ".join(t for t in types if t)
+        if any(k in joined for k in ("savevideo", "videocombine", "vhs_videocombine", "savewebm",
+                                     "createvideo", "saveanimated", "videooutput", "save_video")):
+            return "video"
+        if any(k in joined for k in ("saveimage", "previewimage", "saveaudio", "save_image")):
+            return "image"
+    except Exception:
+        return ""
+    return ""
+
+
+def _rh_provider_records():
+    """读平台配置（api_providers）。正常走 provider 模块；它未 configure 时直读配置文件兜底。"""
+    try:
+        records = myridtv_provider.read_api_providers() or []
+        if records:
+            return records
+    except Exception:
+        pass
+    candidates = []
+    try:
+        candidates.append(myridtv_provider.providers_file_path())
+    except Exception:
+        pass
+    try:
+        candidates.append(os.path.join(os.environ.get("APPDATA", ""), "MyridTV", "data", "api_providers.json"))
+    except Exception:
+        pass
+    for path in candidates:
+        try:
+            with io.open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
+            if isinstance(data, list) and data:
+                return data
+        except Exception:
+            continue
+    return []
+
+
+def _rh_workflow_identity(payload, rh_task_id=""):
+    """解析本次云端工作流的身份（id / 名称 / 产出媒体类型）。
+
+    名称与媒体类型都从 api_providers 的 rh_workflows 里按 workflowId 现查 ——
+    新增工作流只要登记在配置里就自动带身份，不需要为每个工作流改代码。
+    """
+    wf_id = str((payload or {}).get("workflowId") or (payload or {}).get("workflow_id") or "").strip()
+    wf_title = str((payload or {}).get("workflowTitle") or (payload or {}).get("workflow_title") or "").strip()
+    wf_media = ""
+    if not wf_id:
+        return {"workflow_id": "", "workflow_title": wf_title, "workflow_media": wf_media}
+    try:
+        for provider in _rh_provider_records():
+            if not isinstance(provider, dict):
+                continue
+            for wf in (provider.get("rh_workflows") or []):
+                if not isinstance(wf, dict):
+                    continue
+                if str(wf.get("id") or "").strip() != wf_id:
+                    continue
+                wf_title = wf_title or str(wf.get("title") or "").strip()
+                wf_media = _rh_workflow_media_kind(wf)
+                break
+            if wf_title and wf_media:
+                break
+    except Exception as exc:
+        append_log(_log_file(), f"rh workflow identity resolve failed id={wf_id}: {exc}")
+    return {"workflow_id": wf_id, "workflow_title": wf_title, "workflow_media": wf_media}
+
+
 def _rh_task_console_register(rh_task_id, payload, data, backend, mode):
     """RunningHub 提交成功后注册到任务控制台（running 态，持久化）。
 
@@ -252,13 +336,25 @@ def _rh_task_console_register(rh_task_id, payload, data, backend, mode):
         # 元数据优先取 payload 显式字段；前端未传时从 nodeInfoList 兜底解析模型
         model = str(payload.get("model") or "").strip()
         if not model:
+            # nodeInfoList 里的值多是素材文件名/路径，只有形如 平台/模型 的才认；
+            # 否则控制台「模型」列会显示一张图的名字（2026-10-21 实测：api/xxxx.png）。
+            file_like = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".mp4", ".webm", ".mov", ".mp3", ".wav", ".safetensors", ".json")
             for item in (payload.get("nodeInfoList") or []):
                 if not isinstance(item, dict):
                     continue
                 fv = str(item.get("fieldValue") or "").strip()
-                if fv and ("/" in fv) and not fv.startswith("http"):
+                if not fv or fv.startswith("http"):
+                    continue
+                if fv.lower().endswith(file_like):
+                    continue
+                # 提示词/整段文本也可能含 "/"（如“文字/UI/水印”），必须排掉：
+                # 模型标识是短的、无空白的 “平台/模型” 形态。
+                if len(fv) > 80 or any(ch.isspace() for ch in fv):
+                    continue
+                if "/" in fv:
                     model = fv
                     break
+        identity = _rh_workflow_identity(payload, rh_task_id)
         myridtv_task_state.set_task_state(local_id, {
             "status": "running",
             "persistent": True,
@@ -272,6 +368,9 @@ def _rh_task_console_register(rh_task_id, payload, data, backend, mode):
             "node_id": str(payload.get("node_id") or ""),
             "node_title": str(payload.get("node_title") or ""),
             "rh_task_id": str(rh_task_id or ""),
+            "workflow_id": identity.get("workflow_id") or "",
+            "workflow_title": identity.get("workflow_title") or "",
+            "workflow_media": identity.get("workflow_media") or "",
             "submit": data,
             "checked_at": time.time(),
             "raw_status": "QUEUED",
@@ -365,6 +464,46 @@ def runninghub_workflow_title(workflow_json, workflow_id, fallback_title=""):
     return str(fallback_title or f"工作流 {str(workflow_id)[-6:]}").strip()
 
 
+def runninghub_clean_number(value):
+    """去掉浮点精度尾巴：0.6000000000000001 -> 0.6。
+
+    云端 workflow 里 ComfyUI 存的小数常带二进制误差（0.6 无法精确表示），
+    统一抹掉误差尾巴。规则很保守，避免误伤：
+      · 整数（含大整数 seed）原样返回，绝不转浮点；
+      · 浮点只在「舍入到某位数后与原值差 < 1e-9」时才收敛，否则原样；
+      · 字符串里的数字同样处理，非数字原样返回。
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if value != value or value in (float("inf"), float("-inf")):
+            return value
+        try:
+            # 从 1 到 12 位小数，找最短的、误差足够小的表示
+            for digits in range(1, 13):
+                rounded = round(value, digits)
+                if abs(rounded - value) <= 1e-9:
+                    return int(rounded) if float(rounded).is_integer() and abs(rounded) < 1e15 else rounded
+            return value
+        except (TypeError, ValueError, OverflowError):
+            return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not re.fullmatch(r"-?\d+", text) and not re.fullmatch(r"-?\d*\.\d+", text):
+            return value
+        try:
+            if re.fullmatch(r"-?\d+", text):
+                return text   # 整数形式的字符串原样保留，别把 "12" 变成 12.0
+            num = float(text)
+            cleaned = runninghub_clean_number(num)
+            return text if cleaned == num else format(cleaned, "g")
+        except (TypeError, ValueError, OverflowError):
+            return value
+    return value
+
+
 def runninghub_fields_from_workflow_json(workflow_json):
     fields = []
     for node_id, node in (workflow_json if isinstance(workflow_json, dict) else {}).items():
@@ -385,7 +524,7 @@ def runninghub_fields_from_workflow_json(workflow_json):
                 "id": f"{node_id}::{field_name}",
                 "nodeId": str(node_id),
                 "fieldName": str(field_name),
-                "fieldValue": "" if field_value is None else field_value,
+                "fieldValue": "" if field_value is None else runninghub_clean_number(field_value),
                 "fieldType": field_type,
                 "label": str(field_name),
                 "enabled": False,

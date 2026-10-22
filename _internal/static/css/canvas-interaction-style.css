@@ -958,3 +958,18 @@ html body.prism-canvas-page #gateBackendInfo:is(:hover, :focus-visible) {
   box-shadow:inset 0 0 0 1px var(--x-selected-line) !important;
   border-radius:6px;
 }
+
+/* Previs floor-plan markers retain actor identity colors; focus uses shared tokens. */
+.pv-floorplan [role="button"]:focus-visible{outline:2px solid var(--x-selected-line);outline-offset:3px}
+
+/* Offline previs uses the shared field dropdown, including dynamically added roster rows. */
+html body .pv-plugin-dialog .shared-native-select-trigger:not(:disabled){background:var(--x-soft);color:var(--x-text);border-color:var(--x-line)}
+html body .pv-plugin-dialog .shared-native-select-trigger:not(:disabled):is(:hover,[aria-expanded="true"]){background:var(--x-hover-bg);color:var(--x-text);border-color:var(--x-selected-line)}
+
+/* Inline previs top controls: neutral hover/focus stay in the shared interaction layer. */
+html body .pv-inline-top .pv-top-control:is(:hover,:focus-within){border-color:var(--x-selected-line);background:var(--x-hover-bg);color:var(--x-text)}
+html body .pv-inline-top .shared-native-select-trigger:not(:disabled):is(:hover,[aria-expanded="true"]){background:var(--x-hover-bg);color:var(--x-text)}
+
+/* Asset authoring is one two-state button, distinct from neutral hover. */
+html body .pv-inline-panel .pv-assets-toggle[aria-pressed="true"]{background:var(--x-selected-fill);color:var(--x-selected-text);border-color:var(--x-selected-line);box-shadow:inset 0 0 0 1px var(--x-selected-ring)}
+html body .pv-inline-panel .pv-assets-toggle[aria-pressed="false"]:hover{background:var(--x-hover-bg);color:var(--x-text);border-color:var(--x-selected-line)}

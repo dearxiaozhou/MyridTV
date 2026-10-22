@@ -33,7 +33,7 @@
             return {urls, kind:deps.mediaKindForUrls(urls, 'image')};
         }
         const urls = activeSettings.engine === 'runninghub'
-            ? await deps.runRunningHubGeneration(prompt, refs, activeSettings): [];
+            ? await deps.runRunningHubGeneration(prompt, refs, activeSettings, node): [];
         return {urls, kind:deps.mediaKindForUrls(urls, 'image')};
     }
 

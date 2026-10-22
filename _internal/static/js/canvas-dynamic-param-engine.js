@@ -7,10 +7,37 @@
 
     function D(name){return typeof deps[name] === 'function' ? deps[name]() : deps[name];}
 
+// 2026-10-21 老王：ComfyUI/RH 端的浮点数会带二进制误差尾巴（0.6000000000000001）。
+// 我们只负责「显示干净、传干净」，不改云端 workflow 的原始数据。
+// 规则保守：整数（含大整数 seed）绝不转浮点；浮点只在误差极小时才收敛；非数字原样。
+function rhCleanNumber(value){
+    if(value === null || value === undefined) return value;
+    if(typeof value === 'boolean') return value;
+    if(typeof value === 'number'){
+        if(!Number.isFinite(value)) return value;
+        if(Number.isInteger(value)) return value;
+        for(let digits = 1; digits <= 12; digits++){
+            const factor = Math.pow(10, digits);
+            const rounded = Math.round(value * factor) / factor;
+            if(Math.abs(rounded - value) <= 1e-9) return Math.abs(rounded) < 1e15 && Number.isInteger(rounded) ? rounded : rounded;
+        }
+        return value;
+    }
+    const text = String(value).trim();
+    if(/^-?\d+$/.test(text)) return value;          // 整数文本原样
+    if(!/^-?\d*\.\d+$/.test(text)) return value;   // 非数字原样
+    const num = Number(text);
+    if(!Number.isFinite(num)) return value;
+    const cleaned = rhCleanNumber(num);
+    return cleaned === num ? value : String(cleaned);
+}
+function rhCleanNumberText(value){
+    return String(rhCleanNumber(value));
+}
 function renderComfySettingField(field){
     const labelText = field.name || field.input || field.id;
     const label = `<div class="pfield-label">${deps.escapeHtml(labelText)}</div>`;
-    const value = deps.comfyParamValue(field);
+    const value = rhCleanNumber(deps.comfyParamValue(field));
     if(field.type === 'boolean'){
         const on = !!value;
         return `<div class="pfield pfield-inline"><div class="pfield-inline-label">${deps.escapeHtml(labelText)}</div><div class="pfield-bool"><div class="pfield-bool-track ${on ? 'on' : ''}" data-comfy-bool="${deps.escapeHtml(field.id)}"><div class="pfield-bool-thumb"></div></div></div></div>`;
@@ -46,8 +73,10 @@ function renderComfySettingField(field){
     return `<div class="pfield pfield-inline"><div class="pfield-inline-label">${deps.escapeHtml(labelText)}</div><input class="pfield-input pfield-inline-input" type="text" data-comfy-param="${deps.escapeHtml(field.id)}" value="${deps.escapeHtml(value ?? '')}" placeholder="${deps.escapeHtml(labelText)}"></div>`;
 }
 const RH_KNOWN_FIELD_OPTIONS = {
-    aspectRatio:['1:1','16:9','9:16','4:3','3:4','4:5','5:4','3:2','2:3','21:9','9:21'],
-    aspect_ratio:['1:1','16:9','9:16','4:3','3:4','4:5','5:4','3:2','2:3','21:9','9:21'],
+    // 2026-10-20 老王：比例字段用 ComfyUI 内置 ResolutionSelector 的**真实枚举**（官方源码核对过），
+    // 之前那串裸比例（16:9）根本不是工作流认的值（它要 "16:9 (Widescreen)"），选了也不生效。
+    aspectRatio:['1:1 (Square)','2:3 (Portrait Photo)','3:2 (Photo)','3:4 (Portrait Standard)','4:3 (Standard)','9:16 (Portrait Widescreen)','16:9 (Widescreen)','21:9 (Ultrawide)'],
+    aspect_ratio:['1:1 (Square)','2:3 (Portrait Photo)','3:2 (Photo)','3:4 (Portrait Standard)','4:3 (Standard)','9:16 (Portrait Widescreen)','16:9 (Widescreen)','21:9 (Ultrawide)'],
     ratio:['1:1','16:9','9:16','21:9','9:21','4:3','3:4','4:5','5:4','3:2','2:3'],
     resolution:['1k','2k','4k','8k'],
     size:['512','768','1024','1280','1536','2048'],
@@ -433,6 +462,8 @@ async function uploadCurrentSmartVideosToCloud(){
         renderComfySettingField,
         rhParamKey,
         rhFieldKind,
+        rhCleanNumber,
+        rhCleanNumberText,
         rhFieldRole,
         rhExtractFieldOptions,
         rhDefaultValue,

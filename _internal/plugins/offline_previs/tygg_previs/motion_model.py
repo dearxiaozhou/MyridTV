@@ -3,7 +3,7 @@ import copy,json,math
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parent
-VERSION='2.1.0'
+VERSION='2.2.0'
 FRAMINGS=[('wide','大全景'),('full','全景'),('medium','中景'),('close','近景'),('detail','特写')]
 ALIASES={
  '02':('推近','push','distance'), '03':('摇镜揭示','pan','angle'),
@@ -35,7 +35,7 @@ def defaults():
  return {'schema_version':'motion/1.0','preset':'02_慢推进','duration':4,'framing':'full',
          'lens_mm':50,'amount':None,'subject':'x_bot','direction':'left','pace':'preset',
          'composition':'center','pose':'STAND','end_framing':'auto','fps':24,'resolution':[960,540],
-         'actions':[], 'target_start':'auto','target_end':'same','target_motion':'follow','view':'front','focus_subject':'first','travel_reference':'subject'}
+         'actions':[], 'target_start':'auto','target_end':'same','target_motion':'follow','view':'front','focus_subject':'first','travel_reference':'subject','characters':None,'scene_mode':'none','scene_project':'','scene_assets':[],'camera_angle':'auto','camera_height':None}
 
 def validate(value):
  if not isinstance(value,dict):raise ValueError('缺少运镜设置')
@@ -67,7 +67,36 @@ def validate(value):
  if result['target_start'] not in parts or result['target_end'] not in parts|{'same'}:raise ValueError('请选择起镜和结束时拍摄的部位')
  if result['target_motion'] not in {'follow','fixed'} or result['view'] not in {'front','back','left','right'}:raise ValueError('拍摄方位无效')
  if result['travel_reference'] not in {'subject','scene'}:raise ValueError('机位移动参照无效')
- if result['focus_subject'] not in {'first','second'}:raise ValueError('拍摄主体无效')
+ if result['scene_mode'] not in {'none','existing','new'}:raise ValueError('场景来源无效')
+ if not isinstance(result['scene_project'],str) or len(result['scene_project'])>1000:raise ValueError('工程路径无效')
+ if result['scene_mode']=='existing' and not result['scene_project'].strip():raise ValueError('请提供已有Blender工程')
+ assets=result['scene_assets']
+ if not isinstance(assets,list) or len(assets)>32:raise ValueError('场景最多32项资产')
+ if result['scene_mode']=='new' and not assets:raise ValueError('新建场景请先提供资产名称和类别')
+ for asset in (assets if result['scene_mode']=='new' else []):
+  if not isinstance(asset,dict) or not isinstance(asset.get('name'),str) or not 1<=len(asset['name'])<=40:raise ValueError('请填写资产名称')
+  if asset.get('kind') not in {'box','wall','door','table','chair','sofa','bed','tree','car'}:raise ValueError('请选择资产类别')
+  for key,count,limit in [('position',2,8),('size',3,50)]:
+   v=asset.get(key)
+   if not isinstance(v,list) or len(v)!=count or any(type(x) not in {int,float} or not math.isfinite(x) or abs(x)>limit or (key=='size' and x<.05) for x in v):raise ValueError('资产位置或尺寸无效')
+  if asset.get('facing','forward') not in {'forward','backward','left','right'}:raise ValueError('资产朝向无效')
+  if not isinstance(asset.get('model',''),str) or len(asset.get('model',''))>1000:raise ValueError('资产模型路径无效')
+ if result['camera_angle'] not in {'auto','eye','low','high','overhead'}:raise ValueError('拍摄角度无效')
+ if result['camera_height'] is not None and (type(result['camera_height']) not in {int,float} or not math.isfinite(result['camera_height']) or not .05<=result['camera_height']<=30):raise ValueError('自定相机高度应为0.05至30米')
+ people=result['characters'];ids=[]
+ if people is not None:
+  if not isinstance(people,list) or not 1<=len(people)<=8:raise ValueError('场景支持1至8个人物')
+  for person in people:
+   if not isinstance(person,dict):raise ValueError('人物设置无效')
+   pid=person.get('id','')
+   if not isinstance(pid,str) or not pid or len(pid)>24 or not pid.replace('_','').isalnum() or not pid.isascii() or not pid[0].isalpha() or pid in ids:raise ValueError('人物标识无效或重复')
+   ids.append(pid)
+   if person.get('asset') not in {'x_bot','y_bot'} or person.get('motion') not in {'sequence','stand','sit'}:raise ValueError('人物资产或行为无效')
+   if person.get('facing') not in {'forward','backward','left','right'}:raise ValueError('人物朝向无效')
+   pos=person.get('position');label=person.get('name','')
+   if not isinstance(label,str) or not 1<=len(label)<=24:raise ValueError('人物名称应为1至24个字')
+   if not isinstance(pos,list) or len(pos)!=2 or any(type(v) not in {int,float} or not math.isfinite(v) or abs(v)>8 for v in pos):raise ValueError('请将人物放在站位图范围内')
+ if result['focus_subject'] not in {'first','second','group'}|set(ids):raise ValueError('拍摄主体无效')
  segments=result['actions']
  if not isinstance(segments,list) or len(segments)>12:raise ValueError('动作组合最多12段')
  elapsed=0;previous='stand';clean=[]

@@ -1008,7 +1008,7 @@ function normalizeRhWorkflowField(field){
         id:String(field?.id || rhWorkflowFieldKey(field)),
         nodeId:String(field?.nodeId || ''),
         fieldName:String(field?.fieldName || ''),
-        fieldValue:field?.fieldValue == null ? '' : String(field.fieldValue),
+        fieldValue:field?.fieldValue == null ? '' : String(cleanRhNumberText(field.fieldValue)),
         fieldType:knownOptions.length && !['IMAGE','VIDEO','AUDIO','SLIDER'].includes(normalizedType) ? 'SELECT' : fieldType,
         label:String(field?.label || field?.fieldName || ''),
         enabled:field?.enabled === true,
@@ -1880,7 +1880,8 @@ function renderRhPreviewControl(field){
         return `<div class="rh-preview-field keep-original"><div class="rh-preview-label">${label}</div><div class="rh-preview-keep"><i data-lucide="lock" class="w-3.5 h-3.5"></i><span>保留工作流原设置</span></div></div>`;
     }
     const randomActive = field.random_enabled === true && previewState.randomActive !== false;
-    const value = previewState.value ?? field.fieldValue ?? '';
+    // 2026-10-21 老王：预览卡里的数值也不显示浮点尾巴（0.6000000000000001 → 0.6）
+    const value = cleanRhNumberText(previewState.value ?? field.fieldValue ?? '');
     const options = Array.isArray(field.options) ? field.options : [];
     if(['IMAGE','VIDEO','AUDIO'].includes(kind)){
         const slot = rhEditorMode === 'workflow' && kind === 'IMAGE'
@@ -1900,7 +1901,7 @@ function renderRhPreviewControl(field){
         const min = Number.isFinite(Number(field.min)) ? Number(field.min) : 0;
         const max = Number.isFinite(Number(field.max)) && Number(field.max) > min ? Number(field.max) : 1;
         const step = Number.isFinite(Number(field.step)) && Number(field.step) > 0 ? Number(field.step) : 0.01;
-        const numericValue = Number.isFinite(Number(value)) ? Number(value) : min;
+        const numericValue = cleanRhNumberText(Number.isFinite(Number(value)) ? Number(value) : min);
         return `<div class="rh-preview-field"><div class="rh-preview-label"><span>${label}</span><span class="rh-preview-slider-val">${escapeHtml(numericValue)}</span></div><input class="rh-preview-slider" type="range" min="${escapeAttr(min)}" max="${escapeAttr(max)}" step="${escapeAttr(step)}" value="${escapeAttr(numericValue)}" oninput="updateRhPreviewValue('${escapeAttr(key)}', this.value); const val=this.closest('.rh-preview-field')?.querySelector('.rh-preview-slider-val'); if(val) val.textContent=this.value;"></div>`;
     }
     if(options.length || kind === 'SELECT'){
@@ -2017,7 +2018,8 @@ async function buildRhPreviewNodeInfoList(){
         } else if(kind === 'NUMBER' && field.random_enabled === true && preview.randomActive !== false) {
             value = rhPreviewRandomValue(field);
         } else if(['NUMBER','SLIDER'].includes(kind) && String(value ?? '').trim() !== '' && !Number.isNaN(Number(value))) {
-            value = Number(value);
+            // 2026-10-21 老王：提交值也去浮点尾巴（0.6000000000000001 → 0.6）
+            value = cleanRhNumberText(Number(value));
         }
         if(typeof value === 'string' && /[\r\n]/.test(value)) value = value.split(/\r?\n/).map(s => s.trim()).filter(Boolean)[0] || '';
         result.push({nodeId:field.nodeId, fieldName:field.fieldName, fieldValue:value});
@@ -2155,6 +2157,17 @@ function renderRhWorkflowEditorNodeList(){
             </div>
         `;
     }).join('');
+}
+// 2026-10-21 老王：工作流字段值里的浮点尾巴（0.6000000000000001）不显示、不提交，统一抹到 6 位有效数字。
+function cleanRhNumberText(value){
+    if(value === null || value === undefined) return value;
+    if(typeof value === 'number'){
+        return Number.isFinite(value) ? Number(value.toPrecision(6)) : value;
+    }
+    const text = String(value).trim();
+    if(!text || !/^-?\d+(\.\d+)?$/.test(text)) return value;
+    const num = Number(text);
+    return Number.isFinite(num) ? Number(num.toPrecision(6)) : value;
 }
 function renderRhWorkflowEditorField(field){
     const key = rhWorkflowFieldKey(field);

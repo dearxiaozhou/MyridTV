@@ -3628,6 +3628,7 @@ CanvasPrevizControls.configure({
         },
         notify: message => toast(message),
         generateOffline: () => document.getElementById('runBtn')?.click(),
+        layoutOffline: () => {const node=selectedNode();if(node&&composer.classList.contains('open'))positionComposerForNode(node);},
         dynamicParams,
         composerStyleModeSlot,
         promptInput,
@@ -4295,6 +4296,11 @@ function renderSnapGuides(guides){
         layer.appendChild(line);
     });
 }
+function syncComposerAdaptiveUi(){
+    const active=CanvasViewport.isComposerAdaptive(),button=document.getElementById('canvasComposerAutoFitToggle');
+    if(button){button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));button.title=active?'输入框位置自适应：开（自动避让窗口边缘）':'输入框位置自适应：关（始终固定在节点下方）';}
+}
+function toggleCanvasComposerAutoFit(){CanvasViewport.setComposerAdaptive(!CanvasViewport.isComposerAdaptive());syncComposerAdaptiveUi();}
 function isSnapEnabled(){ return snapEnabled; }
 function setSnapEnabled(value, opts = {}){
     snapEnabled = !!value;
@@ -7948,6 +7954,11 @@ function smartRunTaskLabel(run){
     if(s.engine === 'comfy'){
         return s.comfyWorkflow || 'ComfyUI';
     }
+    // 云端工作流类同理：任务/模型列写工作流名（2026-10-21，否则被写成 videoModel）
+    if(s.engine === 'runninghub'){
+        const wfLabel = smartRunWorkflowLabel(s);
+        return wfLabel || 'RunningHub 工作流';
+    }
     if(run?.kind === 'audio') return s.model || 'MiMo 语音';
     if(run?.kind === 'video') return s.videoModel || 'Video';
     return providerModelDisplayName(s.provider_id || s.providerId || s.provider || '', s.model || '') || 'API Image';
@@ -7975,18 +7986,62 @@ function previewDownloadGroupItems(){
 async function downloadPreviewGroup(){
     return CanvasImagePreviewDownloadController.downloadGroup();
 }
+// 2026-10-21（老王：日志里的平台全被写成 doubao 之类的模型名）：
+// 云端工作流（RH app/workflow）的「平台」= RunningHub，「模型/任务」= 工作流名；
+// 名称按 rhConfigKey 现查配置，新增任何工作流都自动成立，不需要改代码。
+function smartRunWorkflowLabel(s){
+    const key = String(s?.rhConfigKey || '').trim();
+    if(!key) return '';
+    try {
+        const ref = typeof selectedRunningHubRef === 'function' ? selectedRunningHubRef(s) : null;
+        if(ref && typeof runningHubEntryLabel === 'function'){
+            const label = runningHubEntryLabel(ref.entry, ref.kind);
+            if(label) return String(label).trim();
+        }
+    } catch(_){}
+    try {
+        if(typeof parseRunningHubEntryKey === 'function'){
+            const parsed = parseRunningHubEntryKey(key);
+            if(parsed && parsed.id) return '工作流 ' + String(parsed.id);
+        }
+    } catch(_){}
+    return key.replace(/^[a-zA-Z_]+:/, '') || '';
+}
 function smartRunPlatformLabel(run){
     const s = run?.settings || {};
     if(s.engine === 'comfy') return 'ComfyUI';
+    // 云端工作流类：平台就是 RunningHub（工作流名进「模型/任务」列），
+    // 绝不能落成 videoProvider/videoModel 兜底（否则日志平台列会出现 doubao）。
+    if(s.engine === 'runninghub') return 'RunningHub';
     if(run?.kind === 'video') return videoProviderById(s.videoProvider || '')?.name || s.videoProvider || 'Video';
     return apiProviderById(s.provider_id || '')?.name || s.provider_id || 'API';
 }
+// 2026-10-21（老王：新增云端工作流在日志里认不出来）：把 rhConfigKey 解析成
+// workflow_id + 可读名称一并写进日志 request —— 新增工作流只要在 api_providers 登记就自动带出。
+function smartRunWorkflowMeta(s){
+    const key = String(s?.rhConfigKey || '').trim();
+    if(!key) return {};
+    let id = key.replace(/^[a-zA-Z_]+:/, '');
+    try {
+        if(typeof parseRunningHubEntryKey === 'function'){
+            const parsed = parseRunningHubEntryKey(key);
+            if(parsed && parsed.id) id = String(parsed.id);
+        }
+    } catch(_){}
+    let title = '';
+    try {
+        const ref = typeof selectedRunningHubRef === 'function' ? selectedRunningHubRef(s) : null;
+        if(ref && typeof runningHubEntryLabel === 'function') title = runningHubEntryLabel(ref.entry, ref.kind) || '';
+    } catch(_){}
+    return {rh_config_key:key, workflow_id:id || '', workflow_title:title || ''};
+}
 function smartRunRequestMeta(run){
     const s = run?.settings || {};
-    if(run?.kind === 'audio') return {...(run.request || {}), provider_id:s.provider_id || '',model:s.model || ''};
-    if(s.engine === 'comfy') return {workflow_json:s.comfyWorkflow || '', mode:s.comfyMode || 'custom'};
-    if(run?.kind === 'video') return {provider_id:s.videoProvider || '', model:s.videoModel || '', duration:s.videoDuration || '', aspect_ratio:s.videoAspect || '', resolution:s.videoResolution || ''};
-    return {provider_id:s.provider_id || '', model:s.model || '', size:run?.size || '', quality:s.quality || '', n:s.count || 1};
+    const wfMeta = smartRunWorkflowMeta(s);
+    if(run?.kind === 'audio') return {...(run.request || {}), provider_id:s.provider_id || '',model:s.model || '', ...wfMeta};
+    if(s.engine === 'comfy') return {workflow_json:s.comfyWorkflow || '', mode:s.comfyMode || 'custom', ...wfMeta};
+    if(run?.kind === 'video') return {provider_id:s.videoProvider || '', model:s.videoModel || '', duration:s.videoDuration || '', aspect_ratio:s.videoAspect || '', resolution:s.videoResolution || '', ...wfMeta};
+    return {provider_id:s.provider_id || '', model:s.model || '', size:run?.size || '', quality:s.quality || '', n:s.count || 1, ...wfMeta};
 }
 function smartRunSnapshot(node, prompt, refs=[], kind='image'){
     const settingsSnapshot = cloneSmartSettings(settings);
@@ -9238,6 +9293,7 @@ function clearPortDragVisual(){
     world.querySelector('path.port-drag-temp')?.remove();
     world.querySelectorAll('.node-port.is-active').forEach(el => el.classList.remove('is-active'));
     world.querySelectorAll('.image-node.port-hover').forEach(el => el.classList.remove('port-hover'));
+    clearNodeBodyHover();
 }
 function bindPromptNodeControls(el,node){ return CanvasPromptNodeController.bind(el,node); }
 function bindLoopNodeControls(el,node){ return CanvasLoopNodeController.bind(el,node); }
@@ -9331,6 +9387,51 @@ function updatePortDragVisual(){
         targetNodeEl?.querySelector(`.node-port[data-port="${portDragState.hoverPort}"]`)?.classList.add('is-active');
     }
 }
+// ===== 2026-10-19 老王：+ 号命中裁决 =====
+// 现象：端口命中区（84px 方块）整块伸出节点外，旁边的节点会盖在上面 → 鼠标在“+号区域”里命中的
+// 是旁边节点（elementFromPoint 返回邻节点），于是亮的是邻节点的 +，你要那个节点的 + 根本不出现，
+// 节点挨在一起时点不到、点错。修法：按“离哪个 + 号环最近”几何裁决，把该节点临时提到最前
+// （.port-hover → z-index:7），这样显示与点击都落在你真正想要的 + 上。
+// 2026-10-21 起此裁决仅用于拖线悬停（portDragState.hoverTargetId）；非拖线状态不再点亮
+// 命中区——+ 只在节点身体内 / 选中 / 压在圆环上时可见（见 smart-canvas.css 显隐规则）。
+function nodePortRingCenter(portEl){
+    const r = portEl.getBoundingClientRect();
+    return {x: r.left + r.width / 2, y: r.top + r.height / 2};
+}
+function clearNodePortHover(exceptNode=null){
+    if(!world) return;
+    world.querySelectorAll('.image-node.port-hover').forEach(el => {
+        if(el !== exceptNode) el.classList.remove('port-hover');
+    });
+}
+// 2026-10-21 老王：+ 号只在「鼠标在节点身体里」时显示（.body-hover）——端口命中区（84px）
+// 整块伸出节点外、且默认 pointer-events:none，不算“在节点里”、也不会点亮任何 +。
+// 用 elementFromPoint 取视觉最顶层元素，命中落在 .node-port（圆环）上时由 CSS :hover 兜底亮。
+function nodeBodyAtClientPoint(clientX, clientY){
+    const hit = document.elementFromPoint(clientX, clientY);
+    if(!hit || typeof hit.closest !== 'function') return null;
+    return hit.closest('.image-node');
+}
+function clearNodeBodyHover(exceptNode=null){
+    if(!world) return;
+    world.querySelectorAll('.image-node.body-hover').forEach(el => {
+        if(el !== exceptNode) el.classList.remove('body-hover');
+    });
+}
+function syncNodePortHoverFromPointer(clientX, clientY){
+    if(portDragState) return;   // 拖线中由原逻辑管（目标是落点节点）
+    if(!world) return;
+    if(document.body.classList.contains('smart-node-drag')){
+        // 拖节点中不点亮任何 +（与“拖动时清场”的旧意图一致）
+        clearNodePortHover();
+        clearNodeBodyHover();
+        return;
+    }
+    // 鼠标真在哪个节点身体里 → 只亮它；命中落在端口圆环上时 CSS .node-port:hover 单独亮那一个
+    const bodyNode = nodeBodyAtClientPoint(clientX, clientY);
+    clearNodeBodyHover(bodyNode || null);
+    if(bodyNode) bodyNode.classList.add('body-hover');
+}
 // The hit area stays still; only the visible plus follows the pointer inside it.
 world.addEventListener('mousemove', event => {
     const port = event.target.closest?.('.node-port');
@@ -9348,6 +9449,10 @@ world.addEventListener('mouseout', event => {
     port.style.removeProperty('--port-x');
     port.style.removeProperty('--port-y');
 }, true);
+// 鼠标在节点身体里的移动 → 维护 .body-hover；端口圆环自身可 hover（CSS pointer-events:auto），
+// 压在圆环上时由 .node-port:hover 单独亮那一个，不需要 JS 参与。离开世界即全清。
+world.addEventListener('mousemove', event => syncNodePortHoverFromPointer(event.clientX, event.clientY), true);
+world.addEventListener('mouseleave', () => { clearNodePortHover(); clearNodeBodyHover(); });
 // ===== 拖线落空 → 选节点类型（createMenu 复用） =====
 // 菜单里 8 张卡对应的节点类型。判定"能不能接"要按连线方向分开看：
 //  - 往下游接（fromPort==='out'，新节点是终点）：新节点得有能吃这个输入的口子
@@ -10668,12 +10773,29 @@ async function applyImageGridSplit(){
     const files = await uploadImageBlobs(blobs);
     if(files.length){
         const layout = gridLayoutFromRects(rects);
-        const outputNode = createNode((node.x || 0) + imageLayout(node.images || [], nodeScale(node), node).width + 40, node.y || 0, files.map((file, i) => ({
-            url:file.url,
-            name:file.name,
-            grid:{...layout, row:rects[i]?.row || 0, col:rects[i]?.col || 0, w:rects[i]?.w || 1, h:rects[i]?.h || 1}
-        })));
-        outputNode.title = 'Grid';
+        // 2026-10-19（老王：一个节点只装一张图）：九宫格切图不再合成一个 Grid 节点，
+        // 每格各自一个独立节点，按原来的行列位置摆开。
+        const startX = (node.x || 0) + imageLayout(node.images || [], nodeScale(node), node).width + 40;
+        const startY = node.y || 0;
+        const cellW = 260, cellH = 220, cellGap = 24;
+        files.forEach((file, i) => {
+            const rect = rects[i] || {};
+            const row = Number(rect.row || 0), col = Number(rect.col || 0);
+            const point = {
+                x: startX + col * (cellW + cellGap) + Math.round(cellW / 2),
+                y: startY + row * (cellH + cellGap) + Math.round(cellH / 2)
+            };
+            const outNode = createImageNodeAt(point, [{
+                url:file.url,
+                name:file.name,
+                grid:{...layout, row, col, w:rect.w || 1, h:rect.h || 1}
+            }], {select:false, skipUndo:true});
+            if(!outNode) return;
+            const stem = String(file.name || '').replace(/\.[^.]+$/, '').slice(0, 30);
+            if(stem) outNode.title = stem;
+            delete outNode.w;
+            delete outNode.h;
+        });
         closeImageEditor(); render(); scheduleSave();
     }
 }
@@ -10749,22 +10871,32 @@ function positionComposerForNode(node){
     const rect = nodeRect(node);
     const scale = safeScale(viewport.scale);
     const widthScale = Number.parseFloat(getComputedStyle(composer).getPropertyValue('--canvas-composer-width-scale')) || 1;
-    const cardW = Math.max(280, Math.min(825, shell.clientWidth * 0.615) * widthScale);
+    const adaptive=CanvasViewport.isComposerAdaptive();
+    const cardW=Math.max(280,Math.min(825,shell.clientWidth*.615)*widthScale);
+    const screenWidth=cardW;
     composer.style.width = `${cardW}px`;
     const nodeCenterX = viewport.x + (rect.x + rect.width / 2) * scale;
     const nodeBottomScreen = viewport.y + (rect.y + rect.height) * scale;
+    // With position adaptation off, keep the same node-bottom anchor even when
+    // the panel grows or crosses the viewport/minimap boundary.
+    if(!adaptive){
+        composer.style.left=`${(nodeCenterX-cardW/2-viewport.x)/scale}px`;
+        composer.style.top=`${(nodeBottomScreen+14-viewport.y)/scale}px`;
+        return;
+    }
+
     // The editor has fixed screen size even when the node is zoomed. Clamp
     // before converting back to world coordinates, leaving room for the dock.
     const leftInset = document.querySelector('.canvas-tool-dock') ? 72 : 12;
-    const maxLeft = Math.max(12, shell.clientWidth - cardW - 12);
-    const left = Math.max(Math.min(leftInset, maxLeft), Math.min(nodeCenterX - cardW / 2, maxLeft));
+    const maxLeft = Math.max(12, shell.clientWidth - screenWidth - 12);
+    const left = Math.max(Math.min(leftInset, maxLeft), Math.min(nodeCenterX - screenWidth / 2, maxLeft));
     let maxTop = shell.clientHeight - composer.offsetHeight - 64;
     if(minimap?.offsetHeight){
         const shellBox = shell.getBoundingClientRect(), mapBox = minimap.getBoundingClientRect();
         const uiScale = shellBox.width / Math.max(shell.clientWidth, 1);
         const mapLeft = (mapBox.left - shellBox.left) / uiScale;
         const mapRight = (mapBox.right - shellBox.left) / uiScale;
-        if(left < mapRight && left + cardW > mapLeft){
+        if(left < mapRight && left + screenWidth > mapLeft){
             maxTop = Math.min(maxTop, (mapBox.top - shellBox.top) / uiScale - composer.offsetHeight - 12);
         }
     }
@@ -12332,7 +12464,7 @@ async function finalizePendingNode(pendingNode, urls, meta, kind='image'){
     const ext = kind === 'video' ? 'mp4' : kind === 'audio' ? 'mp3' : kind === 'text' ? 'txt' : 'png';
     const date = new Date();
     const outputTitle = pendingNode.title || meta?.displayPrompt || meta?.promptText || '';
-    const imgs = kind === 'image'
+    let imgs = kind === 'image'
         ? await smartGeneratedOutputItems(urls, kind, {displayName:outputTitle, nodeId:pendingNode.id})
         : urls.map((item, i) => {
             const url = typeof item === 'string' ? item : item?.url || '';
@@ -12341,6 +12473,12 @@ async function finalizePendingNode(pendingNode, urls, meta, kind='image'){
             return {url, name, kind:itemKind, generatedResult:true};
         }).filter(img => img.url);
     if(attempt && !CanvasGenerationLifecycle.isCurrent(pendingNode, attempt)) return false;
+    // 2026-10-19（老王：一个节点只装一张图）：节点只留最新一张，其余各自独立节点。
+    if(kind === 'image' && imgs.length > 1){
+        const extras = imgs.slice(0, -1);
+        imgs = [imgs[imgs.length - 1]];
+        spawnImageNodesForExtras(pendingNode, extras, {});
+    }
     pendingNode.images = imgs;
     pendingNode.pending = 0;
     pendingNode.runFinishedAt = nowMs();
@@ -13380,6 +13518,8 @@ if(globalThis.CanvasGenerationRunner){CanvasGenerationRunner.configure({
         cloneSmartSettings: (...a) => cloneSmartSettings(...a),
         ensureCustomComfyWorkflowReady: (...a) => ensureCustomComfyWorkflowReady(...a),
         finalizePendingNode: (...a) => finalizePendingNode(...a),
+        localizeGeneratedOutputItems: (...a) => localizeGeneratedOutputItems(...a),
+        mediaKindForUrls: (...a) => mediaKindForUrls(...a),
         handleJimengPendingSignal: (...a) => handleJimengPendingSignal(...a),
         isApiLikeEngine: (...a) => isApiLikeEngine(...a),
         nowMs: (...a) => nowMs(...a),
@@ -14651,6 +14791,7 @@ if(styleToggle) styleToggle.onclick = () => toggleStylePanel();
 if(styleCloseBtn) styleCloseBtn.onclick = () => toggleStylePanel(false);
 bindStylePanel();
 setSnapEnabled(snapEnabled, {silent:true});
+syncComposerAdaptiveUi();
 setCanvasAgentOpen(false);
 installCanvasAgentToggleDrag();
 renderCanvasAgentRefs();

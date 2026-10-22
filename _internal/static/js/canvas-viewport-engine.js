@@ -31,6 +31,10 @@
 
     // ===== 视口状态（唯一权威；禁止整体重新赋值，只改属性）=====
     var viewport = { x: 0, y: 0, scale: 1 };
+    var composerAdaptive = true;
+    try { composerAdaptive = global.localStorage.getItem('myridtv_composer_adaptive') !== '0'; } catch (_) {}
+    function isComposerAdaptive(){return composerAdaptive;}
+    function setComposerAdaptive(value){composerAdaptive=!!value;try{global.localStorage.setItem('myridtv_composer_adaptive',composerAdaptive?'1':'0');}catch(_){}applyViewport();return composerAdaptive;}
     var viewportApplyFrame = 0;
     var viewportMotionTimer = 0;
     var zoomPreviewState = null;
@@ -331,6 +335,8 @@
 
     global.CanvasViewport = {
         configure: configure,
+        isComposerAdaptive: isComposerAdaptive,
+        setComposerAdaptive: setComposerAdaptive,
         viewport: viewport,
         resetViewport: resetViewport,
         safeScale: safeScale,

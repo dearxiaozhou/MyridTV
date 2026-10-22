@@ -22,6 +22,7 @@ from myridtv_core import append_log, parse_number
 import myridtv_agent_artifact
 import myridtv_agent_state
 import myridtv_libraries
+import myridtv_media_localize
 import myridtv_volcengine
 
 _G_ASSETS_DIR = None
@@ -485,7 +486,24 @@ def _agent_attach_result_to_node(cid, canvas, node_id, urls, task_id=""):
                 item["natural_h"] = h
             images.append(item)
         # 与前端标准流程一致：append 而非覆盖，保留节点已有图片
-        node["images"] = existing + images
+        # 单图节点规则（2026-10-19 老王定案）：节点只留最新一张，
+        # 其余新结果各自独立节点，节点原有旧图归档进历史。
+        if images:
+            extras = images[:-1] if len(images) > 1 else []
+            if extras:
+                spawn_single_image_nodes(cid, canvas, node, extras, origin="agent_output_split")
+            if existing:
+                for old in existing:
+                    old_url = str(old.get("url") or "").strip() if isinstance(old, dict) else ""
+                    if not old_url:
+                        continue
+                    try:
+                        myridtv_media_localize.move_output_asset_to_history({"url": old_url})
+                    except Exception:
+                        pass
+            node["images"] = images[-1:]
+        else:
+            node["images"] = existing
         node["status"] = "ready"  # 状态机：生成/回填成功 -> ready
         # 补前端重跑归档所需时间戳：nodeHasCompletedGeneration 认 runAt/runFinishedAt，
         # 缺失会让用户下次点"运行"时被判定为首跑、旧图不进历史分组
@@ -500,6 +518,64 @@ def _agent_attach_result_to_node(cid, canvas, node_id, urls, task_id=""):
         append_log(_log_file(), "[CanvasNodeAttachFailed] node={} reason={}".format(node_id, _exc))
     save = myridtv_agent_state._agent_http("PUT", "/api/canvases/{}".format(urllib.parse.quote(cid)), canvas, timeout=30)
     return save.get("ok", save.get("canvas") is not None)
+
+
+def spawn_single_image_nodes(cid, canvas, base_node, image_items, origin="image_split"):
+    """单图节点规则（2026-10-19 老王定案，见 AGENTS.md「Single-image Nodes」）。
+
+    一个节点最多一张图 —— 多出来的图各自落成独立节点（摆在基准节点右侧空位，
+    避开其它节点），返回新建/复用节点 id 列表。调用方负责让 base_node 只留一张图。
+    新建节点沿用基准节点的提示词与运行参数（否则会被 CanvasMutationManager 的
+    EMPTY_PROMPT 守卫拦下），只是各挂一张图。
+    """
+    extras = [it for it in (image_items or []) if isinstance(it, dict) and str(it.get("url") or "").strip()]
+    if not extras:
+        return []
+    if not isinstance(canvas.get("nodes"), list):
+        canvas["nodes"] = []
+    base_node = base_node if isinstance(base_node, dict) else {}
+    bx = int(parse_number(base_node.get("x"), 0) or 0)
+    by = int(parse_number(base_node.get("y"), 0) or 0)
+    bw, bh = 316, 194
+    base_prompt = str(base_node.get("runPrompt") or base_node.get("promptDraftText") or base_node.get("text") or "").strip()
+    try:
+        category = myridtv_agent_state._agent_category_from_title(base_node.get("title") or "")
+    except Exception:
+        category = None
+    created = []
+    for index, item in enumerate(extras):
+        fallback_x, fallback_y = bx + bw + 36, by + index * (bh + 24)
+        try:
+            x, y = myridtv_agent_state._agent_find_empty_position(
+                canvas, fallback_x, fallback_y, bw, bh, category=category, node_type="smart-image")
+        except Exception:
+            x, y = fallback_x, fallback_y
+        node = {
+            "id": "agent_" + uuid.uuid4().hex[:12],
+            "type": "smart-image",
+            "title": str(item.get("name") or "").strip() or "Image",
+            "images": [dict(item)],
+            "x": x, "y": y,
+            "created_at": int(time.time() * 1000),
+            "__origin": origin,
+            "status": "ready",
+            "role": "generation",
+            "outputKind": "image",
+        }
+        if base_prompt:
+            node["promptDraftText"] = base_prompt
+            node["promptDraftHtml"] = myridtv_agent_state._agent_html_escape(base_prompt)
+            node["runPrompt"] = base_prompt
+        if isinstance(base_node.get("runSettings"), dict):
+            node["runSettings"] = dict(base_node.get("runSettings") or {})
+        ok, nid, deduped = myridtv_agent_artifact._agent_prepare_node_for_canvas(cid, canvas, node, origin, None)
+        if not ok:
+            append_log(_log_file(), "[SingleImageSpawnRejected] origin={} reason={}".format(origin, nid))
+            continue
+        if not deduped:
+            canvas["nodes"].append(node)
+        created.append(nid)
+    return created
 
 
 def _agent_wait_localized(task_id, attempts=6):

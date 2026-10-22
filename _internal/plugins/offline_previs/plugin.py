@@ -24,12 +24,19 @@ def motion_model():
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);return module
 
 
+@lru_cache(maxsize=1)
+def scene_layout():
+    spec=importlib.util.spec_from_file_location('offline_scene_layout',ROOT/'tygg_previs/scene_layout.py')
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);return module
+
+
 def metadata():
     library=motion_model().catalog()
-    return {'id':'offline-previs','version':'2.1.0','name':'运镜动画预设',
+    return {'id':'offline-previs','version':'2.2.0','name':'运镜动画预设',
             'available':(ROOT/'offline_previs_cli.py').is_file(),
             'camera_presets':PRESETS,'character_assets':['x_bot','y_bot'],
             'default_spec':json.loads((ROOT/'default-shot.json').read_text(encoding='utf8')),
+            'asset_kinds':[{'id':key,'name':value[0],'size':value[1]} for key,value in scene_layout().ASSET_KINDS.items()],'character_colors':scene_layout().COLORS,
             'motion_presets':library['presets'],'default_motion':motion_model().defaults(),
             'motion_library':{'kept_count':library['kept_count'],'removed_count':library['removed_count']}}
 
@@ -87,6 +94,19 @@ def _run(payload, *, assets_dir, blender_bin, ratio_size, folder_name, cancelled
     name=folder_name(payload.get('canvas_title') or '离线预演',payload.get('canvas_id') or '')
     run_id=('motion_' if motion else 'offline_')+time.strftime('%Y%m%d_%H%M%S')+'_'+uuid.uuid4().hex[:8]
     assets_dir=Path(assets_dir)
+    if motion:
+        def local_source(value,extensions):
+            path=str(value).strip().strip('"')
+            if path.startswith('/assets/'):
+                resolved=(assets_dir/unquote(urlsplit(path).path[len('/assets/'):])).resolve()
+                if not resolved.is_relative_to(assets_dir.resolve()):raise ValueError('场景路径超出资产目录')
+            else:resolved=Path(path).resolve()
+            if not resolved.is_file() or resolved.suffix.lower() not in extensions:raise ValueError('未找到可用工程或模型：'+path)
+            return str(resolved)
+        if spec['scene_mode']=='existing':spec['scene_project']=local_source(spec['scene_project'],{'.blend'})
+        if spec['scene_mode']=='new':
+            for asset in spec['scene_assets']:
+                if asset.get('model'):asset['model']=local_source(asset['model'],{'.blend','.fbx','.obj','.glb','.gltf'})
     output=_temporary_output if motion else assets_dir/'output'/name/'previs_data'/run_id
     output.mkdir(parents=True,exist_ok=True)
     input_file=output/'input.json'
@@ -140,7 +160,7 @@ def _run(payload, *, assets_dir, blender_bin, ratio_size, folder_name, cancelled
         return '/assets/'+quote(published.get(file,output/file).relative_to(assets_dir).as_posix(),safe='/')
     log('offline-previs completed: '+run_id)
     if motion:
-        return {'backend':'blender-motion-presets','plugin':'offline-previs','plugin_version':'2.1.0',
+        return {'backend':'blender-motion-presets','plugin':'offline-previs','plugin_version':'2.2.0',
             'images':[{'url':url('preview.mp4'),'name':run_id+'.mp4','kind':'video','display_name':next(p['name'] for p in motion_model().catalog()['presets'] if p['id']==spec['preset'])}],
             'video_url':url('preview.mp4'),'previs_blend_url':url('previs.blend'),'motion_preset':spec['preset'],
             'validation':checks,'output_kind':'video','duration_seconds':round(round(spec['duration']*spec['fps'])/spec['fps'],3),'pushed_by_plugin':False}

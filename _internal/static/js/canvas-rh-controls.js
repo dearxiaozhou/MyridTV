@@ -87,8 +87,13 @@ function rhWorkflowNodeList(ref){
     const fields = (Array.isArray(cachedFields) && cachedFields.length)
         ? cachedFields
         : (Array.isArray(ref.entry?.fields) ? ref.entry.fields : []);
+    // 2026-10-20 老王：与本地「已暴露节点」同口径 + 自动接管的媒体节点也要有开关。
+    // 之前只收 enabled === true 的字段所属节点，而图片/音频节点（LoadImage/LoadAudio…）
+    // 的字段在配置里 enabled=false（它们的输入是「工作流自动识别图片槽位」自动接线的），
+    // 于是这些节点的开关整批消失 —— 老王问「图片/音频节点开关哪去了」。现在：
+    //   ① 已暴露字段所属节点（同本地语义）；② 带图片/视频/音频字段的节点（自动接管的那些）。
     const ids = [...new Set(fields
-        .filter(field => field && field.enabled === true)
+        .filter(field => field && (field.enabled === true || ['image','video','audio'].includes(deps.rhFieldRole(field))))
         .map(field => String(field.nodeId || '').trim())
         .filter(id => id && workflow[id] && typeof workflow[id] === 'object'))];
     if(!ids.length) return [];

@@ -3,7 +3,7 @@ import json,math
 from pathlib import Path
 import bpy
 from mathutils import Vector
-from . import engine
+from . import engine,scene_layout
 ROOT=Path(__file__).resolve().parent
 DIRECTIONS={'forward':Vector((0,1,0)),'backward':Vector((0,-1,0)),'left':Vector((-1,0,0)),'right':Vector((1,0,0))}
 
@@ -38,15 +38,17 @@ def apply(scene,config):
  for item in items:
   delta=DIRECTIONS[item['direction']]*item['distance'];timeline.append({**item,'start':elapsed,'from':list(total),'to':list(total+delta)})
   total+=delta;elapsed+=item['duration']
+ records={person['id']:person for person in scene_layout.characters(config)};actor_timelines={}
  for actor in ref['actors']:
+  person=records[actor['id']];actor_items=timeline if person['motion']=='sequence' else [];actor_total=total if person['motion']=='sequence' else Vector((0,0,0));actor_timelines[actor['id']]=actor_items
   rig=bpy.data.objects[actor['rig']];root=bpy.data.objects[actor['root']]
   stand,stand_info=_stand(rig,actor['asset']);rig.animation_data_clear();rig.animation_data_create()
-  root.animation_data_clear();start=bpy.data.objects[actor['start']];origin=start.location.copy();yaw=0.
-  base_correction=math.radians(180);end=bpy.data.objects[actor['end']];end.location=origin+total
-  if not timeline:
-   root.location=origin;root.rotation_euler.z=base_correction
+  root.animation_data_clear();start=bpy.data.objects[actor['start']];origin=start.location.copy();yaw={'forward':0,'backward':math.pi,'left':math.pi/2,'right':-math.pi/2}[person['facing']]
+  base_correction=math.radians(180);end=bpy.data.objects[actor['end']];end.location=origin+actor_total
+  if not actor_items:
+   root.location=origin;root.rotation_euler.z=yaw+base_correction
   else:
-   for item in timeline:
+   for item in actor_items:
     t0=1+item['start']*fps;t1=min(scene.frame_end,1+(item['start']+item['duration'])*fps)
     delta=Vector(item['to'])-Vector(item['from']);new_yaw=math.atan2(-delta.x,delta.y) if delta.length else yaw
     while new_yaw-yaw>math.pi:new_yaw-=math.tau
@@ -58,7 +60,7 @@ def apply(scene,config):
     root.keyframe_insert(data_path='rotation_euler',index=2,frame=t1);yaw=new_yaw
    for fc in engine.action_curves(root):
     for key in fc.keyframe_points:key.interpolation='LINEAR'
-  body=[{'action':'stand','start':0,'duration':max(config['duration'],.2),'distance':0}]+timeline
+  body=[{'action':'sit' if person['motion']=='sit' else 'stand','start':0,'duration':max(config['duration'],.2),'distance':0}]+actor_items
   previous='stand'
   for index,item in enumerate(body):
    kind=item['action'];t0=1+item['start']*fps;t1=min(scene.frame_end,1+(item['start']+item['duration'])*fps)
@@ -75,7 +77,7 @@ def apply(scene,config):
    if kind in {'walk','run'}:
     cycles=item['distance']/info['stride_m'] if item['distance']>0 else item['duration']*info['source_fps']/period
     strip.use_animated_time_cyclic=True;values=(first,first+cycles*period)
-   elif item['action']=='stop' and kind=='sit':values=(info['frame_end'],info['frame_end'])
+   elif (item['action']=='stop' or person['motion']=='sit') and kind=='sit':values=(info['frame_end'],info['frame_end'])
    else:values=(first,info['frame_end'])
    for frame,value in [(t0,values[0]),(max(t0+1,t1),values[1])]:
     strip.strip_time=value;strip.keyframe_insert(data_path='strip_time',frame=frame)
@@ -83,6 +85,7 @@ def apply(scene,config):
     for key in fc.keyframe_points:key.interpolation='LINEAR'
    previous=kind
   root['movement_directions']='Scene axes: forward +Y, backward -Y, left -X, right +X'
+ scene['pv_character_timelines']=json.dumps(actor_timelines,ensure_ascii=False)
  scene['pv_actor_timeline']=json.dumps(timeline,ensure_ascii=False)
  scene.frame_set(1);bpy.context.view_layer.update()
  return total
