@@ -1295,6 +1295,9 @@ function clearPromptInput(options={}){
         canvasUiState.editor.subject.promptDraftHtml = '';
         canvasUiState.editor.subject.promptDraftText = '';
     }
+    // 程序化赋值不触发 input 监听：显式派发一次，让删除走统一的
+    // savePromptDraftForCurrent + scheduleSave 链（含清 runPrompt）。
+    promptInput.dispatchEvent(new Event('input',{bubbles:true}));
 }
 function applyTheme(theme){
     const dark = window.StudioTheme?.isDark?.(theme) ?? (theme === 'dark');
@@ -3062,6 +3065,37 @@ CanvasNodeClipboardController.configure({
     })
 });
 
+// ===== 批量生成节点（canvas-batch-generate.js）：主文件侧注入 =====
+if(globalThis.CanvasBatchGenerate){CanvasBatchGenerate.configure({
+    tr: (...a) => tr(...a),
+    trf: (...a) => trf(...a),
+    escapeHtml: (...a) => escapeHtml(...a),
+    toast: (...a) => toast(...a),
+    nodes: () => nodes,
+    render: () => render(),
+    scheduleSave: () => scheduleSave(),
+    pushUndo: () => pushUndo(),
+    nowMs: () => nowMs(),
+    nodeRect: (...a) => nodeRect(...a),
+    addConnection: (...a) => addConnection(...a),
+    createImageNodeAt: (...a) => createImageNodeAt(...a),
+    agentFindEmptySpot: (...a) => agentFindEmptySpot(...a),
+    finalizePendingNode: (...a) => finalizePendingNode(...a),
+    addSmartGenerationLog: (...a) => addSmartGenerationLog(...a),
+    generate: (...a) => CanvasGenerationDispatchController.generate(...a),
+    lineImagesFor: (...a) => lineImagesFor(...a),
+    bindScrollableText: (...a) => bindScrollableText(...a),
+    runningHubEntries: (...a) => runningHubEntries(...a),
+    runningHubEntryId: (...a) => runningHubEntryId(...a),
+    workflowOutputKindForRhEntry: (...a) => workflowOutputKindForRhEntry(...a),
+    workflowOutputKindForComfy: (...a) => workflowOutputKindForComfy(...a),
+    comfyWorkflows: () => comfyWorkflows,
+    imageProviders: (...a) => imageProviders(...a),
+    providerImageModels: (...a) => providerImageModels(...a),
+    providerModelDisplayName: (...a) => providerModelDisplayName(...a),
+    rememberRecentSmartSettings: (...a) => rememberRecentSmartSettings(...a)
+});}
+
 // ===== 循环节点控件（canvas-loop-node-controller.js）：主文件侧注入 =====
 CanvasLoopNodeController.configure({
     getContext: () => ({
@@ -4065,7 +4099,8 @@ function smartNodeInputThumbsHtml(images, opts={}){
     return `<div class="smart-node-input-thumbs">${items}${more}</div>`;
 }
 function promptNodeExpandedHeight(node){
-    return (node?.llmSystemEnabled ? 688 : 584) + smartNodeInputThumbsHeight(promptNodeInputImages(node));
+    // 2026-10-23 压缩：模型选择+运行并入 LLM 排后，正文/系统提示框都变矮
+    return (node?.llmSystemEnabled ? 536 : 466) + smartNodeInputThumbsHeight(promptNodeInputImages(node));
 }
 function promptNodeLayoutSize(node){
     const oldCollapsedH = 460;
@@ -4199,20 +4234,14 @@ function smartLoopCount(node){
     return Math.max(1, Math.min(100, Number(node?.count || 1) || 1));
 }
 function smartLoopWidth(node){
-    return 340;
+    return globalThis.CanvasBatchGenerate ? CanvasBatchGenerate.NODE_WIDTH : 380;
 }
 function smartLoopHeight(node){
-    let h = 168;
-    if(node?.imageInput) h += 72;
-    if(node?.showPrompt) {
-        const promptCount = Math.max(1, smartLoopPromptFieldValues(node).length);
-        h += 94 + promptCount * 58 + smartLoopUpstreamPromptPreviewHeight(node);
-    }
-    h += smartNodeInputThumbsHeight(smartLoopPreviewImages(node));
-    return h;
+    return globalThis.CanvasBatchGenerate ? CanvasBatchGenerate.bodyHeight(node) : 172;
 }
 function fitSmartLoopNode(node){
     if(!node || node.type !== 'smart-loop') return;
+    if(globalThis.CanvasBatchGenerate){ CanvasBatchGenerate.fitNode(node); return; }
     node.w = smartLoopWidth(node);
     node.h = smartLoopHeight(node);
 }
@@ -7155,9 +7184,11 @@ async function loadCanvas(){
             }
         } catch(e){}
         resumeSmartPendingTasks();
-        recoverCompletedEmptySmartNodes();
-        resumeJimengPendingNodes();
-        recoverStuckComfyNodes();
+                recoverCompletedEmptySmartNodes();
+                resumeJimengPendingNodes();
+                recoverStuckComfyNodes();
+                // 2026-10-23 老王：刷新/切画布会掐断前端轮询，补一次「按 node_id 对后端任务表收尾」
+                reconcileInflightNodesWithTaskStore();
         if(globalThis.CanvasComfyJobEngine && typeof CanvasComfyJobEngine.pruneStaleComfyErrorsOnLoad === 'function') CanvasComfyJobEngine.pruneStaleComfyErrorsOnLoad();
         startComfyJobSupervisor();
         startCanvasMetaPoll();
@@ -7431,7 +7462,16 @@ return createPromptNode(x, y, {...options});
 }
 function createLoopNode(x, y, options={}){
     if(!options.skipUndo) pushUndo();
-    const node = {id:uid('loop'), type:'smart-loop', x, y, w:340, h:168, title:'Loop', count:1, mode:'serial', showPrompt:false, imageInput:false, loopStart:1, imageBatchSize:1, variablePrompt:'', created_at:Date.now(), status:'ready', role:'text', __origin:'user_manual'};
+    const engineSeed = settingsForStorage({...cloneSmartSettings(settings), apiKind:'image'});
+    const node = {
+        id:uid('loop'), type:'smart-loop', x, y,
+        w:globalThis.CanvasBatchGenerate ? CanvasBatchGenerate.NODE_WIDTH : 380,
+        h:globalThis.CanvasBatchGenerate ? CanvasBatchGenerate.bodyHeight({prompts:['']}) : 172,
+        title:'批量生成',
+        prompts:[''],
+        runSettings:engineSeed,
+        created_at:Date.now(), status:'ready', role:'text', __origin:'user_manual'
+    };
     nodeStore.addNode(node, 'user_manual');
     if(options.select !== false) canvasUiState.patchSelection({primaryId: node.id}, 'selectedId');
     render();
@@ -7518,8 +7558,15 @@ function renderConnections(){
         const color = isLinkedToSelection ? '#C9A227' : isCascade ? '#16a34a' : isHistory ? 'rgba(138,138,138,0.46)' : kind === 'input' ? 'rgba(138,138,138,0.62)' : 'rgba(200,200,200,0.62)';
         const opacity = isPendingLine ? '.82' : '1';
         const width = isLinkedToSelection ? '2.4' : kind === 'input' ? '1.9' : '1.6';
-        // 运行中连线：底线常亮 + 两颗彗星光点沿管道滑行（A 方案），不再用滚动虚线
-        const cometLayer = isPendingLine ? `<path class="conn-comet" d="${curve}" pathLength="180" stroke="#dbeafe" stroke-dasharray="22 158" fill="none"></path><path class="conn-comet conn-comet-2" d="${curve}" pathLength="180" stroke="#93c5fd" stroke-width="2" stroke-dasharray="10 170" fill="none"></path>` : '';
+        // 运行中连线：底线常亮 + 一颗光点钉在管线中点做呼吸（A 方案改呼吸版）
+        // 2026-10-23 老王：「连线卡」根因修复——原实现每条 pending 线 2 颗光点沿管滑行、
+        // 且带 feGaussianBlur SVG 滤镜。实测：SVG filter 不走 GPU 每帧重栅格；
+        // stroke-dashoffset 几何动画按路径数逐条付主线程账（8 任务 48 条滤镜动画路径
+        // ~55fps，4 条/线无滤镜 100 条直接掉到拖线 34fps）；同负载只动 opacity 则
+        // 满帧 60fps / 最长帧 16.9ms。故收敛为每线一颗、零滤镜、CSS 里 opacity 呼吸
+        // （dashoffset -79 把光点钉在线中点，见 smart-canvas.css conn-comet 规则）。
+        // 以后要"滑行"效果走 offset-path 合成器动画，不再往主线程加 SVG 几何动画。
+        const cometLayer = isPendingLine ? `<path class="conn-comet" d="${curve}" pathLength="180" stroke="#dbeafe" stroke-dasharray="22 158" fill="none"></path>` : '';
         // 划断手势要用：存三次贝塞尔的四个控制点（p0,c1,c2,p1）。只存 8 个数，
         // 折线采样留给真正划的时候懒算——render 每帧都跑，别在这里做采样。
         connCutGeom.set(conn.index, {c: isHistory
@@ -7528,7 +7575,7 @@ function renderConnections(){
         // data-conn-line：划断手势拿到命中后要把这根线即时标成金色（Blender 刀切线同理）
         return `<path class="${cls}" data-conn-line="${conn.index}" d="${curve}" stroke="${color}" stroke-width="${width}" fill="none" opacity="${opacity}"></path>${cometLayer}<path class="conn-hit" data-conn-index="${conn.index}" d="${curve}" stroke="transparent" stroke-width="14" fill="none"></path>`;
     }).join('');
-    return `<svg class="connection-layer" width="6000" height="4000" viewBox="0 0 6000 4000" xmlns="http://www.w3.org/2000/svg"><defs><filter id="conn-comet-glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>${paths}<g class="conn-scissor conn-knife-host" data-conn-index="-1" transform="translate(-100 -100)"><circle r="20" fill="transparent" pointer-events="all"></circle><circle r="13" fill="var(--card,#1f1f1f)" stroke="#C9A227" stroke-width="1.4"></circle><!-- 2026-10-17 老王：剪刀换刀（参考 Blender 节点 Ctrl+右键切线）。45° 裁刀：刀尖左下、刀柄右上，与剪刀同一套金描边+卡片填充观感 --><g class="conn-knife" transform="translate(-9.6 -9.6) scale(0.78)" fill="var(--card,#1f1f1f)" stroke="#C9A227" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 12.3 14.3 9.7 11.7z"></path><path d="M11 13 17.4 6.6" fill="none" stroke-width="3.4"></path></g></g></svg>`;
+    return `<svg class="connection-layer" width="6000" height="4000" viewBox="0 0 6000 4000" xmlns="http://www.w3.org/2000/svg">${paths}<g class="conn-scissor conn-knife-host" data-conn-index="-1" transform="translate(-100 -100)"><circle r="20" fill="transparent" pointer-events="all"></circle><circle r="13" fill="var(--card,#1f1f1f)" stroke="#C9A227" stroke-width="1.4"></circle><!-- 2026-10-17 老王：剪刀换刀（参考 Blender 节点 Ctrl+右键切线）。45° 裁刀：刀尖左下、刀柄右上，与剪刀同一套金描边+卡片填充观感 --><g class="conn-knife" transform="translate(-9.6 -9.6) scale(0.78)" fill="var(--card,#1f1f1f)" stroke="#C9A227" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 12.3 14.3 9.7 11.7z"></path><path d="M11 13 17.4 6.6" fill="none" stroke-width="3.4"></path></g></g></svg>`;
 }
 function refreshConnectionLayer(){
     const oldSvg = world.querySelector('svg.connection-layer');
@@ -8113,6 +8160,17 @@ function refreshSmartLogPanel(force=false){
 }
 function renderSmartCanvasLog(){
     const keepScroll = smartLogList ? Number(smartLogList.scrollTop || 0) : 0;
+    // 2026-10-23 老王：与任务控制台同款锚定——重建后只还 scrollTop 数字，新日志插到顶部时
+    // 内容整体下移、视口错位（正看的记录被顶走、第一条裁半）。记住视口顶压线的那条记录，
+    // 重建后摆回原视觉位置；在顶部时不锚定，让新日志自然出现。
+    let anchorLid = '', anchorOffset = 0;
+    if (smartLogList && keepScroll > 0) {
+        const lr = smartLogList.getBoundingClientRect();
+        for (const el of smartLogList.querySelectorAll('.log-item[data-lid]')) {
+            const r = el.getBoundingClientRect();
+            if (r.bottom > lr.top) { anchorLid = el.getAttribute('data-lid'); anchorOffset = r.top - lr.top; break; }
+        }
+    }
     const logs = canvas?.logs || [];
     smartLogList.innerHTML = logs.length ? logs.map(log => {
         const thumbs = (log.outputs || []).slice(0, 8).map(url => {
@@ -8131,7 +8189,7 @@ function renderSmartCanvasLog(){
             taskId ? `ID ${taskId}` : '',
             backend
         ].filter(Boolean);
-        return `<div class="log-item ${log.status === 'failed' ? 'failed' : ''}">
+        return `<div class="log-item ${log.status === 'failed' ? 'failed' : ''}" data-lid="${escapeAttr(String(log.id || ''))}">
             <div class="log-main">
                 <div class="log-meta">
                     <span class="log-chip ${log.status === 'failed' ? 'status-failed' : 'status-ok'}">${escapeHtml(log.status === 'running' ? '运行中' : log.status === 'failed' ? tr('canvas.failed') : tr('canvas.success'))}</span>
@@ -8168,8 +8226,19 @@ function renderSmartCanvasLog(){
     });
     bindSmartAudioPlayers(smartLogList);
     refreshIcons();
-    // 重建后把滚动位置还回去，正在翻旧日志时不会被弹回顶部
-    if(smartLogList && keepScroll > 0) smartLogList.scrollTop = keepScroll;
+    // 重建后把滚动位置还回去：优先内容锚定（正看的记录不动），找不到锚再退回数字还原
+    if (smartLogList) {
+        if (anchorLid) {
+            const anchorEl = smartLogList.querySelector(`.log-item[data-lid="${CSS.escape(anchorLid)}"]`);
+            if (anchorEl) {
+                smartLogList.scrollTop += (anchorEl.getBoundingClientRect().top - smartLogList.getBoundingClientRect().top) - anchorOffset;
+            } else {
+                smartLogList.scrollTop = keepScroll;
+            }
+        } else if (keepScroll > 0) {
+            smartLogList.scrollTop = keepScroll;
+        }
+    }
 }
 function openSmartCanvasLog(){
     if(!canvas) return;
@@ -8198,25 +8267,25 @@ node.llmProvider = resolveChatProviderId(node.llmProvider || '');
     const readonly = node.llmEnabled ? 'readonly' : '';
     const systemPrompt = (node.llmSystemPrompt || '').trim();
     const inputThumbs = smartNodeInputThumbsHtml(promptNodeInputImages(node));
-    const templateActive = activePromptTemplateNodeId() === node.id;
-    const llmParams = node.llmEnabled ? `
-        <div class="prompt-node-llm">
-            <select class="prompt-node-control prompt-llm-provider">${chatProviderOptions(node.llmProvider)}</select>
-            <select class="prompt-node-control prompt-llm-model">${chatModelOptions(node.llmModel, node.llmProvider)}</select>
-            <button class="prompt-node-run prompt-node-control" type="button" ${node.running ? 'disabled' : ''}><i data-lucide="${node.running ? 'loader-2' : 'play'}"></i><span>${node.running ? escapeHtml(tr('common.running')) : escapeHtml(tr('common.run'))}</span></button>
-            <textarea class="prompt-node-control prompt-llm-instruction" placeholder="${escapeHtml(tr('smart.promptLlmInstructionPlaceholder'))}">${escapeHtml(node.llmInstruction || '')}</textarea>
-            <div class="prompt-node-llm-actions">
-                <button class="prompt-node-pill prompt-node-control prompt-system-toggle ${node.llmSystemEnabled ? 'active' : ''}" type="button"><i data-lucide="${node.llmSystemEnabled ? 'toggle-right' : 'toggle-left'}"></i><span>${escapeHtml(node.llmSystemEnabled ? tr('smart.promptLlmDisableSystem') : tr('smart.promptLlmEnableSystem'))}</span></button>
-            </div>
-            ${node.llmSystemEnabled ? `<textarea class="prompt-node-control prompt-llm-system" placeholder="${escapeHtml(tr('smart.promptLlmSystemPlaceholder'))}">${escapeHtml(systemPrompt || 'You are a helpful prompt assistant.')}</textarea>` : ''}
-        </div>` : '';
+    // 老王 2026-10-23：模型选择 + 运行并入 LLM 那一排，且只有 LLM 开着才显示；
+    // 所有控件统一高度与字号，整体压缩。
+    const llmRowControls = node.llmEnabled ? `
+        <select class="prompt-node-control prompt-node-pill prompt-llm-provider">${chatProviderOptions(node.llmProvider)}</select>
+        <select class="prompt-node-control prompt-node-pill prompt-llm-model">${chatModelOptions(node.llmModel, node.llmProvider)}</select>
+        <button class="prompt-node-run run-btn prompt-node-control ${node.running ? 'is-running' : ''}" type="button" ${node.running ? 'disabled' : ''}><i data-lucide="${node.running ? 'loader-2' : 'play'}"></i><span>${node.running ? escapeHtml(tr('common.running')) : escapeHtml(tr('common.run'))}</span></button>` : '';
+    const llmBody = node.llmEnabled ? `
+        <textarea class="prompt-node-control prompt-llm-instruction" placeholder="${escapeHtml(tr('smart.promptLlmInstructionPlaceholder'))}">${escapeHtml(node.llmInstruction || '')}</textarea>
+        <div class="prompt-node-llm-actions">
+            <button class="prompt-node-pill prompt-node-control prompt-system-toggle ${node.llmSystemEnabled ? 'active' : ''}" type="button"><i data-lucide="${node.llmSystemEnabled ? 'toggle-right' : 'toggle-left'}"></i><span>${escapeHtml(node.llmSystemEnabled ? tr('smart.promptLlmDisableSystem') : tr('smart.promptLlmEnableSystem'))}</span></button>
+        </div>
+        ${node.llmSystemEnabled ? `<textarea class="prompt-node-control prompt-llm-system" placeholder="${escapeHtml(tr('smart.promptLlmSystemPlaceholder'))}">${escapeHtml(systemPrompt || 'You are a helpful prompt assistant.')}</textarea>` : ''}` : '';
 return `<div class="prompt-node-card">
 <textarea class="prompt-node-text prompt-node-control" ${readonly} placeholder="${escapeHtml(tr('smart.promptPlaceholderNode'))}">${escapeHtml(node.text || '')}</textarea>
-${`<div class="prompt-node-tools">
-<button class="prompt-node-pill prompt-llm-toggle ${node.llmEnabled ? 'active' : ''}" type="button"><i data-lucide="sparkles"></i><span>LLM</span></button>
-</div>`}
+<div class="prompt-node-tools">
+<button class="prompt-node-pill prompt-node-control prompt-llm-toggle ${node.llmEnabled ? 'active' : ''}" type="button"><i data-lucide="sparkles"></i><span>LLM</span></button>${llmRowControls}
+</div>
 ${node.llmEnabled ? inputThumbs : ''}
-${llmParams}
+${node.llmEnabled ? `<div class="prompt-node-llm">${llmBody}</div>` : ''}
 </div>`;
 }
 // 智能循环token+节点body HTML带外移 canvas-node-body-html.js（第十八刀）。selected 三件套写入走 setter 回主文件真变量。
@@ -8344,7 +8413,15 @@ async function localizeGeneratedOutputItems(items, kind='image'){
     const needsLocalization = sources.some(entry => /^https?:\/\//i.test(String(entry.url || '')));
     if(!needsLocalization) return sources.map(entry => ({...entry.source, url:entry.url, kind:entry.kind}));
     try {
-        const res = await fetch('/api/localize-generated-media', {
+        // 2026-10-23 老王：云端出片后本地迟迟不结账——拉远程文件这一步原来没有超时上限，
+        // 节点就一直挂着「运行中」。现在给 150 秒硬上限（视频大文件也够），超时直接降级成
+        // remoteFallback（先用云端地址显示，后台再补下载），节点立刻结账。
+        const localizeAbort = new AbortController();
+        const localizeTimer = setTimeout(() => localizeAbort.abort(), 150000);
+        let res;
+        try {
+            res = await fetch('/api/localize-generated-media', {
+            signal: localizeAbort.signal,
             method:'POST',
             headers:{'Content-Type':'application/json'},
             body:JSON.stringify({
@@ -8358,6 +8435,9 @@ async function localizeGeneratedOutputItems(items, kind='image'){
                 }))
             })
         });
+        } finally {
+            clearTimeout(localizeTimer);
+        }
         if(!res.ok) throw new Error(await res.text());
         const data = await res.json().catch(() => ({}));
         const localizedItems = Array.isArray(data.items) ? data.items : [];
@@ -8381,6 +8461,7 @@ async function localizeGeneratedOutputItems(items, kind='image'){
             };
         });
     } catch(err) {
+        try { clearTimeout(localizeTimer); } catch(_) {}
         console.warn('Localize generated output failed', err);
         return sources.map(entry => ({
             ...entry.source,
@@ -8531,7 +8612,7 @@ function render(){
         ensureNodeTextMedia(node, true);
         const imgs = node.images || [];
 const isTable = node.type === 'smart-table';
-const title = isTable ? '镜头表' : node.type === 'smart-prompt' ? 'Prompt' : node.type === 'smart-loop' ? 'Loop' : (node.title || (imgs.length > 1 ? 'Group' : imgs.length ? 'Image' : escapeHtml(tr('smart.createImportNode'))));
+const title = isTable ? '镜头表' : node.type === 'smart-prompt' ? 'Prompt' : node.type === 'smart-loop' ? (node.title || '批量生成') : (node.title || (imgs.length > 1 ? 'Group' : imgs.length ? 'Image' : escapeHtml(tr('smart.createImportNode'))));
         const scale = nodeScale(node);
         const layout = imageLayout(imgs, scale, node);
         const isPrompt = node.type === 'smart-prompt';
@@ -8634,7 +8715,7 @@ const html = `<div class="image-node ${node.cardSize ? 'fixed-media-card' : ''} 
     world.insertAdjacentHTML('beforeend', renderConnections());
     const nodesHtml = nodes.map(node => {
         const imgs = node.images || [];
-        const title = node.type === 'smart-prompt' ? 'Prompt' : node.type === 'smart-loop' ? 'Loop' : (imgs.length > 1 ? 'Group' : 'Image');
+        const title = node.type === 'smart-prompt' ? 'Prompt' : node.type === 'smart-loop' ? (node.title || '批量生成') : (imgs.length > 1 ? 'Group' : 'Image');
         const scale = nodeScale(node);
         const layout = imageLayout(imgs, scale, node);
         const isPrompt = node.type === 'smart-prompt';
@@ -9296,7 +9377,10 @@ function clearPortDragVisual(){
     clearNodeBodyHover();
 }
 function bindPromptNodeControls(el,node){ return CanvasPromptNodeController.bind(el,node); }
-function bindLoopNodeControls(el,node){ return CanvasLoopNodeController.bind(el,node); }
+function bindLoopNodeControls(el,node){
+    if(globalThis.CanvasBatchGenerate) return CanvasBatchGenerate.bind(el,node);
+    return CanvasLoopNodeController.bind(el,node);
+}
 function bindScrollableText(el){
     if(!el || el.dataset.scrollBound === '1') return;
     el.dataset.scrollBound = '1';
@@ -10825,6 +10909,12 @@ function savePromptDraftForCurrent(){
     if(promptInput) promptInput.dataset.promptDraftHadImageMention = hasImageMentionToken ? '1' : '0';
     subject.promptDraftHtml = promptInput.innerHTML;
     subject.promptDraftText = promptPlainText();
+    // 删除语义：草稿被清空时同步清掉正式轨 runPrompt，否则 loadPromptDraft
+    // 会在重开画布时把旧 runPrompt 回填进输入框（用户看到"删了又回来"）。
+    if(!subject.promptDraftText){
+        subject.runPrompt = '';
+        subject.promptDraftTouched = true;
+    }
     if(subject.runSettings?.engine === 'blender' || settings.engine === 'blender'){
         settings.engine = 'blender';
         settings.provider_id = 'blender';
@@ -10851,6 +10941,10 @@ function loadPromptDraft(subject){
         promptInput.innerHTML = hasToken
             ? subject.promptDraftHtml
             : (promptHtmlWithMentionTokens(subject.runPrompt || subject.promptDraftText || '', subject.runPromptRefs || []) || subject.promptDraftHtml);
+    } else if(subject?.promptDraftTouched && !subject.promptDraftText){
+        // 用户明确删空过（promptDraftTouched）：尊重删除语义，
+        // 绝不把旧 runPrompt 回填进输入框（"删了又回来"的兜底防护）。
+        setPromptText('');
     } else if(typeof subject?.runPrompt === 'string'){
         const rebuilt = promptHtmlWithMentionTokens(subject.runPrompt, subject.runPromptRefs || []);
         if(rebuilt) promptInput.innerHTML = rebuilt;
@@ -13763,8 +13857,11 @@ if(globalThis.CanvasSmartTaskSupervisor){CanvasSmartTaskSupervisor.configure({
         syncRunButtonAvailability: (...a) => syncRunButtonAvailability(...a),
         toast: (...a) => toast(...a),
         nodes: () => nodes,
-        settings: () => settings
-});}
+                settings: () => settings,
+                // 2026-10-23：载入对账要按画布过滤任务表、并知道代理基址
+                canvasId: () => canvasId,
+                proxyBase: () => RH_OFFICIAL_PROXY_BASE
+        });}
 
 function runComfyWorkflowJob(){return CanvasSmartTaskSupervisor.runComfyWorkflowJob.apply(null, arguments);}
 
@@ -13794,6 +13891,8 @@ function recoverStuckComfyNodes(){return CanvasSmartTaskSupervisor.recoverStuckC
 function resumeSmartPendingTasks(){return CanvasSmartTaskSupervisor.resumeSmartPendingTasks.apply(null, arguments);}
 
 function recoverCompletedEmptySmartNodes(){return CanvasSmartTaskSupervisor.recoverCompletedEmptySmartNodes.apply(null, arguments);}
+
+function reconcileInflightNodesWithTaskStore(){return CanvasSmartTaskSupervisor.reconcileInflightNodesWithTaskStore.apply(null, arguments);}
 function runComfyText(){return CanvasSmartTaskSupervisor.runComfyText.apply(null, arguments);}
 function runComfyEnhance(){return CanvasSmartTaskSupervisor.runComfyEnhance.apply(null, arguments);}
 function runComfyEdit(){return CanvasSmartTaskSupervisor.runComfyEdit.apply(null, arguments);}

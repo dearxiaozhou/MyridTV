@@ -141,6 +141,19 @@ def recover_stale_tasks(source="MyridTV 后端重启"):
             if status not in allowed:
                 continue
             tid = str(task_id or state.get("task_id") or "")
+            # 2026-10-23 老王：云端任务（有 provider_task_id）不能因为「本地进程重启」就判死。
+            # 进程重启 ≠ 云端任务失败：RH 那边还在跑、甚至已经出片了（实测：本地标 failed，
+            # 云端其实 SUCCESS，26 币已扣，产物躺在 COS 上没人取）。
+            # 这里先挂起等云端核实（由后台 probe 收尾），不要直接写死 failed。
+            remote_id = str(state.get("provider_task_id") or state.get("rh_task_id") or "").strip()
+            if remote_id:
+                state["status"] = "recovering"
+                state["error"] = ""
+                state["recover_remote_id"] = remote_id
+                state["recover_probe_at"] = now
+                state["updated_at"] = now
+                recovered.append(tid)
+                continue
             state["status"] = "failed"
             state["error"] = reason
             state["failed_at"] = now

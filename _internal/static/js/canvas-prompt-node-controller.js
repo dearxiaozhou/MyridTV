@@ -38,7 +38,7 @@
                 node.llmProvider = ctx.resolveChatProviderId(node.llmProvider || '');
                 node.llmModel = ctx.resolveChatModel(node.llmModel || '', node.llmProvider);
                 node.h = Math.max(Number(node.h) || 0, ctx.promptNodeExpandedHeight(node));
-                node.w = Math.max(Number(node.w) || 0, 316);
+                node.w = Math.max(Number(node.w) || 0, 400);
             } else {
                 node.h = 194;
                 node.w = Math.max(Number(node.w) || 0, 316);
@@ -63,7 +63,7 @@
             const previousHeight = Number(node.h) || 0;
             node.llmSystemEnabled = !node.llmSystemEnabled;
             if(node.llmSystemEnabled) node.h = Math.max(previousHeight, ctx.promptNodeExpandedHeight(node));
-            else if(previousHeight <= 364) node.h = ctx.promptNodeExpandedHeight(node);
+            else if(previousHeight <= 420) node.h = ctx.promptNodeExpandedHeight(node);
             ctx.render();
             ctx.scheduleSave();
         };

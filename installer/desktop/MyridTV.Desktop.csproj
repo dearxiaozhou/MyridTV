@@ -11,10 +11,10 @@
     <Product>MyridTV</Product>
     <Company>MyridTV</Company>
     <FileDescription>MyridTV Desktop</FileDescription>
-    <Version>0.15.15</Version>
-    <FileVersion>0.15.15</FileVersion>
-    <AssemblyVersion>0.15.15</AssemblyVersion>
-    <InformationalVersion>0.15.15</InformationalVersion>
+    <Version>0.16.2</Version>
+    <FileVersion>0.16.2</FileVersion>
+    <AssemblyVersion>0.16.2</AssemblyVersion>
+    <InformationalVersion>0.16.2</InformationalVersion>
     <ApplicationIcon>..\..\_internal\static\images\myrid-icon.ico</ApplicationIcon>
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>

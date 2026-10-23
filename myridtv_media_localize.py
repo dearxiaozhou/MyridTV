@@ -779,17 +779,43 @@ def local_media_source_bytes(source_url):
     raw = b""
     content_type = ""
     ssl_ctx = myridtv_http._rh_forced_tls_context(text)
-    for attempt in range(4):
+    # 2026-10-23 老王：云端已出片、本地却一直「跑半天」。真因有两层：
+    #   ① 原来 timeout=300 × 4 次重试，最坏能拖 20 分钟；
+    #   ② 更要命的是 urllib 的 timeout 只约束「两次读之间」的间隔——服务器若慢速滴流
+    #      （每几秒吐 1KB），每个 read 都成功，超时**永不触发**，实测能无限挂着。
+    # 所以这里改用「总时长封顶」(wall-clock deadline)：到点立刻断开、抛错，
+    # 由上层降级为 remoteFallback（先用云端地址显示，节点马上结账），后台不再空等。
+    DEADLINE_SECONDS = 60          # 单次尝试的总时长上限
+    MAX_ATTEMPTS = 1               # 只试一次：慢速滴流不再反复重试（原来 300s × 4 = 20 分钟）
+    for attempt in range(MAX_ATTEMPTS):
+        deadline = time.monotonic() + DEADLINE_SECONDS
         try:
-            with urllib.request.urlopen(request, timeout=300, context=ssl_ctx) as response:
-                raw = response.read()
+            with urllib.request.urlopen(request, timeout=20, context=ssl_ctx) as response:
                 content_type = response.headers.get("Content-Type", "application/octet-stream").split(";", 1)[0].strip()
+                declared = response.headers.get("Content-Length")
+                expected = int(declared) if declared and declared.isdigit() else 0
+                chunks = []
+                got = 0
+                # 必须用 read1：普通的 read(n) 会一直阻塞到读满 n 字节才返回，
+                # 服务器慢速滴流时循环体内的超时判断永远执行不到（实测无限挂住）。
+                # read1 有多少给多少，能保证每轮都回来查一次 deadline。
+                reader = getattr(response, "read1", None) or response.read
+                while True:
+                    if time.monotonic() > deadline:
+                        raise TimeoutError(
+                            f"下载超时（总时长超过 {DEADLINE_SECONDS}s，已收 {got}/{expected or '?'} 字节）"
+                        )
+                    chunk = reader(64 * 1024)
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    got += len(chunk)
+                raw = b"".join(chunks)
             break
         except urllib.error.HTTPError:
             raise
         except Exception:
-            if attempt >= 3 or ssl_ctx is not None:
-                raise
+            raise
             # 部分 CDN（如 getapib.org）与本机 OpenSSL 3.x TLS1.3 记录层不兼容
             # （SSLV3_ALERT_BAD_RECORD_MAC，同 RH 网关已知缺陷），降级 TLS1.2 重试
             try:

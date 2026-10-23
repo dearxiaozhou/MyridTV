@@ -79,3 +79,7 @@ tests/screenshot_design_v5d.py
 tests/screenshot_design_v5e.py
 outputs/
 _verification/
+
+# 开发探针产物（截图/调试 JSON/临时二进制备份）不进版本库
+_probe/
+MyridTV-Desktop.exe.old_*

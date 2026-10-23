@@ -250,7 +250,7 @@ function nodeBodyHtml(node, layout){
     const isGenerationNode = node.role === 'generation' || hasRunEvidence;
     if((node.type === 'smart-image' || !node.type) && !(node.images || []).length && !isGeneratingImage && (node.prompt || node.content) && !isGenerationNode) return smartImageMetaBodyHtml(node);
     if(node.type === 'smart-prompt') return deps.promptNodeBodyHtml(node);
-    if(node.type === 'smart-loop') return smartLoopBodyHtml(node);
+    if(node.type === 'smart-loop') return globalThis.CanvasBatchGenerate ? CanvasBatchGenerate.bodyHtml(node) : smartLoopBodyHtml(node);
     const imgs = (node.images || []).map(D("imageForDisplay"));
     if(node.groupLayout?.mode === 'preserve') return preservedGroupBodyHtml(node, imgs);
     if(node.jimengPending && node.jimengPending.submitId && imgs.length === 0){

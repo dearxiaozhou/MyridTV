@@ -187,13 +187,13 @@
         defaults: { w: 340, h: 168 }
     });
     registerNodeType({
-        type: 'smart-loop', label: '循环', category: 'control',
+        type: 'smart-loop', label: '批量生成', category: 'control',
         // 注意：hasImages 必须与老 isSmartImageNode 语义一致（loop 不算图片节点），
         // 它"能装图"这件事记在 carriesImages，避免悄悄改变引用/拖放判定
         flags: { hasImages: false, carriesImages: true, dropByPointOverlap: true },
         inputs: [{ id: 'in-image', label: '输入图', dataType: 'image', multiple: true }],
         outputs: [{ id: 'out-image', label: '图片', dataType: 'image', multiple: true }],
-        defaults: { w: 340, h: 168 }
+        defaults: { w: 380, h: 172 }
     });
     registerNodeType({
         type: 'smart-table', label: '表格', category: 'text',

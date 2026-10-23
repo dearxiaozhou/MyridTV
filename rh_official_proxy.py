@@ -274,7 +274,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.10.22.float2"
+STATIC_VERSION = "2026.10.23.inflight1"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 # Windows 版 Python 的 mimetypes 不带 webp，猜不出来会回落成
 # application/octet-stream，浏览器按未知类型拒绝渲染（风格缩略图会全变空白）。
@@ -671,6 +671,87 @@ _TaskConsoleCancelled = myridtv_task_console._TaskConsoleCancelled
 load_persistent_tasks()
 # 本次进程刚启动，此时 TASKS 里任何 in-flight 状态都必然是上次进程的残留
 recover_stale_tasks()
+
+
+def _probe_recovering_remote_tasks():
+    """常驻对账：本地在飞/待核实的云端任务，由后端周期性向 RunningHub 核实并落终态。
+
+    2026-10-23 老王（真因）：收片此前完全依赖前端那条轮询连接。页面一刷新或切画布，
+    连接就断（后端日志里是 WinError 10053），于是任务永远停在 running、节点一直
+    「生成中」、控制台不收片 —— 用户既拿不到结果，也没法重跑，还不报错。
+    收片不能依赖「页面还活着」，所以这里放一个常驻后台线程兜底：
+    凡是「非终态 + 有云端任务号」的任务，每 15 秒核一次：
+      SUCCESS -> succeeded（产物地址写回任务）
+      FAILED  -> failed（带云端原因）
+      其它    -> 记一笔 checked_at，继续等下一轮
+    兼容重启恢复：recover_stale_tasks 挂起的 recovering 也在扫描范围内。
+    """
+    import threading
+    import time as _time
+
+    non_terminal = ("recovering", "running", "submitted", "queued", "pending")
+
+    def _run():
+        _time.sleep(8)          # 等后端端口就绪，避免自连失败
+        while True:
+            try:
+                pending = []
+                for tid, st in list(myridtv_task_state.TASKS.items()):
+                    if not isinstance(st, dict):
+                        continue
+                    if str(st.get("status") or "").strip().lower() not in non_terminal:
+                        continue
+                    remote_id = str(
+                        st.get("recover_remote_id") or st.get("provider_task_id") or st.get("rh_task_id") or ""
+                    ).strip()
+                    if remote_id:
+                        pending.append((tid, remote_id))
+                for tid, remote_id in pending:
+                    try:
+                        q = runninghub_query_task(remote_id)
+                    except Exception as exc:
+                        append_log(LOG_FILE, f"reconcile probe error task={tid} remote={remote_id}: {exc}")
+                        continue
+                    status = str((q or {}).get("status") or "").upper()
+                    if status == "SUCCESS":
+                        urls = [u for u in (q.get("urls") or []) if u]
+                        myridtv_task_state.update_task_state(
+                            tid, status="succeeded", error="", completed_at=_time.time(),
+                            checked_at=_time.time(), raw_status="SUCCESS",
+                            result={"images": [{"url": u} for u in urls]},
+                            reconciled_from_remote=True,
+                        )
+                        append_log(LOG_FILE, f"reconcile task={tid} remote={remote_id} -> succeeded urls={len(urls)}")
+                    elif status == "FAILED":
+                        myridtv_task_state.update_task_state(
+                            tid, status="failed", error=(q.get("failReason") or "云端任务失败"),
+                            completed_at=_time.time(), checked_at=_time.time(), raw_status="FAILED",
+                        )
+                        append_log(LOG_FILE, f"reconcile task={tid} remote={remote_id} -> failed")
+                    else:
+                        myridtv_task_state.update_task_state(
+                            tid, checked_at=_time.time(), raw_status=status or "RUNNING")
+            except Exception as exc:
+                try:
+                    append_log(LOG_FILE, f"reconcile loop error: {exc}")
+                except Exception:
+                    pass
+            _time.sleep(15)
+
+    t = threading.Thread(target=_run, name="reconcile-remote-tasks", daemon=True)
+    t.start()
+
+
+# 延迟到本模块全部加载完再拉线程（runninghub_query_task 在文件后段定义，
+# 线程体里第一次用到时才会解析，但启动太早容易碰到端口未就绪）。
+def _bootstrap_probe_recovering():
+    try:
+        _probe_recovering_remote_tasks()
+    except Exception as _exc:  # 恢复失败绝不能拖垮启动
+        try:
+            append_log(LOG_FILE, f"recover probe bootstrap failed: {_exc}")
+        except Exception:
+            pass
 if TASK_STORE.migrated_from:
     _agent_task_log("TaskStore", "canvas_tasks.json 已迁移到 SQLite: " + TASK_STORE.migrated_from)
 
@@ -3226,4 +3307,6 @@ if __name__ == "__main__":
     _start_window_fix()
     # 启动 Canvas MCP 端点（内置于主服务）
     print(f"[canvas-mcp] embedded at http://127.0.0.1:{PORT}/mcp")
+    # 重启后把挂起等核实的云端任务问清楚（进程重启 ≠ 云端失败）
+    _bootstrap_probe_recovering()
     CanvasProxyServer((str(PROXY_CONFIG.get("host") or "127.0.0.1"), PORT), Handler).serve_forever()

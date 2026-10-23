@@ -81,23 +81,26 @@
    const grouped=primary=>meta.motion_presets.filter(p=>p.primary===primary).map(p=>[p.id,p.name]);
    host.innerHTML=`<form class="pv-plugin-dialog pv-motion-dialog pv-inline-panel" aria-label="预演参数">
     <div class="pv-inline-top" aria-label="预演基础设置">
-     <label class="pv-top-control"><span>比例</span><select name="ratio" aria-label="比例">${options(ratios,context.settings.ratio||'wide')}</select></label>
-     <label class="pv-top-control"><span>时长</span><input name="duration" type="number" aria-label="时长" min="1" max="30" step=".1" value="${spec.duration}" required><small>秒</small></label>
-     <label class="pv-top-control"><span>运镜</span><select name="preset" aria-label="运镜"><optgroup label="常用">${options(grouped(true),spec.preset)}</optgroup><optgroup label="更多">${options(grouped(false),spec.preset)}</optgroup></select></label>
-     <label class="pv-top-control"><span>焦距</span><input name="lens_mm" type="number" aria-label="焦距" min="18" max="135" step="1" value="${spec.lens_mm}" required><small>mm</small></label>
-    </div><input type="hidden" name="subject" value="${spec.subject}">
+     <label class="pv-top-control" title="比例"><select name="ratio" aria-label="比例">${options(ratios,context.settings.ratio||'wide')}</select></label>
+     <label class="pv-top-control" title="时长"><input name="duration" type="number" aria-label="时长" min="1" max="30" step=".1" value="${spec.duration}" required><small>秒</small></label>
+     <label class="pv-top-control" title="运镜"><select name="preset" aria-label="运镜"><optgroup label="常用">${options(grouped(true),spec.preset)}</optgroup><optgroup label="更多">${options(grouped(false),spec.preset)}</optgroup></select></label>
+     <label class="pv-top-control" title="焦距"><input name="lens_mm" type="number" aria-label="焦距" min="18" max="135" step="1" value="${spec.lens_mm}" required><small>mm</small></label>
+    <label class="pv-top-control" title="相机高度 / 米"><input name="camera_height" aria-label="相机高度 / 米" type="number" min=".05" max="30" step=".05" placeholder="高度自动" value="${spec.camera_height??''}"><small>米</small></label><button type="button" class="pv-assets-toggle" data-pv-assets-toggle aria-pressed="${assetsEnabled}" title="开启后在提示词中描述资产或填写工程路径">资产${assetsEnabled?'开':'关'}</button></div><input type="hidden" name="subject" value="${spec.subject}">
     <p class="pv-note pv-legacy-note" ${context.settings.previzOutput==='motion'?'hidden':''}>此节点保留原文本镜头；调整参数后使用运镜预设。</p>
-    <div class="pv-shoot-grid pv-inline-shot-grid">${field('景别',`<select name="framing">${options(framings,spec.framing)}</select>`)}<label data-pv-amount><span data-pv-amount-label>移动 / 米</span><input name="amount" type="number" min=".1" step=".1" placeholder="自动" value="${spec.amount??''}"></label><label data-pv-focus-label>拍谁<select name="focus_subject">${options([...characters.map(p=>[p.id,p.name]),['group','多人整体']],spec.focus_subject==='first'?characters[0].id:spec.focus_subject==='second'?characters[Math.min(1,characters.length-1)].id:spec.focus_subject)}</select></label>${field('拍哪里',`<select name="target_start">${options([['auto','自动取景'],['head','头部'],['chest','胸部'],['hips','腰胯'],['feet','脚部']],spec.target_start)}</select>`)}${field('方位',`<select name="view">${options([['front','正面'],['back','背面'],['left','左侧'],['right','右侧']],spec.view)}</select>`)}${field('角度',`<select name="camera_angle">${options([['auto','自动'],['eye','平视'],['low','仰拍'],['high','俯拍'],['overhead','鸟瞰']],spec.camera_angle)}</select>`)}<button type="button" class="pv-assets-toggle" data-pv-assets-toggle aria-pressed="${assetsEnabled}" title="开启后在提示词中描述资产或填写工程路径">资产${assetsEnabled?'开':'关'}</button></div><p class="pv-note pv-assets-hint" ${assetsEnabled?'':'hidden'}>在提示词写“资产：长椅，左后方；茶几，右侧”，或“工程：本地 .blend 路径”。</p>
+    <div class="pv-shoot-grid pv-inline-shot-grid">${field('景别',`<select name="framing">${options(framings,spec.framing)}</select>`)}<label data-pv-amount><span data-pv-amount-label>移动 / 米</span><input name="amount" type="number" min=".1" step=".1" placeholder="自动" value="${spec.amount??''}"></label><label data-pv-focus-label>拍谁<select name="focus_subject">${options([...characters.map(p=>[p.id,p.name]),['group','多人整体']],spec.focus_subject==='first'?characters[0].id:spec.focus_subject==='second'?characters[Math.min(1,characters.length-1)].id:spec.focus_subject)}</select></label>${field('拍哪里',`<select name="target_start">${options([['auto','自动取景'],['head','头部'],['chest','胸部'],['hips','腰胯'],['feet','脚部']],spec.target_start)}</select>`)}${field('方位',`<select name="view">${options([['front','正面'],['back','背面'],['left','左侧'],['right','右侧']],spec.view)}</select>`)}${field('角度',`<select name="camera_angle">${options([['auto','自动'],['eye','平视'],['low','仰拍'],['high','俯拍'],['overhead','鸟瞰']],spec.camera_angle)}</select>`)}${field('结束拍哪里',`<select name="target_end">${options([['same','同起镜'],['auto','自动取景'],['head','头部'],['chest','胸部'],['hips','腰胯'],['feet','脚部']],spec.target_end)}</select>`)}<label data-pv-direction>运镜方向<select name="direction">${options([['left','向左'],['right','向右']],spec.direction)}</select></label></div><p class="pv-note pv-assets-hint" ${assetsEnabled?'':'hidden'}>在提示词写“资产：长椅，左后方；茶几，右侧”，或“工程：本地 .blend 路径”。</p>
     <section class="pv-actions-section"><div data-pv-actions></div><div class="pv-action-tools"><button type="button" data-pv-add>＋ 接一段动作</button><button type="button" data-pv-combo>走 → 跑 → 停 → 坐下</button></div><p class="pv-note" data-pv-action-time></p></section>
     <details class="pv-actor pv-blocking"><summary>人物站位 <span data-pv-blocking-count></span></summary>
      <div class="pv-layout-tools"><button type="button" data-pv-layout="dialogue">双人对话</button><button type="button" data-pv-layout="confront">三人对峙</button><button type="button" data-pv-layout="bystanders">主角＋旁观者</button></div>
      <svg class="pv-floorplan" viewBox="-8 -8 16 16" role="group" aria-label="俯视站位图，拖动人物或资产调整位置"><rect x="-8" y="-8" width="16" height="16" fill="var(--x-soft)"/><g data-pv-map></g></svg><p class="pv-note">俯视图：上方为前，拖动色点摆人物，拖动方块摆资产。选中后也可用方向键微调。</p>
      <div data-pv-people></div><button type="button" data-pv-person-add>＋ 添加人物</button>
     </details>
-    <details class="pv-actor pv-motion-more" ${spec.camera_height!=null||spec.target_end!=='same'?'open':''}><summary>微调</summary><div class="pv-tune-grid">${field('相机高度 / 米',`<input name="camera_height" type="number" min=".05" max="30" step=".05" placeholder="自动" value="${spec.camera_height??''}">`)}<label data-pv-direction>运镜方向<select name="direction">${options([['left','向左'],['right','向右']],spec.direction)}</select></label></div><label class="pv-inline-check"><input type="checkbox" name="change_target" ${spec.target_end!=='same'?'checked':''}>结束时换拍摄部位</label><div data-pv-target-end ${spec.target_end==='same'?'hidden':''}>${field('结束拍哪里',`<select name="target_end">${options([['same','同起镜'],['auto','自动取景'],['head','头部'],['chest','胸部'],['hips','腰胯'],['feet','脚部']],spec.target_end)}</select>`)}</div></details>
+    
     <p class="pv-error" role="status" aria-live="polite"></p><div class="pv-artifacts" data-pv-artifacts></div></form>`;
    const form=host.querySelector('form');form.id='pv-inline-'+node.id.replace(/[^a-z0-9_-]/gi,'');
    const top=form.querySelector('.pv-inline-top');
+   const assetsToggle=top.querySelector('[data-pv-assets-toggle]');
+   // Let the scrollable panel own wheel gestures instead of the canvas zoom handler.
+   if(typeof CanvasOverlayRegistry!=='undefined')CanvasOverlayRegistry.register('.pv-inline-panel',['wheel-scrollable']);
    const input=name=>form.elements.namedItem(name);
    let initializing=true;
    const facingOptions=[['forward','朝前'],['backward','朝后'],['left','朝左'],['right','朝右']];
@@ -127,8 +130,8 @@
     }
     return sceneMemory||{scene_mode:'new',scene_project:'',scene_assets:[]};
    }
-   form.querySelector('[data-pv-assets-toggle]').onclick=()=>{
-    assetsEnabled=!assetsEnabled;const button=form.querySelector('[data-pv-assets-toggle]');button.setAttribute('aria-pressed',String(assetsEnabled));button.textContent='资产'+(assetsEnabled?'开':'关');form.querySelector('.pv-assets-hint').hidden=!assetsEnabled;resolveScene();updateMap();commit();
+   assetsToggle.onclick=()=>{
+    assetsEnabled=!assetsEnabled;const button=assetsToggle;button.setAttribute('aria-pressed',String(assetsEnabled));button.textContent='资产'+(assetsEnabled?'开':'关');form.querySelector('.pv-assets-hint').hidden=!assetsEnabled;resolveScene();updateMap();commit();
    };
    const svg=form.querySelector('.pv-floorplan');let drag=null;
    function movePoint(event){const point=svg.createSVGPoint();point.x=event.clientX;point.y=event.clientY;const local=point.matrixTransform(svg.getScreenCTM().inverse());drag.position=[+Math.max(-7.5,Math.min(7.5,local.x)).toFixed(2),+Math.max(-7.5,Math.min(7.5,-local.y)).toFixed(2)];updateMap();}
@@ -156,7 +159,6 @@
     input('amount').disabled=preset.kind==='follow';
    }
    input('preset').onchange=()=>{input('amount').value='';describe();};describe();
-   input('change_target').onchange=()=>{form.querySelector('[data-pv-target-end]').hidden=!input('change_target').checked;};
    function snapshot(){
     if(context.getNode()?.id!==node.id)return null;
     const result={...spec,schema_version:'motion/1.0'};
@@ -165,7 +167,6 @@
     result.amount=input('amount').disabled || input('amount').value.trim()===''?null:Number(input('amount').value);
     const preset=meta.motion_presets.find(p=>p.id===result.preset);
     Object.assign(result,{end_framing:'auto',pace:'preset',composition:'center',target_motion:'follow',travel_reference:'subject'});
-    if(!input('change_target').checked)result.target_end='same';
     Object.assign(result,resolveScene());result.assets_enabled=assetsEnabled;result.scene_memory=sceneMemory;result.asset_prompt=assetPromptKey;
     result.actions=clone(actions);result.characters=clone(characters);result.scene_assets=result.scene_mode==='new'?clone(sceneAssets):[];result.camera_height=input('camera_height').value.trim()===''?null:Number(input('camera_height').value);
 

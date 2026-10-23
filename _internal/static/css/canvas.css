@@ -802,10 +802,12 @@ body.theme-dark .minimap-viewport { border-color:#f8fafc; background:rgba(248,25
 .preview-text-btn { height:32px; border-radius:999px; padding:0 11px; display:flex; align-items:center; gap:6px; background:#1f1f1f; color:#fff; font-size:11px; font-weight:800; }
 .preview-text-btn.secondary { background:#f8fafc; color:#1f1f1f; border:1px solid #e2e8f0; }
 .preview-text-btn.copied { background:#10b981; color:#fff; border-color:#10b981; }
-.log-modal { position:absolute; inset:0; z-index:76; display:none; align-items:center; justify-content:center; padding:28px; background:rgba(248,250,252,.42); backdrop-filter:blur(18px); }
+/* 2026-10-23 老王：与 smart-canvas.css 同步——日志窗口是模态层，z-index 抬到 4000（原 76 被
+   画布常驻 UI：dock 120 / 底部工具条 120 / 小地图 130 压在上面，内容多时被压掉一块）。 */
+.log-modal { position:absolute; inset:0; z-index:4000; display:none; align-items:center; justify-content:center; padding:28px; background:rgba(248,250,252,.42); backdrop-filter:blur(18px); }
 .log-modal.open { display:flex; }
-.log-panel { width:min(860px, 94vw); max-height:86vh; display:flex; flex-direction:column; border-radius:22px; background:var(--card-solid); border:1px solid var(--line); box-shadow:0 30px 90px rgba(31,31,31,.22); overflow:hidden; }
-.log-head { height:58px; padding:0 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); }
+.log-panel { width:min(860px, 94vw); max-height:100%; min-height:0; display:flex; flex-direction:column; border-radius:22px; background:var(--card-solid); border:1px solid var(--line); box-shadow:0 30px 90px rgba(31,31,31,.22); overflow:hidden; }
+.log-head { flex:0 0 58px; height:58px; padding:0 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); }
 .log-title { font-size:14px; font-weight:900; color:var(--text); }
 .log-list { padding:12px; overflow:auto; display:flex; flex-direction:column; gap:10px; }
 .log-empty { padding:28px; text-align:center; color:var(--muted); font-size:12px; font-weight:700; }

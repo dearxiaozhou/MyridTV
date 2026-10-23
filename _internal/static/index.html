@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-CN" class="studio-route-booting">
 <head>
-    <link rel="stylesheet" href="/static/css/design-tokens.css?cb=card-hover-seven-v01317&v=2026.10.22.float2">
+    <link rel="stylesheet" href="/static/css/design-tokens.css?cb=card-hover-seven-v01317&v=2026.10.23.inflight1">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="/static/images/myrid-icon.png" type="image/png">
@@ -12,8 +12,8 @@
       document.documentElement.classList.toggle('studio-theme-dark', theme === 'dark');
     })();
   </script>
-  <script src="/static/js/theme.js?cb=card-hover-seven-v01317&v=2026.10.22.float2"></script>
-  <script src="/static/js/i18n.js?v=2026.10.22.float2"></script>
+  <script src="/static/js/theme.js?cb=card-hover-seven-v01317&v=2026.10.23.inflight1"></script>
+  <script src="/static/js/i18n.js?v=2026.10.23.inflight1"></script>
   <style>
     :root {
       --line: rgba(255, 255, 255, 0.1);
@@ -338,8 +338,13 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
     .tc-overlay { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,0.55); display: none; }
     .tc-overlay.open { display: block; }
     .tc-panel {
-      position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 41;
-      width: min(1180px, 94vw); height: 86vh;
+      /* 2026-10-23 老王：控制台「偶尔显示不全」根因——原 top:50% + translate(-50%,-50%) +
+         height:86vh 居中于整个 WebView（含 31px 自绘标题栏 #tb-bar，z-index:600 恒压在面板上），
+         顶部 7vh 预留在窗口矮/系统缩放大时不足 31px，tc-head/统计/筛选整块被标题栏吃掉，
+         列表顶卡跟着被裁，且症状随窗口高度变化时隐时现。
+         改为上下显式留边拉通：顶部固定跳过标题栏，底部留 14px，高度自适应，永不溢出视口。 */
+      position: fixed; left: 50%; top: 38px; bottom: 14px; transform: translateX(-50%); z-index: 41;
+      width: min(1180px, 94vw); height: auto;
       display: none; flex-direction: column;
       background: var(--x-page);
       border: 1px solid var(--line); border-radius: 14px;
@@ -638,7 +643,7 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
 
   </style>
 <link rel="stylesheet" href="/static/css/light-theme-trial.css?v=interaction-audit-v0105c">
-<link rel="stylesheet" href="/static/css/canvas-interaction-style.css?cb=card-hover-seven-v01317&v=2026.10.22.float2">
+<link rel="stylesheet" href="/static/css/canvas-interaction-style.css?cb=card-hover-seven-v01317&v=2026.10.23.inflight1">
 </head>
 <body>
   <div id="update-notice" role="status" aria-live="polite"><span id="update-notice-text">界面更新已就绪</span><button type="button" id="update-refresh">刷新界面</button><button type="button" class="secondary" id="update-later">稍后</button></div>
@@ -674,18 +679,18 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
       <iframe id="tb-page-frame" class="tb-page-frame" title="页面弹窗内容" scrolling="yes"></iframe>
     </section>
     <section class="stage" aria-label="内容区域">
-  <iframe id="frame-canvas" data-page="canvas" data-src="/static/canvas.html?cb=backend-info-v0116&audit=interaction-v0105&v=2026.10.22.float2" scrolling="yes"></iframe>
-      <iframe id="frame-asset-manager" data-page="asset-manager" data-src="/static/asset-manager.html?v=2026.10.22.float2" scrolling="yes"></iframe>
-      <iframe id="frame-api-settings" data-page="api-settings" data-src="/static/api-settings.html?v=2026.10.22.float2" scrolling="yes"></iframe>
-    <iframe id="frame-comfyui-settings" data-page="comfyui-settings" data-src="/static/comfyui-settings.html?v=2026.10.22.float2" scrolling="yes"></iframe>
+  <iframe id="frame-canvas" data-page="canvas" data-src="/static/canvas.html?cb=backend-info-v0116&audit=interaction-v0105&v=2026.10.23.inflight1" scrolling="yes"></iframe>
+      <iframe id="frame-asset-manager" data-page="asset-manager" data-src="/static/asset-manager.html?v=2026.10.23.inflight1" scrolling="yes"></iframe>
+      <iframe id="frame-api-settings" data-page="api-settings" data-src="/static/api-settings.html?v=2026.10.23.inflight1" scrolling="yes"></iframe>
+    <iframe id="frame-comfyui-settings" data-page="comfyui-settings" data-src="/static/comfyui-settings.html?v=2026.10.23.inflight1" scrolling="yes"></iframe>
     <iframe id="frame-assets-root" data-page="assets-root" data-popup-width="760" data-src="/static/assets-root.html?v=2026.10.16.assetsroot2" scrolling="yes"></iframe>
     <iframe id="frame-home-background" data-page="home-background" data-popup-width="900" data-src="/static/home-background.html?v=2026.10.17.homebg12" scrolling="yes"></iframe>
-<iframe id="frame-smart-canvas" data-page="smart-canvas" data-src="/static/smart-canvas.html?cb=backend-info-v0116&audit=interaction-v0105&v=2026.10.22.float2" scrolling="no"></iframe>
+<iframe id="frame-smart-canvas" data-page="smart-canvas" data-src="/static/smart-canvas.html?cb=backend-info-v0116&audit=interaction-v0105&v=2026.10.23.inflight1" scrolling="no"></iframe>
     </section>
 
     <!-- 2026-10-16：底部 dock 移除，页面导航改由自绘 HTML 标题栏（#tb-bar，菜单数据见下方 TB_MENUS）承担；
          版本号仅保留在这个隐藏节点里，供更新提示逻辑读取当前版本，可见版本见菜单「关于 → 关于 MyridTV」。 -->
-    <span class="app-version" hidden>版本：V0.15.15</span>
+    <span class="app-version" hidden>版本：V0.16.2</span>
   </main>
 
   <!-- 任务运行控制台（task-console） -->
@@ -1499,6 +1504,23 @@ function tcRender() {
         if (el.open) openSet[el.getAttribute('data-tid')] = 1;
     });
     var keepScroll = list.scrollTop;
+    // 2026-10-23 老王：原重建后只还 scrollTop 数字——新任务插到顶部时整个内容下移，视口错位
+    //（正看着的那张卡被顶出视口、第一条可见卡裁半，观感即「显示不全」，且每 5s 刷新都可能出现）。
+    // 改为内容锚定：记住视口顶压线的那张卡和它相对视口顶的偏移，重建后把同一张卡摆回原视觉位置。
+    // 在顶部（scrollTop=0）时不锚定，让新任务自然出现在眼前。
+    var anchorTid = '', anchorOffset = 0;
+    if (keepScroll > 0) {
+        var anchorListRect = list.getBoundingClientRect();
+        var anchorItems = list.querySelectorAll('.tc-item[data-tid]');
+        for (var ai = 0; ai < anchorItems.length; ai++) {
+            var ar = anchorItems[ai].getBoundingClientRect();
+            if (ar.bottom > anchorListRect.top) {
+                anchorTid = anchorItems[ai].getAttribute('data-tid');
+                anchorOffset = ar.top - anchorListRect.top;
+                break;
+            }
+        }
+    }
     if (!filtered.length) {
         list.innerHTML = '<div class="tc-empty">暂无任务</div>';
     } else {
@@ -1537,7 +1559,7 @@ function tcRender() {
                 paramsHtml = '<details class="tc-params" data-tid="' + tid + '"' + (openSet[t.task_id] ? ' open' : '') + ' onclick="event.stopPropagation()"><summary>提交参数（' + t.params.flat.length + ' 项' + (bypass ? ' · 旁路 ' + bypass + ' 节点' : '') + '）</summary>' + items + '</details>';
             }
             var canStop = t.can_stop !== false && (t.status === 'running' || t.status === 'queued');
-            return '<div class="tc-item' + (sel ? ' selected' : '') + '" onclick="tcToggleSel(\'' + t.task_id + '\')">' +
+            return '<div class="tc-item' + (sel ? ' selected' : '') + '" data-tid="' + t.task_id + '" onclick="tcToggleSel(\'' + t.task_id + '\')">' +
                 '<div class="tc-item-top">' +
                 '<span class="tc-kind">' + t.kind + '</span>' +
                 '<span class="tc-status st-' + t.status + '">' + tcStatusText(t.status) + '</span>' +
@@ -1551,7 +1573,16 @@ function tcRender() {
                 '</div>';
         }).join('');
     }
-    list.scrollTop = keepScroll;
+    if (anchorTid) {
+        var anchorEl = list.querySelector('.tc-item[data-tid="' + anchorTid.replace(/"/g, '&quot;') + '"]');
+        if (anchorEl) {
+            list.scrollTop += (anchorEl.getBoundingClientRect().top - list.getBoundingClientRect().top) - anchorOffset;
+        } else {
+            list.scrollTop = keepScroll;
+        }
+    } else {
+        list.scrollTop = keepScroll;
+    }
     var stopBtn = document.getElementById('tc-stop-selected');
     if (stopBtn) stopBtn.disabled = !Object.keys(tcSelected).length;
 }

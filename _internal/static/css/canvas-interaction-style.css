@@ -28,8 +28,8 @@
     border-color:var(--x-selected-line) !important; box-shadow:0 0 0 2px var(--x-selected-ring) !important;
   }
   html body .prompt-input:focus { border-color:var(--x-selected-line) !important; }
-  html body :is(button,[role="button"],.gate-icon-btn,.gate-back-link,.gate-sort-btn,.tree-row,.nav-row):not(:disabled):not([aria-disabled="true"]):not(.tc-btn-danger):not(.danger):not(.danger-btn):not(.btn-danger):not(.delete-btn):not(.node-delete):not(.mini-x):not(.canvas-delete):not(.tb-winclose):not(.is-running):not(.is-stop):not(.is-ap-running):not(.canvas-pin-btn):not(.audio-play-button):not(.canvas-color-swatch):not(.speech-generate):not(.primary):not(.save-btn):not(.run-btn):not(.api-page-save-btn):not(.api-link-btn):not(#agentSendBtn):not(.agent-send):not(.smart-agent-send):not(.is-saved):not(.canvas-open):not(.active):not(.selected):not([aria-selected="true"]):not([aria-pressed="true"]):hover,
-  html body :is(.shared-native-select-trigger,.smart-pill,.speech-picker,.filter-preset-trigger,.tb-menu)[aria-expanded="true"],
+  html body :is(button,[role="button"],.gate-icon-btn,.gate-back-link,.gate-sort-btn,.tree-row,.nav-row):not(:disabled):not([aria-disabled="true"]):not(.tc-btn-danger):not(.danger):not(.danger-btn):not(.btn-danger):not(.delete-btn):not(.node-delete):not(.mini-x):not(.canvas-delete):not(.tb-winclose):not(.is-running):not(.is-stop):not(.is-ap-running):not(.canvas-pin-btn):not(.audio-play-button):not(.canvas-color-swatch):not(.speech-generate):not(.primary):not(.save-btn):not(.run-btn):not(.api-page-save-btn):not(.api-link-btn):not(#agentSendBtn):not(.agent-send):not(.smart-agent-send):not(.is-saved):not(.canvas-open):not(.active):not(.selected):not([aria-selected="true"]):not([aria-pressed="true"]):not(.pv-inline-top .shared-native-select-trigger):hover,
+  html body :is(.shared-native-select-trigger,.smart-pill,.speech-picker,.filter-preset-trigger,.tb-menu)[aria-expanded="true"]:not(.pv-inline-top .shared-native-select-trigger),
   html body .tb-menu.open {
     background:var(--x-hover-bg) !important; color:var(--x-text) !important;
     border-color:var(--x-selected-line) !important; box-shadow:inset 0 0 0 1px var(--x-selected-ring) !important;
@@ -850,19 +850,32 @@ html body :is(
   background: var(--x-hover-bg) !important;
 }
 
-.prompt-node-llm .shared-native-select-trigger {
-  height: 36px;
-  padding: 0 12px;
-  border: 1px solid rgba(200, 200, 200, .32);
-  border-radius: 9px;
-  background: rgba(255, 255, 255, .62);
-  color: var(--text, var(--x-text));
-  font-size: 16px;
+/* 提示词节点 LLM 排：原生 select 被升级成 .shared-native-select 控件，
+   这里把它压到与旁边按钮同规格（28px / 11px / 8px 圆角），保证一排视觉一致。 */
+/* 升级脚本会把原 select 的尺寸写成行内样式（height:28px），必须 !important 才能对齐同排 */
+.prompt-node-tools .shared-native-select {
+  height: 30px !important;
+  min-width: 0;
+  max-width: 150px;
+  flex: 0 1 auto;
 }
 
-.theme-dark .prompt-node-llm .shared-native-select-trigger,
-html.studio-theme-dark .prompt-node-llm .shared-native-select-trigger {
-  border-color: rgba(200, 200, 200, .24);
+.prompt-node-tools .shared-native-select-trigger {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid rgba(200, 200, 200, .34);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .62);
+  color: var(--text, var(--x-text));
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  gap: 5px;
+}
+
+.theme-dark .prompt-node-tools .shared-native-select-trigger,
+html.studio-theme-dark .prompt-node-tools .shared-native-select-trigger {
+  border-color: rgba(200, 200, 200, .26);
   background: rgba(31, 31, 31, .42);
 }
 
@@ -968,8 +981,13 @@ html body .pv-plugin-dialog .shared-native-select-trigger:not(:disabled):is(:hov
 
 /* Inline previs top controls: neutral hover/focus stay in the shared interaction layer. */
 html body .pv-inline-top .pv-top-control:is(:hover,:focus-within){border-color:var(--x-selected-line);background:var(--x-hover-bg);color:var(--x-text)}
-html body .pv-inline-top .shared-native-select-trigger:not(:disabled):is(:hover,[aria-expanded="true"]){background:var(--x-hover-bg);color:var(--x-text)}
+/* The enclosing field owns the single edge, including keyboard focus and open state. */
+html body .pv-inline-top .pv-top-control:has(.shared-native-select-trigger[aria-expanded="true"]){border-color:var(--x-selected-line);background:var(--x-hover-bg);color:var(--x-text)}
+@layer studio-interaction {
+  html body .pv-inline-top .shared-native-select-trigger,
+  html body .pv-inline-top .shared-native-select-trigger:is(:hover,:focus-visible,[aria-expanded="true"]){border:0 !important;box-shadow:none !important;outline:none !important;background:transparent !important;color:inherit !important}
+}
 
 /* Asset authoring is one two-state button, distinct from neutral hover. */
-html body .pv-inline-panel .pv-assets-toggle[aria-pressed="true"]{background:var(--x-selected-fill);color:var(--x-selected-text);border-color:var(--x-selected-line);box-shadow:inset 0 0 0 1px var(--x-selected-ring)}
-html body .pv-inline-panel .pv-assets-toggle[aria-pressed="false"]:hover{background:var(--x-hover-bg);color:var(--x-text);border-color:var(--x-selected-line)}
+html body .pv-inline-top .pv-assets-toggle[aria-pressed="true"]{background:var(--x-selected-fill);color:var(--x-selected-text);border-color:var(--x-selected-line);box-shadow:inset 0 0 0 1px var(--x-selected-ring)}
+html body .pv-inline-top .pv-assets-toggle[aria-pressed="false"]:hover{background:var(--x-hover-bg);color:var(--x-text);border-color:var(--x-selected-line)}

@@ -29,7 +29,7 @@ async function runSmartCascade(targetNode=null){
     deps.syncSmartCascadeLegacyState(runKey);
     deps.setSmartCascadeSilentSelection(true);
     D("runBtn").disabled = true;
-    D("cascadeRunBtn").disabled = false;
+    if(D("cascadeRunBtn")) D("cascadeRunBtn").disabled = false;
     deps.pushUndo();
     const totalRounds = loop?.count || 1;
     const startIndex = Math.max(1, Number(loop?.node?.loopStart) || 1);
@@ -208,7 +208,7 @@ async function runSmartCascade(targetNode=null){
         deps.syncSmartCascadeLegacyState();
         deps.setSmartCascadeSilentSelection(false);
         D("runBtn").disabled = deps.smartCascadeAnyRunning();
-        D("cascadeRunBtn").disabled = false;
+        if(D("cascadeRunBtn")) D("cascadeRunBtn").disabled = false;
         if(directLoopTargetRun) deps.finishLoopTargetPreviewState(tail);
         deps.scheduleSave();
         deps.render();

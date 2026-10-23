@@ -147,7 +147,10 @@ body.smart-node-drag .smart-image-name-label { opacity:0 !important; pointer-eve
 .smart-image-meta-block { position:relative; }
 .smart-image-prompt-text { min-height:180px; }
 .smart-image-content-text { min-height:72px; }
-.prompt-node-card { width:100%; height:100%; min-height:0; display:flex; flex-direction:column; gap:8px; }
+.prompt-node-card { --ctrl-font:12px; --ctrl-icon:13px; --ctrl-height:30px; width:100%; height:100%; min-height:0; display:flex; flex-direction:column; gap:8px; }
+/* 运行按钮直接复用节点/ composer 的 .run-btn 样式（含 is-running 红态与脉冲），
+   在 LLM 那一排靠最右；变量已在 .prompt-node-card 上补齐，视觉与 composer 一致 */
+.prompt-node-tools .run-btn { width:auto; min-width:56px; margin-left:auto; justify-self:stretch; font-weight:800; }
 .script-smart-node .prompt-node-card { gap:0; }
 .script-smart-node .prompt-node-text { min-height:240px; font-size:13px; line-height:1.65; }
 .prompt-node-text { flex:1; min-height:288px; width:100%; resize:none; overflow:auto; white-space:pre-wrap; overflow-wrap:break-word; border:1px solid rgba(200,200,200,.32); border-radius:13px; background:rgba(255,255,255,.74); color:var(--text); outline:none; padding:20px; font-size:22.4px; line-height:2.9; box-shadow:inset 0 1px 0 rgba(255,255,255,.55); }
@@ -159,22 +162,22 @@ body.smart-node-drag .smart-image-name-label { opacity:0 !important; pointer-eve
 .prompt-node-text::-webkit-scrollbar-corner, .prompt-node-llm textarea::-webkit-scrollbar-corner { background:transparent; }
 .prompt-node-text:focus { border-color:var(--x-selected-line); background:var(--card); box-shadow:0 0 0 2px var(--x-selected-ring); }
 .prompt-node-text[readonly] { cursor:default; color:var(--muted); }
-.prompt-node-tools { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
-.prompt-node-pill { height:24px; padding:0 8px; border-radius:9px; border:1px solid rgba(200,200,200,.34); background:rgba(255,255,255,.62); color:var(--muted); display:inline-flex; align-items:center; gap:4px; font-size:10px; font-weight:650; }
+/* 提示词节点控件统一规格：同一高度、同一字号、同一 8px 方正圆角
+   （老王 2026-10-23：统一按钮高度和字体，模型选择+运行并入 LLM 那一排，整体压缩） */
+.prompt-node-tools { display:flex; align-items:center; gap:6px; flex-wrap:wrap; min-width:0; }
+.prompt-node-pill { height:30px; border-radius:8px; border:1px solid rgba(200,200,200,.34); background:rgba(255,255,255,.62); color:var(--muted); display:inline-flex; align-items:center; gap:5px; padding:0 9px; font-size:12px; font-weight:800; line-height:1; }
+.prompt-node-pill { color:var(--muted); }
 .theme-dark .prompt-node-pill { background:rgba(31,31,31,.42); border-color:rgba(200,200,200,.26); }
 .prompt-node-pill i,.prompt-node-pill svg { width:12px; height:12px; }
+select.prompt-node-pill { -webkit-appearance:none; appearance:none; max-width:150px; color:var(--text); padding:0 8px; font-size:12px; font-weight:800; cursor:pointer; }
 
-.prompt-llm-toggle { margin-block:3px; }
-.prompt-node-llm { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto; gap:8px; align-items:center; }
-.prompt-node-llm > .shared-native-select { width:100%; min-width:0; max-width:100%; box-sizing:border-box; }
-.prompt-node-llm > .prompt-node-run { grid-column:3; grid-row:1; min-width:0; flex-shrink:0; align-self:center; }
-.prompt-node-llm select, .prompt-node-llm textarea { min-width:0; border:1px solid rgba(200,200,200,.32); border-radius:9px; background:rgba(255,255,255,.62); color:var(--text); outline:none; font-size:20px; }
-.theme-dark .prompt-node-llm select, .theme-dark .prompt-node-llm textarea { background:rgba(31,31,31,.42); border-color:rgba(200,200,200,.24); }
-.prompt-node-llm select { height:36px; padding:0 12px; font-size:16px; }
-.prompt-node-llm textarea { grid-column:1 / -1; width:100%; max-width:100%; height:96px; margin:0; resize:none; overflow:auto; padding:14px; line-height:2.8; }
-.prompt-node-llm .prompt-llm-instruction { height:116px; }
-.prompt-node-llm .prompt-llm-system { height:104px; }
-.prompt-node-llm-actions { grid-column:1 / -1; display:flex; align-items:center; gap:5px; flex-wrap:wrap; min-width:0; }
+.prompt-llm-toggle { flex:0 0 auto; }
+.prompt-node-llm { display:flex; flex-direction:column; gap:6px; min-width:0; }
+.prompt-node-llm textarea { min-width:0; width:100%; max-width:100%; box-sizing:border-box; border:1px solid rgba(200,200,200,.32); border-radius:8px; background:rgba(255,255,255,.62); color:var(--text); outline:none; font-size:12px; line-height:1.55; margin:0; resize:none; overflow:auto; padding:8px 10px; }
+.theme-dark .prompt-node-llm textarea { background:rgba(31,31,31,.42); border-color:rgba(200,200,200,.24); }
+.prompt-node-llm .prompt-llm-instruction { height:72px; }
+.prompt-node-llm .prompt-llm-system { height:64px; }
+.prompt-node-llm-actions { display:flex; align-items:center; gap:6px; flex-wrap:wrap; min-width:0; }
 .previz-llm-row { position:relative; display:inline-flex; align-items:center; gap:6px; flex-wrap:nowrap; padding:0; flex:0 0 auto; min-width:0; z-index:30; }
 .previz-llm-panel { position:absolute; right:0; top:calc(100% + 8px); z-index:80; width:220px; padding:8px; display:grid; gap:7px; border:1px solid rgba(200,200,200,.34); border-radius:8px; background:#1f1f1f; box-shadow:0 14px 34px rgba(0,0,0,.34); }
 .previz-llm-panel::after { content:""; position:absolute; right:26px; bottom:100%; border:7px solid transparent; border-bottom-color:#1f1f1f; }
@@ -204,10 +207,7 @@ html:not(.theme-dark) .previz-llm-select-popover, body:not(.theme-dark) .previz-
 .previz-llm-select-popover::-webkit-scrollbar-thumb { background:var(--x-sb-thumb); border-radius:999px; border:2px solid transparent; background-clip:content-box; }
 .previz-llm-disable i,.previz-llm-disable svg { width:12px; height:12px; }
 .previz-llm-disable:hover { border-color:var(--x-selected-line); background:var(--x-hover-bg); color:var(--x-text); }
-.prompt-node-run { height:26px; padding:0 9px; border-radius:9px; background:var(--strong); color:var(--strong-text); display:inline-flex; align-items:center; justify-content:center; gap:5px; font-size:10px; font-weight:750; white-space:nowrap; }
-.prompt-node-run i,.prompt-node-run svg { width:12px; height:12px; }
-.prompt-node-run:disabled { opacity:.55; cursor:wait; }
-.prompt-node-system-toggle { flex:1 1 auto; justify-content:center; }
+.prompt-node-system-toggle { flex:0 1 auto; justify-content:center; }
 .smart-node-input-thumbs { width:100%; display:grid; grid-template-columns:repeat(5, 44px); gap:6px; align-items:start; justify-content:center; pointer-events:none; }
 .smart-node-input-thumb { position:relative; width:44px; height:44px; border-radius:10px; overflow:hidden; border:1px solid rgba(200,200,200,.34); background:rgba(255,255,255,.58); box-shadow:inset 0 1px 0 rgba(255,255,255,.48); }
 .theme-dark .smart-node-input-thumb { background:rgba(31,31,31,.42); border-color:rgba(200,200,200,.24); box-shadow:none; }
@@ -314,6 +314,58 @@ html:not(.theme-dark) .previz-llm-select-popover, body:not(.theme-dark) .previz-
 .loop-number-input { appearance:textfield; -moz-appearance:textfield; }
 .loop-smart-run i,.loop-smart-run svg { width:15px !important; height:15px !important; }
 .loop-smart-run:disabled { opacity:.45; cursor:not-allowed; }
+
+/* ===== 批量生成节点（canvas-batch-generate.js）=====
+   按钮一律 8px 方正圆角，与画布其它节点控件一致（不用大圆角）。 */
+.batch-card { width:100%; height:100%; min-height:0; display:flex; flex-direction:column; gap:8px; color:var(--text); overflow:visible; }
+.batch-prompt-list { width:100%; display:flex; flex-direction:column; gap:7px; min-width:0; }
+.batch-prompt-item { position:relative; width:100%; display:flex; align-items:flex-start; min-width:0; }
+.batch-prompt-text { flex:1 1 auto; min-width:0; min-height:52px; max-height:120px; overflow:auto; border:1px solid rgba(200,200,200,.3); border-radius:8px; background:rgba(255,255,255,.74); color:var(--text); outline:none; padding:8px 30px 8px 10px; font-size:12px; line-height:1.5; white-space:pre-wrap; word-break:break-word; cursor:text; user-select:text; transition:border-color .14s ease, box-shadow .14s ease; }
+.batch-prompt-text:hover { border-color:var(--x-selected-line); }
+.batch-prompt-text:focus { border-color:var(--x-selected-line); box-shadow:0 0 0 2px var(--x-selected-ring); }
+.batch-prompt-text:empty::before { content:attr(data-placeholder); color:var(--faint); pointer-events:none; }
+.theme-dark .batch-prompt-text { background:rgba(31,31,31,.5); border-color:rgba(200,200,200,.22); }
+.batch-prompt-del { position:absolute; right:6px; top:6px; z-index:2; width:18px; height:18px; border-radius:8px; border:0; background:rgba(0,0,0,.08); color:rgba(138,138,138,.86); display:flex; align-items:center; justify-content:center; padding:0; font-size:14px; line-height:1; font-weight:800; opacity:.72; }
+.batch-prompt-del:hover { color:var(--x-danger); background:var(--x-danger-soft); opacity:1; }
+.batch-prompt-del:disabled { opacity:.28; cursor:not-allowed; }
+.theme-dark .batch-prompt-del { background:rgba(248,250,252,.1); color:#c8c8c8; }
+/* 加号排：紧贴提示词框正下方，虚线占一整排 */
+.batch-add-row { width:100%; height:30px; border-radius:8px; border:1px dashed rgba(200,200,200,.55); background:transparent; color:var(--muted); display:flex; align-items:center; justify-content:center; gap:6px; font-size:11px; font-weight:700; transition:border-color .14s ease, color .14s ease, background .14s ease; }
+.batch-add-row i, .batch-add-row svg { width:13px !important; height:13px !important; }
+.batch-add-row:hover { border-color:var(--x-selected-line); color:var(--x-text); background:var(--x-hover-bg); }
+.theme-dark .batch-add-row { border-color:rgba(200,200,200,.3); }
+/* 说明文字：固定单排，超出省略 */
+.batch-note-row { width:100%; min-width:0; }
+.batch-note { display:block; width:100%; min-width:0; color:var(--faint); font-size:10.5px; line-height:1.4; font-weight:650; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* 底排：引擎 + 比例 + 分辨率在左，生成按钮在最右；控件同高 30px、同字号 11px */
+.batch-footer { width:100%; display:flex; align-items:center; gap:6px; min-width:0; margin-top:auto; }
+.batch-engine-control { position:relative; flex:1 1 auto; min-width:0; z-index:1; }
+.batch-spec-control { position:relative; flex:0 0 auto; z-index:1; }
+.batch-engine-control.pinned, .batch-spec-control.pinned { z-index:70; }
+.batch-engine-pill, .batch-spec-pill, .batch-run { height:30px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--text); display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:700; cursor:pointer; transition:border-color .14s ease, background .14s ease; }
+.batch-engine-pill { width:100%; min-width:0; padding:0 9px; }
+.batch-engine-pill .sub { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 auto; text-align:left; }
+.batch-spec-pill { padding:0 9px; }
+.batch-engine-pill i, .batch-engine-pill svg, .batch-spec-pill i, .batch-spec-pill svg { width:13px !important; height:13px !important; flex:0 0 auto; opacity:.7; }
+.batch-engine-pill .pill-caret, .batch-spec-pill .pill-caret { width:10px !important; height:10px !important; opacity:.5; }
+.batch-engine-pill:hover, .batch-spec-pill:hover { border-color:var(--x-selected-line); background:var(--x-hover-bg); }
+.batch-engine-float { position:fixed; z-index:120; max-height:340px; overflow:auto; padding:8px; border-radius:8px; background:var(--panel); border:1px solid var(--line); color:var(--text); box-shadow:0 16px 44px var(--shadow); backdrop-filter:blur(20px); display:none; }
+.batch-engine-float.open { display:block; }
+.batch-engine-group { margin-bottom:8px; }
+.batch-engine-group:last-child { margin-bottom:0; }
+.batch-engine-group-title { color:var(--faint); font-size:9.5px; font-weight:700; letter-spacing:.05em; margin:0 2px 5px; }
+.batch-engine-option { width:100%; min-height:28px; padding:0 9px; border-radius:8px; border:1px solid transparent; background:transparent; color:var(--muted); display:flex; align-items:center; gap:6px; font-size:11px; font-weight:650; text-align:left; cursor:pointer; }
+.batch-engine-option:hover { color:var(--x-text); background:var(--x-hover-bg); border-color:var(--x-selected-line); }
+.batch-engine-option.active { background:var(--x-selected-fill); color:var(--x-selected-text); border-color:var(--x-selected-line); }
+.batch-engine-option-name { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.batch-engine-option-check { flex:0 0 auto; font-weight:900; }
+.batch-engine-empty { color:var(--faint); font-size:10.5px; padding:6px 4px; }
+.batch-run { margin-left:auto; flex:0 0 auto; padding:0 12px; border:1px solid var(--strong); background:var(--strong); color:var(--strong-text); justify-content:center; font-weight:800; }
+.batch-run i, .batch-run svg { width:13px !important; height:13px !important; }
+.batch-run:hover:not(:disabled) { opacity:.9; }
+.batch-run.is-stop { border-color:#ef4444; background:#ef4444; color:#fff; }
+.batch-run:disabled { opacity:.45; cursor:not-allowed; }
+
 .create-menu { position:fixed; z-index:75; display:none; width:520px; max-width:calc(100vw - 28px); padding:10px; border-radius:18px; background:var(--panel); border:1px solid var(--line); box-shadow:0 22px 58px var(--shadow); backdrop-filter:blur(20px); }
 
 .create-menu-grid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:8px; }
@@ -589,11 +641,20 @@ audio { display:none !important; width:0 !important; height:0 !important; min-wi
 /* 刀口扫到的连线：先标金色，松手才真断（Blender 刀切线的红标同理） */
 .connection-layer path[data-conn-line].cut-marked { stroke:#C9A227; stroke-width:2.8; stroke-dasharray:none; animation:none; }
 .connection-layer .conn-pending { stroke-dasharray:5 4; animation:dash 1.5s linear infinite; }
-/* 运行中连线（A 彗星拖尾）：底线常亮实线，两颗光点沿管道滑行 */
+/* 运行中连线（A 彗星拖尾）：底线常亮实线，一颗光点守在管线中点呼吸 */
 .connection-layer .conn-comet-track { stroke-dasharray:none; animation:none; }
-.connection-layer .conn-comet { stroke-width:2.6; stroke-linecap:round; filter:url(#conn-comet-glow); animation:conn-comet 1.6s linear infinite; }
-.connection-layer .conn-comet-2 { stroke-width:2; animation-delay:.8s; }
-@keyframes conn-comet { from { stroke-dashoffset:180; } to { stroke-dashoffset:0; } }
+/* 2026-10-23 老王：「连线卡」根因修复。原实现两条罪：
+   ① 每线 2 颗光点且带 feGaussianBlur SVG 滤镜（#conn-comet-glow）——Chromium 的
+      SVG filter 不走 GPU，每帧整段重栅格；
+   ② 光点靠 stroke-dashoffset 动画位移——几何属性动画按路径数逐条付主线程账。
+   实测（headless Edge，豆包系列画布 8→13 个 pending、41 条运行中线）：
+   原版 48 条滤镜动画路径 ~55fps；改成 4 条/线无滤镜直接掉到 34fps（拖线时）；
+   而同样 41 条路径只动 opacity = 满帧 60fps / 最长帧 16.9ms / 零长帧。
+   ⇒ 结论：SVG 上能免费动的只有 opacity（走合成器），几何动画一律砍。
+   现方案：每线一颗光点（pathLength=180 + dasharray 22 158 + dashoffset -79 = 钉在
+   线中点），零滤镜，opacity 呼吸动画；运行中连线状态另有节点进度环/流光承担。 */
+.connection-layer .conn-comet { stroke-width:3; stroke-linecap:round; filter:none; stroke-dashoffset:-79; animation:comet-pulse 1.1s ease-in-out infinite alternate; }
+@keyframes comet-pulse { from { opacity:.22; } to { opacity:1; } }
 .connection-layer .conn-cascade { filter:none; }
 .connection-layer .conn-cascade-wait { stroke-dasharray:7 6; opacity:.58; }
 .connection-layer .conn-cascade-active { stroke-dasharray:7 6; animation:dash .85s linear infinite; opacity:1; }
@@ -1657,11 +1718,18 @@ html.studio-theme-dark .canvas-add-toggle:hover .canvas-dock-icon {
 .canvas-agent-mention span { font-size:12px; font-weight:900; white-space:nowrap; }
 .canvas-agent-mention small { min-width:0; color:var(--muted); font-size:11px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .canvas-agent-mention-empty { padding:10px; color:var(--muted); font-size:12px; font-weight:750; }
-.log-modal { position:absolute; inset:0; z-index:86; display:none; align-items:center; justify-content:center; padding:28px; background:rgba(248,250,252,.42); backdrop-filter:blur(18px); cursor:default; }
+/* 2026-10-23 老王：日志窗口「显示不全/偶尔复发」根因——它 z-index 只有 86，而画布常驻 UI 全在它头上：
+   左侧 dock(.canvas-tool-dock 120)、底部工具条(.canvas-bottom-cluster 120)、小地图(.smart-minimap 130)、
+   左上返回(.smart-back 120)、悬浮预览(150)。日志面板居中于整个画布视口，内容少时矮、刚好避开，
+   内容多/窗口小时撑到 86vh，上下左右就撞上这些高层 UI 被压掉一块（顶部标题栏与第一条日志卡被裁，
+   症状随日志条数与窗口高度时隐时现）。日志是模态层，应与图片编辑同级（4000），压住一切画布 UI。 */
+.log-modal { position:absolute; inset:0; z-index:4000; display:none; align-items:center; justify-content:center; padding:28px; background:rgba(248,250,252,.42); backdrop-filter:blur(18px); cursor:default; }
 .theme-dark .log-modal { background:rgba(0,0,0,.54); }
 
-.log-panel { width:min(860px, 94vw); max-height:86vh; display:flex; flex-direction:column; border-radius:22px; background:var(--card); border:1px solid var(--line); box-shadow:0 30px 90px rgba(31,31,31,.22); overflow:hidden; }
-.log-head { height:58px; padding:0 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); }
+/* 高度改为相对 modal 内容盒（= 视口 - 28px*2），不再用 vh 猜：视口多矮都不溢出。 */
+.log-panel { width:min(860px, 94vw); max-height:100%; min-height:0; display:flex; flex-direction:column; border-radius:22px; background:var(--card); border:1px solid var(--line); box-shadow:0 30px 90px rgba(31,31,31,.22); overflow:hidden; }
+/* 标题栏不参与 flex 收缩：日志一多它会被压到 min-content（实测 58→35），看着就像"头部丢了"。 */
+.log-head { flex:0 0 58px; height:58px; padding:0 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); }
 .log-title { font-size:14px; font-weight:900; color:var(--text); }
 .shortcut-modal { position:absolute; inset:0; z-index:86; display:none; align-items:center; justify-content:center; padding:28px; background:rgba(248,250,252,.18); backdrop-filter:blur(8px); cursor:default; }
 .theme-dark .shortcut-modal { background:rgba(0,0,0,.32); }

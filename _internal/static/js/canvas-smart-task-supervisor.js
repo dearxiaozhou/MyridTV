@@ -546,6 +546,108 @@ async function recoverCompletedEmptySmartNodes(){
     }
 }
 
+    // 2026-10-23 老王（真因）：页面刷新/切画布会掐断前端那条轮询连接，节点可能停在
+// apiRunning / pending 却没有 pendingTasks（提交还没落盘就被刷新）。这时
+// resumeSmartPendingTasks 与 recoverCompletedEmptySmartNodes 都找不到它 —— 节点
+// 永远「生成中」、拿不到结果、也没法重跑，还不报错。
+// 载入时按 node_id 去后端任务表收尾：云端在跑就接回轮询，终端态就回填，查不到就解除占用。
+function clearInflightFlags(node){
+    if(!node) return;
+    node.apiRunning = false;
+    node.running = false;
+    node.pending = 0;
+    if(['running','queued','preparing'].includes(node.generationState)) delete node.generationState;
+    if(node.comfyStatus === 'running'){
+        delete node.comfyStatus;
+        node.comfyIndeterminate = false;
+        node.comfyProgress = 0;
+    }
+    if(deps.clearNodeRunningState) deps.clearNodeRunningState(node);
+}
+function releaseInflightNode(node){
+    if(!node) return;
+    clearInflightFlags(node);
+    delete node.pendingTasks;
+}
+async function reconcileInflightNodesWithTaskStore(){
+    const canvasId = String(D("canvasId") || '');
+    if(!canvasId) return;
+    const list = (D("nodes") || []).filter(node => node && !node._reconcilingInflight
+        && !smartPendingTasks(node).length
+        && (node.apiRunning || node.running || Number(node.pending) > 0
+            || ['running','queued','preparing'].includes(node.generationState)
+            || node.comfyStatus === 'running'));
+    if(!list.length) return;
+    let tasks = [];
+    try{
+        const res = await fetch(`${D("proxyBase")}/api/task-console?v=${Date.now()}`, {cache:'no-store'});
+        if(!res.ok) return;
+        const data = await res.json();
+        tasks = (Array.isArray(data.tasks) ? data.tasks : []).filter(t => String(t.canvas_id || '') === canvasId);
+    }catch(_){ return; }
+    if(!tasks.length) return;
+    const latestByNode = new Map();
+    tasks.forEach(t => {
+        const nid = String(t.node_id || '').trim();
+        if(!nid) return;
+        const prev = latestByNode.get(nid);
+        if(!prev || (Number(t.created_at) || 0) >= (Number(prev.created_at) || 0)) latestByNode.set(nid, t);
+    });
+    const kindForTask = (task, firstUrl) => {
+        if(String(task?.workflow_media || '').toLowerCase() === 'video' || /video/i.test(String(task?.kind || ''))) return 'video';
+        const u = String(firstUrl || '');
+        if(/\.(mp4|webm|mov)(\?|$)/i.test(u)) return 'video';
+        if(/\.(mp3|wav|m4a|aac)(\?|$)/i.test(u)) return 'audio';
+        return 'image';
+    };
+    let changed = false;
+    for(const node of list){
+        const task = latestByNode.get(String(node.id));
+        node._reconcilingInflight = true;
+        try{
+            const status = String(task?.status || '');
+            if(task && ['running','pending','recovering','submitted','queued'].includes(status)){
+                // 云端还在跑（后端常驻对账也在收）—— 接回正常轮询，别让它悬着
+                node.pendingTasks = [{taskId: task.task_id, kind: kindForTask(task)}];
+                node.pending = 1;
+                node.apiRunning = true;
+                deps.syncRunButtonAvailability(node);
+                resumeSmartPendingNode(node).catch(() => {});
+                continue;
+            }
+            if(task && status === 'succeeded'){
+                const result = await pollSmartCanvasTask(task.task_id).catch(() => null);
+                const media = result?.images || result?.videos || deps.resultMediaUrls(result);
+                if(Array.isArray(media) && media.length){
+                    const kind = result?.videos ? 'video' : kindForTask(task, (media[0] && media[0].url) || media[0]);
+                    await finalizeSmartPendingTask(node, task.task_id, media, kind);
+                    // 回填后必须把残留的「生成中」清掉，否则节点一直显示在跑、也不能重跑
+                    clearInflightFlags(node);
+                    deps.syncRunButtonAvailability(node);
+                    changed = true;
+                    continue;
+                }
+            }
+            if(task && ['failed','cancelled'].includes(status)){
+                releaseInflightNode(node);
+                node.runError = String(task.error || '任务失败').slice(0, 160);
+                changed = true;
+                continue;
+            }
+            // 任务表里没有对应任务（或已完成但没产物）：解除占用，让节点能重跑
+            releaseInflightNode(node);
+            changed = true;
+        }catch(_){
+        }finally{
+            delete node._reconcilingInflight;
+        }
+    }
+    if(changed){
+        deps.render();
+        deps.scheduleSave();
+    }
+}
+
     global.CanvasSmartTaskSupervisor = {
         configure,
         JimengPendingSignal,
@@ -576,5 +678,6 @@ async function recoverCompletedEmptySmartNodes(){
         recoverStuckComfyNodes,
         resumeSmartPendingTasks,
         recoverCompletedEmptySmartNodes,
+        reconcileInflightNodesWithTaskStore,
     };
 })(typeof window !== 'undefined' ? window : this);
