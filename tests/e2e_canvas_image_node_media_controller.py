@@ -56,13 +56,17 @@ with sync_playwright() as pw:
         isImageNode:node=>node?.type==='image',viewportCenter:()=>({x:50,y:60}),
         createGroupFromImages:undefined,
         createEmptyNodeAt:point=>{const node={id:'created-'+(state.created.length+1),type:'image',x:point.x,y:point.y,images:[],scale:2};state.created.push({point:{...point},node});state.nodes.push(node);return node;},
+        // 2026-10-19「一个节点只装一张图」：一次追加多张时，第 2 张起各自建独立节点，走 createNodeWithImage
+        createNodeWithImage:(point)=>{const node={id:'spawned-'+(state.nodes.filter(n=>String(n.id).startsWith('spawned-')).length+1),type:'image',x:point.x,y:point.y,images:[],scale:2};state.nodes.push(node);return node;},
         isFile:value=>value instanceof File,mediaKindForFile:file=>file.type.startsWith('video/')?'video':'image',
         mediaKindForItem:item=>item.kind||'image',defaultImageNodeScale:2,defaultGroupNodeScale:0.8,previousGroupNodeScale:1.6,
         setSelectedId:value=>{state.selectedId=value;},render:()=>state.renders++,scheduleSave:()=>state.saves++
       });
       const api=CanvasImageNodeMediaController;
-      const groupResult=api.appendImages([{url:'/after.png',name:'after.png'}],'target');
-      const group={id:groupResult.id,count:groupResult.images.length,title:groupResult.title,scale:groupResult.scale,hasSize:'w'in groupResult||'h'in groupResult};
+      // target 已有 1 张图：新加的图不再叠加到它身上，而是另建独立节点，原节点原样不动
+      const appendResult=api.appendImages([{url:'/after.png',name:'after.png'}],'target');
+      const appended={id:appendResult.id,count:appendResult.images.length,title:appendResult.title,scale:appendResult.scale,
+        hasSize:'w'in appendResult||'h'in appendResult,targetCount:target.images.length};
       canvasGroup.scale=2;
       api.appendImages([{url:'/c.png',kind:'image'}],'group');
       const existingGroupScale=canvasGroup.scale;
@@ -70,19 +74,27 @@ with sync_playwright() as pw:
       const singleState={title:singleResult.title,count:singleResult.images.length,hasSize:'w'in singleResult||'h'in singleResult};
       const selectedBefore=state.selectedId;
       const newNode=api.appendImages([{url:'/new-a.png'},{url:'/new-b.png'}],'', {point:{x:120,y:240},forceNew:true});
-      const created={id:newNode.id,point:state.created[0]?.point,count:newNode.images.length,title:newNode.title,scale:newNode.scale,selectedId:state.selectedId};
+      const lastCreated=state.created[state.created.length-1];
+      const spawned=state.nodes.filter(node=>String(node.id).startsWith('spawned-'));
+      const created={id:newNode.id,point:lastCreated?.point,count:newNode.images.length,title:newNode.title,scale:newNode.scale,
+        selectedId:state.selectedId,spawnedCount:spawned.length,spawnedImages:spawned[0]?(spawned[0].images||[]).length:0};
       const rendersBefore=state.renders,savesBefore=state.saves;
       const empty=api.appendImages([{name:'missing-url'}]);
       return {module:typeof api==='object',titles:{images:api.uploadTitleForItems([{kind:'image'},{kind:'image'}]),mixed:api.uploadTitleForItems([{kind:'image'},{kind:'video'}]),audio:api.uploadTitleForItems([{kind:'audio'}])},
-        group,existingGroupScale,singleState,created,selectedBefore,emptySkipped:empty===null&&state.renders===rendersBefore&&state.saves===savesBefore,
+        appended,existingGroupScale,singleState,created,selectedBefore,emptySkipped:empty===null&&state.renders===rendersBefore&&state.saves===savesBefore,
         state:{selectedId:state.selectedId,renders:state.renders,saves:state.saves}};
     }""")
 
     check("图片节点媒体控制器加载并提供组标题归类", result["module"] and result["titles"] == {"images": "Images", "mixed": "Media", "audio": "Audio"}, result["titles"])
-    check("给指定节点追加图片后转为组图并按默认规则放大", result["group"] == {"id": "target", "count": 2, "title": "Images", "scale": 0.8, "hasSize": False}, result["group"])
+    check("给已有素材的节点追加图片时另建独立节点、原节点不动（一个节点只装一张图）",
+          result["appended"] == {"id": "created-1", "count": 1, "title": "after", "scale": 2, "hasSize": False, "targetCount": 1},
+          result["appended"])
     check("已存在组图保持用户当前缩放", result["existingGroupScale"] == 2, result["existingGroupScale"])
     check("单张图片保持单图标题并清除旧尺寸缓存", result["singleState"] == {"title": "Image", "count": 1, "hasSize": False}, result["singleState"])
-    check("强制新建组图沿用指定画布坐标并更新选中项", result["created"] == {"id": "created-1", "point": {"x": 120, "y": 240}, "count": 2, "title": "Images", "scale": 0.8, "selectedId": "created-1"}, result["created"])
+    check("强制新建时沿用指定画布坐标，多出的图各自建独立节点",
+          result["created"] == {"id": "created-3", "point": {"x": 120, "y": 240}, "count": 1, "title": "Image", "scale": 2,
+                                "selectedId": "created-3", "spawnedCount": 1, "spawnedImages": 1},
+          result["created"])
     check("空图片列表不渲染也不保存", result["emptySkipped"] and result["state"]["renders"] == 4 and result["state"]["saves"] == 4, result["state"])
     check("媒体节点更新无脚本异常或真实写请求", not errors and not blocked_writes, {"errors": errors[:3], "blockedWrites": blocked_writes})
     browser.close()

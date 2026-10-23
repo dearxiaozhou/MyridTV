@@ -72,7 +72,13 @@
         const entry=document.createElement('div');entry.className='pv-plugin-entry';
         const endpoint=context.settings.previzOutput==='endpoints';
         entry.innerHTML=`<select aria-label="预演方式"><option value="endpoints" ${endpoint?'selected':''}>离线起落幅</option><option value="animation" ${!endpoint?'selected':''}>连续动画</option></select><button type="button" class="smart-pill" data-pv-config>起落幅设置</button>`;
-        head.insertBefore(entry,document.getElementById('runBtn'));
+        head.appendChild(entry);
+        // 2026-10-23 老王：宿主 canvas-previz-controls 在调用 mount 之前，已经把 #runBtn
+        // 挪进 .composer-actions。原来写死 `head.insertBefore(entry, runBtn)` 会因为
+        // runBtn 不是 head 的子节点而抛 NotFoundError —— 预演入口直接出不来。
+        // 只有运行键确实还在头部时才插到它前面，否则直接追加到头部末尾。
+        const runBtn=document.getElementById('runBtn');
+        if(runBtn && runBtn.parentElement===head) head.insertBefore(entry, runBtn);
         entry.querySelector('select').onchange=async e=>{
             try{
                 const patch={previzOutput:e.target.value};
@@ -93,5 +99,13 @@
         if(!settings.previzOfflineSpec)settings.previzOfflineSpec=clone((await metadata()).default_spec);
         return settings.previzOfflineSpec;
     }
-    global.CanvasOfflinePrevis={mount,open,ensureSpec};
+    // 2026-10-23 老王：宿主（canvas-previz-controls）在切回普通引擎时会调
+    // CanvasOfflinePrevis.unmount() 清理。此前本文件只导出 {mount,open,ensureSpec}，
+    // unmount 缺失 → 宿主那行 `CanvasOfflinePrevis?.unmount()` 抛 TypeError，预演控件也留在页面上。
+    function unmount(){
+        document.querySelectorAll('.pv-plugin-entry').forEach(el=>el.remove());
+        document.querySelectorAll('.pv-plugin-overlay').forEach(el=>el.remove());
+        document.querySelectorAll('.pv-inline-composer').forEach(el=>el.classList.remove('pv-inline-composer'));
+    }
+    global.CanvasOfflinePrevis={mount,open,ensureSpec,unmount};
 })(window);

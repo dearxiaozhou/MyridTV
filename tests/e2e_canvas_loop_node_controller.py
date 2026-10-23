@@ -1,13 +1,17 @@
 # -*- coding: utf-8 -*-
-"""Browser regression for loop-node controls and prompt editing."""
+"""Browser regression for the batch-generate node (type smart-loop) controls.
+
+2026-10-23：原「循环节点」已并入「批量生成」节点（CanvasBatchGenerate）。
+旧的 mode/count 字段与 `[data-loop-mode]/.loop-number-control` 控件已不存在，
+本用例按新结构（`[data-batch-*]`）重写。
+"""
 import json
+import os
 import sys
 import urllib.request
 
 from playwright.sync_api import sync_playwright
 
-
-import os
 
 BASE = os.environ.get("MYRIDTV_TEST_BASE", "http://127.0.0.1:3217")
 VERSION = json.loads(urllib.request.urlopen(BASE + "/health", timeout=10).read())["version"]
@@ -39,52 +43,77 @@ with sync_playwright() as pw:
     }""")
 
     created = page.evaluate("""() => {
-      const node=createLoopNode(320,260);
-      return {module:typeof CanvasLoopNodeController==='object',id:node.id,mode:node.mode,count:node.count};
+      const node = createLoopNode(320,260);
+      const card = document.querySelector('.image-node[data-id="'+node.id+'"]');
+      return {
+        module: typeof CanvasBatchGenerate === 'object',
+        id: node.id, type: node.type, title: node.title, prompts: (node.prompts||[]).slice(),
+        hasCard: !!card,
+        hasRun: !!card?.querySelector('[data-batch-run]'),
+        hasAdd: !!card?.querySelector('[data-batch-prompt-add]'),
+        promptRows: card ? card.querySelectorAll('[data-batch-prompt]').length : 0,
+        hasEngine: !!card?.querySelector('[data-batch-engine-toggle]'),
+        hasRatio: !!card?.querySelector('[data-batch-spec-toggle="ratio"]'),
+        hasResolution: !!card?.querySelector('[data-batch-spec-toggle="resolution"]'),
+        outputCount: CanvasBatchGenerate.outputCount(node)
+      };
     }""")
-    check("循环节点控件模块加载并渲染新节点", created["module"] and created["id"] and created["count"] == 1, created)
+    check("批量生成节点控件模块加载并渲染（提示词/规格/引擎/运行）",
+          created["module"] and created["type"] == "smart-loop" and created["title"] == "批量生成"
+          and created["prompts"] == [""] and created["hasCard"] and created["hasRun"] and created["hasAdd"]
+          and created["promptRows"] == 1 and created["hasEngine"] and created["hasRatio"]
+          and created["hasResolution"] and created["outputCount"] == 0,
+          created)
     card = f'.image-node[data-id="{created["id"]}"]'
 
-    page.locator(card + ' [data-loop-mode="parallel"]').click()
-    mode = page.evaluate("""id => nodes.find(node=>node.id===id)?.mode""", created["id"])
-    check("运行模式选择写回并重新渲染", mode == "parallel", mode)
+    page.locator(card + " [data-batch-prompt-add]").click()
+    added = page.evaluate("""id => ({
+        prompts: (nodes.find(n => n.id === id)?.prompts || []).length,
+        rows: document.querySelectorAll(`[data-id="${id}"] [data-batch-prompt]`).length
+    })""", created["id"])
+    check("可增加一段提示词", added["prompts"] == 2 and added["rows"] == 2, added)
 
-    page.locator(card + ' [data-loop-toggle="prompt"]').click()
-    first_prompt = page.evaluate("""id => {
-      const node=nodes.find(item=>item.id===id);
-      return {shown:node.showPrompt,values:node.variablePrompts};
-    }""", created["id"])
-    check("开启提示词时生成默认提示词字段", first_prompt["shown"] and len(first_prompt["values"]) == 1 and "《计数》" in first_prompt["values"][0], first_prompt)
+    page.locator(card + ' [data-batch-prompt="0"]').fill("镜头一：清晨")
+    page.locator(card + ' [data-batch-prompt="1"]').click()
+    page.wait_for_timeout(200)
+    typed = page.evaluate("""id => ((nodes.find(n => n.id === id)?.prompts) || [])[0] || ''""", created["id"])
+    check("编辑提示词写回节点数据", "清晨" in (typed or ""), typed)
 
-    page.locator(card + " [data-loop-prompt-add]").click()
-    prompt_count = page.locator(card + " [data-loop-prompt-index]").count()
-    check("提示词字段可新增", prompt_count == 2, prompt_count)
+    page.locator(card + ' [data-batch-prompt-del="1"]').click()
+    after_del = page.evaluate("""id => ({
+        prompts: (nodes.find(n => n.id === id)?.prompts || []).length,
+        rows: document.querySelectorAll(`[data-id="${id}"] [data-batch-prompt]`).length,
+        delDisabled: !!document.querySelector(`[data-id="${id}"] [data-batch-prompt-del]`)?.disabled
+    })""", created["id"])
+    check("删除提示词后至少保留一段且删除键置灰",
+          after_del["prompts"] == 1 and after_del["rows"] == 1 and after_del["delDisabled"], after_del)
 
-    page.locator(card + " [data-loop-prompt-index='0']").fill("镜头")
-    page.locator(card + " [data-loop-token='《计数》']").click()
-    token_value = page.evaluate("""id => nodes.find(item=>item.id===id)?.variablePrompts?.[0]||''""", created["id"])
-    check("计数占位符按钮插入内容并同步节点数据", "镜头" in token_value and "《计数》" in token_value, token_value)
+    page.locator(card + ' [data-batch-spec-toggle="ratio"]').click()
+    page.wait_for_timeout(300)
+    ratio_opts = page.locator("[data-batch-spec-item]").count()
+    first_val = page.locator("[data-batch-spec-item]").first.get_attribute("data-batch-spec-item") if ratio_opts else None
+    if ratio_opts:
+        page.locator("[data-batch-spec-item]").first.click()
+        page.wait_for_timeout(300)
+    ratio_after = page.evaluate("""id => ({
+        ratio: (nodes.find(n => n.id === id)?.runSettings || {}).ratio,
+        pickerOpen: document.querySelectorAll('.batch-engine-float.open').length
+    })""", created["id"])
+    check("规格弹层可展开选择并回写运行设置",
+          ratio_opts > 1 and ratio_after["ratio"] == first_val and ratio_after["pickerOpen"] == 0,
+          {"options": ratio_opts, "picked": first_val, **ratio_after})
 
-    page.locator(card + " [data-loop-prompt-delete='1']").click()
-    prompt_count = page.locator(card + " [data-loop-prompt-index]").count()
-    check("提示词字段可删除且至少保留一项", prompt_count == 1, prompt_count)
+    page.locator(card + " [data-batch-engine-toggle]").click()
+    page.wait_for_timeout(300)
+    engine_opts = page.locator("[data-batch-engine-item]").count()
+    if engine_opts:
+        page.locator("[data-batch-engine-item]").first.click()
+        page.wait_for_timeout(300)
+    engine_after = page.evaluate("""() => ({pickerOpen: document.querySelectorAll('.batch-engine-float.open').length})""")
+    check("引擎弹层可展开并可选后关闭", engine_opts > 0 and engine_after["pickerOpen"] == 0,
+          {"options": engine_opts, **engine_after})
 
-    page.locator(card + " .loop-smart-footer .loop-number-control").nth(1).locator(".loop-number-trigger").click()
-    page.locator(card + ' [data-loop-number="count"][data-loop-value="3"]').click()
-    count_value = page.evaluate("""id => nodes.find(item=>item.id===id)?.count""", created["id"])
-    check("快捷数量选择更新循环次数", count_value == 3, count_value)
-
-    page.locator(card + " .loop-smart-footer .loop-number-control").nth(1).locator(".loop-number-trigger").click()
-    custom_count = page.locator(card + ' input[data-loop-number-input="count"]')
-    custom_count.fill("999")
-    custom_count.press("Tab")
-    clamped = page.evaluate("""id => ({count:nodes.find(item=>item.id===id)?.count,input:document.querySelector(`[data-id="${id}"] input[data-loop-number-input="count"]`)?.value})""", created["id"])
-    check("自定义循环次数遵守上限", clamped["count"] == 100 and clamped["input"] == "100", clamped)
-
-    page.locator(card + ' [data-loop-toggle="image"]').click()
-    image_enabled = page.evaluate("""id => nodes.find(item=>item.id===id)?.imageInput""", created["id"])
-    check("图片输入开关同步循环节点状态", image_enabled is True, image_enabled)
-    check("循环控件交互无页面脚本异常", not errors, errors[:3])
+    check("批量生成控件交互无页面脚本异常", not errors, errors[:3])
     browser.close()
 
 print(f"\nRESULT: {sum(results)}/{len(results)}")

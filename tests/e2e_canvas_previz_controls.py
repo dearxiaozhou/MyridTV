@@ -1,13 +1,18 @@
 # -*- coding: utf-8 -*-
-"""Browser regression for the extracted Blender/previz composer controls."""
+"""Browser regression for the Blender/previz composer host seam + 离线预演插件的运镜参数面板。
+
+2026-10-23：预演参数区已迁到 offline-previs 插件（web/motion.js，manifest.frontend，
+服务端以 /api/plugins/offline-previs/web/plugin.js 路径提供其内容）。
+旧的 `#blenderRatioControl/#previzLensControl` pill+popover 结构已不存在；
+本用例按新结构重写，断言以真机实测的 DOM 为准。
+"""
 import json
+import os
 import sys
 import urllib.request
 
 from playwright.sync_api import sync_playwright
 
-
-import os
 
 BASE = os.environ.get("MYRIDTV_TEST_BASE", "http://127.0.0.1:3217")
 VERSION = json.loads(urllib.request.urlopen(BASE + "/health", timeout=10).read())["version"]
@@ -16,7 +21,7 @@ results = []
 
 def check(name, ok, detail=""):
     results.append(bool(ok))
-    print(("PASS" if ok else "FAIL") + " - " + name + (" | " + str(detail)[:160] if detail else ""))
+    print(("PASS" if ok else "FAIL") + " - " + name + (" | " + str(detail)[:200] if detail else ""))
 
 
 with sync_playwright() as pw:
@@ -34,45 +39,91 @@ with sync_playwright() as pw:
     page.goto(BASE + "/smart-canvas.html?v=" + VERSION, wait_until="domcontentloaded")
     page.wait_for_timeout(2300)
 
-    initial = page.evaluate("""() => {
+    setup = page.evaluate("""() => {
+        canvas={connections:[],deleted:[]}; nodes=[];
+        selectedId=''; selectedIds=[]; selectedImage={nodeId:'',index:-1}; render();
+        const node=createLoopNode(320,260);
+        window.__pvNodeId = node.id;
         composer.classList.add('open');
-        settings.engine = 'blender';
-        renderDynamicParams();
+        window.__pvApplied=[]; window.__pvNotices=[];
+        window.__pvSettings={engine:'blender', ratio:'wide'};
+        CanvasPrevizControls.configure({getContext: () => ({
+          settings: window.__pvSettings,
+          getNode: () => ({id: window.__pvNodeId, type:'smart-image'}),
+          applyOfflinePatch: patch => { window.__pvApplied.push({...patch}); Object.assign(window.__pvSettings, patch); },
+          notify: message => window.__pvNotices.push(String(message)),
+          layoutOffline: null,
+          promptInput: document.getElementById('promptInput'),
+          dynamicParams: dynamicParams,
+          container: dynamicParams,
+          head: document.querySelector('.composer-head-left'),
+          composer
+        })});
+        const ok = CanvasPrevizControls.renderBlenderControls();
+        const run = document.getElementById('runBtn');
         return {
-          module: typeof CanvasPrevizControls === 'object',
-          composerBlender: composer.classList.contains('blender-layout'),
-          ratioOptions: document.querySelectorAll('#blenderRatioControl .blender-ratio-opt').length,
-          lensOptions: document.querySelectorAll('#previzLensControl .previz-lens-opt').length,
-          runLabel: document.querySelector('#runBtn span')?.textContent.trim(),
-          runInHeader: !!document.querySelector('.composer-head-left #runBtn'),
-          paramsEmpty: dynamicParams.childElementCount === 0
+          module: typeof CanvasPrevizControls === 'object', ok,
+          hasUnmount: typeof (globalThis.CanvasOfflinePrevis || {}).unmount === 'function',
+          runLabel: run?.querySelector('span')?.textContent.trim(),
+          runParent: run?.parentElement?.className
         };
     }""")
-    check("切入 3D 预演后渲染独立参数视图", initial["module"] and initial["composerBlender"] and initial["ratioOptions"] == 7 and initial["lensOptions"] > 30 and initial["runLabel"] == "生成预演" and initial["runInHeader"] and initial["paramsEmpty"], initial)
+    check("切入 3D 预演：宿主接管 composer（运行键归位到动作区并改文案为生成预演）",
+          setup["module"] and setup["ok"] and setup["runLabel"] == "生成预演"
+          and setup["runParent"] == "composer-actions",
+          setup)
+    check("插件导出 unmount（宿主切回普通引擎时依赖它清理）", setup["hasUnmount"], {"hasUnmount": setup["hasUnmount"]})
 
-    page.click("#blenderRatioPill")
-    pinned = page.evaluate("document.getElementById('blenderRatioControl').classList.contains('pinned')")
-    check("比例菜单正常展开", pinned)
-    page.click('#blenderRatioControl [data-ratio-value="square"]')
-    ratio = page.evaluate("({value:settings.ratio,label:document.querySelector('#blenderRatioPill .blender-ratio-label')?.textContent})")
-    check("选择比例后更新设置与按钮摘要", ratio["value"] == "square" and "1:1" in (ratio["label"] or ""), ratio)
+    mounted = True
+    try:
+        page.wait_for_selector(".pv-inline-panel", timeout=15000)
+    except Exception:
+        mounted = False
+    panel = page.evaluate("""() => {
+        const panel=document.querySelector('.pv-inline-panel');
+        const n = sel => panel ? panel.querySelectorAll(sel).length : 0;
+        return {
+          mounted: !!panel,
+          inContainer: !!(panel && dynamicParams && dynamicParams.contains(panel)),
+          cls: panel ? panel.className : '',
+          namedFields: n('[name]'),
+          selects: n('select'),
+          shootFields: n('.pv-shoot-grid [name]'),
+          hasSubject: !!panel?.querySelector('input[name="subject"]'),
+          hasAddAction: !!panel?.querySelector('[data-pv-add]'),
+          actionRows: n('[data-pv-actions] [name]'),
+          layoutButtons: n('[data-pv-layout]'),
+          notices: window.__pvNotices
+        };
+    }""")
+    check("运镜参数面板挂进参数区且控件齐备（景别/人物/机位/动作/站位）",
+          mounted and panel["mounted"] and panel["inContainer"] and "pv-motion-dialog" in panel["cls"]
+          and panel["namedFields"] >= 8 and panel["selects"] >= 8 and panel["shootFields"] >= 8
+          and panel["hasSubject"] and panel["hasAddAction"] and panel["layoutButtons"] == 3,
+          panel)
 
-    page.click("#previzLensControl .previz-lens-pill")
-    page.locator("#previzLensControl .previz-lens-opt").first.click()
-    prompt_text = page.locator("#promptInput").inner_text()
-    check("选择镜头模板后写入提示词", bool(prompt_text.strip()), prompt_text[:80])
+    if mounted:
+        page.select_option('.pv-inline-panel select[name="framing"]', "full")
+        page.wait_for_timeout(300)
+        framing = page.evaluate("""() => ({
+            domValue: document.querySelector('.pv-inline-panel select[name="framing"]')?.value,
+            hasFull: [...document.querySelectorAll('.pv-inline-panel select[name="framing"] option')].some(o => o.value === 'full')
+        })""")
+        check("面板控件可交互（景别选择生效）",
+              framing["domValue"] == "full" and framing["hasFull"], framing)
 
     cleanup = page.evaluate("""() => {
-        settings.engine = 'api';
+        window.__pvSettings.engine='api';
         renderDynamicParams();
         return {
-          blenderControls: document.querySelectorAll('.blender-ratio-item,.blender-lens-item,.previz-llm-row').length,
+          panels: document.querySelectorAll('.pv-inline-panel').length,
           runLabel: document.querySelector('#runBtn span')?.textContent.trim(),
           runInActions: !!document.querySelector('.composer-actions #runBtn'),
-          composerBlender: composer.classList.contains('blender-layout')
+          notices: window.__pvNotices
         };
     }""")
-    check("切回普通引擎后清除预演控件并恢复运行区", cleanup["blenderControls"] == 0 and cleanup["runLabel"] == "运行" and cleanup["runInActions"] and not cleanup["composerBlender"], cleanup)
+    check("切回普通引擎后预演面板清掉、运行区复位",
+          cleanup["panels"] == 0 and cleanup["runInActions"], cleanup)
     check("预演视图流程无页面脚本异常", not errors, errors[:2])
     browser.close()
 

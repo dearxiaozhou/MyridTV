@@ -390,10 +390,15 @@ async function finalizeSmartPendingTask(node, taskId, images, kind='image', expe
             additions = [additions[additions.length - 1]];
             if(deps.spawnImageNodesForExtras) deps.spawnImageNodesForExtras(node, extras, {});
         }
-        if(existing.length && deps.moveOutputImagesToHistoryForRun){
-            try { Promise.resolve(deps.moveOutputImagesToHistoryForRun(existing, {})).catch(() => {}); } catch(_){}
+        // 2026-10-23 老王：重复/并发回执（同一 taskId、或同一张图已在节点上）时 additions 为空，
+        // 此时**绝不能**动节点上的图和历史 —— 否则 1 张会被清成 0 张
+        // （回归实测：并发两次 finalizeSmartPendingTask 后 images 变 0）。
+        if(additions.length){
+            if(existing.length && deps.moveOutputImagesToHistoryForRun){
+                try { Promise.resolve(deps.moveOutputImagesToHistoryForRun(existing, {})).catch(() => {}); } catch(_){}
+            }
+            node.images = additions;
         }
-        node.images = additions;
     } else {
         node.images = [...existing, ...additions];
     }
