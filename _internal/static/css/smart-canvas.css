@@ -364,6 +364,26 @@ html:not(.theme-dark) .previz-llm-select-popover, body:not(.theme-dark) .previz-
 .batch-run i, .batch-run svg { width:13px !important; height:13px !important; }
 .batch-run:hover:not(:disabled) { opacity:.9; }
 .batch-run.is-stop { border-color:#ef4444; background:#ef4444; color:#fff; }
+
+/* ===== 批量生成节点作为 composer 主体时（老王 2026-10-24）=====
+   提示词在批量节点卡片里（多段），composer 只负责引擎与工作流参数；
+   所以藏掉提示词区与输入缩略图行，保留参数排与运行钮（运行钮 = 批量生成）。 */
+.composer.batch-subject .prompt-row,
+.composer.batch-subject #inputThumbsRow,
+.composer.batch-subject #inputPromptPreview { display: none !important; }
+.composer.batch-subject .composer-head-left::after {
+  content: '批量生成 · 参数对整批生效';
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* 批量执行中：按钮置灰但保持主色，图标转圈 + 主色脉冲（与节点运行钮的 is-running 语义一致） */
+.batch-run.is-running, .batch-run.is-running:disabled { opacity:1; cursor:progress; border-color:var(--strong); background:var(--strong); color:var(--strong-text); animation:batch-run-pulse 1.4s ease-in-out infinite; }
+.batch-run.is-running i, .batch-run.is-running svg { animation:batch-run-spin 1s linear infinite; }
+@keyframes batch-run-spin { to { transform:rotate(360deg); } }
+@keyframes batch-run-pulse { 0%,100% { box-shadow:0 0 0 0 rgba(126,214,189,.38); } 50% { box-shadow:0 0 0 5px rgba(126,214,189,0); } }
 .batch-run:disabled { opacity:.45; cursor:not-allowed; }
 
 .create-menu { position:fixed; z-index:75; display:none; width:520px; max-width:calc(100vw - 28px); padding:10px; border-radius:18px; background:var(--panel); border:1px solid var(--line); box-shadow:0 22px 58px var(--shadow); backdrop-filter:blur(20px); }
@@ -4276,59 +4296,61 @@ body.canvas-mode-objects .node-port { display:none !important; }
      · 弹层内参数改成「名称占剩余宽度 + 值列固定 68px」，名称优先（基线里 .num-label
        被 max-width:60px 压着，长名会变成「百…」——在弹层里放开）。
    注意：.rh-params-control 是 .smart-popover 的祖先，绝不能加 overflow:hidden。 */
-.rh-single-row .rh-params-control { flex:0 0 auto; }
-.rh-single-row .rh-params-control .smart-pill { padding:0 8px; max-width:160px; }
-.rh-single-row .rh-params-popover {
+.rh-params-control { flex:0 0 auto; }
+.rh-params-control .smart-pill { padding:0 8px; max-width:160px; }
+.rh-params-popover {
     left:0; transform:translate(0, 4px);
     min-width:min(440px, calc(100vw - 60px));
     max-height:min(52vh, 420px);
     overflow-y:auto; overflow-x:hidden;
 }
-.rh-single-row .rh-params-control.pinned .rh-params-popover,
-.rh-single-row .rh-params-control:focus-within .rh-params-popover { transform:translate(0, 0); }
+.rh-params-control.pinned .rh-params-popover,
+.rh-params-control:focus-within .rh-params-popover { transform:translate(0, 0); }
 /* 弹层内参数沿用老王指定的两列网格（原 .rh-single-row .cfn-details 的 RH2COL 规则同款）
    —— 一排两组，不要一排一个长条。每格 = 名称（吃掉剩余宽度）+ 值列 68px。 */
-.rh-single-row .rh-params-popover .cfn-params-body {
+.rh-params-popover .cfn-params-body {
     display:grid;
     grid-template-columns:repeat(2, minmax(0, 1fr));
     gap:6px 8px;
     align-items:stretch;
 }
-.rh-single-row .rh-params-popover .cfn-params-body > * { width:100%; min-width:0; box-sizing:border-box; }
-.rh-single-row .rh-params-popover .num-compact,
-.rh-single-row .rh-params-popover .num-with-dice { justify-content:space-between; gap:5px; }
-.rh-single-row .rh-params-popover .num-compact .num-label,
-.rh-single-row .rh-params-popover .num-with-dice .num-label { flex:1 1 auto; min-width:0; max-width:100%; font-size:10.5px; }
-.rh-single-row .rh-params-popover .num-compact input,
-.rh-single-row .rh-params-popover .num-with-dice input { flex:0 0 52px; width:52px !important; font-size:12.5px; }
-.rh-single-row .rh-params-popover .num-compact.rh-text-param input { flex:0 0 150px; width:150px !important; text-align:left; }
+.rh-params-popover .cfn-params-body > * { width:100%; min-width:0; box-sizing:border-box; }
+.rh-params-popover .num-compact,
+.rh-params-popover .num-with-dice { justify-content:space-between; gap:5px; }
+.rh-params-popover .num-compact .num-label,
+.rh-params-popover .num-with-dice .num-label { flex:1 1 auto; min-width:0; max-width:100%; font-size:10.5px; }
+/* 2026-10-23：range 不能套「固定 52px 值列」那条 —— !important 会压过下面 112px 的滑杆宽度，把滑杆挤成 52px */
+.rh-params-popover .num-compact input:not([type=range]),
+.rh-params-popover .num-with-dice input { flex:0 0 52px; width:52px !important; font-size:12.5px; }
+.rh-params-popover .num-compact.rh-text-param input { flex:0 0 150px; width:150px !important; text-align:left; }
 /* 2026-10-20 老王：照抄本地工作流 —— 参数里的下拉/滑杆是**内联控件**（选择器 / range），
    不是 pill + 二级弹窗；所以参数弹层里不再有会被外层裁切的嵌套弹窗。
    排版按同排其它参数行对齐：标签吃剩余宽度且单行不换行，控件压窄后右缘贴齐（同 9px 内侧）。 */
-.rh-single-row .rh-params-popover .rh-select-param { justify-content:space-between; gap:5px; }
-.rh-single-row .rh-params-popover .rh-select-param .num-label {
+.rh-params-popover .rh-select-param { justify-content:space-between; gap:5px; }
+.rh-params-popover .rh-select-param .num-label {
     flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
-.rh-single-row .rh-params-popover .rh-param-select {
+.rh-params-popover .rh-param-select {
     flex:0 0 112px; width:112px !important; min-width:0; max-width:112px;
     height:22px; min-height:22px; max-height:22px; box-sizing:border-box; line-height:20px;
     padding:0 18px 0 6px; border:0 none; border-radius:999px;
     background:var(--card); color:var(--text); font-size:12.5px; text-align:right;
 }
-.rh-single-row .rh-params-popover .rh-range-param { justify-content:space-between; gap:5px; }
-.rh-single-row .rh-params-popover .rh-range-param .num-label { flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.rh-single-row .rh-params-popover .rh-range-param .rh-param-range { flex:0 1 auto; min-width:0; width:112px; }
-.rh-single-row .rh-params-popover .rh-range-param .rh-range-value { flex:0 0 26px; text-align:right; font-size:12px; color:var(--text); }
-.rh-single-row .rh-params-popover .rh-param-select option { background:var(--panel); color:var(--text); }
+.rh-params-popover .rh-range-param { justify-content:space-between; gap:5px; }
+.rh-params-popover .rh-range-param .num-label { flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* 2026-10-23：滑杆与下拉同款宽度（都 112px 固定），避免 flex 收缩后两行右缘不齐 */
+.rh-params-popover .rh-range-param .rh-param-range { flex:0 0 112px; width:112px !important; min-width:0; max-width:112px; accent-color:var(--text); padding:0; border:0; background:transparent; }
+.rh-params-popover .rh-range-param .rh-range-value { flex:0 0 26px; text-align:right; font-size:12px; color:var(--text); }
+.rh-params-popover .rh-param-select option { background:var(--panel); color:var(--text); }
 /* 所有参数行的名称一律单行显示，别被挤成两行/截断 */
-.rh-single-row .rh-params-popover .cfn-params-body .num-label {
+.rh-params-popover .cfn-params-body .num-label {
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
-.rh-single-row .rh-params-popover .rh-dropdown-control { width:100%; }
-.rh-single-row .rh-params-popover .rh-dropdown-control .smart-pill { width:100%; max-width:100%; }
-.rh-single-row .rh-params-popover .rh-slider-control { width:100%; }
-.rh-single-row .rh-params-popover .rh-slider-control .smart-pill { width:100%; max-width:100%; }
-.rh-single-row .rh-params-popover .setting-check { width:100%; }
+.rh-params-popover .rh-dropdown-control { width:100%; }
+.rh-params-popover .rh-dropdown-control .smart-pill { width:100%; max-width:100%; }
+.rh-params-popover .rh-slider-control { width:100%; }
+.rh-params-popover .rh-slider-control .smart-pill { width:100%; max-width:100%; }
+.rh-params-popover .setting-check { width:100%; }
 /* RH-PARAMSMENU-20260916 */
 
 /* ===================================================================
