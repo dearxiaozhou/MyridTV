@@ -48,6 +48,17 @@ function renderComfySettingField(field){
         const optsHtml = opts.map(o => `<option value="${deps.escapeHtml(o)}" ${String(v)===String(o)?'selected':''}>${deps.escapeHtml(o)}</option>`).join('');
         return `<div class="pfield pfield-inline"><div class="pfield-inline-label">${deps.escapeHtml(labelText)}</div><select class="pfield-select pfield-inline-select" data-comfy-param="${deps.escapeHtml(field.id)}">${optsHtml || `<option value="">${deps.escapeHtml(tr('smart.noOption'))}</option>`}</select></div>`;
     }
+    // 2026-10-24：本地工作流的「比例」字段（上游 ResolutionSelector.aspect_ratio）在暴露配置里
+    // 只有 type:text、没有 options，之前渲染成自由文本框（要手打 "16:9 (Widescreen)"）。
+    // 值命中官方 8 枚举时改用和 RH 侧完全同一个下拉（同 class、同取值域），两条路一致。
+    if(!field.type || field.type === 'text'){
+        const aspectList = comfyAspectOptionList(field);
+        if(aspectList){
+            const v = value ?? '';
+            const aspectHtml = aspectList.map(o => `<option value="${deps.escapeHtml(o)}" ${String(v)===String(o)?'selected':''}>${deps.escapeHtml(o)}</option>`).join('');
+            return `<div class="pfield pfield-inline"><div class="pfield-inline-label">${deps.escapeHtml(labelText)}</div><select class="pfield-select pfield-inline-select" data-comfy-param="${deps.escapeHtml(field.id)}">${aspectHtml}</select></div>`;
+        }
+    }
     if(field.type === 'textarea'){
         return `<div class="pfield">${label}<textarea class="pfield-textarea" data-comfy-param="${deps.escapeHtml(field.id)}" placeholder="${deps.escapeHtml(labelText)}">${deps.escapeHtml(value ?? '')}</textarea></div>`;
     }
@@ -84,6 +95,17 @@ const RH_KNOWN_FIELD_OPTIONS = {
     scheduler:['normal','karras','exponential','sgm_uniform','simple','ddim_uniform'],
     sampler:['euler','euler_ancestral','heun','dpm_2','dpm_2_ancestral','lms','dpmpp_2m','dpmpp_sde','ddim','uni_pc']
 };
+// 本地工作流比例字段 → 官方 8 枚举下拉（只在值命中枚举时转，避免误伤自由文本字段）
+function comfyAspectOptionList(field){
+    const key = String(field?.input || '').trim();
+    const name = String(field?.name || '').trim();
+    const isAspect = key === 'aspect_ratio' || key === 'aspectRatio'
+        || /^(视频?比例|比例|宽高比|画面比例)$/.test(name);
+    if(!isAspect) return null;
+    const list = RH_KNOWN_FIELD_OPTIONS.aspect_ratio;
+    const current = String((typeof deps.comfyParamValue === 'function' ? deps.comfyParamValue(field) : '') ?? field?.default ?? '').trim();
+    return list.includes(current) ? list : null;
+}
 function rhParamKey(nodeId, fieldName){
     return `${nodeId ?? ''}::${fieldName ?? ''}`;
 }
