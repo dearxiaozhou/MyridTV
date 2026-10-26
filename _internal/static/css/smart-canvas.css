@@ -902,7 +902,10 @@ audio { display:none !important; width:0 !important; height:0 !important; min-wi
    2026-10-26 老王：+ 号"有时候不在首层"——端口是节点子元素，被压在自己节点的层里
    （nodeLayerZ 内联 2/4）；.port-hover 有提层而 .body-hover 没有，鼠标在 A 身体里时
    A 伸向邻居 B 的那颗 + 环就被 B（DOM 靠后/选中层 4）盖住。body-hover 同样提层。 */
-.image-node.port-hover, .image-node.body-hover { z-index:7 !important; }
+/* 组框(smart-group)永远压在成员与连线之下（nodeLayerZ 返回 0，见 smart-canvas.js）。
+   提层规则必须排除组框，否则鼠标划过组框时 body-hover 会用 !important 把它抬到 7，
+   盖住组内节点与连线，并挡住命中测试（UI baseline 卡在此处）。 */
+.image-node.port-hover:not(.canvas-group-node), .image-node.body-hover:not(.canvas-group-node) { z-index:7 !important; }
 .node-port:hover, .node-port.is-active { color:var(--x-selected-line); }
 .node-port:hover::after, .node-port.is-active::after { background:var(--x-hover-bg); }
 .image-node.dragging .node-port { opacity:0 !important; pointer-events:none !important; }
