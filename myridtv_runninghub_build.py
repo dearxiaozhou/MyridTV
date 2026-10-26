@@ -12,6 +12,8 @@ diff=0）。行为零变更。configure() 注入：runninghub_upload_binary_medi
 """
 import math
 import re
+import threading
+import time
 
 from myridtv_core import unique_strings, parse_positive_int
 
@@ -33,14 +35,76 @@ def configure(runninghub_upload_binary_media, runninghub_allowed_resolutions,
     _G_RUNNINGHUB_DEFAULT_IMAGE_MODELS = runninghub_default_image_models
 
 
+_REFERENCE_UPLOAD_TTL_SEC = 900.0
+_REFERENCE_UPLOAD_CACHE_MAX = 256
+_REFERENCE_UPLOAD_WAIT_SEC = 180.0
+_reference_upload_lock = threading.Lock()
+_reference_upload_cache = {}        # 源 url -> (过期时间戳, downloadUrl)
+_reference_upload_inflight = {}     # 源 url -> {"event": Event, "value": downloadUrl}
+
+
 def upload_reference(ref):
     url = ref.get("url") if isinstance(ref, dict) else str(ref or "")
     if not url:
         return ""
     if url.startswith("http://") or url.startswith("https://"):
         return url
-    uploaded = _r_runninghub_upload_binary_media(url)
+    return _upload_reference_shared(url)
+
+
+def _upload_reference_shared(url):
+    """带结果缓存 + 单飞（single-flight）的参考图上传。
+
+    背景：批量/多张节点一次提交会把同一张参考图随每个并发任务各传一遍
+    （2026-10-27 实测 8 并发 = 同一张图传 8 次），既慢又容易把 RH 侧的
+    请求频率顶上去。key 就是本地/相对 URL 字符串本身：
+      ① 命中缓存直接复用 downloadUrl（默认 TTL 15 分钟）；
+      ② 同一时刻只放行一个上传线程，其余并发请求等它的结果而不是各自重传；
+      ③ 领队失败时跟随者自己兜底再传一次（不把领队的失败扩散给整批）。
+    """
+    now = time.time()
+    with _reference_upload_lock:
+        hit = _reference_upload_cache.get(url)
+        if hit and hit[0] > now and hit[1]:
+            return hit[1]
+        waiter = _reference_upload_inflight.get(url)
+        leader = waiter is None
+        if leader:
+            waiter = {"event": threading.Event(), "value": ""}
+            _reference_upload_inflight[url] = waiter
+    if not leader:
+        waiter["event"].wait(timeout=_REFERENCE_UPLOAD_WAIT_SEC)
+        if waiter["value"]:
+            return waiter["value"]
+        return _upload_reference_once(url)
+    value = ""
+    try:
+        value = _upload_reference_once(url)
+    finally:
+        with _reference_upload_lock:
+            waiter["value"] = value
+            if value:
+                if len(_reference_upload_cache) >= _REFERENCE_UPLOAD_CACHE_MAX:
+                    _reference_upload_cache.pop(next(iter(_reference_upload_cache)), None)
+                _reference_upload_cache[url] = (time.time() + _REFERENCE_UPLOAD_TTL_SEC, value)
+            _reference_upload_inflight.pop(url, None)
+            waiter["event"].set()
+    return value
+
+
+def _upload_reference_once(url):
+    uploaded = _r_runninghub_upload_binary_media(url) or {}
     return uploaded.get("downloadUrl") or ""
+
+
+def reset_reference_upload_cache():
+    """清掉参考图上传缓存（测试用）。生产路径不需要调用。"""
+    with _reference_upload_lock:
+        _reference_upload_cache.clear()
+        inflight = list(_reference_upload_inflight.values())
+        _reference_upload_inflight.clear()
+    for waiter in inflight:
+        waiter["event"].set()
 
 
 def normalize_model(model, refs):

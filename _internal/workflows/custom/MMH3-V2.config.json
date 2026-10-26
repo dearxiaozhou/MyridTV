@@ -1,0 +1,191 @@
+{
+  "title": "MMH3-V2",
+  "fields": [
+    {
+      "id": "auto_prompt_263_text",
+      "node": "263",
+      "input": "text",
+      "name": "Text",
+      "type": "textarea",
+      "default": "风格锁定：\n35mm电影定焦镜头，自然透视，轻微景深，自然胶片颗粒。CG电影质感，游戏过场动画风格，极致细节、真实材质微观纹理与次表面散射。自然外光、低饱和、克制冷色调。无 HDR、无暖橙色调。画幅：16:9\n\n主体定义：\n<Subject1>图片1作为角色“独孤残”的视觉锚定 本段他不说话，全程只做出经脉运功与失控的身体反应，不得生成任何台词、不得有任何口型动作。\n<Subject2>图片2作为场景“废弃宗门后山练功场场景”的视觉锚定\n\n[Shot 1]\n全景、援慢推进运镜，独孤残盘膝坐在练功场中央修炼准备突破。一层黑+少量暗淡红色能量气流从他身上散发缓慢上升。他双目低垂，呼吸绵长，双手在胸前轮转换印——起手剑指，旋即拇指扣中指结成子午印，再抱圆成罗汉印，三式一气呵成，每一式都精准定格半拍；随着印诀变换，他体内内力外放，衣袍下摆与鬓发被自身涌起的气机掀得向上扬起，以他为中心数米范围内的落叶被无形气机牵引离地浮空——不是被风吹散，而是绕着他向心力旋转，越靠近身体的树叶旋得越快，在地面汇成一道绕足的落叶旋涡，地面沙尘以他为圆心缓缓铺开一圈气纹。推至近景时看到独孤残面目狰狞，显然是运功走火入魔的前兆，面部的青筋开始慢慢突起，眼角先流出一点点黑色的血液。\n\n禁止项\n\n文字/UI/水印/Logo/角标/可读文字/真实UI\n\n【强制声明】\n\n无背景音乐,仅保留环境音与人声和音效;画面禁字幕/文字/水印/Logo;禁止可读文字(指画面字幕文字,不含人声台词)",
+      "options": []
+    },
+    {
+      "id": "f_piogza4",
+      "node": "252",
+      "input": "aspect_ratio",
+      "name": "比例",
+      "type": "text",
+      "default": "16:9 (Widescreen)",
+      "options": []
+    },
+    {
+      "id": "f_rj1lq8a",
+      "node": "252",
+      "input": "megapixels",
+      "name": "百万像素",
+      "type": "number",
+      "default": 1,
+      "options": [],
+      "min": 0,
+      "max": 10,
+      "step": 0.1,
+      "random_enabled": false
+    },
+    {
+      "id": "f_5rp2par",
+      "node": "259",
+      "input": "value",
+      "name": "时长",
+      "type": "number",
+      "default": 10,
+      "options": [],
+      "min": 0,
+      "max": 20,
+      "step": 1,
+      "random_enabled": false
+    },
+    {
+      "id": "f_xx2zs96",
+      "node": "261",
+      "input": "steps",
+      "name": "采样步数",
+      "type": "number",
+      "default": 10,
+      "options": [],
+      "min": 0,
+      "max": 20,
+      "step": 1,
+      "random_enabled": false
+    },
+    {
+      "id": "f_dmo15fn",
+      "node": "397",
+      "input": "transition_step",
+      "name": "二采倍数",
+      "type": "number",
+      "default": 6,
+      "options": [],
+      "min": 0,
+      "max": 12,
+      "step": 1,
+      "random_enabled": false
+    },
+    {
+      "id": "f_yopo39q",
+      "node": "400",
+      "input": "strength_model",
+      "name": "去油lora",
+      "type": "slider",
+      "default": 0.35,
+      "options": [],
+      "min": 0,
+      "max": 1,
+      "step": 0.1
+    },
+    {
+      "id": "auto_audio_14",
+      "node": "14",
+      "input": "audio",
+      "name": "加载音频 #14",
+      "type": "audio",
+      "options": []
+    },
+    {
+      "id": "auto_audio_15",
+      "node": "15",
+      "input": "audio",
+      "name": "加载音频 #15",
+      "type": "audio",
+      "options": []
+    },
+    {
+      "id": "auto_image_19",
+      "node": "19",
+      "input": "image",
+      "name": "加载图像 #19",
+      "type": "image",
+      "options": []
+    },
+    {
+      "id": "auto_image_23",
+      "node": "23",
+      "input": "image",
+      "name": "加载图像 #23",
+      "type": "image",
+      "options": []
+    },
+    {
+      "id": "auto_video_25",
+      "node": "25",
+      "input": "video",
+      "name": "Load Video (Upload) 🎥🅥🅗🅢",
+      "type": "video",
+      "options": []
+    },
+    {
+      "id": "auto_image_43",
+      "node": "43",
+      "input": "image",
+      "name": "加载图像 #43",
+      "type": "image",
+      "options": []
+    },
+    {
+      "id": "auto_image_49",
+      "node": "49",
+      "input": "image",
+      "name": "加载图像 #49",
+      "type": "image",
+      "options": []
+    },
+    {
+      "id": "auto_image_50",
+      "node": "50",
+      "input": "image",
+      "name": "加载图像 #50",
+      "type": "image",
+      "options": []
+    },
+    {
+      "id": "auto_image_51",
+      "node": "51",
+      "input": "image",
+      "name": "加载图像 #51",
+      "type": "image",
+      "options": []
+    }
+  ],
+  "mini_cards": {
+    "prompt": {
+      "x": 24,
+      "y": 30
+    },
+    "image": {
+      "x": 24,
+      "y": 210
+    },
+    "custom": {
+      "x": 280,
+      "y": 78
+    },
+    "output": {
+      "x": 540,
+      "y": 120
+    },
+    "__test_nodes": [
+      {
+        "id": "comfy_1",
+        "type": "comfy",
+        "x": 330,
+        "y": 150
+      },
+      {
+        "id": "output_1",
+        "type": "output",
+        "x": 670,
+        "y": 190
+      }
+    ]
+  }
+}

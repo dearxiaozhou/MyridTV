@@ -151,6 +151,7 @@ const workflowTitleInput = document.getElementById('workflowTitleInput');
 const subEl = document.getElementById('editorSub');
 const deleteBtn = document.getElementById('deleteBtn');
 const saveBtn = document.getElementById('saveBtn');
+const reloadBtn = document.getElementById('reloadBtn');
 const nodeListEl = document.getElementById('nodeList');
 const previewCard = document.getElementById('previewContent');
 const miniCanvasHost = document.getElementById('miniCanvasHost');
@@ -303,12 +304,15 @@ function comfyFieldMeta(f){
 }
 function fieldKind(f){
     if(['image','video','audio'].includes(f?.type)) return f.type;
+    // 2026-10-26：与 canvas-engine-dispatch.js comfyFieldKind 同口径 —— 后端 _is_prompt_slot
+    // 判过的提示词槽（id 带 auto_prompt_ 前缀）直接采信，别再按 class_type 猜第二遍。
+    if(String(f?.id || '').startsWith('auto_prompt_')) return 'prompt';
     const meta = comfyFieldMeta(f);
     const excludedPromptNode = /previewany|preview|save\s*text|savetext|save_text/.test(meta.classType)
         || /预览|保存文本|保存文件|输出/.test(meta.nodeTitle)
         || /preview|markdown|output|save|file|path|name/.test(meta.inputKey);
     if(excludedPromptNode) return 'setting';
-    const promptNode = /cliptextencode|primitivestringmultiline|prompt/.test(meta.classType)
+    const promptNode = /cliptextencode|primitivestringmultiline|prompt|\btext\b/.test(meta.classType)
         || /提示词|正向|负向|prompt/.test(meta.nodeTitle);
     const promptField = /(^|[\s_-])(prompt|positive|negative)([\s_-]|$)|提示词|正向|负向/.test(meta.fullText);
     if(promptNode && (meta.inputKey === 'text' || meta.inputKey === 'value' || f?.type === 'textarea' || promptField)) return 'prompt';
@@ -513,6 +517,200 @@ window.addEventListener('pageshow', () => {
     if(!currentWorkflow && workflows.length === 0) loadList();
 });
 
+// 2026-10-26 老王：重载不是「重读 app 自己那份副本」——那玩意儿是导入时拷进来的副本，
+// 改 ComfyUI 侧导出的源文件后它永远不变。真重载 = 去源文件拉新版本 → 覆盖副本。
+//   ① 后端记住过源路径 → 直接拉；
+//   ② 没记过 / 源文件被删或改名 → 弹窗让老王手动指定，指定一次写进 config，以后一键拉；
+//   ③ 两边缓存清掉后重新读盘，并广播给画布页（画布上已配参数按稳定键保留）。
+async function onReload(){
+    const target = resolveComfyWorkflowName(selectedName || '');
+    if(!target) return;
+    setStatus(tr('comfy.reloading') || '正在从源文件重载…');
+    const result = await reloadFromSource(target, {});
+    if(result && result.need_source){
+        openSourcePicker(target, result.last_source || '', result.reason || 'unset',
+            result.candidates || [], result.source_dirs || []);
+        return;
+    }
+    await finishReload(target, result);
+}
+async function reloadFromSource(name, body){
+    const res = await fetch(`/api/workflows/${encodeURIComponent(name)}/reload-source`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(body || {})
+    }).catch(() => null);
+    if(!res) return {ok:false, error:(tr('comfy.reloadFailed') || '重载失败')};
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok && !data.need_source){
+        return {ok:false, error:data.detail || data.error || (tr('comfy.reloadFailed') || '重载失败')};
+    }
+    return data;
+}
+async function finishReload(target, data){
+    if(!data || !data.ok){
+        const msg = (data && data.error) || (tr('comfy.reloadFailed') || '重载失败');
+        alert(msg);
+        setStatus(msg);
+        return;
+    }
+    const finalName = resolveComfyWorkflowName((data.record && data.record.name) || data.name || target);
+    COMFY_WORKFLOW_FETCH_CACHE.delete(finalName);
+    COMFY_WORKFLOW_FETCH_CACHE.delete(target);
+    await selectWorkflow(finalName);
+    renderSourceInfo(data.source_path || '');
+    setStatus((tr('comfy.reloadedFromSource') || '已从源文件重载') + ' · ' + String(finalName).replace(/\.json$/i, ''));
+    broadcastComfyWorkflowReloaded(finalName);
+}
+function renderSourceInfo(path){
+    const row = document.getElementById('sourceInfoRow');
+    const text = document.getElementById('sourcePathText');
+    if(!row || !text) return;
+    const src = String(path || (currentConfig && currentConfig.source_path) || '').trim();
+    if(!src){ row.style.display = 'none'; return; }
+    row.style.display = '';
+    text.textContent = src;
+    text.title = src;
+}
+// ---- 源文件指定弹窗（源没了 / 从没记过） ----
+let sourcePickerTarget = '';
+let sourcePickerLast = '';
+let sourcePickerDirs = [];
+function openSourcePicker(name, lastSource, reason, candidates, sourceDirs){
+    sourcePickerTarget = resolveComfyWorkflowName(name || '');
+    sourcePickerLast = String(lastSource || '').trim();
+    sourcePickerDirs = Array.isArray(sourceDirs) ? sourceDirs.filter(Boolean) : [];
+    const backdrop = document.getElementById('sourcePickerBackdrop');
+    const hint = document.getElementById('sourcePickerHint');
+    const input = document.getElementById('sourcePathInput');
+    if(!backdrop || !input) return;
+    renderSourceCandidates(candidates || []);
+    if(hint){
+        hint.textContent = reason === 'missing'
+            ? ((tr('comfy.sourceMissing') || '原来记的源文件已经不在了：') + sourcePickerLast + '。' + (tr('comfy.sourceMissingTip') || '指定新位置（同目录下可以直接选文件），指定一次以后就自动了。'))
+            : reason === 'dir-empty'
+                ? (tr('comfy.sourceDirEmpty') || '这个目录里没找到能对上名字的工作流 json，换一个目录或填完整文件路径。')
+                : (tr('comfy.sourceUnset') || '这个工作流还没记过源文件。填完整文件路径，或**只填它所在的目录**（我来认名字），也可以用「浏览…」直接选文件；指定一次以后点重载就自动拉新版。');
+    }
+    input.value = reason === 'missing' ? '' : sourcePickerLast;
+    backdrop.style.display = 'flex';
+    setTimeout(() => { try { input.focus(); input.select(); } catch(e){} }, 30);
+    refreshIcons();
+}
+// 后端扫本机常见 ComfyUI 工作流目录找到的同名候选：点一下就是它，省得手敲路径。
+function renderSourceCandidates(list){
+    const box = document.getElementById('sourceCandidateList');
+    if(!box) return;
+    box.innerHTML = '';
+    const items = (list || []).filter(Boolean);
+    if(!items.length){ box.style.display = 'none'; return; }
+    box.style.display = 'flex';
+    const head = document.createElement('div');
+    head.style.cssText = 'font-size:11px;color:var(--wf-v2-muted)';
+    head.textContent = tr('comfy.sourceCandidates') || '在本机 ComfyUI 目录里找到这些同名文件，点一下就用它：';
+    box.appendChild(head);
+    items.forEach(path => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'source-candidate';
+        btn.textContent = path;
+        btn.addEventListener('click', () => submitSourcePathValue(path));
+        box.appendChild(btn);
+    });
+}
+async function submitSourcePathValue(path){
+    if(!sourcePickerTarget || !path) return;
+    const hint = document.getElementById('sourcePickerHint');
+    const result = await reloadFromSource(sourcePickerTarget, {source_path:path});
+    if(result && result.ok){
+        closeSourcePicker();
+        await finishReload(sourcePickerTarget, result);
+        return;
+    }
+    if(hint) hint.textContent = (result && result.error) || (tr('comfy.reloadFailed') || '重载失败');
+}
+function closeSourcePicker(){
+    const backdrop = document.getElementById('sourcePickerBackdrop');
+    if(backdrop) backdrop.style.display = 'none';
+    const box = document.getElementById('sourceCandidateList');
+    if(box){ box.innerHTML = ''; box.style.display = 'none'; }
+    sourcePickerTarget = '';
+}
+function pickSourceFile(){
+    const input = document.getElementById('sourceFileInput');
+    if(input) input.click();
+}
+async function onSourceFilePicked(event){
+    const file = event.target.files && event.target.files[0];
+    event.target.value = '';
+    if(!file || !sourcePickerTarget) return;
+    let parsed = null;
+    try { parsed = JSON.parse(await file.text()); }
+    catch(e){ alert(tr('comfy.invalidJson') || '不是合法的 JSON 文件'); return; }
+    // 浏览器不给真实绝对路径。用「记过的源目录 + 选中的文件名」拼一个可复用路径，
+    // 后端会校验它确实存在；拼不出来就退回只传内容（能覆盖，但记不住源）。
+    let guess = '';
+    const dirs = [];
+    if(sourcePickerLast){
+        const cut = Math.max(sourcePickerLast.lastIndexOf('\\'), sourcePickerLast.lastIndexOf('/'));
+        if(cut >= 0) dirs.push(sourcePickerLast.slice(0, cut + 1));
+    }
+    sourcePickerDirs.forEach(d => dirs.push(d));
+    for(const dir of dirs){
+        const sep = dir.includes('\\') ? '\\' : '/';
+        guess = dir.endsWith(sep) ? (dir + file.name) : (dir + sep + file.name);
+        break;
+    }
+    const hint = document.getElementById('sourcePickerHint');
+    const body = guess ? {source_path:guess} : {workflow:parsed};
+    const result = await reloadFromSource(sourcePickerTarget, body);
+    if(result && result.need_source && guess){
+        // 拼出来的路径不存在 → 退回「只传内容」，这次能覆盖，但记不住路径
+        const fallback = await reloadFromSource(sourcePickerTarget, {workflow:parsed});
+        if(fallback && fallback.ok){
+            if(hint) hint.textContent = (tr('comfy.sourcePickedNoPath') || '已用选中的文件覆盖（浏览器不给真实路径，记不住源；想以后自动拉新版就手动填一次绝对路径）');
+            await finishReload(sourcePickerTarget, fallback);
+            setTimeout(closeSourcePicker, 1200);
+            return;
+        }
+        if(hint) hint.textContent = (fallback && fallback.error) || (tr('comfy.reloadFailed') || '重载失败');
+        return;
+    }
+    if(result && result.ok){
+        closeSourcePicker();
+        await finishReload(sourcePickerTarget, result);
+        return;
+    }
+    if(hint) hint.textContent = (result && result.error) || (tr('comfy.reloadFailed') || '重载失败');
+}
+async function submitSourcePath(){
+    if(!sourcePickerTarget) return;
+    const input = document.getElementById('sourcePathInput');
+    const hint = document.getElementById('sourcePickerHint');
+    const path = String((input && input.value) || '').trim().replace(/^["']|["']$/g, '');
+    if(!path){
+        if(hint) hint.textContent = (tr('comfy.sourcePathEmpty') || '先填源文件路径，或用「浏览…」选一个文件');
+        return;
+    }
+    const result = await reloadFromSource(sourcePickerTarget, {source_path:path});
+    if(result && result.need_source){
+        if(hint) hint.textContent = (tr('comfy.sourceNotFound') || '这个路径下没有文件，检查一下：') + path;
+        return;
+    }
+    if(result && result.ok){
+        closeSourcePicker();
+        await finishReload(sourcePickerTarget, result);
+        return;
+    }
+    if(hint) hint.textContent = (result && result.error) || (tr('comfy.reloadFailed') || '重载失败');
+}
+function broadcastComfyWorkflowReloaded(name){
+    const msg = { type:'comfy-workflow-reloaded', name:name };
+    try { new BroadcastChannel('studio-api').postMessage(msg); } catch(e) {}
+    try { if(window.parent && window.parent !== window) window.parent.postMessage(msg, '*'); } catch(e) {}
+    try { if(window.top && window.top !== window) window.top.postMessage(msg, '*'); } catch(e) {}
+}
+
 function renderList(){
     if(!workflows.length){
         listEl.innerHTML = `<div class="preview-empty" style="padding:20px 12px">${escapeHtml(tr('smart.noWorkflow') || '暂无 ComfyUI 工作流')}</div>`;
@@ -565,6 +763,7 @@ async function selectWorkflow(name){
         renderList();
         renderEditor();
         renderPreview();
+        renderSourceInfo(currentConfig && currentConfig.source_path);
         // 新工作流加载后自动适配窗口
         setTimeout(() => graphFit(), 50);
         setStatus('');
@@ -584,7 +783,22 @@ async function selectWorkflow(name){
 function fieldFor(node, input){
     return currentConfig.fields.find(f => f.node === node && f.input === input);
 }
-function makeFieldId(){ return 'f_' + Math.random().toString(36).slice(2,9); }
+function makeFieldId(node, input){
+    const nodeId = String(node == null ? '' : node).trim();
+    const key = String(input == null ? '' : input).trim();
+    if(!nodeId || !key) return 'f_' + Math.random().toString(36).slice(2,9);
+    // 2026-10-24 老王：改成由 node+input 派生的**稳定 id**。原来是随机串，
+    // 重新暴露同一个参数就换 id，之前配好的值就失联（"改一点点要重配"）。
+    const seed = nodeId + '::' + key;
+    let h1 = 2166136261, h2 = 5381;
+    for(let i = 0; i < seed.length; i++){
+        const c = seed.charCodeAt(i);
+        h1 = ((h1 ^ c) * 16777619) >>> 0;
+        h2 = ((h2 * 33) ^ c) >>> 0;
+    }
+    const body = (h1.toString(36) + h2.toString(36)).replace(/[^a-z0-9]/g, '');
+    return 'f_' + body.slice(0, 8).padEnd(8, '0');
+}
 
 function toggleField(node, input){
     const existing = fieldFor(node, input);
@@ -597,7 +811,7 @@ function toggleField(node, input){
         const rawValue = nodeData?.inputs?.[input];
         const type = guessType(rawValue, input);
         const f = {
-            id: makeFieldId(),
+            id: makeFieldId(node, input),
             node, input,
             name: inputLabel(input),
             type,
@@ -741,6 +955,7 @@ function renderEditor(){
     if(!currentWorkflow){
         deleteBtn.style.display = 'none';
         saveBtn.style.display = 'none';
+        if(reloadBtn) reloadBtn.style.display = 'none';
         nodeListEl.innerHTML = '';
         document.getElementById('graphCard').style.display = 'none';
         document.getElementById('nodesToggle').style.display = 'none';
@@ -752,6 +967,7 @@ function renderEditor(){
     subEl.textContent = tf('comfy.nodeStats', {nodes:Object.keys(currentWorkflow).length, fields:currentConfig.fields.length}) + (isBuiltin ? ` · ${tr('comfy.builtin')}` : '');
     deleteBtn.style.display = isBuiltin ? 'none' : 'inline-flex';
     saveBtn.style.display = 'inline-flex';
+    if(reloadBtn) reloadBtn.style.display = 'inline-flex';
 
     renderGraph();
     renderWorkspaceView();

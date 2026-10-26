@@ -51,42 +51,73 @@ function renderComfyParamsControl(wf, fields){
         </div>
     </div>`;
 }
-function renderComfyFields(fields){
-    const out = [];
-    let pendingNumbers = [];
-    const flushNumbers = () => {
-        if(!pendingNumbers.length) return;
-        if(pendingNumbers.length === 1) out.push(deps.renderComfySettingField(pendingNumbers[0]));
-        else out.push(`<div class="cfn-size-row">${pendingNumbers.map(renderComfyNumberCell).join('')}</div>`);
-        pendingNumbers = [];
-    };
-    fields.forEach(field => {
+// 2026-10-24 老王：批量节点底部面板不要弹层——参数直接平铺（同一套字段渲染，去掉 pill+弹层）。
+function renderComfyParamsInline(wf, fields){
+    const visibleFields = deps.visibleComfyFields(fields || [], deps.getSettings().comfyWorkflow);
+    const editableFields = visibleFields.filter(field => {
         const kind = deps.comfyFieldKind(field);
-        // prompt 字段直接复用画布顶部原生 #promptInput，不在参数区重复渲染。
-        if(kind === 'prompt'){ flushNumbers(); return; }
-        if(kind === 'image' || kind === 'video' || kind === 'audio'){ flushNumbers(); return; }
-        if(field.type === 'number'){ pendingNumbers.push(field); return; }
-        flushNumbers();
-        out.push(deps.renderComfySettingField(field));
+        return kind !== 'prompt' && kind !== 'image' && kind !== 'video' && kind !== 'audio';
     });
-    flushNumbers();
-    return out.join('');
+    if(!editableFields.length) return '';
+    return `<div class="batch-inline-params comfy-inline-params">${renderComfyFields(visibleFields)}</div>`;
 }
-function renderComfyNumberCell(field){
-    const value = deps.comfyParamValue(field);
-    const min = field.min !== undefined ? ` min="${deps.escapeHtml(field.min)}"` : '';
-    const max = field.max !== undefined ? ` max="${deps.escapeHtml(field.max)}"` : '';
-    const step = field.step !== undefined ? ` step="${deps.escapeHtml(field.step)}"` : '';
-    const dice = field.random_enabled === true
-        ? `<button type="button" class="random-btn ${deps.smartComfyRandomActive(field.id) ? 'active' : ''}" data-comfy-random="${deps.escapeHtml(field.id)}" title="${deps.escapeHtml(deps.smartComfyRandomActive(field.id) ? deps.tr('smart.diceOn') : deps.tr('smart.diceOff'))}"><i data-lucide="dice-5"></i></button>`
-        : '';
+/* 2026-10-25 老王：删掉「连续数字合并成一行 .cfn-size-row」的特例 —— RH 面板没有这一步，
+ * 每个参数各占一格交给外层两列网格排。合并出来的 .cfn-size-cell 是另一套行高(36px)/
+ * 圆角(8px)/底色(var(--soft))，正是「同一个面板里有的大有的小、有的圆有的方」的来源。
+ * prompt/image/video/audio 四种字段不进参数区（提示词复用画布大输入框，素材走自动裁剪）。 */
+/* 2026-10-25 老王：批量节点卡片里那一排参数。与 renderComfyParamsInline 用同一批字段、
+ * 同一个取值/写值通道，只是外壳换成「短标签 + 下拉 pill」：一行排开，卡片不再被撑成三行高。 */
+function renderComfyParamsPillInline(wf, fields, sourceSettings){
+    // sourceSettings：批量节点参数常驻在卡片上（2026-10-25 老王：图片节点的比例 pill 就是不选中也能看），
+    // 取值/关节点判定都要按卡片所属节点的 runSettings，不读全局 settings。
+    const src = sourceSettings || deps.getSettings();
+    const visibleFields = deps.visibleComfyFields(fields || [], src.comfyWorkflow);
+    const pills = visibleFields.map(field => renderComfyParamPill(field, src)).filter(Boolean);
+    if(!pills.length) return '';
+    return `<div class="batch-inline-params comfy-inline-params wf-pill-row">${pills.join('')}</div>`;
+}
+function renderComfyParamPill(field, sourceSettings){
+    if(!field) return '';
+    const src = sourceSettings || deps.getSettings();
+    const kind = deps.comfyFieldKind(field);
+    if(['prompt', 'image', 'video', 'audio'].includes(kind)) return '';
     const labelText = field.name || field.input || field.id;
-    return `<div class="cfn-size-cell">
-        <div class="cfn-size-label">${deps.escapeHtml(labelText)}</div>
-        <div class="cfn-size-inputs">
-            <input class="cfn-size-input" type="number" data-comfy-param="${deps.escapeHtml(field.id)}" value="${deps.escapeHtml(value ?? 0)}"${min}${max}${step}>${dice}
-        </div>
-    </div>`;
+    const value = deps.comfyParamValue(field, src);
+    const uid = String(field.id || '');
+    const paramKey = `comfy:${uid}`;
+    const attrs = ` data-comfy-param="${deps.escapeHtml(uid)}"`;
+    // 选项一律走 engine.wfParamOptionsFor：与浮层同源（浮层也调它），
+    // 不会再出现「pill 能点、点开显示无选项」的错位。
+    const options = global.CanvasDynamicParamEngine.wfParamOptionsFor(field, value);
+    if(field.type === 'boolean'){
+        return global.CanvasDynamicParamEngine.wfParamTogglePillHtml({
+            label:labelText, on:!!value, boolAttr:'comfy-bool', boolKey:uid
+        });
+    }
+    if(field.type === 'dropdown' && Array.isArray(options) && options.length){
+        return global.CanvasDynamicParamEngine.wfParamPillHtml({
+            label:labelText, value:value ?? '', attrs:attrs, options, paramKey, hideKey:true
+        });
+    }
+    if(field.type === 'slider' || field.type === 'number'){
+        return global.CanvasDynamicParamEngine.wfParamPillHtml({
+            label:labelText, value:value ?? 0, attrs:attrs, options:options, numeric:true, paramKey, hideKey:false,
+            // 档位拉不出来（种子那种）才退回数字输入
+            inputType:options ? 'text' : 'number'
+        });
+    }
+    if(field.type === 'textarea') return '';   // 长文本不进 pill 排
+    // 文本：命中官方比例枚举的走下拉（值本身可读，同图片节点的比例 pill，不带标签）；
+    // 其余自由文本用户自己填的内容也可读 —— 只有「光秃秃一个数字」才必须带短标签（老王 10/25：「你看这个 2 我知道它是什么东西吗」）
+    return global.CanvasDynamicParamEngine.wfParamPillHtml({
+        label:labelText, value:value ?? '', attrs:attrs, options:options, paramKey, inputType:'text', hideKey:true
+    });
+}
+function renderComfyFields(fields){
+    return (fields || []).filter(field => {
+        const kind = deps.comfyFieldKind(field);
+        return kind !== 'prompt' && kind !== 'image' && kind !== 'video' && kind !== 'audio';
+    }).map(field => deps.renderComfySettingField(field)).join('');
 }
 function renderUpscalePill(paramKey, current){
     const opts = [2048, 4096];
@@ -143,8 +174,9 @@ function comfyFieldNodeIsOff(field, workflowName=deps.getSettings().comfyWorkflo
         configure: configure,
         renderComfyDetailsHtml: renderComfyDetailsHtml,
         renderComfyParamsControl: renderComfyParamsControl,
+        renderComfyParamsInline: renderComfyParamsInline,
+        renderComfyParamsPillInline: renderComfyParamsPillInline,
         renderComfyFields: renderComfyFields,
-        renderComfyNumberCell: renderComfyNumberCell,
         renderUpscalePill: renderUpscalePill,
         renderComfyNodeModesControl: renderComfyNodeModesControl,
         comfyFieldNodeIsOff: comfyFieldNodeIsOff

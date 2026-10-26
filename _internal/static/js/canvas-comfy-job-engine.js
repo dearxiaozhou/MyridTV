@@ -122,6 +122,13 @@
         return data;
     }
     const autoExposedWorkflows = new Set();
+    // 2026-10-26：重载工作流时必须把这个"已扫过"的标记也清掉，否则换版本后
+    // 新加的 LoadImage/LoadAudio 永远不会被自动暴露成素材槽（表现为"重载了跟没重载一样"）。
+    function forgetAutoExposedWorkflow(name){
+        const resolved = resolveComfyWorkflowName(name);
+        if(resolved) autoExposedWorkflows.delete(resolved);
+        if(name && name !== resolved) autoExposedWorkflows.delete(name);
+    }
     async function autoExposeMediaOnce(resolved, cached){
         try {
             const res = await fetch('/api/comfyui/auto-expose-media', {
@@ -472,6 +479,7 @@
         updateKnownComfyWorkflows: updateKnownComfyWorkflows,
         replaceKnownComfyWorkflows: replaceKnownComfyWorkflows,
         ensureComfyWorkflow: ensureComfyWorkflow,
+        forgetAutoExposedWorkflow: forgetAutoExposedWorkflow,
         filterAccessibleComfyWorkflows: filterAccessibleComfyWorkflows,
         // 任务生命周期
         clearComfyRunStateKeepPromptId: clearComfyRunStateKeepPromptId,

@@ -352,6 +352,42 @@ function resumeJimengPendingNodes(){
 async function pollSmartCanvasTask(taskId){
     return CanvasGenerationTaskPoller.poll(taskId);
 }
+// ===== 2026-10-27 日志收口（老王：不能一天修一次、加一个模型修一次）=====
+// 异步任务日志的**唯一**写入口：任务结算点（finalize 成功 / resume 失败 / 重启对账失败）。
+// 日志从节点自身状态派生（runSettings/runPrompt/runPromptRefs/runStartedAt/lastTaskIds），
+// 不认引擎、不认发起方（composer/批量/Agent/cascade 同一条规则）——新增引擎只要正常
+// 提交任务并 rememberSmartTaskIds，日志自动出现，**不需要再在发起方补写**。
+// 去重双保险：同 taskId 第二次调用被 addSmartGenerationLog 的 previous 挡掉；
+// 节点上 `_runLogged` 记最近已报的 taskId，挡跨结算点的同任务重复（对账与轮询并发）。
+function reportSmartRunSettled(node, taskId, {kind='image', outputs=[], error=''} = {}){
+    if(!node || !taskId) return;
+    // 门槛：只报"真跑过生成"的节点——有起始时刻或曾持有任务 ID；手工传图节点两个都没有，不误报
+    const everRan = Number(node.runStartedAt || 0) > 0 || (Array.isArray(node.lastTaskIds) && node.lastTaskIds.length > 0);
+    if(!everRan) return;
+    // 同一 taskId 只结算一次（对账与轮询并发兜底；用 Set：一轮多任务的第 2 个 taskId 照常报，
+    // 日志本身由咽喉点按 attempt 键归并成一条）
+    if(!node._runLoggedIds) node._runLoggedIds = [];
+    if(node._runLoggedIds.includes(String(taskId))) return;
+    node._runLoggedIds.push(String(taskId));
+    if(node._runLoggedIds.length > 12) node._runLoggedIds = node._runLoggedIds.slice(-12);
+    const run = {
+        nodeId: node.id || '',
+        nodeType: node.type || 'smart-image',
+        // attempt 进快照 → 与发起方（composer/cascade tail）同 key 合并，谁先到谁成
+        attempt: node.generationAttemptId || '',
+        kind,
+        settings: node.runSettings || {},
+        prompt: node.runPrompt || node.promptDraftText || '',
+        refs: node.runPromptRefs || []
+    };
+    deps.addSmartGenerationLog({
+        taskId,
+        run,
+        outputs: (outputs || []).filter(Boolean),
+        runMs: node.runStartedAt ? deps.nowMs() - Number(node.runStartedAt) : 0,
+        error: error ? String(error) : ''
+    });
+}
 async function finalizeSmartPendingTask(node, taskId, images, kind='image', expectedAttempt=node?.generationAttemptId){
     if(!node || !taskId) return;
     const isCurrent = () => !expectedAttempt || global.CanvasGenerationLifecycle.isCurrent(node,expectedAttempt);
@@ -402,14 +438,12 @@ async function finalizeSmartPendingTask(node, taskId, images, kind='image', expe
     } else {
         node.images = [...existing, ...additions];
     }
-    if(node.__origin === 'agent_tool_generation'){
-        deps.addSmartGenerationLog({
-            taskId,
-            run:{nodeType:node.type, kind, settings:node.runSettings || {}, prompt:node.runPrompt || node.promptDraftText || '', refs:node.runPromptRefs || []},
-            outputs:(rawItems || []).map(item => typeof item === 'string' ? item : item?.url).filter(Boolean),
-            runMs:node.runStartedAt ? deps.nowMs() - Number(node.runStartedAt) : 0
-        });
-    }
+    // 2026-10-27 日志收口：本处是异步任务**成功结算的唯一咽喉点**——不再按 origin
+    //（Agent/批量）加闸门。任何引擎、任何发起方（composer/批量/Agent/cascade）只要
+    // 任务走到这里就自动记日志；与发起方 tail 日志按 attempt/taskId 归并，不会双份。
+    // 门槛在 reportSmartRunSettled 内（必须真跑过生成：有 runStartedAt 或曾持任务 ID），
+    // 手工传图节点不会被误记。
+    reportSmartRunSettled(node, taskId, {kind, outputs:(rawItems || []).map(item => typeof item === 'string' ? item : item?.url).filter(Boolean)});
     if(additions.length) node.outputKind = kind;
     if(!node.pending && smartPendingTasks(node).length === 0){
         delete node.pendingTasks;
@@ -503,14 +537,10 @@ async function resumeSmartPendingNode(node){
                 }
             }
             failures.push(e);
-            if(node.__origin === 'agent_tool_generation'){
-                deps.addSmartGenerationLog({
-                    taskId:task.taskId,
-                    run:{nodeType:node.type, kind:task.kind || 'image', settings:node.runSettings || {}, prompt:node.runPrompt || node.promptDraftText || '', refs:node.runPromptRefs || []},
-                    runMs:node.runStartedAt ? deps.nowMs() - Number(node.runStartedAt) : 0,
-                    error:e.message || String(e)
-                });
-            }
+            // 2026-10-27 日志收口：异步任务**失败结算的唯一咽喉点**（与 finalize 对称），
+            // 不再按 origin 加闸门。与成功日志同为 task|taskId 键；若发起方 tail 已有
+            // 同 attempt 日志，addSmartGenerationLog 内部按 key 归并成一条（见咽喉点注释）。
+            reportSmartRunSettled(node, task.taskId, {kind:task.kind || 'image', error:e.message || String(e)});
             deps.toast((e.message || tr('smart.errRunFailed')).slice(0, 160));
             deps.render();
             deps.scheduleSave();

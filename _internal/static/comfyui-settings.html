@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-CN" data-studio-scale="off">
 <head>
-    <link rel="stylesheet" href="/static/css/design-tokens.css?cb=card-hover-seven-v01317&v=2026.10.23.e2efix1">
+    <link rel="stylesheet" href="/static/css/design-tokens.css?cb=card-hover-seven-v01317&v=2026.10.25.btn-theme8">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>工作流设置</title>
@@ -18,12 +18,12 @@
     </script>
     <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.06.21"></script>
     <script src="/static/vendor/js/lucide.js?v=2026.06.21"></script>
-    <script src="/static/js/theme.js?cb=card-hover-seven-v01317&v=2026.10.23.e2efix1"></script>
-    <script src="/static/js/i18n.js?v=2026.10.23.e2efix1"></script>
-    <link rel="stylesheet" href="/static/css/theme.css?cb=interaction-audit-v0105c&v=2026.10.23.e2efix1">
-    <link rel="stylesheet" href="/static/css/comfyui-settings.css?v=2026.10.23.e2efix1">
+    <script src="/static/js/theme.js?cb=card-hover-seven-v01317&v=2026.10.25.btn-theme8"></script>
+    <script src="/static/js/i18n.js?v=2026.10.25.btn-theme8"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?cb=interaction-audit-v0105c&v=2026.10.25.btn-theme8">
+    <link rel="stylesheet" href="/static/css/comfyui-settings.css?v=2026.10.25.btn-theme8">
 <link rel="stylesheet" href="/static/css/light-theme-trial.css?v=interaction-audit-v0105c">
-<link rel="stylesheet" href="/static/css/canvas-interaction-style.css?cb=card-hover-seven-v01317&v=2026.10.23.e2efix1">
+<link rel="stylesheet" href="/static/css/canvas-interaction-style.css?cb=card-hover-seven-v01317&v=2026.10.25.btn-theme8">
 </head>
 <body>
     <div class="page">
@@ -83,8 +83,16 @@
                                         <input id="workflowTitleInput" class="workflow-title-input" type="text" placeholder="工作流名称" data-i18n-placeholder="comfy.workflowName" oninput="updateWorkflowTitle(this.value)" title="保存配置时会用这个名字同步后端文件名（画布里引用它的节点会自动同步）">
                                     </div>
                                     <div id="editorSub" class="editor-sub" data-i18n="comfy.editorSubDefault">从左侧列表选择，或上传新的 API 工作流</div>
+                                    <div id="sourceInfoRow" class="source-info-row" style="display:none">
+                                        <i data-lucide="link-2" class="w-3 h-3"></i>
+                                        <span id="sourcePathText" class="source-path-text"></span>
+                                        <button type="button" class="source-change-btn" onclick="openSourcePicker(resolveComfyWorkflowName(selectedName||''), (currentConfig&amp;&amp;currentConfig.source_path)||'', 'change')" data-i18n="comfy.changeSource">更改源</button>
+                                    </div>
                                 </div>
                                 <div class="content-actions">
+                                    <button id="reloadBtn" class="action-btn" type="button" onclick="onReload()" style="display:none" title="从源文件重新拉取新版本并覆盖本地副本（在 ComfyUI 里改完导出后用；源文件不在了会请你手动指定；画布上已配的参数不受影响）">
+                                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i><span data-i18n="comfy.reload">重载工作流</span>
+                                    </button>
                                     <button id="deleteBtn" class="action-btn danger-btn" type="button" onclick="onDelete()" style="display:none">
                                         <i data-lucide="trash-2" class="w-3.5 h-3.5"></i><span data-i18n="common.delete">删除</span>
                                     </button>
@@ -121,10 +129,34 @@
             </div>
         </div>
     </div>
+    <!-- 2026-10-26 老王：重载要拉「源文件」，源没了/从没记过 → 在这里手动指定一次，之后就记住了 -->
+    <div id="sourcePickerBackdrop" class="source-picker-backdrop" style="display:none" onclick="if(event.target===this) closeSourcePicker()">
+        <div class="source-picker-panel" onclick="event.stopPropagation()">
+            <div class="source-picker-head">
+                <i data-lucide="file-input" class="w-4 h-4"></i>
+                <span data-i18n="comfy.pickSource">指定源文件</span>
+            </div>
+            <div id="sourcePickerHint" class="source-picker-hint"></div>
+            <input id="sourcePathInput" class="source-path-input" type="text" spellcheck="false"
+                   placeholder="F:\ComfyUI\user\default\workflows\工作流.json">
+            <div id="sourceCandidateList" class="source-candidate-list" style="display:none"></div>
+            <div class="source-picker-actions">
+                <button type="button" class="action-btn" onclick="pickSourceFile()">
+                    <i data-lucide="folder-open" class="w-3.5 h-3.5"></i><span data-i18n="comfy.browse">浏览…</span>
+                </button>
+                <span style="flex:1"></span>
+                <button type="button" class="action-btn" onclick="closeSourcePicker()"><span data-i18n="common.cancel">取消</span></button>
+                <button id="sourcePickerOk" type="button" class="action-btn save-btn" onclick="submitSourcePath()">
+                    <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i><span data-i18n="comfy.reload">重载工作流</span>
+                </button>
+            </div>
+            <input id="sourceFileInput" type="file" accept=".json,application/json" style="display:none" onchange="onSourceFilePicked(event)">
+        </div>
+    </div>
     <div id="imageLightbox" class="image-lightbox" onclick="closeImagePreview()">
         <img id="imageLightboxImg" src="" alt="preview" onclick="event.stopPropagation()">
     </div>
 
-    <script src="/static/js/comfyui-settings.js?v=2026.10.23.e2efix1"></script>
+    <script src="/static/js/comfyui-settings.js?v=2026.10.25.btn-theme8"></script>
 </body>
 </html>

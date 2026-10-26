@@ -272,7 +272,10 @@
                 current.comfyParams = current.comfyParams || {};
                 var id = button.dataset.comfyBool;
                 var field = deps.currentComfyFields().find(function (item) { return item.id === id; });
-                current.comfyParams[id] = !Boolean(current.comfyParams[id] ?? (field && field.default) ?? false);
+                var boolKey = field && deps.comfyFieldKey ? deps.comfyFieldKey(field) : '';
+                var boolVal = !Boolean(current.comfyParams[id] ?? (field && field.default) ?? false);
+                current.comfyParams[id] = boolVal;
+                if (boolKey) current.comfyParams[boolKey] = boolVal;   // 稳定键同步（换版本/重新暴露后仍生效）
                 deps.persistActiveSmartSettings(); deps.renderDynamicParams(); deps.scheduleSave();
             };
         });
@@ -285,6 +288,8 @@
                 var field = deps.currentComfyFields().find(function (item) { return item.id === input.dataset.comfyParam; });
                 if (field && (field.type === 'number' || field.type === 'slider')) current.comfyParams[input.dataset.comfyParam] = Number(input.value) || 0;
                 else current.comfyParams[input.dataset.comfyParam] = input.value;
+                var inputKey = field && deps.comfyFieldKey ? deps.comfyFieldKey(field) : '';
+                if (inputKey) current.comfyParams[inputKey] = current.comfyParams[input.dataset.comfyParam];
                 if (field && field.type === 'slider') deps.updateComfySliderValueLabel(input, current.comfyParams[input.dataset.comfyParam]);
                 deps.persistActiveSmartSettings(); deps.scheduleSave();
             };
@@ -299,7 +304,10 @@
                 current.comfyParams = current.comfyParams || {};
                 var fieldId = button.dataset.comfyPick;
                 var value = button.dataset.comfyValue;
+                var pickField = deps.currentComfyFields().find(function (item) { return item.id === fieldId; });
+                var pickKey = pickField && deps.comfyFieldKey ? deps.comfyFieldKey(pickField) : '';
                 current.comfyParams[fieldId] = value;
+                if (pickKey) current.comfyParams[pickKey] = value;
                 var popover = button.closest('.smart-popover');
                 var control = button.closest('.smart-control');
                 var pillSub = control && control.querySelector('.smart-pill .sub');

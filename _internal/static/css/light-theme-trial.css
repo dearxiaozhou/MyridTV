@@ -39,14 +39,8 @@ body.theme-dark #runBtn.run-btn {
   color: #fff !important;
 }
 
-/* Canvas status pills and selected checkmarks need readable foregrounds. */
-html.theme-light .run-time-pill.done,
-body.theme-light .run-time-pill.done,
-html.theme-dark .run-time-pill.done,
-body.theme-dark .run-time-pill.done {
-  background: #047857 !important;
-  color: #fff !important;
-}
+/* 2026-10-26：计时 pill 已按老王要求去背景（见 smart-canvas.css），
+   这里原先的「绿底白字 !important」会把背景打回来，整块删掉。 */
 html.theme-light .unified-option.active .unified-option-check,
 body.theme-light .unified-option.active .unified-option-check {
   color: #1e3a5f !important;
@@ -168,16 +162,7 @@ html.theme-light .bottom-dock .dock-pill.active .dock-icon {
 }
 
 /* Canvas tools and selection states must sit naturally over a pale canvas. */
-html.theme-light .smart-image-tools,
-html.theme-light .smart-node-toolbar {
-  background: rgba(255, 255, 255, .94);
-  border-color: #cbd5e1;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, .13);
-}
-html.theme-light .smart-crop-action,
-html.theme-light .smart-node-action {
-  color: #475569;
-}
+
 html.theme-light .smart-crop-action:hover,
 html.theme-light .smart-node-action:hover {
   background: var(--x-hover-bg);
@@ -186,7 +171,7 @@ html.theme-light .smart-node-action:hover {
 html.theme-light .smart-node-action:disabled:hover,
 html.theme-light .smart-node-action.disabled:hover {
   background: transparent;
-  color: #475569;
+  color: var(--x-muted);
 }
 html.theme-light .asset-tab.active,
 html.theme-light .composer .kind-toggle button.active {
@@ -207,12 +192,7 @@ html.theme-light .canvas-add-toggle:hover .canvas-dock-icon {
   border-color: var(--x-selected-line);
   box-shadow: inset 0 0 0 1px var(--x-selected-ring);
 }
-html.theme-light .image-wrap .mini-x,
-html.theme-light .thumb-item .mini-x {
-  background: rgba(255, 255, 255, .94);
-  border-color: #cbd5e1;
-  color: #475569;
-}
+/* 删除按钮底色已统一走 var(--card)，不再按 theme-light 硬编码 */
 html.theme-light .comfy-layout .run-btn:not(.is-running):not(.is-stop):not(.is-ap-running),
 html.theme-light .api-single-row .composer-actions .run-btn:not(.is-running):not(.is-stop):not(.is-ap-running),
 html.theme-light .api-video-row .composer-actions .run-btn:not(.is-running):not(.is-stop):not(.is-ap-running) {

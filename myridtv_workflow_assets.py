@@ -6,6 +6,7 @@ from pathlib import Path
 import json
 import re
 import time
+import difflib
 import base64
 import mimetypes
 import urllib.parse
@@ -21,15 +22,18 @@ _G_LOG_FILE = lambda: None
 _G_ROOT = lambda: None
 _G_ASSETS_DIR = lambda: None
 _G_CANVAS_DIR = lambda: None
+_G_USER_DATA_DIR = lambda: None
 
 
 def configure(getters):
-    global _G_LOG_FILE, _G_ROOT, _G_ASSETS_DIR, _G_CANVAS_DIR
+    global _G_LOG_FILE, _G_ROOT, _G_ASSETS_DIR, _G_CANVAS_DIR, _G_USER_DATA_DIR
     _G_LOG_FILE = getters['LOG_FILE']
     _G_ROOT = getters['ROOT']
     _G_ASSETS_DIR = getters['ASSETS_DIR']
     # 重命名工作流时要连带改写画布里的引用，故需知道画布目录（旧调用无此键则安全降级）
     _G_CANVAS_DIR = getters.get('CANVAS_DIR', lambda: None)
+    # 记「源文件都放在哪些目录」用（旧调用无此键则安全降级：不记目录）
+    _G_USER_DATA_DIR = getters.get('USER_DATA_DIR', lambda: None)
 
 
 def create_workflow_record(name, workflow):
@@ -85,6 +89,270 @@ def save_workflow_config(name, config):
     safe.setdefault("mini_cards", {})
     myridtv_core.write_json_file(config_path, safe)
     return myridtv_libraries.read_workflow_record(file_name)
+
+
+def _source_dirs_file():
+    """「源文件都放在哪些目录」的记账本（user_data/data/comfy_source_dirs.json）。
+
+    老王 2026-10-26：真源头是他**上传时选的那个目录**，浏览器死活不给路径，
+    所以只能「你指一次，我记一辈子」——之后所有工作流都先去这些目录里找。
+    """
+    base = _G_USER_DATA_DIR()
+    if not base:
+        return None
+    return Path(base) / "data" / "comfy_source_dirs.json"
+
+
+def known_source_dirs():
+    path = _source_dirs_file()
+    if not path or not path.exists():
+        return []
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    items = raw.get("dirs") if isinstance(raw, dict) else raw
+    if not isinstance(items, list):
+        return []
+    out = []
+    for item in items:
+        text = str(item or "").strip()
+        if text and text not in out and Path(text).is_dir():
+            out.append(text)
+    return out[:8]
+
+
+def remember_source_dir(file_path):
+    """把「这次源文件所在的目录」记进账本（最近用过的排前面，最多 8 个）。"""
+    path = _source_dirs_file()
+    if not path:
+        return []
+    folder = str(Path(str(file_path or "")).parent).strip()
+    if not folder or not Path(folder).is_dir():
+        return known_source_dirs()
+    dirs = [d for d in known_source_dirs() if d.lower() != folder.lower()]
+    dirs.insert(0, folder)
+    dirs = dirs[:8]
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"dirs": dirs}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    except Exception:
+        pass
+    return dirs
+
+
+def _best_match_in_dir(folder, file_name):
+    """在一个目录（含一层子目录）里找跟 file_name 最像的那个 json。
+
+    老王嫌填全路径烦：填个目录就行，剩下的我来认名字（前缀/空格/emoji 一律忽略）。
+    """
+    def norm(text):
+        return re.sub(r"[^0-9a-z\u4e00-\u9fff]+", "", str(text or "").lower())
+    target = norm(re.sub(r"\.json$", "", str(file_name or ""), flags=re.I))
+    if not target:
+        return ""
+    root = Path(folder)
+    if not root.is_dir():
+        return ""
+    best, best_score = "", 0.0
+    try:
+        for pattern in ("*.json", "*/*.json"):
+            for path in root.glob(pattern):
+                if path.name.lower().endswith(".config.json"):
+                    continue
+                other = norm(re.sub(r"\.json$", "", path.name, flags=re.I))
+                if not other:
+                    continue
+                score = difflib.SequenceMatcher(None, target, other).ratio()
+                if target in other or other in target:
+                    score = max(score, 0.8)
+                if score > best_score:
+                    best, best_score = str(path), score
+    except Exception:
+        return ""
+    return best if best_score >= 0.42 else ""
+
+
+def candidate_source_files(file_name, limit=8):
+    """没记过源时，去本机常见的 ComfyUI 工作流目录里找同名/近名文件。
+
+    老王最烦「每个工作流都要手填一次绝对路径」：导入时浏览器根本不给路径，
+    第一次重载必然没源。这里按文件名相似度扫几个常见目录给出候选，点一下即可。
+    只扫顶层 ComfyUI* 目录下的 workflows，成本低、不会全盘遍历。
+    """
+    # 老王的真源文件叫「AI代码侠土豆-Qwen Image 2.1 文生图.json」，app 里叫「Qwen-2.1-文生图.json」：
+    # 前缀、空格、标点、emoji 全不一样 → 只能归一化后按包含/相似度匹配，不能按全名相等。
+    def norm(text):
+        return re.sub(r"[^0-9a-z\u4e00-\u9fff]+", "", str(text or "").lower())
+    target = norm(re.sub(r"\.json$", "", str(file_name or ""), flags=re.I))
+    if not target:
+        return []
+    roots = []
+    # 老王指过的目录优先（那才是真源头）
+    for folder in known_source_dirs():
+        roots.append(Path(folder))
+    for drive in ("C:", "D:", "E:", "F:"):
+        try:
+            base_dir = Path(drive + "\\")
+            if not base_dir.exists():
+                continue
+            for entry in base_dir.glob("ComfyUI*"):
+                if not entry.is_dir():
+                    continue
+                for sub in ("", "user/default/workflows", "workflows", "ComfyUI/user/default/workflows"):
+                    candidate_root = entry if not sub else entry / sub
+                    if candidate_root.is_dir():
+                        roots.append(candidate_root)
+        except Exception:
+            continue
+    seen = set()
+    hits = []
+    for root in roots:
+        try:
+            # 只有真·工作流目录才往下钻一层（子目录分门别类是常态）；
+            # 其余目录只扫顶层，免得把 ComfyUI 的 python/ 之类大目录翻一遍。
+            lowered = str(root.name).lower()
+            deep = "workflow" in lowered or "工作流" in lowered
+            patterns = ("*.json", "*/*.json") if deep else ("*.json",)
+            for pattern in patterns:
+                for path in root.glob(pattern):
+                    key = str(path).lower()
+                    if key in seen or key.endswith(".config.json"):
+                        continue
+                    seen.add(key)
+                    other = norm(re.sub(r"\.json$", "", path.name, flags=re.I))
+                    if not other:
+                        continue
+                    score = difflib.SequenceMatcher(None, target, other).ratio()
+                    if target in other or other in target:
+                        score = max(score, 0.8)
+                    if score < 0.42:
+                        continue
+                    hits.append((score, str(path)))
+        except Exception:
+            continue
+    hits.sort(key=lambda item: (-item[0], len(item[1]), item[1]))
+    return [path for _score, path in hits[:limit]]
+
+
+def _pack_member_index(file_name, config):
+    """pack（多管线集合）成员名形如 <base>-2.json → 返回 2；非 pack 返回 0。"""
+    if not (config or {}).get("group"):
+        return 0
+    match = re.search(r"-(\d+)\.json$", str(file_name or ""), flags=re.I)
+    return int(match.group(1)) if match else 1
+
+
+def reload_workflow_from_source(name, source_path=None, workflow=None):
+    """从「源文件」重新拉一份工作流，覆盖 app 自己目录下的副本。
+
+    老王 2026-10-26：改的是 ComfyUI 侧导出的源文件，app 只重读 `workflows/custom/`
+    下那份副本，等于原地打转。所以「重载」= 去源路径读新版本 → 覆盖副本。
+      - 传了 workflow（前端直接选文件内容）→ 用它；
+      - 否则用 source_path，没传就用 config 里记住的 source_path；
+      - 记住的也没有 / 源文件已被删或改名 → 返回 need_source，前端弹窗让老王手动指定；
+      - 指定成功就把路径写进 config，下次一键重载。
+    """
+    file_name, workflow_path, config_path, builtin = myridtv_libraries.find_workflow_files(name)
+    if builtin:
+        raise ApiError(403, "内置工作流不支持从源文件重载")
+    if not workflow_path.exists():
+        raise ApiError(404, f"Workflow not found: {file_name}")
+    config = myridtv_core.read_json_file(config_path, {}) or {}
+    if not isinstance(config, dict):
+        config = {}
+    remembered = str(config.get("source_path") or "").strip()
+
+    src = str(source_path or "").strip()
+    raw = workflow if isinstance(workflow, dict) else None
+    if raw is None:
+        if not src:
+            src = remembered
+        if not src:
+            return {"ok": False, "need_source": True, "reason": "unset", "name": file_name,
+                    "last_source": "", "candidates": candidate_source_files(file_name),
+                    "source_dirs": known_source_dirs()}
+        source_file = Path(src)
+        # 填的是目录也认：按名字在目录里挑最像的那个（省得手敲完整路径）
+        if source_file.is_dir():
+            picked = _best_match_in_dir(source_file, file_name)
+            if not picked:
+                return {"ok": False, "need_source": True, "reason": "dir-empty", "name": file_name,
+                        "last_source": src, "candidates": candidate_source_files(file_name),
+                        "source_dirs": known_source_dirs()}
+            src = picked
+            source_file = Path(src)
+        if not source_file.exists() or not source_file.is_file():
+            return {"ok": False, "need_source": True, "reason": "missing", "name": file_name,
+                    "last_source": src, "candidates": candidate_source_files(file_name),
+                    "source_dirs": known_source_dirs()}
+        try:
+            raw = json.loads(source_file.read_text(encoding="utf-8"))
+        except Exception as exc:
+            raise ApiError(400, f"源文件不是合法 JSON：{str(exc)[:120]}")
+    if not isinstance(raw, dict) or not raw:
+        raise ApiError(400, "源文件内容不是工作流对象")
+    # ComfyUI 的「界面格式」导出（nodes/links 列表）不是可提交图，直接挡掉，
+    # 免得把好好的副本覆盖成一张废图。
+    if isinstance(raw.get("nodes"), list) and not any(
+        isinstance(value, dict) and value.get("class_type") for value in raw.values()
+    ):
+        raise ApiError(400, "这是 ComfyUI 的界面格式导出，请在 ComfyUI 里用「导出(API 格式)」后再重载")
+
+    clusters, _dropped = myridtv_comfy.comfy_workflow_split_clusters(raw)
+    if clusters:
+        if not config.get("group"):
+            raise ApiError(400, "源文件含多条独立管线，请用「上传」重新导入，别用重载覆盖单条")
+        index = _pack_member_index(file_name, config)
+        if index < 1 or index > len(clusters):
+            raise ApiError(400, f"源文件管线数（{len(clusters)}）与当前成员序号（{index}）对不上")
+        raw = clusters[index - 1]["nodes"]
+
+    # 覆盖前留一份 .bak（老王最烦不可逆）；.bak 不匹配 *.json，不会混进列表
+    try:
+        if workflow_path.exists():
+            workflow_path.with_name(workflow_path.name + ".bak").write_text(
+                workflow_path.read_text(encoding="utf-8"), encoding="utf-8")
+    except Exception:
+        pass
+    myridtv_core.write_json_file(workflow_path, raw)
+
+    # 源目录里若躺着同名 .config.json（参数暴露配置）→ 一并覆盖；
+    # 没有就保留本地 config（那是 MyridTV 侧的暴露配置，ComfyUI 导出里没有）。
+    if src:
+        try:
+            stem = re.sub(r"\.json$", "", Path(src).name, flags=re.I)
+            sidecar = Path(src).with_name(stem + ".config.json")
+            if sidecar.exists():
+                side_config = json.loads(sidecar.read_text(encoding="utf-8"))
+                if isinstance(side_config, dict):
+                    config = side_config
+        except Exception:
+            pass
+    config.setdefault("title", myridtv_libraries.workflow_title_from_name(file_name))
+    config.setdefault("fields", [])
+    config.setdefault("mini_cards", {})
+    if src:
+        config["source_path"] = src
+        try:
+            stat = Path(src).stat()
+            config["source_mtime"] = int(stat.st_mtime * 1000)
+            config["source_size"] = int(stat.st_size)
+        except Exception:
+            pass
+        config["source_synced_at"] = int(time.time() * 1000)
+    myridtv_core.write_json_file(config_path, config)
+
+    if src:
+        remember_source_dir(src)  # 记下「源文件都放这个目录」，下次别的流也能直接找到
+    myridtv_core.append_log(_G_LOG_FILE(), f"comfy workflow reloaded from source {file_name} <- {src or '(inline)'}")
+    return {
+        "ok": True,
+        "name": file_name,
+        "source_path": src,
+        "config": config,
+        "record": myridtv_libraries.read_workflow_record(file_name),
+    }
 
 
 def rename_workflow_record(name, new_name):
@@ -202,6 +470,7 @@ def parse_workflow_route(request_path):
         ("/config", "config"),
         ("/run", "run"),
         ("/rename", "rename"),
+        ("/reload-source", "reload-source"),
     ):
         if tail.endswith(suffix):
             return (route_name, urllib.parse.unquote(tail[:-len(suffix)]))

@@ -1015,3 +1015,41 @@ html.theme-dark body .sidebar,
 body.theme-dark .sidebar {
     background:var(--wf-v2-bg) !important;
 }
+
+/* 2026-10-26 源文件选择弹窗：重载工作流找不到源（从没记过 / 源文件被删或改名）时，
+   让老王手动指定源路径。配色一律走 --wf-v2-*，不吃任何硬编码底色。 */
+.source-picker-backdrop{
+    position:fixed;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;
+    background:rgba(0,0,0,.45);
+}
+.source-picker-panel{
+    width:min(560px,92vw);background:var(--wf-v2-panel);border:1px solid var(--wf-v2-line-strong);
+    border-radius:14px;padding:16px 18px;box-shadow:0 18px 48px rgba(0,0,0,.35);
+    color:var(--wf-v2-text);display:flex;flex-direction:column;gap:10px;
+}
+.source-picker-head{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600}
+.source-picker-hint{font-size:12px;line-height:1.6;color:var(--wf-v2-muted);word-break:break-all}
+.source-path-input{
+    width:100%;box-sizing:border-box;padding:8px 10px;border-radius:9px;font-size:12px;
+    background:var(--wf-v2-panel-2);border:1px solid var(--wf-v2-line-mid);color:var(--wf-v2-text);
+    outline:none;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+.source-path-input:focus{border-color:var(--wf-v2-line-strong)}
+.source-picker-actions{display:flex;align-items:center;gap:8px;margin-top:2px}
+.source-info-row{
+    display:flex;align-items:center;gap:6px;margin-top:4px;font-size:11px;color:var(--wf-v2-muted);min-width:0;
+}
+.source-path-text{flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.source-change-btn{
+    flex:none;background:none;border:none;padding:0 0 0 2px;color:var(--wf-v2-muted);
+    font-size:11px;cursor:pointer;text-decoration:underline;
+}
+.source-change-btn:hover{color:var(--wf-v2-text)}
+.source-candidate-list{display:flex;flex-direction:column;gap:6px;max-height:190px;overflow:auto}
+.source-candidate{
+    display:flex;align-items:flex-start;gap:6px;width:100%;text-align:left;cursor:pointer;
+    padding:7px 9px;border-radius:9px;font-size:11px;line-height:1.5;
+    background:var(--wf-v2-panel-2);border:1px solid var(--wf-v2-line);color:var(--wf-v2-text);
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;word-break:break-all;
+}
+.source-candidate:hover{border-color:var(--wf-v2-line-strong);background:var(--wf-v2-panel-3)}

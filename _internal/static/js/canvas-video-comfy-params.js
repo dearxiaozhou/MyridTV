@@ -179,10 +179,81 @@ function allowsPromptlessCustomComfy(runSettings=D("settings")){
  normalizeComfyWorkflowSelection(runSettings);
  return customComfyPromptFields(runSettings).length === 0;
 }
-function comfyParamValue(field){
-    D("settings").comfyParams = D("settings").comfyParams || {};
-    if(D("settings").comfyParams[field.id] !== undefined) return D("settings").comfyParams[field.id];
+// 2026-10-24 老王：参数值的**稳定键**。字段 id 是随机生成的（makeFieldId），
+// 重新暴露一次配置 id 就变，之前按 id 存的值就失联（表现为"改一点点要重配"）。
+// node+input 是工作流里的真实绑定 → 用 `node::input` 当稳定键兜底，换版本/重新暴露都不丢。
+function comfyFieldKey(field){
+    const nodeId = String(field && field.node != null ? field.node : '').trim();
+    const input = String(field && field.input != null ? field.input : '').trim();
+    return nodeId && input ? (nodeId + '::' + input) : '';
+}
+function comfyParamValue(field, sourceSettings=D("settings")){
+    // sourceSettings：2026-10-25 批量节点参数常驻在卡片上（不靠选中），取值要按节点自己的
+    // runSettings，不能读全局 settings（那会显示成当前选中节点的值）。
+    const src = sourceSettings || D("settings");
+    const store = src.comfyParams = src.comfyParams || {};
+    if(store[field.id] !== undefined) return store[field.id];
+    const key = comfyFieldKey(field);
+    if(key && store[key] !== undefined) return store[key];
     return field.default ?? (field.type === 'boolean' ? false : (field.type === 'number' || field.type === 'slider' ? 0 : ''));
+}
+// 把按（随机）id 存的老值回填到稳定键上；画布设置 + 每个节点自己的覆盖都迁。
+function adoptComfyParamKeysInto(store, fields){
+    if(!store || !Array.isArray(fields) || !fields.length) return 0;
+    let moved = 0;
+    fields.forEach(function(field){
+        const key = comfyFieldKey(field);
+        if(!key || !field || !field.id) return;
+        if(store[field.id] !== undefined && store[key] === undefined){
+            store[key] = store[field.id];
+            moved++;
+        }
+    });
+    return moved;
+}
+function comfyFieldsForWorkflowName(name){
+    const resolved = deps.resolveComfyWorkflowName ? deps.resolveComfyWorkflowName(name || '') : String(name || '');
+    const cache = D("comfyWorkflowCache") || {};
+    const wf = cache[resolved] || cache[name];
+    return (wf && wf.config && wf.config.fields) || [];
+}
+function adoptLegacyComfyParamKeys(){
+    const settingsRef = D("settings");
+    let moved = 0;
+    if(settingsRef && settingsRef.comfyParams){
+        moved += adoptComfyParamKeysInto(settingsRef.comfyParams, currentComfyFields());
+    }
+    const allNodes = D("nodes") || [];
+    (Array.isArray(allNodes) ? allNodes : []).forEach(function(node){
+        const store = node && node.runSettings && node.runSettings.comfyParams;
+        if(!store) return;
+        const fields = node.comfyWorkflow ? comfyFieldsForWorkflowName(node.comfyWorkflow) : currentComfyFields();
+        moved += adoptComfyParamKeysInto(store, fields);
+    });
+    return moved;
+}
+// 「重载工作流」：清掉内存里该工作流的定义 → 重新读盘 → 重绘参数区。
+// 覆盖同名文件后不用重开画布/重启；已配的参数按稳定键继续生效。
+async function reloadComfyWorkflow(name){
+    const target = deps.resolveComfyWorkflowName
+        ? deps.resolveComfyWorkflowName(name || D("settings").comfyWorkflow || '')
+        : String(name || D("settings").comfyWorkflow || '');
+    if(!target) return null;
+    const cache = D("comfyWorkflowCache");
+    if(cache) delete cache[target];
+    // 连"已自动暴露过素材槽"的标记一起清：换版本后新加的 LoadImage/LoadAudio 才会重新扫。
+    try { global.CanvasComfyJobEngine?.forgetAutoExposedWorkflow?.(target); } catch(_) {}
+    const data = await ensureComfyWorkflow(target);
+    if(!data){
+        if(typeof deps.toast === 'function') deps.toast('重载失败：读不到该工作流（文件被删或改名了？）');
+        return null;
+    }
+    adoptLegacyComfyParamKeys();
+    if(typeof renderDynamicParams === 'function') renderDynamicParams();
+    if(typeof deps.persistActiveSmartSettings === 'function') deps.persistActiveSmartSettings();
+    if(typeof deps.scheduleSave === 'function') deps.scheduleSave();
+    if(typeof deps.toast === 'function') deps.toast('已重载工作流：' + String(target).replace(/\.json$/i, ''));
+    return data;
 }
 function formatComfySliderValue(value, step=1){
     const num = Number(value);
@@ -199,6 +270,8 @@ function updateComfySliderValueLabel(input, value){
 }
 function updateProviderModels(){ renderDynamicParams(); }
 function renderDynamicParams(){
+    // 批量节点：参数画在它自己的卡片里（2026-10-25 老王：不要底部面板），别往 #dynamicParams 写。
+    if(deps.batchParamsSurfaceActive && deps.batchParamsSurfaceActive()){ deps.renderBatchParamsSurface(); return; }
     if(!D("dynamicParams")) return;
     // 槽若被上轮搬进参数排，先归位到原容器，避免下面 innerHTML= 连节点冲掉
     D("composerSlotHomes").forEach((home, slot) => {
@@ -320,6 +393,9 @@ function normalizeHiddenVideoToggles(){
         ensureCustomComfyWorkflowReady,
         allowsPromptlessCustomComfy,
         comfyParamValue,
+        comfyFieldKey,
+        adoptLegacyComfyParamKeys,
+        reloadComfyWorkflow,
         formatComfySliderValue,
         updateComfySliderValueLabel,
         updateProviderModels,

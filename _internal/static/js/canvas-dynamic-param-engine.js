@@ -34,54 +34,158 @@ function rhCleanNumber(value){
 function rhCleanNumberText(value){
     return String(rhCleanNumber(value));
 }
+/* 2026-10-25 老王：本地工作流参数行必须与 RH 面板「逐行同款」，RH 是基准。
+ * 历史债务：本地走 .pfield-inline/.pfield-number-inline/.cfn-size-cell 一套 DOM，
+ * RH 走 .num-compact/.num-with-dice/.setting-check 一套 DOM；两套各沉淀各的样式，
+ * 结果同一个 UI 出现两种圆角、两种底色、行高不齐，而且只有 RH 那套有 hover/focus 反馈。
+ * 打 !important 补丁治不了本（选择器权重互相打架，漏一个就露馅），所以直接换骨：
+ * 本地也输出 RH 的行骨架，样式由同一组 CSS 规则负责。
+ * 事件全部按 data-* 属性委托（data-comfy-param / data-comfy-bool / data-comfy-random /
+ * data-slider-val），换外壳不影响任何绑定。 */
 function renderComfySettingField(field){
     const labelText = field.name || field.input || field.id;
-    const label = `<div class="pfield-label">${deps.escapeHtml(labelText)}</div>`;
+    const labelHtml = `<span class="num-label">${deps.escapeHtml(labelText)}</span>`;
     const value = rhCleanNumber(deps.comfyParamValue(field));
+    const uid = deps.escapeHtml(field.id);
     if(field.type === 'boolean'){
         const on = !!value;
-        return `<div class="pfield pfield-inline"><div class="pfield-inline-label">${deps.escapeHtml(labelText)}</div><div class="pfield-bool"><div class="pfield-bool-track ${on ? 'on' : ''}" data-comfy-bool="${deps.escapeHtml(field.id)}"><div class="pfield-bool-thumb"></div></div></div></div>`;
+        return `<button type="button" class="setting-check ${on ? 'active' : ''}" data-comfy-bool="${uid}"><span class="check-box"></span><span>${deps.escapeHtml(labelText)}</span></button>`;
     }
     if(field.type === 'dropdown'){
         const opts = field.options || [];
         const v = value ?? '';
         const optsHtml = opts.map(o => `<option value="${deps.escapeHtml(o)}" ${String(v)===String(o)?'selected':''}>${deps.escapeHtml(o)}</option>`).join('');
-        return `<div class="pfield pfield-inline"><div class="pfield-inline-label">${deps.escapeHtml(labelText)}</div><select class="pfield-select pfield-inline-select" data-comfy-param="${deps.escapeHtml(field.id)}">${optsHtml || `<option value="">${deps.escapeHtml(tr('smart.noOption'))}</option>`}</select></div>`;
+        return `<div class="num-compact rh-select-param" title="${deps.escapeHtml(labelText)}">${labelHtml}<select class="pfield-select pfield-inline-select rh-param-select" aria-label="${deps.escapeHtml(labelText)}" data-comfy-param="${uid}">${optsHtml || `<option value="">${deps.escapeHtml(tr('smart.noOption'))}</option>`}</select></div>`;
     }
-    // 2026-10-24：本地工作流的「比例」字段（上游 ResolutionSelector.aspect_ratio）在暴露配置里
-    // 只有 type:text、没有 options，之前渲染成自由文本框（要手打 "16:9 (Widescreen)"）。
-    // 值命中官方 8 枚举时改用和 RH 侧完全同一个下拉（同 class、同取值域），两条路一致。
+    // 2026-10-24：本地工作流「比例」字段（上游 ResolutionSelector.aspect_ratio）在暴露配置里只有
+    // type:text、没有 options，渲染成自由文本框得手打 "16:9 (Widescreen)"。值命中官方 8 枚举时
+    // 改用下拉（与 RH 侧同一取值域）；类名带 comfy-aspect-select 便于定位。
     if(!field.type || field.type === 'text'){
         const aspectList = comfyAspectOptionList(field);
         if(aspectList){
             const v = value ?? '';
             const aspectHtml = aspectList.map(o => `<option value="${deps.escapeHtml(o)}" ${String(v)===String(o)?'selected':''}>${deps.escapeHtml(o)}</option>`).join('');
-            return `<div class="pfield pfield-inline"><div class="pfield-inline-label">${deps.escapeHtml(labelText)}</div><select class="pfield-select pfield-inline-select" data-comfy-param="${deps.escapeHtml(field.id)}">${aspectHtml}</select></div>`;
+            return `<div class="num-compact rh-select-param" title="${deps.escapeHtml(labelText)}">${labelHtml}<select class="pfield-select pfield-inline-select rh-param-select pfield-aspect-select" aria-label="${deps.escapeHtml(labelText)}" data-comfy-param="${uid}">${aspectHtml}</select></div>`;
         }
     }
     if(field.type === 'textarea'){
-        return `<div class="pfield">${label}<textarea class="pfield-textarea" data-comfy-param="${deps.escapeHtml(field.id)}" placeholder="${deps.escapeHtml(labelText)}">${deps.escapeHtml(value ?? '')}</textarea></div>`;
+        return `<div class="pfield"><div class="pfield-label">${deps.escapeHtml(labelText)}</div><textarea class="pfield-textarea" data-comfy-param="${uid}" placeholder="${deps.escapeHtml(labelText)}">${deps.escapeHtml(value ?? '')}</textarea></div>`;
     }
     if(field.type === 'slider'){
         const min = field.min ?? 0, max = field.max ?? 10, step = field.step ?? 1;
         const displayValue = deps.formatComfySliderValue(value ?? 0, step);
-        return `<div class="pfield pfield-inline pfield-inline-slider"><div class="pfield-inline-label">${deps.escapeHtml(labelText)}</div><div class="pfield-slider">
-            <input type="range" data-comfy-param="${deps.escapeHtml(field.id)}" min="${min}" max="${max}" step="${step}" value="${deps.escapeHtml(value ?? 0)}">
-            <span class="pfield-slider-val" data-slider-val="${deps.escapeHtml(field.id)}">${deps.escapeHtml(displayValue)}</span>
-        </div></div>`;
+        return `<div class="num-compact rh-range-param" title="${deps.escapeHtml(labelText)}">${labelHtml}<input type="range" class="pfield-slider rh-param-range" data-comfy-param="${uid}" min="${deps.escapeHtml(min)}" max="${deps.escapeHtml(max)}" step="${deps.escapeHtml(step)}" value="${deps.escapeHtml(value ?? 0)}"><span class="rh-range-value" data-slider-val="${uid}">${deps.escapeHtml(displayValue)}</span></div>`;
     }
     if(field.type === 'number'){
         const min = field.min !== undefined ? ` min="${deps.escapeHtml(field.min)}"` : '';
         const max = field.max !== undefined ? ` max="${deps.escapeHtml(field.max)}"` : '';
         const step = field.step !== undefined ? ` step="${deps.escapeHtml(field.step)}"` : '';
-        const dice = field.random_enabled === true
-            ? `<button type="button" class="random-btn ${deps.smartComfyRandomActive(field.id) ? 'active' : ''}" data-comfy-random="${deps.escapeHtml(field.id)}" title="${deps.escapeHtml(deps.smartComfyRandomActive(field.id) ? tr('smart.diceOn') : tr('smart.diceOff'))}"><i data-lucide="dice-5"></i></button>`
-            : '';
-        const rowStyle = dice ? '' : 'grid-template-columns:1fr';
-        return `<div class="pfield pfield-number-inline"><div class="pfield-inline-label">${deps.escapeHtml(labelText)}</div><div class="pfield-random-row" style="${rowStyle}"><input class="pfield-input" type="number" data-comfy-param="${deps.escapeHtml(field.id)}" value="${deps.escapeHtml(value ?? 0)}"${min}${max}${step}>${dice}</div></div>`;
+        const input = `<input type="number" data-comfy-param="${uid}" value="${deps.escapeHtml(value ?? 0)}"${min}${max}${step}>`;
+        if(field.random_enabled === true){
+            const active = deps.smartComfyRandomActive(field.id);
+            return `<div class="num-with-dice" title="${deps.escapeHtml(labelText)}">${labelHtml}${input}<button type="button" class="dice-btn ${active ? 'active' : ''}" data-comfy-random="${uid}" title="${deps.escapeHtml(active ? tr('smart.diceOn') : tr('smart.diceOff'))}"><i data-lucide="dice-5"></i></button></div>`;
+        }
+        return `<div class="num-compact" title="${deps.escapeHtml(labelText)}">${labelHtml}${input}</div>`;
     }
-    // 文本字段：横向紧凑（标题左、输入右），与数值/下拉一致
-    return `<div class="pfield pfield-inline"><div class="pfield-inline-label">${deps.escapeHtml(labelText)}</div><input class="pfield-input pfield-inline-input" type="text" data-comfy-param="${deps.escapeHtml(field.id)}" value="${deps.escapeHtml(value ?? '')}" placeholder="${deps.escapeHtml(labelText)}"></div>`;
+    // 文本字段：与 RH 的 .rh-text-param 同款（标签左、输入右）
+    return `<div class="num-compact rh-text-param" title="${deps.escapeHtml(labelText)}">${labelHtml}<input type="text" data-comfy-param="${uid}" value="${deps.escapeHtml(value ?? '')}" placeholder="${deps.escapeHtml(labelText)}"></div>`;
+}
+/* 2026-10-25 老王：批量节点卡片里的参数改成「一排 pill + 下拉框」，
+ * 照卡片上引擎/比例/分辨率 pill 的样子来 —— 一行排开、8px 圆角（不是胶囊）、
+ * 标签只留短名（全名进 title），值统一收进 <select>（能枚举的都枚举）。
+ * 事件仍走 data-comfy-param / data-rh-param / data-comfy-bool / … 委托，换外壳不动绑定。 */
+// 常见参数名的短名（老王：「每个标签搞那么长干嘛」——3 字以内，语义还认得出来）
+const WF_SHORT_LABELS = {
+    '百万像素':'像素', '采样步数':'步数', '二采倍数':'二采', '去油lora':'去油', '去油LoRA':'去油',
+    '视频时长':'时长', '图片比例':'比例', '画面比例':'比例', '帧率':'帧率', '随机种子':'种子'
+};
+function shortParamLabel(text){
+    const raw = String(text || '').trim().replace(/\s*[（(][^）)]*[）)]\s*$/g, '');
+    if(!raw) return '';
+    if(WF_SHORT_LABELS[raw]) return WF_SHORT_LABELS[raw];
+    const lower = raw.toLowerCase();
+    const hit = Object.keys(WF_SHORT_LABELS).find(k => k.toLowerCase() === lower);
+    if(hit) return WF_SHORT_LABELS[hit];
+    if(/[\u4e00-\u9fa5]/.test(raw)){
+        // 兜底：先剥掉「数/量/修复/开关」这类尾巴再取前 3 字
+        // （"采样步数" → "采样"、"高清修复" → "高清"、"随机种子" → 词表命中"种子"）。
+        // 尾缀表要覆盖**动作词**：只剥名词尾会把「高清修复」砍成「高清修」这种三不像。
+        const trimmed = raw.replace(/(数量|次数|像素|步数|倍数|系数|强度|尺寸|大小|长度|宽度|高度|精度|质量|类型|方式|算法|版本|功能|效果|选项|设置|预设|模式|开关|启用|增强|优化|裁剪|修复)$/, '');
+        const base = trimmed.length >= 2 ? trimmed : raw;
+        return base.length > 3 ? base.slice(0, 3) : base;
+    }
+    return raw.length > 6 ? raw.slice(0, 5) + '…' : raw;
+}
+function stepDecimals(step){
+    const text = String(step ?? 1);
+    return text.includes('.') ? Math.min(6, text.split('.')[1].length) : 0;
+}
+// 数值字段 → 档位数组（给下拉用）；范围太大（种子 0~2^31 之类）返回 null，调用方退回数字输入。
+function wfParamNumberOptions(field, current, limit=40){
+    const min = Number(field?.min), max = Number(field?.max);
+    const rawStep = Number(field?.step);
+    const step = Number.isFinite(rawStep) && rawStep > 0 ? rawStep : 1;
+    if(!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return null;
+    const span = (max - min) / step;
+    if(span > limit) return null;
+    const decimals = stepDecimals(step);
+    const list = [];
+    for(let i = 0; i <= Math.floor(span) + 1; i++){
+        const v = Number((min + i * step).toFixed(decimals));
+        if(v > max + 1e-9) break;
+        list.push(String(v));
+    }
+    // 当前值必须原样进下拉：字段没给 step 时档位只有 0/1，若按 step 精度四舍五入会把
+    // 0.35 抹成 0（下拉显示 0、实际存的却是 0.35，对不上）。这里只做浮点尾巴清理。
+    const cur = Number(current);
+    if(Number.isFinite(cur)){
+        const curText = String(Number(cur.toFixed(6)));
+        if(!list.includes(curText)) list.push(curText);
+    }
+    if(!list.length) return null;
+    return list.sort((a, b) => Number(a) - Number(b));
+}
+/* 2026-10-25 老王：「你直接复刻图片节点那一套不行吗？都是图片生成先模型」
+   参数 pill 与图片节点（smart-image）/RH 资源控件**同一套 DOM**：
+   .smart-control > .smart-pill（图标位省略，文字在 .sub）+ caret，
+   点击弹 .model-list 选项（卡片里弹层走 body 浮层，见 canvas-batch-generate.js）。
+   不再自造 .wf-pill / 自绘 select trigger —— 那套既要跟 shared-native-select-menu
+   抢渲染，又要跟 @layer studio-palette / studio-interaction 的 important 层序打架。 */
+function wfParamPillHtml(opts){
+    const o = opts || {};
+    const full = String(o.label || '');
+    // 短标签只给「值不可读」的字段（光秃秃一个数字/布尔）；比例枚举（16:9）与
+    // 用户自填文本的值本身可读，只显示值 —— 与图片节点的比例 pill 同款。
+    const short = shortParamLabel(full);
+    // pill 上显示的值剥掉括号后缀（"16:9 (Widescreen)" → "16:9"）：一颗 pill 只占 40px 级，
+    // 全称放 hover title 与浮层选项里。
+    const rawValue = String(o.value ?? '');
+    const valueText = rawValue.replace(/\s*[（(][^）)]*[）)]\s*$/, '');
+    const keyText = o.hideKey ? '' : short;
+    const subText = (keyText ? `${keyText} ${valueText}` : valueText) || short || full;
+    const title = rawValue ? `${full}：${rawValue}` : full;
+    const key = String(o.paramKey || '');
+    if(Array.isArray(o.options) && o.options.length){
+        // 有档位 → pick pill：点击由 batch-generate 的 body 浮层出选项列表
+        return `<div class="smart-control wf-param-control" data-wf-param-control="${deps.escapeHtml(key)}">` +
+            `<button class="smart-pill wf-param-pill" type="button" data-batch-wfparam-toggle="${deps.escapeHtml(key)}" title="${deps.escapeHtml(title)}">` +
+            `<span class="sub">${deps.escapeHtml(subText)}</span><i data-lucide="chevron-down" class="pill-caret"></i></button></div>`;
+    }
+    // 无档位（种子 0~2^31 那种拉不出枚举）→ pill 内嵌窄输入框，
+    // 仍走 data-comfy-param / data-rh-param 现成委托，写值链路不变。
+    const keyHtml = keyText ? `<span class="wf-param-key">${deps.escapeHtml(keyText)}</span>` : '';
+    return `<div class="smart-control wf-param-control" data-wf-param-control="${deps.escapeHtml(key)}">` +
+        `<span class="smart-pill wf-param-pill wf-param-plain" title="${deps.escapeHtml(title)}">${keyHtml}` +
+        `<input class="wf-param-input" type="${o.inputType || 'text'}"${o.attrs || ''} value="${deps.escapeHtml(o.value ?? '')}"></span></div>`;
+}
+// 布尔参数：一颗 pill，短名 + 开/关；点击直接切换（data-comfy-bool / data-rh-bool 现成委托）
+function wfParamTogglePillHtml(opts){
+    const o = opts || {};
+    const full = String(o.label || '');
+    const short = shortParamLabel(full);
+    return `<div class="smart-control wf-param-control">` +
+        `<button class="smart-pill wf-param-pill wf-param-toggle${o.on ? ' is-on' : ''}" type="button" data-${o.boolAttr}="${deps.escapeHtml(o.boolKey)}" title="${deps.escapeHtml(full + (o.on ? '：开' : '：关'))}">` +
+        `<span class="sub">${deps.escapeHtml(short)} · ${o.on ? '开' : '关'}</span></button></div>`;
 }
 const RH_KNOWN_FIELD_OPTIONS = {
     // 2026-10-20 老王：比例字段用 ComfyUI 内置 ResolutionSelector 的**真实枚举**（官方源码核对过），
@@ -95,16 +199,39 @@ const RH_KNOWN_FIELD_OPTIONS = {
     scheduler:['normal','karras','exponential','sgm_uniform','simple','ddim_uniform'],
     sampler:['euler','euler_ancestral','heun','dpm_2','dpm_2_ancestral','lms','dpmpp_2m','dpmpp_sde','ddim','uni_pc']
 };
-// 本地工作流比例字段 → 官方 8 枚举下拉（只在值命中枚举时转，避免误伤自由文本字段）
-function comfyAspectOptionList(field){
+// 本地工作流比例字段 → 官方 8 枚举下拉（只在值命中枚举时才转，避免误伤自由文本字段）
+// current 由调用方传入（卡片 pill 要按节点自己的 runSettings 取值，不能在这里读全局 settings）
+function comfyAspectOptionList(field, current){
     const key = String(field?.input || '').trim();
     const name = String(field?.name || '').trim();
     const isAspect = key === 'aspect_ratio' || key === 'aspectRatio'
         || /^(视频?比例|比例|宽高比|画面比例)$/.test(name);
     if(!isAspect) return null;
-    const list = RH_KNOWN_FIELD_OPTIONS.aspect_ratio;
-    const current = String((typeof deps.comfyParamValue === 'function' ? deps.comfyParamValue(field) : '') ?? field?.default ?? '').trim();
-    return list.includes(current) ? list : null;
+    const list = RH_KNOWN_FIELD_OPTIONS.aspect_ratio.slice();
+    const shown = current !== undefined && current !== null && current !== ''
+        ? String(current).trim()
+        : String(field?.default ?? '').trim();
+    /* 2026-10-25 老王：「视频比例也调也调不了」—— 之前只在「当前值命中枚举」时才给下拉，
+       于是值一旦是自由文本（旧值 "16:9"、手改过的、空的），这颗 pill 就退化成输入框，
+       比例彻底没法点选（工作流里 aspect_ratio 本来就是 text 字段，最容易踩）。
+       比例字段的枚举是固定的 8 项（ComfyUI ResolutionSelector 官方值），永远给全套；
+       当前值不在枚举里时补一项进去，免得 pill 显示的值在浮层里找不到勾。 */
+    if(shown && !list.includes(shown)) list.push(shown);
+    return list;
+}
+/* 2026-10-25：pill 与浮层必须**同源**算选项 —— 之前 pill 走 comfyAspectOptionList、
+   浮层只认 field.options/numberOptions，同一颗参数出现「pill 能点、点开却显示无选项」。
+   取值/选项计算收口到这里，两边都调它，杜绝再次分叉。 */
+function wfParamOptionsFor(field, value){
+    if(!field) return null;
+    if(field.type === 'dropdown' && Array.isArray(field.options) && field.options.length){
+        return field.options.map(String);
+    }
+    if(field.type === 'slider' || field.type === 'number'){
+        const opts = wfParamNumberOptions(field, value);
+        if(opts) return opts;
+    }
+    return comfyAspectOptionList(field, value);
 }
 function rhParamKey(nodeId, fieldName){
     return `${nodeId ?? ''}::${fieldName ?? ''}`;
@@ -482,6 +609,12 @@ async function uploadCurrentSmartVideosToCloud(){
     global.CanvasDynamicParamEngine = {
         configure,
         renderComfySettingField,
+        shortParamLabel,
+        comfyAspectOptionList,
+        wfParamOptionsFor,
+        wfParamNumberOptions,
+        wfParamPillHtml,
+        wfParamTogglePillHtml,
         rhParamKey,
         rhFieldKind,
         rhCleanNumber,

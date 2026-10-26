@@ -2,6 +2,7 @@
 """RH API 地址与资产上传域（后端拆分第34刀自 rh_official_proxy.py 逐字外移）：
 平台地址跟随用户 API 设置（含 /openapi/v2 双路径归一）、URL 拼接、
 二进制/任务资产上传（本地媒体→RH asset）。零主文件全局依赖。"""
+import random
 import time
 import socket
 import urllib.error
@@ -54,7 +55,8 @@ def _rh_upload_multipart_retry(url, fields, files, headers, timeout):
         except (urllib.error.URLError, TimeoutError, socket.timeout, OSError) as exc:
             last_exc = exc
             if attempt < 2:
-                time.sleep(3)
+                # 2026-10-27：固定 3s 会让并发上传在同一秒集体重试，加抖动打散
+                time.sleep(3 + random.uniform(0.0, 1.0))
                 continue
             raise
     if last_exc is not None:

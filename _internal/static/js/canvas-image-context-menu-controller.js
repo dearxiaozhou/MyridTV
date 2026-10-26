@@ -29,11 +29,10 @@
             style = document.createElement('style');
             style.id = 'smartImageContextMenuStyle';
             style.textContent = `
-            #smartImageContextMenu{position:fixed;display:none;flex-direction:column;min-width:168px;padding:8px;border-radius:14px;border:1px solid rgba(0,0,0,.12);background:rgba(255,255,255,.96);box-shadow:0 18px 40px rgba(0,0,0,.16);backdrop-filter:blur(14px);z-index:2500}
-            body.studio-theme-dark #smartImageContextMenu{background:rgba(31,31,31,.96);border-color:rgba(200,200,200,.18);box-shadow:0 18px 40px rgba(0,0,0,.42)}
+            #smartImageContextMenu{position:fixed;display:none;flex-direction:column;min-width:168px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--panel);box-shadow:0 18px 40px var(--shadow);backdrop-filter:blur(14px);z-index:2500}
             #smartImageContextMenu.open{display:flex}
-            #smartImageContextMenu button{display:flex;align-items:center;justify-content:flex-start;gap:8px;width:100%;padding:10px 12px;border:0;border-radius:10px;background:transparent;color:var(--text);font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap}
-            #smartImageContextMenu button:hover{background:rgba(200,200,200,.14)}
+            #smartImageContextMenu button{display:flex;align-items:center;justify-content:flex-start;gap:8px;width:100%;padding:10px 12px;border:0;border-radius:8px;background:transparent;color:var(--text);font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap}
+            #smartImageContextMenu button:hover{background:var(--x-hover-bg)}
             `;
             document.head.appendChild(style);
         }

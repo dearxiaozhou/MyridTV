@@ -73,12 +73,21 @@ async function runPromptLLMNode(nodeId){
 }
 function comfyFieldKind(field, workflowData=deps.currentComfyWorkflowData()){
     if(['image','video','audio'].includes(field?.type)) return field.type;
+    // 2026-10-26 老王：本地工作流的「提示词槽」后端已经判过一次（myridtv_comfy.py 的
+    // _is_prompt_slot），命中的字段 id 统一带 auto_prompt_ 前缀。前端以前是另按 class_type
+    // 猜（cliptextencode|primitivestringmultiline|prompt），碰到 class_type 就叫 "Text" 的节点
+    // 猜不出来 —— 剧本提示词被当普通参数渲染进「工作流参数」，画布顶部输入框反而丢了落点。
+    // 后端既已判定，前端直接采信，别再猜第二遍。
+    if(String(field?.id || '').startsWith('auto_prompt_')) return 'prompt';
     const meta = deps.comfyFieldMeta(field, workflowData);
     const excludedPromptNode = /previewany|preview|save\s*text|savetext|save_text/.test(meta.classType)
         || /预览|保存文本|保存文件|输出/.test(meta.nodeTitle)
         || /preview|markdown|output|save|file|path|name/.test(meta.inputKey);
     if(excludedPromptNode) return 'setting';
-    const promptNode = /cliptextencode|primitivestringmultiline|prompt/.test(meta.classType)
+    // \btext\b：与后端 _PROMPT_CLASS 对齐（后端也认 class_type 就叫 "Text" 的节点）。
+    // 只有 inputKey 是提示词键（text/value）或字段本身是 textarea 时才会落成 prompt，
+    // 所以 "Text Concatenate" 这类 text_a/text_b 拼接节点不会被误判。
+    const promptNode = /cliptextencode|primitivestringmultiline|prompt|\btext\b/.test(meta.classType)
         || /提示词|正向|负向|prompt/.test(meta.nodeTitle);
     const promptField = /(^|[\s_-])(prompt|positive|negative)([\s_-]|$)|提示词|正向|负向/.test(meta.fullText);
     if(promptNode && (meta.inputKey === 'text' || meta.inputKey === 'value' || field?.type === 'textarea' || promptField)) return 'prompt';

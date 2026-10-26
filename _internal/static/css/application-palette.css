@@ -151,7 +151,11 @@
   html body .tc-chart text { fill:var(--x-muted) !important; }
   html body .node-drop-hint { opacity:1 !important; color:var(--x-muted) !important; }
 
-  html body :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),textarea,select) {
+  /* 2026-10-25 老王：「你还搞出了 3D 的输入框」—— 批量卡片参数 pill 里的值输入框
+     （.wf-param-input）必须与图片节点的 .num-compact input 一样**无框透明**，
+     不能被通用表单皮肤铺底色/描边（那条 !important 特异性 (0,5,3)，组件侧压不动），
+     所以在这里显式排除；它自己的外观规则写在 smart-canvas.css。 */
+  html body :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not(.wf-param-input),textarea,select) {
     background-color:var(--x-soft) !important; color:var(--x-text) !important; border-color:var(--x-line) !important;
     caret-color:var(--x-selected-text) !important;
   }
@@ -178,4 +182,7 @@
     color:var(--x-danger) !important; background:var(--x-danger-soft) !important; border-color:var(--x-danger) !important;
   }
   html body .tb-winclose:hover { background:var(--x-danger) !important; color:var(--x-media-overlay-text) !important; }
+  /* 2026-10-25 老王：「复刻图片节点那一套」—— 批量卡片参数 pill 不再用自绘 select trigger
+     （.wf-pill 整套已删），底色拉回 --card 的规则写在 smart-canvas.css 的
+     @layer studio-palette 块里（.batch-wf-params .wf-param-pill）。 */
 }

@@ -264,6 +264,47 @@ function renderRhParamsControl(fields){
         </div>
     </div>`;
 }
+// 2026-10-24 老王：批量节点底部面板不要弹层——参数直接平铺（同一套字段渲染，只是去掉 pill+弹层）。
+function renderRhParamsInline(fields){
+    const paramFields = rhParamFields(fields);
+    if(!paramFields.length) return '';
+    return `<div class="batch-inline-params rh-inline-params">${paramFields.map(deps.renderRhSettingField).join('')}</div>`;
+}
+/* 2026-10-25 老王：批量节点卡片里那一排参数（RH 工作流）。字段与取值通道和上面那份一致，
+ * 外壳换成「短标签 + 下拉 pill」，一行排开。 */
+function renderRhParamsPillInline(fields, sourceSettings){
+    const pills = rhParamFields(fields).map(field => renderRhParamPill(field, sourceSettings)).filter(Boolean);
+    if(!pills.length) return '';
+    return `<div class="batch-inline-params rh-inline-params wf-pill-row">${pills.join('')}</div>`;
+}
+function renderRhParamPill(field, sourceSettings){
+    if(!field) return '';
+    const engine = global.CanvasDynamicParamEngine;
+    const key = engine.rhParamKey(field.nodeId, field.fieldName);
+    const label = field.label || field.fieldName || 'Field';
+    const kind = deps.rhFieldRole(field);
+    // sourceSettings：参数常驻在批量卡片上，按节点自己的 runSettings 取值（不读全局 settings）
+    const value = engine.rhParamValue(field, null, sourceSettings || deps.getSettings());
+    const attrs = ` data-rh-param="${deps.escapeHtml(key)}"`;
+    if(kind === 'boolean'){
+        return engine.wfParamTogglePillHtml({
+            label, on:String(value).toLowerCase() === 'true', boolAttr:'rh-bool', boolKey:key
+        });
+    }
+    const options = deps.rhExtractFieldOptions(field);
+    if(options && options.length){
+        return engine.wfParamPillHtml({label, value:String(value ?? ''), attrs:attrs, options:options.map(String), paramKey:`rh:${key}`, hideKey:true});
+    }
+    if(kind === 'slider' || kind === 'number'){
+        const list = engine.wfParamNumberOptions({min:field.min, max:field.max, step:field.step}, value);
+        return engine.wfParamPillHtml({
+            label, value:value ?? 0, attrs:attrs, options:list, numeric:true, paramKey:`rh:${key}`, hideKey:false,
+            inputType:list ? 'text' : 'number'
+        });
+    }
+    if(kind === 'prompt') return '';
+    return engine.wfParamPillHtml({label, value:String(value ?? ''), attrs:attrs, inputType:'text', paramKey:`rh:${key}`, hideKey:true});
+}
 function renderRhResourceControl(){
     const rhPaymentLabels = {free:deps.tr('smart.rhFreeKey'), wallet:deps.tr('smart.rhWalletKey')};
     const rhPaymentValue = deps.getSettings().rhPayment === 'wallet' ? 'wallet' : 'free';
@@ -353,6 +394,8 @@ function renderRhMachineControl(){
         renderRhDetailsHtml: renderRhDetailsHtml,
         rhParamFields: rhParamFields,
         renderRhParamsControl: renderRhParamsControl,
+        renderRhParamsInline: renderRhParamsInline,
+        renderRhParamsPillInline: renderRhParamsPillInline,
         renderRhResourceControl: renderRhResourceControl,
         renderRhConfigControl: renderRhConfigControl,
         renderRhPaymentControl: renderRhPaymentControl,

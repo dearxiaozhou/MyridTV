@@ -1,4 +1,87 @@
 // ===== 前端错误上报(诊断用):任何 JS 异常/未处理 rejection 都会 POST 到后端日志 =====
+/* ===== CSS 陈旧缓存自愈（2026-10-25）=====
+   WebView2 对 `?v=` 相同的 stylesheet 会复用内存缓存，而 daemon 的 patch_static_versions_loop
+   每 5 秒才把 html 里的版本号刷成 STATIC_VERSION —— 中间这段窗口里改 CSS 对用户不可见
+   （表现为「刷新了却没变化」）。这里做一次探针，逐个核对只有新版 CSS 才有的特征，
+   任一不符就带新 query 重新拉一份、加载完成后替换旧 <link>。
+   检测命中才动手；CSS 已是新版时零副作用，可反复执行。
+   特征清单（按版本递进，旧版缺哪条都能被抓出来）：
+     v-nowrap1：.batch-wf-params > .batch-inline-params 的 flex-wrap:nowrap
+     v-footrow1：.batch-footer > .batch-wf-params 的 flex-grow:1（参数区与引擎同排）
+                + 展开态 trigger 透明写进 @layer studio-interaction（同分拼特异性）
+     v-multiref1：多参考图「主体+素材」的输入图网格 —— .batch-ref-thumb 圆角 8px
+                + .batch-ref-grid flex-wrap:wrap（2026-10-27 散件拼装需求；
+                  同批改为照抄图片节点的多图网格，不再自造样式） */
+(function(){
+    try{
+        var probe = document.createElement('div');
+        probe.className = 'batch-wf-params';
+        var row = document.createElement('div');
+        row.className = 'batch-inline-params';
+        probe.appendChild(row);
+        // 第四特征（2026-10-25 老王「还搞出了 3D 的输入框」）：pill 内的值输入框必须
+        // appearance:none（UA 的 2px inset 立体框被清掉）。老 CSS 没这条 → computed 是 auto。
+        var ip = document.createElement('input');
+        ip.className = 'wf-param-input';
+        probe.appendChild(ip);
+        // 第五特征（2026-10-26 老王「按钮底色不跟主题 + 圆角统一硬朗」）：
+        // 新版 .compare-toggle 圆角 8px（旧版是 999px 胶囊），底色走 var(--card)。
+        var ct = document.createElement('button');
+        ct.className = 'compare-toggle';
+        probe.appendChild(ct);
+        // 第六特征（2026-10-27 多参考图「主体+素材」拼装）：批量卡片顶部新增输入图网格 ——
+        // .batch-ref-thumb 圆角 8px、.batch-ref-grid 可换行。老 CSS 里压根没这两条规则。
+        // （2026-10-27 二改：老王「跟图片节点一样」→ 原横向滚动行 .batch-refs-list 换成
+        //   与图片节点同款的多图网格 .batch-ref-grid，特征同步跟着改。）
+        var rt = document.createElement('div');
+        rt.className = 'batch-ref-thumb';
+        probe.appendChild(rt);
+        var rl = document.createElement('div');
+        rl.className = 'batch-ref-grid';
+        probe.appendChild(rl);
+        (document.body || document.documentElement).appendChild(probe);
+        var stale = false;
+        try{ stale = getComputedStyle(row).flexWrap !== 'nowrap'; }catch(_){}
+        try{
+            var csIp = getComputedStyle(ip);
+            if(csIp.appearance !== 'none') stale = true;
+        }catch(_){}
+        try{
+            var csCt = getComputedStyle(ct);
+            if(csCt.borderTopLeftRadius !== '8px') stale = true;
+        }catch(_){}
+        try{
+            if(getComputedStyle(rt).borderTopLeftRadius !== '8px') stale = true;
+            if(getComputedStyle(rl).flexWrap !== 'wrap') stale = true;
+        }catch(_){}
+        probe.remove();
+        if(!stale){
+            // 再探 footer 同排特征：新版 .batch-footer > .batch-wf-params 是 flex:1 1 auto
+            var foot = document.createElement('div');
+            foot.className = 'batch-footer';
+            var wfp = document.createElement('div');
+            wfp.className = 'batch-wf-params';
+            foot.appendChild(wfp);
+            (document.body || document.documentElement).appendChild(foot);
+            // 第三特征：参数区排不下时横向可滚（overflow-x:auto）—— 老 CSS 是 hidden，
+            // 缺这条判据时上一版 CSS 也能"通过"检测，用户刷新看到的还是旧排版。
+            try{
+                var cs2 = getComputedStyle(wfp);
+                stale = cs2.flexGrow !== '1' || cs2.overflowX !== 'auto';
+            }catch(_){}
+            foot.remove();
+        }
+        if(!stale) return;
+        var olds = [].slice.call(document.querySelectorAll('link[rel=stylesheet][href*="smart-canvas.css"]'));
+        olds.forEach(function(old){
+            var fresh = document.createElement('link');
+            fresh.rel = 'stylesheet';
+            fresh.href = old.getAttribute('href').split('?')[0] + '?v=' + Date.now();
+            fresh.onload = function(){ if(old.parentNode) old.parentNode.removeChild(old); };
+            document.head.appendChild(fresh);
+        });
+    }catch(_){}
+})();
 (function(){
     function report(payload){
         try{
@@ -1231,16 +1314,28 @@ function activeSettingsSubject(){
     const active = canvasUiState.editor.subject?.id
         ? (nodes.find(n => n.id === canvasUiState.editor.subject.id) || canvasUiState.editor.subject)
         : selectedNode();
-    return isSmartImageNode(active) ? active : null;
+    // 与 composer 主体同口径：批量生成节点也是 settings 的归属（它就靠 composer 调工作流参数）
+    return isComposerSubjectNode(active) ? active : null;
+}
+// composer 主体节点：图片节点 + 批量生成节点。
+// 批量生成（smart-loop）的提示词写在它自己卡片里的多段输入框，composer 只承载
+// 引擎选择与工作流参数 —— 选了 ComfyUI/RH 工作流后，参数就在这个底部面板上调。
+// 注意必须显式放行：注册表给 smart-loop 的 flags.hasImages=false（「能装图」记在
+// carriesImages），沿用 isSmartImageNode 会让 composer 直接不打开 → 参数区永远不出现。
+function isComposerSubjectNode(node){
+    if(!node) return false;
+    if(node.type === 'smart-loop') return true;
+    return isSmartImageNode(node);
 }
 function activeComposerNode(){
     if(!canvasUiState.editor.key) return null;
     const id = String(canvasUiState.editor.key).split(':')[0] || '';
     const node = nodes.find(n => n.id === id);
-    return isSmartImageNode(node) ? node : null;
+    return isComposerSubjectNode(node) ? node : null;
 }
 function persistActiveSmartSettings(){
-    if(!composer?.classList?.contains('open')) return;
+    // 批量节点的参数挂在卡片里（底部面板不弹），也算参数面激活
+    if(!composerParamsActive()) return;
     const subject = activeComposerNode();
     if(!subject) return;
     // 3D预演 节点保护：节点是 blender 时，全局 settings 不得覆盖节点引擎
@@ -3082,18 +3177,30 @@ if(globalThis.CanvasBatchGenerate){CanvasBatchGenerate.configure({
     agentFindEmptySpot: (...a) => agentFindEmptySpot(...a),
     finalizePendingNode: (...a) => finalizePendingNode(...a),
     addSmartGenerationLog: (...a) => addSmartGenerationLog(...a),
-    generate: (...a) => CanvasGenerationDispatchController.generate(...a),
     lineImagesFor: (...a) => lineImagesFor(...a),
     bindScrollableText: (...a) => bindScrollableText(...a),
-    runningHubEntries: (...a) => runningHubEntries(...a),
-    runningHubEntryId: (...a) => runningHubEntryId(...a),
-    workflowOutputKindForRhEntry: (...a) => workflowOutputKindForRhEntry(...a),
-    workflowOutputKindForComfy: (...a) => workflowOutputKindForComfy(...a),
-    comfyWorkflows: () => comfyWorkflows,
-    imageProviders: (...a) => imageProviders(...a),
-    providerImageModels: (...a) => providerImageModels(...a),
-    providerModelDisplayName: (...a) => providerModelDisplayName(...a),
-    rememberRecentSmartSettings: (...a) => rememberRecentSmartSettings(...a)
+    rememberRecentSmartSettings: (...a) => rememberRecentSmartSettings(...a),
+    // 2026-10-27：批量卡片的输入图缩略图必须与图片节点同一套渲染（老王：「跟图片节点一样，
+    // 不要自己发明」）—— 复用图片节点自己的 thumbMediaHtml + aspectGroupImageSize，
+    // 连 <img> 的 thumbnail 边数、等比算法都不许另写一份。
+    thumbMediaHtml: (...a) => thumbMediaHtml(...a),
+    aspectGroupImageSize: (...a) => aspectGroupImageSize(...a),
+    aspectGroupGridBounds: (...a) => aspectGroupGridBounds(...a),
+    // 与图片生成同源：引擎列表直接取统一选择器，执行交给官方批量器
+    //（API 并行 / ComfyUI・RunningHub 逐节点走 runGeneration）。
+    // 批量节点不再自己调 dispatch —— 那样会漏掉 comfy 预热与 RH 字段所需的 composer 状态，工作流必挂。
+    unifiedPickerGroups: () => (globalThis.CanvasUnifiedPicker && CanvasUnifiedPicker.buildGroups) ? CanvasUnifiedPicker.buildGroups('image') : [],
+    unifiedPickerRemember: (id) => { if (globalThis.CanvasUnifiedPicker && CanvasUnifiedPicker.remember) CanvasUnifiedPicker.remember(id); },
+    batchRunNodes: (targets) => canvasAgentBatchRunNodes(targets),
+    // 卡片里换引擎后自动选中该节点：参数区（卡片内）只在选中时可编辑
+    selectNode: (id) => { if(id) canvasUiState.patchSelection({primaryId: id, ids: [id]}); },
+    // 2026-10-25 参数常驻（不选中也看得见/点得动）：卡片 bodyHtml 同步出参数 pill，
+    // 取值/写值/浮层选项全部按卡片所属节点的 runSettings
+    batchWorkflowParamsHtmlForNode: (node) => batchWorkflowParamsHtml(node),
+    applyWorkflowParamValueForNode: (...a) => applyWorkflowParamValueForNode(...a),
+    toggleWorkflowParamBoolForNode: (...a) => toggleWorkflowParamBoolForNode(...a),
+    wfParamPickerHtmlForNode: (...a) => wfParamPickerHtml(...a),
+    renderBatchNodeParams: (...a) => renderBatchNodeParams(...a)
 });}
 
 // ===== 循环节点控件（canvas-loop-node-controller.js）：主文件侧注入 =====
@@ -3545,7 +3652,11 @@ CanvasRhControls.configure({
     getRunningHubWorkflowCache: () => runningHubWorkflowCache,
     rhIsWorkflowLinkValue: (value) => rhIsWorkflowLinkValue(value),
     getSettings: () => settings,
-    getEngineSelect: () => engineSelect
+    getEngineSelect: () => engineSelect,
+    // 批量节点卡片里的 pill 版参数排需要读选项/随机态（2026-10-25）
+    rhExtractFieldOptions: (f) => rhExtractFieldOptions(f),
+    rhRandomEnabled: (f) => rhRandomEnabled(f),
+    smartRhRandomActive: (key) => smartRhRandomActive(key)
 });
 
 // ===== ComfyUI 控件渲染层（canvas-comfy-controls.js）：主文件侧注入 =====
@@ -3556,7 +3667,9 @@ CanvasComfyControls.configure({
     renderComfySettingField: (f) => renderComfySettingField(f),
     comfyFieldKind: (f, wf) => comfyFieldKind(f, wf),
     visibleComfyFields: (fields, wf) => visibleComfyFields(fields, wf),
-    comfyParamValue: (f) => comfyParamValue(f),
+    // 2026-10-25 参数常驻：第二参数 sourceSettings 必传（卡片按自己节点的 runSettings 取值），
+    // 写成 (f) => comfyParamValue(f) 会把 src 丢掉，卡片就显示成全局 settings 的值。
+    comfyParamValue: (...a) => comfyParamValue(...a),
     smartComfyRandomActive: (id) => smartComfyRandomActive(id),
     comfyModesForWorkflow: (wf) => comfyModesForWorkflow(wf),
     resolveComfyWorkflowName: (wf) => resolveComfyWorkflowName(wf),
@@ -3615,11 +3728,12 @@ CanvasParamControls.configure({
 
 // ===== 参数控件事件（canvas-param-events.js）：主文件侧注入 =====
 CanvasParamEvents.configure({
-    getContainer: () => dynamicParams,
+    // 批量节点：参数在卡片容器内；其余节点：老老实实用 composer 的 #dynamicParams
+    getContainer: () => activeParamsContainer(),
     getEngineSelect: () => engineSelect,
     getSettings: () => settings,
     closeAllSmartPopovers: () => closeAllSmartPopovers(),
-    renderDynamicParams: () => renderDynamicParams(),
+    renderDynamicParams: () => refreshParamsSurface(),
     setVideoSpecSetting: (...a) => setVideoSpecSetting(...a),
     setImageSpecSetting: (...a) => setImageSpecSetting(...a),
     setDynamicSetting: (...a) => setDynamicSetting(...a),
@@ -3629,6 +3743,8 @@ CanvasParamEvents.configure({
     uploadCurrentSmartVideosToCloud: () => uploadCurrentSmartVideosToCloud(),
     setCurrentSmartManualVideoUrl: () => setCurrentSmartManualVideoUrl(),
     currentComfyFields: () => currentComfyFields(),
+    comfyFieldKey: (...a) => comfyFieldKey(...a),
+    reloadComfyWorkflow: (...a) => reloadComfyWorkflow(...a),
     updateComfySliderValueLabel: (...a) => updateComfySliderValueLabel(...a),
     toggleSmartComfyRandom: (...a) => toggleSmartComfyRandom(...a),
     toggleSmartRhRandom: (...a) => toggleSmartRhRandom(...a),
@@ -4895,12 +5011,35 @@ if(globalThis.CanvasVideoComfyParams){CanvasVideoComfyParams.configure({
         comfyWorkflows: () => comfyWorkflows,
         composer: () => composer,
         composerSlotHomes: () => composerSlotHomes,
-        dynamicParams: () => dynamicParams,
-        settings: () => settings
+        dynamicParams: () => activeParamsContainer(),
+        nodes: () => nodes,
+        toast: (...a) => toast(...a),
+        scheduleSave: (...a) => scheduleSave(...a),
+        settings: () => settings,
+        // 批量节点：参数面搬到卡片里，模块内所有 D("dynamicParams") 查询（滑杆值、随机按钮…）跟着走
+        batchParamsSurfaceActive: () => Boolean(activeComposerNode()?.type === 'smart-loop' && batchParamsHost?.isConnected),
+        renderBatchParamsSurface: () => { const n = activeComposerNode(); if(n) renderBatchWorkflowParams(n); }
 });}
 function renderVideoExtendDirectionControl(){return CanvasVideoComfyParams.renderVideoExtendDirectionControl.apply(null, arguments);}
 function parseSizeValue(){return CanvasVideoComfyParams.parseSizeValue.apply(null, arguments);}
 function apiImageSize(){return CanvasVideoComfyParams.apiImageSize.apply(null, arguments);}
+function comfyFieldKey(){return CanvasVideoComfyParams.comfyFieldKey.apply(null, arguments);}
+function adoptLegacyComfyParamKeys(){return CanvasVideoComfyParams.adoptLegacyComfyParamKeys.apply(null, arguments);}
+function reloadComfyWorkflow(){return CanvasVideoComfyParams.reloadComfyWorkflow.apply(null, arguments);}
+// 取值优先级：字段 id（新）→ `node::input` 稳定键（老值回填/重新暴露后仍生效）→ 内置默认。
+// 任务构造两处（普通 comfy 提交、级联/循环提交）都走这一句，避免两处逻辑漂移。
+function comfyRunParamValue(runSettings, field){
+    const store = (runSettings && runSettings.comfyParams) || {};
+    if(field && store[field.id] !== undefined) return store[field.id];
+    const key = field ? comfyFieldKey(field) : '';
+    if(key && store[key] !== undefined) return store[key];
+    return undefined;
+}
+// 「重载工作流」的广播入口：画布侧收到工作流配置页的「重载」后清缓存 → 重新读盘 → 重绘。
+// 按钮只在工作流配置页（comfyui-settings.html），画布节点面板不再放按钮（老王 2026-10-24）。
+function comfyReloadOnBroadcast(name){
+    return reloadComfyWorkflow(name);
+}
 function rhOfficialModelForRun(){return CanvasVideoComfyParams.rhOfficialModelForRun.apply(null, arguments);}
 function shouldUseRhOfficialProxy(){return CanvasVideoComfyParams.shouldUseRhOfficialProxy.apply(null, arguments);}
 function rhOfficialResolutionForRun(){return CanvasVideoComfyParams.rhOfficialResolutionForRun.apply(null, arguments);}
@@ -5005,10 +5144,10 @@ function renderRunningHubParams(){
         <div class="cfn-controls">
             ${renderUnifiedPickerControl()}
             ${renderRhNodesControl(ref)}
-            ${renderRhParamsControl(fields)}
-            ${renderRhResourceControl()}
+            ${composer.classList.contains('batch-subject') ? renderRhParamsInline(fields) : renderRhParamsControl(fields)}
+            ${composer.classList.contains('batch-subject') ? '' : renderRhResourceControl()}
         </div>
-        ${renderRhDetailsHtml()}
+        ${composer.classList.contains('batch-subject') ? '' : renderRhDetailsHtml()}
     `;
 }
 /* 入口一：工作流（原「引擎下拉 RH-API·工作流」+「工作流选择器」两个同功能按钮合并）
@@ -5055,6 +5194,13 @@ function rhParamFields(fields) {
 // 弹层内还是同一套参数控件（renderRhSettingField），只是从常驻详情区收进一颗 pill。
 function renderRhParamsControl(fields) {
     return CanvasRhControls.renderRhParamsControl.apply(null, arguments);
+}
+function renderRhParamsInline(fields) {
+    return CanvasRhControls.renderRhParamsInline.apply(null, arguments);
+}
+// 批量节点卡片用的一排 pill 版（2026-10-25 老王：参数压缩成下拉 + 一行排开）
+function renderRhParamsPillInline(fields) {
+    return CanvasRhControls.renderRhParamsPillInline.apply(null, arguments);
 }
 // 关节点后原地重建素材行 + 参数菜单（不整体重绘，保住刚打开的节点弹层）。
 function syncRhDetailsAndParams(ref){
@@ -5145,8 +5291,8 @@ function renderComfyParams(){
  const wf = comfyWorkflowCache[settings.comfyWorkflow];
  const fields = wf?.config?.fields || [];
  dynamicParams.innerHTML = `
- <div class="cfn-controls">${renderUnifiedPickerControl()}${renderComfyNodeModesControl(wf)}${renderComfyParamsControl(wf, fields)}</div>
- ${renderComfyDetailsHtml(wf, fields)}
+ <div class="cfn-controls">${renderUnifiedPickerControl()}${renderComfyNodeModesControl(wf)}${composer.classList.contains('batch-subject') ? renderComfyParamsInline(wf, fields) : renderComfyParamsControl(wf, fields)}</div>
+ ${composer.classList.contains('batch-subject') ? '' : renderComfyDetailsHtml(wf, fields)}
  `;
 }
 function comfyFieldNodeIsOff(field, workflowName=settings.comfyWorkflow) {
@@ -5162,6 +5308,13 @@ function renderComfyDetailsHtml(wf, fields) {
 // 工作流参数二级菜单：原来常驻在详情区的参数收进一颗 pill，弹层内还是同一套参数控件。
 function renderComfyParamsControl(wf, fields) {
     return CanvasComfyControls.renderComfyParamsControl.apply(null, arguments);
+}
+function renderComfyParamsInline(wf, fields) {
+    return CanvasComfyControls.renderComfyParamsInline.apply(null, arguments);
+}
+// 批量节点卡片用的一排 pill 版（2026-10-25 老王：参数压缩成下拉 + 一行排开）
+function renderComfyParamsPillInline(wf, fields) {
+    return CanvasComfyControls.renderComfyParamsPillInline.apply(null, arguments);
 }
 // 关节点后原地重建详情区 + 参数弹层（不整体重绘，保住刚打开的节点弹层）。
 function syncComfyDetailsAndParams(wf){
@@ -5231,12 +5384,9 @@ function syncComfyInputsRow(){
     const host = row.parentElement?.classList?.contains('cfn-inputs-wrap') ? row.parentElement : row;
     host.replaceWith(next);
 }
-// 字段分组渲染：媒体字段跳过（值来自画布上游连线）；连续 number 横排一行；其余按 .pfield。
+// 字段渲染：媒体/prompt 字段跳过（值来自画布上游连线或大输入框），其余走 RH 同款 num-compact 行。
 function renderComfyFields(fields) {
     return CanvasComfyControls.renderComfyFields.apply(null, arguments);
-}
-function renderComfyNumberCell(field) {
-    return CanvasComfyControls.renderComfyNumberCell.apply(null, arguments);
 }
 // 可编辑参数已经统一由 renderComfyFields() 渲染；不再额外渲染节点名称网格。
 function renderComfyOtherNodesGrid(){ return ''; }
@@ -5480,7 +5630,7 @@ if(globalThis.CanvasDynamicParamEngine){CanvasDynamicParamEngine.configure({
         videoProviderPlatform: (...a) => videoProviderPlatform(...a),
         videoRefsOnly: (...a) => videoRefsOnly(...a),
         RH_OFFICIAL_PROXY_BASE: () => RH_OFFICIAL_PROXY_BASE,
-        dynamicParams: () => dynamicParams,
+        dynamicParams: () => activeParamsContainer(),
         inputThumbsRow: () => inputThumbsRow,
         promptInput: () => promptInput,
         runningHubWorkflowCache: () => runningHubWorkflowCache,
@@ -5731,7 +5881,7 @@ async function loadConfig(){
         }
         // 统一面板按产出类型分组依赖工作流 JSON 扫节点——后台预热缓存，到手增量重绘
         Promise.all((comfyWorkflows || []).map(w => ensureComfyWorkflow(w.name).catch(() => null)))
-            .then(() => { if(typeof renderDynamicParams === 'function') renderDynamicParams(); });
+            .then(() => { if(typeof adoptLegacyComfyParamKeys === 'function') adoptLegacyComfyParamKeys(); if(typeof renderDynamicParams === 'function') renderDynamicParams(); });
         runningHubWorkflowCache = {};
         lastConfigRefreshAt = Date.now();
         sanitizeSmartApiSelection(settings);
@@ -7517,8 +7667,11 @@ function shellPoint(event){
     const rect = shell.getBoundingClientRect();
     return {x:event.clientX - rect.left, y:event.clientY - rect.top};
 }
+// 运行中连线的流光点曲线收集器（renderConnections 填、renderCometLayer 消费）
+const pendingCometCurves = [];
 function renderConnections(){
     connCutGeom.clear();
+    pendingCometCurves.length = 0;
     // 无线模式：不渲染任何连线（保留 svg 容器，切回连线模式即恢复）
     if(canvasObjectsMode()) return '<svg class="connection-layer" width="6000" height="4000" viewBox="0 0 6000 4000" xmlns="http://www.w3.org/2000/svg"></svg>';
     const nodeMap = new Map(nodes.map(node => [node.id, node]));
@@ -7558,24 +7711,44 @@ function renderConnections(){
         const color = isLinkedToSelection ? '#C9A227' : isCascade ? '#16a34a' : isHistory ? 'rgba(138,138,138,0.46)' : kind === 'input' ? 'rgba(138,138,138,0.62)' : 'rgba(200,200,200,0.62)';
         const opacity = isPendingLine ? '.82' : '1';
         const width = isLinkedToSelection ? '2.4' : kind === 'input' ? '1.9' : '1.6';
-        // 运行中连线：底线常亮 + 一颗光点钉在管线中点做呼吸（A 方案改呼吸版）
+        // 运行中连线：底线常亮 + 一颗流光点沿管线滑行
         // 2026-10-23 老王：「连线卡」根因修复——原实现每条 pending 线 2 颗光点沿管滑行、
         // 且带 feGaussianBlur SVG 滤镜。实测：SVG filter 不走 GPU 每帧重栅格；
         // stroke-dashoffset 几何动画按路径数逐条付主线程账（8 任务 48 条滤镜动画路径
-        // ~55fps，4 条/线无滤镜 100 条直接掉到拖线 34fps）；同负载只动 opacity 则
-        // 满帧 60fps / 最长帧 16.9ms。故收敛为每线一颗、零滤镜、CSS 里 opacity 呼吸
-        // （dashoffset -79 把光点钉在线中点，见 smart-canvas.css conn-comet 规则）。
-        // 以后要"滑行"效果走 offset-path 合成器动画，不再往主线程加 SVG 几何动画。
-        const cometLayer = isPendingLine ? `<path class="conn-comet" d="${curve}" pathLength="180" stroke="#dbeafe" stroke-dasharray="22 158" fill="none"></path>` : '';
+        // ~55fps，4 条/线无滤镜 100 条直接掉到拖线 34fps）。
+        // 2026-10-24 老王：呼吸版被嫌丑，要回滑行流光。正解=把光点从 SVG 挪进独立
+        // HTML 层走 CSS Motion Path（offset-path/offset-distance）——合成器动画。
+        // 无头 Edge 实测 40 条运行线：offset-path 组 120fps/最长帧 8.5ms/零长帧，
+        // 与 transform 合成基准完全一致，而 dashoffset 组最长帧 58ms 仍有长帧。
+        // 注意：foreignObject 内 offset-path 不走合成（p99 差一倍），必须独立 HTML 层。
+        // 2026-10-26 老王：GPU 占用审计——级联 active 线原来也在跑 stroke-dashoffset
+        // 几何动画（dash .85s 无限滚），批量级联时几十条一起滚，正是 10/23 拍板要禁的
+        // 违规遗留。级联 active 也改挂流光点（绿色变体），底线回归静态虚线。
+        const wantsComet = isPendingLine || (isCascade && cascadeState === 'active');
+        if(wantsComet){
+            pendingCometCurves.push({curve, delay: -((pendingCometCurves.length % 8) * 0.2).toFixed(2), cascade: Boolean(isCascade)});
+        }
         // 划断手势要用：存三次贝塞尔的四个控制点（p0,c1,c2,p1）。只存 8 个数，
         // 折线采样留给真正划的时候懒算——render 每帧都跑，别在这里做采样。
         connCutGeom.set(conn.index, {c: isHistory
             ? [fx, fy, fx, fy + dy, tx, ty - dy, tx, ty]
             : [fx, fy, fx + dx, fy, tx - dx, ty, tx, ty], pts: null, box: null});
         // data-conn-line：划断手势拿到命中后要把这根线即时标成金色（Blender 刀切线同理）
-        return `<path class="${cls}" data-conn-line="${conn.index}" d="${curve}" stroke="${color}" stroke-width="${width}" fill="none" opacity="${opacity}"></path>${cometLayer}<path class="conn-hit" data-conn-index="${conn.index}" d="${curve}" stroke="transparent" stroke-width="14" fill="none"></path>`;
+        return `<path class="${cls}" data-conn-line="${conn.index}" d="${curve}" stroke="${color}" stroke-width="${width}" fill="none" opacity="${opacity}"></path><path class="conn-hit" data-conn-index="${conn.index}" d="${curve}" stroke="transparent" stroke-width="14" fill="none"></path>`;
     }).join('');
     return `<svg class="connection-layer" width="6000" height="4000" viewBox="0 0 6000 4000" xmlns="http://www.w3.org/2000/svg">${paths}<g class="conn-scissor conn-knife-host" data-conn-index="-1" transform="translate(-100 -100)"><circle r="20" fill="transparent" pointer-events="all"></circle><circle r="13" fill="var(--card,#1f1f1f)" stroke="#C9A227" stroke-width="1.4"></circle><!-- 2026-10-17 老王：剪刀换刀（参考 Blender 节点 Ctrl+右键切线）。45° 裁刀：刀尖左下、刀柄右上，与剪刀同一套金描边+卡片填充观感 --><g class="conn-knife" transform="translate(-9.6 -9.6) scale(0.78)" fill="var(--card,#1f1f1f)" stroke="#C9A227" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 12.3 14.3 9.7 11.7z"></path><path d="M11 13 17.4 6.6" fill="none" stroke-width="3.4"></path></g></g></svg>`;
+}
+// 运行中连线的流光点层：独立 HTML 层（不能塞 SVG/foreignObject——实测 foreignObject 内
+// offset-path 不走合成器，p99 帧时间差一倍）。光点靠 offset-distance 动画沿曲线滑行，
+// 合成器驱动，主线程零成本（无头 Edge 实测 = transform 合成基准）。
+// 由 renderConnections() 收集 pendingCometCurves，本函数消费；渲染顺序紧跟 svg 之后，
+// 同 z-index 下压在节点卡片之下、连线之上。
+function renderCometLayer(){
+    if(!pendingCometCurves.length) return '';
+    const dots = pendingCometCurves.map(c =>
+        `<i class="conn-comet-dot${c.cascade ? ' conn-comet-dot-cascade' : ''}" style="offset-path:path('${c.curve}');animation-delay:${c.delay}s"></i>`
+    ).join('');
+    return `<div class="conn-comet-layer">${dots}</div>`;
 }
 function refreshConnectionLayer(){
     const oldSvg = world.querySelector('svg.connection-layer');
@@ -7584,6 +7757,11 @@ function refreshConnectionLayer(){
     tpl.innerHTML = renderConnections().trim();
     const nextSvg = tpl.content.firstElementChild;
     if(nextSvg) oldSvg.replaceWith(nextSvg);
+    // 流光点层紧随 svg 替换（同 z-index DOM 顺序：压在节点下、连线上）
+    const oldComet = world.querySelector('.conn-comet-layer');
+    if(oldComet) oldComet.remove();
+    const cometHtml = renderCometLayer();
+    if(cometHtml) nextSvg.insertAdjacentHTML('afterend', cometHtml);
     bindConnectionEvents();
     updateComfyInputsRow();
 }
@@ -7602,7 +7780,7 @@ if(globalThis.CanvasMediaHelpers){CanvasMediaHelpers.configure({
         scheduleMinimapRender: (...a) => scheduleMinimapRender(...a),
         scheduleSave: (...a) => scheduleSave(...a),
         selectedNode: (...a) => selectedNode(...a),
-        dynamicParams: () => dynamicParams,
+        dynamicParams: () => activeParamsContainer(),
         escapeAttr: () => escapeAttr,
         smartTextContentCache: () => smartTextContentCache,
         world: () => world
@@ -7797,7 +7975,10 @@ function smartImageTargetFileName(value, image){
     return name;
 }
 function smartImageNameLabelHtml(img, index){
-    if(mediaKindForItem(img) !== 'image') return '';
+    // 2026-10-26 老王要求：视频节点复用图片节点同款的产物名标签（.smart-image-name-label），
+    // 原来只放行 image → 视频卡片是裸片没有身份。file/text/audio 仍保持各自原样。
+    const kind = mediaKindForItem(img);
+    if(kind !== 'image' && kind !== 'video') return '';
     const name = smartImageDisplayName(img);
     return `<span class="smart-image-name-label" data-image-name-index="${index}" title="双击重命名">${escapeHtml(name)}</span>`;
 }
@@ -8094,6 +8275,9 @@ function smartRunSnapshot(node, prompt, refs=[], kind='image'){
     const settingsSnapshot = cloneSmartSettings(settings);
     return {
         nodeId:node?.id || '',
+        // 2026-10-27 日志收口：attempt 是"一轮生成"的唯一身份证，日志合并键（__runKey）
+        // 用它——发起方 tail 与 supervisor 结算谁先到谁成、后来者合并，不再双份/漏份。
+        attempt:node?.generationAttemptId || '',
         nodeType:node?.type || 'smart-image',
         kind,
         settings:settingsSnapshot,
@@ -8105,10 +8289,42 @@ function smartRunSnapshot(node, prompt, refs=[], kind='image'){
 function addSmartGenerationLog({run, outputs=[], runMs=0, error='', taskId='', status='', update=false}) {
     if(!canvas) return;
     canvas.logs = canvas.logs || [];
-    const previous = taskId ? canvas.logs.find(log => log.taskId === taskId) : null;
-    if(previous && !update) return;
+    // 2026-10-27 日志收口（老王：不能一天修一次、加一个模型修一次）：唯一咽喉点。
+    // 同一轮生成（attempt）只允许一条日志——key = nodeId|attempt；无 attempt 的补录
+    //（Agent/批量走 supervisor 结算）退到 taskId。发起方 tail 日志与 supervisor
+    // 结算日志谁先到谁成，后来者按 key 合并（显式字段覆盖、缺省保留）。
+    // 从此"每个引擎各自在尾巴补一句"结构上不再可能造出双份；新引擎只要正常提交
+    // 任务（走 finalize/结算路径），日志自动出现，不需要再补写。
+    const runKey = run?.attempt ? `${run.nodeId || ''}|${run.attempt}`
+        : (taskId ? `task|${taskId}` : '');
+    const previous = runKey
+        ? canvas.logs.find(log => log.__runKey === runKey)
+        : (taskId ? canvas.logs.find(log => log.taskId === taskId) : null);
+    if(previous){
+        const merged = {...previous};
+        if(status) merged.status = status;
+        if(error) merged.error = String(error);
+        if((outputs || []).length){
+            // 追加去重（一轮多任务逐个结算时 outputs 是各任务产物，不能覆盖丢前序）。
+            // 去重键取 URL 的**文件名**段：同一张图的"远端 URL"与"本地化 URL"字符串不同，
+            // 但文件名一致（生成落盘名唯一），按文件名归一才不会显示成两个缩略图。
+            const nameKey = u => { try { return decodeURIComponent(new URL(String(u), 'http://x').pathname.split('/').pop().split('?')[0]) || String(u); } catch(_) { return String(u); } };
+            const seen = new Set((merged.outputs || []).map(nameKey));
+            merged.outputs = [...(merged.outputs || []), ...outputs.filter(Boolean).filter(u => !seen.has(nameKey(u)) && seen.add(nameKey(u)))];
+        }
+        if(Number(runMs || 0) > Number(merged.runMs || 0)) merged.runMs = Number(runMs);
+        if(taskId && !merged.taskId){ merged.taskId = taskId; merged.request = {...(merged.request||{}), task_id:taskId}; }
+        if(error) merged.status = 'failed';
+        else if((outputs || []).length && merged.status === 'running') merged.status = 'success';
+        merged.updatedAt = Date.now();
+        canvas.logs = [merged, ...canvas.logs.filter(log => log.id !== merged.id)].slice(0, 500);
+        scheduleSave();
+        refreshSmartLogPanel();
+        return;
+    }
     const entry = {
-        id:previous?.id || uid('log'),
+        id:uid('log'),
+        ...(runKey ? {__runKey:runKey} : {}),
         ...(taskId ? {taskId} : {}),
         createdAt:Date.now(),
         status:status || (error ? 'failed' : 'success'),
@@ -8674,6 +8890,8 @@ const html = `<div class="image-node ${node.cardSize ? 'fixed-media-card' : ''} 
     plan.forEach(entry => { if(entry.canReuse && entry.existing) keepEls.add(entry.existing); });
     const connSvg = world.querySelector('svg.connection-layer');
     if(connSvg) keepEls.add(connSvg);
+    const connComet = world.querySelector('.conn-comet-layer');
+    if(connComet) keepEls.add(connComet);
     if(composerEl) keepEls.add(composerEl);
     [...world.childNodes].forEach(child => {
         if(!keepEls.has(child)) child.remove();
@@ -8681,7 +8899,7 @@ const html = `<div class="image-node ${node.cardSize ? 'fixed-media-card' : ''} 
     if(composerEl && composerEl.parentNode !== world) world.appendChild(composerEl);
     // 连线层用数据模型算坐标，不依赖节点 DOM，所以裁剪掉节点也不会断线
     if(connSvg) refreshConnectionLayer();
-    else world.insertAdjacentHTML('beforeend', renderConnections());
+    else world.insertAdjacentHTML('beforeend', renderConnections() + renderCometLayer());
     plan.forEach(entry => {
         if(entry.canReuse) return;
         const fresh = renderedNodeEls.get(entry.node.id);
@@ -8707,6 +8925,10 @@ const html = `<div class="image-node ${node.cardSize ? 'fixed-media-card' : ''} 
     queueRemoteGeneratedMediaLocalization();
     refreshRunTimerPills();
     installAudioThumbCleanup();
+    // 2026-10-26 老王：批量节点底排（引擎/比例/分辨率/生成按钮）跑出节点外框。
+    // node.h 是常量加总，对不上真实排版 → 这里按真实排版补差（见 canvas-batch-generate.js
+    // autoFitBatchNodeHeights）。放在 DOM 建完之后、markCullRendered 之前。
+    if(globalThis.CanvasBatchGenerate?.autoFitBatchNodeHeights) CanvasBatchGenerate.autoFitBatchNodeHeights();
     CanvasRenderScheduler.markCullRendered();
     scheduleImageUpgrade();
     return;
@@ -9471,16 +9693,23 @@ function updatePortDragVisual(){
         targetNodeEl?.querySelector(`.node-port[data-port="${portDragState.hoverPort}"]`)?.classList.add('is-active');
     }
 }
-// ===== 2026-10-19 老王：+ 号命中裁决 =====
-// 现象：端口命中区（84px 方块）整块伸出节点外，旁边的节点会盖在上面 → 鼠标在“+号区域”里命中的
-// 是旁边节点（elementFromPoint 返回邻节点），于是亮的是邻节点的 +，你要那个节点的 + 根本不出现，
-// 节点挨在一起时点不到、点错。修法：按“离哪个 + 号环最近”几何裁决，把该节点临时提到最前
-// （.port-hover → z-index:7），这样显示与点击都落在你真正想要的 + 上。
-// 2026-10-21 起此裁决仅用于拖线悬停（portDragState.hoverTargetId）；非拖线状态不再点亮
-// 命中区——+ 只在节点身体内 / 选中 / 压在圆环上时可见（见 smart-canvas.css 显隐规则）。
-function nodePortRingCenter(portEl){
-    const r = portEl.getBoundingClientRect();
-    return {x: r.left + r.width / 2, y: r.top + r.height / 2};
+// ===== 2026-10-26 老王（终版状态机，融合两轮口述）=====
+// 铁律一（10-21）：鼠标在节点外时，+ 绝不允许"凭空出现"——未点亮状态下蹭到 84px 命中区不算数。
+// 铁律二（10-26 大厂规则）：已经亮着的 +，鼠标从节点身体滑出经过命中区时不灭且圆环跟手；
+//   两节点挨着时，滑出的 + 显示在邻居上层、鼠标哪怕叠在邻居身体上也只亮这一个（命中区对
+//   刚点亮的节点有粘性独占权），滑出命中区范围才轮到邻居亮。
+// 实现：① 已亮节点（body-hover/port-hover）的命中区仍包含点 → 保持亮，切换为 .port-hover；
+//   ② 否则鼠标真在谁身体里就只亮谁（.body-hover）；③ 都不在 → 全灭。
+// 命中区平时 pointer-events:none（不吃点击、不在 elementsFromPoint 里挡路），
+// 只在所属节点点亮后恢复 auto —— 不可见的命中区绝不抢邻居节点的点击（隐形拖线黑洞）。
+function nodePortsContainPoint(node, clientX, clientY){
+    let found = false;
+    node.querySelectorAll('.node-port').forEach(port => {
+        if(found) return;
+        const r = port.getBoundingClientRect();
+        if(clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) found = true;
+    });
+    return found;
 }
 function clearNodePortHover(exceptNode=null){
     if(!world) return;
@@ -9488,13 +9717,16 @@ function clearNodePortHover(exceptNode=null){
         if(el !== exceptNode) el.classList.remove('port-hover');
     });
 }
-// 2026-10-21 老王：+ 号只在「鼠标在节点身体里」时显示（.body-hover）——端口命中区（84px）
-// 整块伸出节点外、且默认 pointer-events:none，不算“在节点里”、也不会点亮任何 +。
-// 用 elementFromPoint 取视觉最顶层元素，命中落在 .node-port（圆环）上时由 CSS :hover 兜底亮。
+// 身体判定：elementsFromPoint 自顶向下，跳过端口命中区（哪怕它正开着 auto），取第一个节点身体。
 function nodeBodyAtClientPoint(clientX, clientY){
-    const hit = document.elementFromPoint(clientX, clientY);
-    if(!hit || typeof hit.closest !== 'function') return null;
-    return hit.closest('.image-node');
+    const hits = document.elementsFromPoint(clientX, clientY);
+    for(const h of hits){
+        if(!h.closest) continue;
+        if(h.closest('.node-port')) continue;
+        const n = h.closest('.image-node');
+        if(n) return n;
+    }
+    return null;
 }
 function clearNodeBodyHover(exceptNode=null){
     if(!world) return;
@@ -9506,26 +9738,41 @@ function syncNodePortHoverFromPointer(clientX, clientY){
     if(portDragState) return;   // 拖线中由原逻辑管（目标是落点节点）
     if(!world) return;
     if(document.body.classList.contains('smart-node-drag')){
-        // 拖节点中不点亮任何 +（与“拖动时清场”的旧意图一致）
+        // 拖节点中不点亮任何 +（与"拖动时清场"的旧意图一致）
         clearNodePortHover();
         clearNodeBodyHover();
         return;
     }
-    // 鼠标真在哪个节点身体里 → 只亮它；命中落在端口圆环上时 CSS .node-port:hover 单独亮那一个
+    // ① 粘性：刚点亮的节点，命中区还包着鼠标 → 继续亮（跟手不灭），独占压过邻居身体判定
+    const lit = world.querySelector('.image-node.body-hover, .image-node.port-hover');
+    if(lit && nodePortsContainPoint(lit, clientX, clientY)){
+        clearNodeBodyHover();
+        clearNodePortHover(lit);
+        lit.classList.add('port-hover');
+        return;
+    }
+    // ② 不在已亮节点的命中区 → 回到身体判定：在谁身体里只亮谁；空地/别人的命中区都不亮
+    clearNodePortHover();
     const bodyNode = nodeBodyAtClientPoint(clientX, clientY);
     clearNodeBodyHover(bodyNode || null);
     if(bodyNode) bodyNode.classList.add('body-hover');
 }
 // The hit area stays still; only the visible plus follows the pointer inside it.
+// 2026-10-26 老王：跟手不准（"完全挨不着"）根因——--port-x 是世界局部坐标，最终还要被 world 的
+// scale 变换一次；旧算法按屏幕偏移直接写局部值，等于没除以 scale：0.8 缩放时圆环只跟走 80%，
+// 离鼠标越远差得越多。（命中区本身是屏幕恒 84px 的逆缩放设计，rect.width 反推不出缩放，
+// 必须读 --canvas-fixed-zoom = 1/scale。）
+// 修法：屏幕偏移 × fixedZoom 换算成局部单位，**不做 clamp**——鼠标在命中区任意点，
+// 圆环中心与鼠标 1:1 完全重合（贴边时圆环允许探出命中区边缘 13px，圆环是视觉件、
+// 不吃事件，无功能损失；旧 15~69 clamp 是"范围变小/挨不着"的另一半原因）。
 world.addEventListener('mousemove', event => {
     const port = event.target.closest?.('.node-port');
     if(!port) return;
     const rect = port.getBoundingClientRect();
     if(!rect.width || !rect.height) return;
-    const x = Math.max(15, Math.min(69, (event.clientX - rect.left) / rect.width * 84));
-    const y = Math.max(15, Math.min(69, (event.clientY - rect.top) / rect.height * 84));
-    port.style.setProperty('--port-x', `${x}px`);
-    port.style.setProperty('--port-y', `${y}px`);
+    const fz = parseFloat(getComputedStyle(port).getPropertyValue('--canvas-fixed-zoom')) || 1;
+    port.style.setProperty('--port-x', `${(event.clientX - rect.left) * fz}px`);
+    port.style.setProperty('--port-y', `${(event.clientY - rect.top) * fz}px`);
 }, true);
 world.addEventListener('mouseout', event => {
     const port = event.target.closest?.('.node-port');
@@ -9533,8 +9780,7 @@ world.addEventListener('mouseout', event => {
     port.style.removeProperty('--port-x');
     port.style.removeProperty('--port-y');
 }, true);
-// 鼠标在节点身体里的移动 → 维护 .body-hover；端口圆环自身可 hover（CSS pointer-events:auto），
-// 压在圆环上时由 .node-port:hover 单独亮那一个，不需要 JS 参与。离开世界即全清。
+// 鼠标移动 → 端口仲裁（.port-hover）/ 身体悬停（.body-hover）二选一，互斥；离开世界即全清。
 world.addEventListener('mousemove', event => syncNodePortHoverFromPointer(event.clientX, event.clientY), true);
 world.addEventListener('mouseleave', () => { clearNodePortHover(); clearNodeBodyHover(); });
 // ===== 拖线落空 → 选节点类型（createMenu 复用） =====
@@ -11009,6 +11255,7 @@ function updateComposer(){
         composer.classList.remove('open');
         if(cascadeRunBtn) cascadeRunBtn.style.display = 'none';
         closeAllSmartPopovers(); canvasUiState.clearEditor();
+        releaseBatchParamsHost();
         return;
     }
     if(node?.type === 'smart-speech' || isAudioOnlyNode(node)){
@@ -11017,10 +11264,15 @@ function updateComposer(){
         closeAllSmartPopovers(); canvasUiState.clearEditor();
         if(cascadeRunBtn) cascadeRunBtn.style.display = 'none';
         setPromptInputLocked(false);
+        releaseBatchParamsHost();
         return;
     }
-    composer.classList.toggle('open', !!node);
-    if(!isSmartImageNode(node)){
+    // 老王 2026-10-25：批量生成节点不弹底部面板 —— 引擎与工作流参数都在它自己的卡片里调。
+    // 但 settings 归属仍绑到该节点（composer 主体判定保留），否则参数读写的不是本节点的 runSettings。
+    const batchSubject = node?.type === 'smart-loop';
+    composer.classList.toggle('open', !!node && !batchSubject);
+    if(!isComposerSubjectNode(node)){
+        releaseBatchParamsHost();
         if(cascadeRunBtn) cascadeRunBtn.style.display = 'none';
         savePromptDraftForCurrent();
         composer.classList.remove('open');
@@ -11035,24 +11287,296 @@ function updateComposer(){
     const switchedNode = canvasUiState.editor.key !== composerKey;
     if(switchedNode){ savePromptDraftForCurrent(); closeAllSmartPopovers(); }
     canvasUiState.bindEditor(subject, composerKey);
+    // 批量节点：提示词在自己卡片里（多段），参数区也搬进卡片，底部面板不出现
+    composer.classList.toggle('batch-subject', batchSubject);
     const hasPromptInput = promptInputNodesFor(node).length > 0;
     // 每次选中都从节点刷新设置（确保 3D预演 节点引擎生效）
     settings = smartSettingsForNode(subject);
-    if(switchedNode){
+    if(switchedNode && !batchSubject){
         loadPromptDraft(subject);
     }
     setPromptInputLocked(false);
-    syncCascadeRunButton(node);
+    if(batchSubject){
+        if(cascadeRunBtn) cascadeRunBtn.style.display = 'none';
+    } else {
+        syncCascadeRunButton(node);
+    }
     const ph = Math.max(60, Math.min(380, Number(settings.promptH) || 93));
     promptInput.style.setProperty('--prompt-h', `${ph}px`);
-    renderInputThumbsRow(node);
-    renderInputPromptPreview(node);
-    syncCascadeRunButton(node);
+    if(!batchSubject){
+        renderInputThumbsRow(node);
+        renderInputPromptPreview(node);
+    }
+    if(!batchSubject) syncCascadeRunButton(node);
     syncRunButtonAvailability(node);
+    if(batchSubject){
+        // 底部面板不弹，参数走卡片内那一条 .batch-wf-params（字段来源/事件/持久化与 composer 完全相同）
+        renderBatchWorkflowParams(node);
+        return;
+    }
+    releaseBatchParamsHost();
     updateProviderModels();
     positionComposerForNode(node);
 }
-// 2026-10-19 老王：上游提示词节点只出缩略图行里的“文本1/文本2”缩略图，不再在本节点多出一个提示词框。
+// 参数控件改值后要重绘的那一面：批量节点画在卡片里，其余画在底部面板。
+function refreshParamsSurface(){
+    const node = activeComposerNode();
+    if(node?.type === 'smart-loop' && batchParamsHost?.isConnected){ renderBatchWorkflowParams(node); return; }
+    renderDynamicParams();
+}
+/* ===== 批量节点卡片内的工作流参数（2026-10-25 老王：不要底部面板）=====
+   渲染目标从 #dynamicParams 换成卡片里的 .batch-wf-params，其余链路原样复用：
+   comfy 走 ensureComfyWorkflow + renderComfyParamsInline，runninghub 走 rhActiveFields + renderRhParamsInline，
+   事件由 bindDynamicParams 绑（容器经 activeParamsContainer() 切换），写回靠 persistActiveSmartSettings。 */
+let batchParamsHost = null;
+// 批量节点不再被选中时必须把卡片里的参数区收回占位：那套控件的事件绑的是「当前 settings」，
+// 人已切到别的节点，留着可点的旧参数就会把值写进别的节点（串写）。
+function releaseBatchParamsHost(){
+    const host = batchParamsHost;
+    batchParamsHost = null;
+    if(host?.isConnected && host.dataset.paramsHtml){
+        host.dataset.paramsHtml = '';
+        // 参数常驻（2026-10-25 老王：「不点一下节点都看不到参数，图片节点是这样做的吗？」）：
+        // 切走节点时收回的不是「选中后调参」占位，而是按这张卡自己的节点重渲染一份——
+        // 图片节点的比例/分辨率 pill 就不随选中消失。
+        const card = host.closest('.image-node');
+        const owner = card ? (nodes || []).find(n => n.id === (card.getAttribute('data-id') || '')) : null;
+        host.innerHTML = owner ? batchWorkflowParamsHtml(owner) : '';
+    }
+}
+function activeParamsContainer(){
+    return batchParamsHost?.isConnected ? batchParamsHost : dynamicParams;
+}
+// composer 底部面板不可见时，参数面板也可能挂在批量节点卡片里 —— 两者都算「参数面激活」，
+// persistActiveSmartSettings 不能因为 composer 没开就把节点参数丢掉。
+function composerParamsActive(){
+    return Boolean(composer?.classList?.contains('open')) || Boolean(batchParamsHost?.isConnected);
+}
+/* 2026-10-25 老王：「怎么还有隐藏机制？不点一下节点都看不到参数，图片节点是这样做的吗？」
+   参数**常驻**在批量卡片上——与图片节点的比例/分辨率 pill 完全同语义：不选中也看得见、
+   点得动。取值/写值全部按卡片所属节点的 runSettings，不再读全局 settings（全局那份只会
+   显示当前选中节点的参数，别的卡片全串）。
+   工作流 JSON 还没读过时先出空壳，异步拉到后局部重渲这一张卡，全程不碰选中态、不整体 render。 */
+const __batchWfEnsuring = new Set();
+let __batchWfRhListEnsuring = false;
+function batchWorkflowParamsHtml(node){
+    const rs = node && node.runSettings;
+    if(!rs) return '';
+    if(rs.engine === 'comfy'){
+        normalizeComfyWorkflowSelection(rs);
+        const name = rs.comfyWorkflow;
+        const wf = comfyWorkflowCache[name];
+        if(!wf){
+            // 缓存没命中：异步拉一次，拉到后只重渲这一张卡（Set 去重，防 render 循环里反复触发）
+            if(name && !__batchWfEnsuring.has(name)){
+                __batchWfEnsuring.add(name);
+                ensureComfyWorkflow(name)
+                    .then(() => renderBatchNodeParams(node))
+                    .catch(() => {})
+                    .finally(() => __batchWfEnsuring.delete(name));
+            }
+            return '';
+        }
+        const fields = wf?.config?.fields || [];
+        return fields.length ? renderComfyParamsPillInline(wf, fields, rs) : '';
+    }
+    if(rs.engine === 'runninghub'){
+        const ref = selectedRunningHubRef(rs);
+        if(!ref){
+            // RH 条目目录是异步拉的（/api 配置）：它晚到时这里会永远返回空，参数区就一直空白。
+            // 与 comfy/RH 工作流 JSON 同款兜底：目录还空就刷一次配置，拉到后只重渲这一张卡。
+            if(!runningHubAllEntries().length && !__batchWfRhListEnsuring){
+                __batchWfRhListEnsuring = true;
+                Promise.resolve()
+                    .then(() => (typeof refreshSmartConfigFromSettings === 'function' ? refreshSmartConfigFromSettings() : null))
+                    .then(() => renderBatchNodeParams(node))
+                    .catch(() => {})
+                    .finally(() => { __batchWfRhListEnsuring = false; });
+            }
+            return '';
+        }
+        if(ref.kind === 'workflow' && !Object.keys(rhWorkflowJsonForRef(ref)).length){
+            const refId = ref.id;
+            if(!__batchWfEnsuring.has(refId)){
+                __batchWfEnsuring.add(refId);
+                ensureRunningHubWorkflow(refId)
+                    .then(() => renderBatchNodeParams(node))
+                    .catch(() => {})
+                    .finally(() => __batchWfEnsuring.delete(refId));
+            }
+        }
+        const fields = rhActiveFields(rs);
+        return fields.length ? renderRhParamsPillInline(fields, rs) : '';
+    }
+    return '';
+}
+// 局部重渲一张卡的参数区（异步拉到工作流 JSON 后 / 写值后调用）：不动选中态、不整体 render，
+// 保住用户正在别的卡上编辑的状态。
+function renderBatchNodeParams(node){
+    if(!node) return;
+    const host = document.querySelector(`.image-node[data-id="${CSS.escape(node.id)}"] .batch-wf-params`);
+    if(!host) return;
+    const html = batchWorkflowParamsHtml(node);
+    if(host.dataset.paramsHtml !== html){
+        host.dataset.paramsHtml = html;
+        host.innerHTML = html;
+    }
+    globalThis.CanvasBatchGenerate?.bindWfParamsHost?.(host, node);
+}
+function renderBatchWorkflowParams(node){
+    const host = node ? document.querySelector(`.image-node[data-id="${CSS.escape(node.id)}"] .batch-wf-params`) : null;
+    if(!host){ releaseBatchParamsHost(); return; }
+    batchParamsHost = host;
+    const html = batchWorkflowParamsHtml(node);
+    // 内容没变就别重写 innerHTML：render() 在拖拽/缩放时频繁触发，重排会把用户正在编辑的输入框打断。
+    if(host.dataset.paramsHtml !== html){
+        host.dataset.paramsHtml = html;
+        host.innerHTML = html || `<div class="batch-wf-params-empty">${escapeHtml(tr('smart.batchWfParamsEmpty', '该工作流没有可调参数'))}</div>`;
+    }
+    bindDynamicParams();
+    if(window.lucide) lucide.createIcons();
+    // 参数 pill 的 mousedown 要就地吞掉：否则在卡片上点参数会顺着事件泡到画布，变成拖动节点
+    globalThis.CanvasBatchGenerate?.bindWfParamsHost?.(host, node);
+    if(globalThis.CanvasBatchGenerate?.measureWfParams?.(node)){
+        refreshConnectionLayer();
+        scheduleSave();
+    }
+    // 下一帧再量一次：参数行刚写进 DOM 时字还没排完，第一次量出来会偏矮（最后一行贴边被裁）。
+    requestAnimationFrame(() => {
+        if(!batchParamsHost?.isConnected) return;
+        if(globalThis.CanvasBatchGenerate?.measureWfParams?.(node)){
+            refreshConnectionLayer();
+            scheduleSave();
+        }
+        // 参数可能换行 / 变多，卡片整体高度也要跟着补一次
+        globalThis.CanvasBatchGenerate?.autoFitBatchNodeHeights?.();
+    });
+}
+/* ===== 批量卡片参数浮层（2026-10-25 老王：「复刻图片节点那一套」）=====
+   pill 是图片节点同款 .smart-pill；卡片在 #world 变换层里，弹层不能 absolute 在卡片内
+   （会被画布 scale/translate 带偏，还会被顶部工具条盖住），所以由 canvas-batch-generate.js
+   挂 body 浮层，这里只负责「选项列表 HTML」和「选中后写值」两件纯逻辑。
+   选项也是图片节点那套 .batch-engine-group > .batch-engine-option（与引擎/比例/分辨率一致）。 */
+function wfParamPickerHtml(paramKey, sourceSettings){
+    const key = String(paramKey || '');
+    // sourceSettings：参数常驻在卡片上，选项与当前值都按 pill 所属节点的 runSettings 取
+    const src = sourceSettings || settings;
+    const engine = globalThis.CanvasDynamicParamEngine;
+    const group = (full, options, current) => {
+        const showText = v => String(v).replace(/\s*[（(][^）)]*[）)]\s*$/, '');
+        const cur = String(current ?? '');
+        if(!options || !options.length) return `<div class="batch-engine-empty">${escapeHtml(tr('smart.noOption'))}</div>`;
+        return `<div class="batch-engine-group"><div class="batch-engine-group-title">${escapeHtml(full)}</div>` +
+            options.map(v => `<button type="button" class="batch-engine-option${v === cur ? ' active' : ''}" data-batch-wfparam-item="${escapeHtml(key)}" data-batch-wfparam-value="${escapeHtml(v)}">` +
+                `<span class="batch-engine-option-name">${escapeHtml(showText(v))}</span>` +
+                (v === cur ? '<span class="batch-engine-option-check">✓</span>' : '') + '</button>').join('') + '</div>';
+    };
+    if(key.startsWith('comfy:')){
+        const uid = key.slice(6);
+        const fields = comfyWorkflowCache[src.comfyWorkflow]?.config?.fields || [];
+        const field = fields.find(f => String(f.id) === uid);
+        if(!field) return `<div class="batch-engine-empty">${escapeHtml(tr('smart.paramGone', '参数已失效，重新选择工作流'))}</div>`;
+        const full = field.name || field.input || field.id;
+        const value = comfyParamValue(field, src);
+        // 与 pill 同源（engine.wfParamOptionsFor）：否则 pill 有下拉、点开却「无选项」
+        const options = engine.wfParamOptionsFor(field, value);
+        return group(full, options, value);
+    }
+    if(key.startsWith('rh:')){
+        const rkey = key.slice(3);
+        const field = rhActiveFields(src).find(f => rhParamKey(f.nodeId, f.fieldName) === rkey);
+        if(!field) return `<div class="batch-engine-empty">${escapeHtml(tr('smart.paramGone', '参数已失效，重新选择工作流'))}</div>`;
+        const full = field.label || field.fieldName || 'Field';
+        const value = engine.rhParamValue(field, null, src);
+        let options = engine.rhExtractFieldOptions(field);
+        if(!options && globalThis.CanvasRhControls?.rhPickerOptions) options = globalThis.CanvasRhControls.rhPickerOptions(field);
+        if(!options && (field.fieldType === 'NUMBER' || field.fieldType === 'SLIDER' || field.fieldType === 'FLOAT' || field.fieldType === 'INTEGER' || field.fieldType === 'INT')){
+            options = engine.wfParamNumberOptions({min:field.min, max:field.max, step:field.step}, value);
+        }
+        return group(full, options, value);
+    }
+    return '';
+}
+// 参数选中写值：与 composer 面板的 data-comfy-param / data-rh-param 委托同一份 storage 语义
+// （comfyParams[fieldId] + 稳定键同步；rhParams[key].value），写完刷新卡片参数区。
+function applyWorkflowParamValue(paramKey, value){
+    const key = String(paramKey || '');
+    const val = String(value ?? '');
+    if(key.startsWith('comfy:')){
+        const uid = key.slice(6);
+        const field = currentComfyFields().find(f => String(f.id) === uid);
+        settings.comfyParams = settings.comfyParams || {};
+        settings.comfyParams[uid] = (field && (field.type === 'number' || field.type === 'slider')) ? (Number(val) || 0) : val;
+        const stableKey = field ? comfyFieldKey(field) : '';
+        if(stableKey) settings.comfyParams[stableKey] = settings.comfyParams[uid];
+    } else if(key.startsWith('rh:')){
+        const rkey = key.slice(3);
+        settings.rhParams = settings.rhParams || {};
+        settings.rhParams[rkey] = Object.assign({}, settings.rhParams[rkey] || {}, {value:val});
+    }
+    persistActiveSmartSettings();
+    renderDynamicParams();
+    scheduleSave();
+}
+/* 2026-10-25 参数常驻版写值：按 pill 所属节点写 —— 未选中的卡片也能改参数
+   （与引擎/比例浮层的 specOpt 分支「直接写 target.runSettings」同语义，不碰全局 settings）。 */
+function applyWorkflowParamValueForNode(node, paramKey, value, options){
+    if(!node) return;
+    // silent：输入框 input 事件用——只写值不重绘（重绘会把用户正在打字焦点冲掉），change 时再刷
+    const silent = Boolean(options && options.silent);
+    if(activeComposerNode() === node){
+        // 正好是选中节点：走原链路（写全局 settings → persistActiveSmartSettings 回写 runSettings）
+        applyWorkflowParamValue(paramKey, value);
+        if(!silent) renderBatchNodeParams(node);
+        return;
+    }
+    const rs = node.runSettings = node.runSettings || {};
+    const key = String(paramKey || '');
+    const val = String(value ?? '');
+    if(key.startsWith('comfy:')){
+        const uid = key.slice(6);
+        const field = (comfyWorkflowCache[rs.comfyWorkflow]?.config?.fields || []).find(f => String(f.id) === uid);
+        rs.comfyParams = rs.comfyParams || {};
+        rs.comfyParams[uid] = (field && (field.type === 'number' || field.type === 'slider')) ? (Number(val) || 0) : val;
+        const stableKey = field ? comfyFieldKey(field) : '';
+        if(stableKey) rs.comfyParams[stableKey] = rs.comfyParams[uid];
+    } else if(key.startsWith('rh:')){
+        const rkey = key.slice(3);
+        rs.rhParams = rs.rhParams || {};
+        rs.rhParams[rkey] = Object.assign({}, rs.rhParams[rkey] || {}, {value:val});
+    }
+    if(!silent) renderBatchNodeParams(node);
+    scheduleSave();
+}
+// 布尔 pill 的按节点切换（卡片常驻版）：paramKey 形如 comfy:<uid> / rh:<nodeId>::<fieldName>
+function toggleWorkflowParamBoolForNode(node, paramKey){
+    if(!node) return false;
+    const rs = node.runSettings = node.runSettings || {};
+    const key = String(paramKey || '');
+    let changed = false;
+    if(key.startsWith('comfy:')){
+        const uid = key.slice(6);
+        const field = (comfyWorkflowCache[rs.comfyWorkflow]?.config?.fields || []).find(f => String(f.id) === uid);
+        rs.comfyParams = rs.comfyParams || {};
+        const cur = Boolean(rs.comfyParams[uid] ?? (field && field.default) ?? false);
+        const next = !cur;
+        rs.comfyParams[uid] = next;
+        const stableKey = field ? comfyFieldKey(field) : '';
+        if(stableKey) rs.comfyParams[stableKey] = next;
+        changed = true;
+    } else if(key.startsWith('rh:')){
+        const rkey = key.slice(3);
+        rs.rhParams = rs.rhParams || {};
+        const cur = String(rs.rhParams[rkey]?.value ?? '').toLowerCase() === 'true';
+        rs.rhParams[rkey] = Object.assign({}, rs.rhParams[rkey] || {}, {value: cur ? 'false' : 'true'});
+        changed = true;
+    }
+    if(!changed) return false;
+    renderBatchNodeParams(node);
+    if(activeComposerNode() === node) persistActiveSmartSettings();
+    scheduleSave();
+    return true;
+}
 function renderInputPromptPreview(node){
     if(!inputPromptPreview) return;
     void node;
@@ -13230,7 +13754,7 @@ async function generateComfyUrlsWithSettings(runSettings, prompt, refs, node=nul
         // 原先参数区 textarea 字段（comfyParams[field.id]）优先、大框只做兜底，
         // 导致旧残留把用户在大框里写的提示词整段压住；现在反转优先级。
         // 大框为空（级联/循环等无 UI 输入场景）才回退参数区字段，再回退 default。
-        const userVal = runSettings.comfyParams?.[field.id];
+        const userVal = comfyRunParamValue(runSettings, field);
         const boxText = index === 0 ? (prompt ?? '') : '';
         if(String(boxText).trim() !== ''){
             values[field.id] = boxText;
@@ -13252,7 +13776,7 @@ async function generateComfyUrlsWithSettings(runSettings, prompt, refs, node=nul
         if(comfyRandomEnabledField(field) && smartComfyRandomActiveFor(runSettings, field.id)){
             values[field.id] = smartComfyRandomValue(field);
         } else {
-            values[field.id] = runSettings.comfyParams?.[field.id] ?? field.default;
+            values[field.id] = comfyRunParamValue(runSettings, field) ?? field.default;
         }
     });
     return runComfyWorkflowJob(node, runSettings, prompt, allRefs, node, null);
@@ -13406,6 +13930,7 @@ async function runLoopRoundIntoSlot(loopNode, rootNode, outputSlot, loopIndex, c
         render();
         settings = previousSettings;
         let result;
+        let apiSettledBySupervisor = false;
         if(isApiLikeEngine(runSettings.engine) && runSettings.apiKind !== 'video'){
             const taskResult = await runApiGeneration(prompt, request.refs || [], runSettings, rootNode);
             const taskIds = Array.isArray(taskResult?.taskIds) ? taskResult.taskIds : [];
@@ -13429,6 +13954,11 @@ async function runLoopRoundIntoSlot(loopNode, rootNode, outputSlot, loopIndex, c
             scheduleSave();
             await saveCanvas();
             await resumeSmartPendingNode(outputSlot);
+            // 2026-10-27 日志收口：异步分支的任务已经过 supervisor 结算点记日志
+            //（finalize 成功/resume 失败，键=outputSlot 的 attempt/taskId）。
+            // 本函数尾巴那条 tail 日志用的是 rootNode 的 attempt 键，会把同一轮生成
+            // 记成**两条**——异步已结算时 tail 必须闭嘴。
+            apiSettledBySupervisor = true;
             if(outputSlot.jimengPending){
                 outputSlot.queued = false;
                 return [];
@@ -13454,7 +13984,11 @@ async function runLoopRoundIntoSlot(loopNode, rootNode, outputSlot, loopIndex, c
             runPath.states[edgeKey] = 'done';
             refreshConnectionLayer();
         }
-        addSmartGenerationLog({run:{...runLog, kind:result.kind || logKind}, outputs:additions, runMs:nowMs() - runLogStart});
+        // 2026-10-27 日志收口：异步分支已由 supervisor 结算点记日志（键=outputSlot），
+        // 这里再按 rootNode 的 attempt 记会成两条——跳过。同步分支无结算点，tail 照记。
+        if(!apiSettledBySupervisor){
+            addSmartGenerationLog({run:{...runLog, kind:result.kind || logKind}, outputs:additions, runMs:nowMs() - runLogStart});
+        }
         return additions;
     } catch(e) {
         if(handleJimengPendingSignal(outputSlot, e)){
@@ -13762,7 +14296,7 @@ async function buildComfyWorkflowJobPayload(node, runSettings, prompt, refs){
         // 原先参数区 textarea 字段（comfyParams[field.id]）优先、大框只做兜底，
         // 导致旧残留把用户在大框里写的提示词整段压住；现在反转优先级。
         // 大框为空（级联/循环等无 UI 输入场景）才回退参数区字段，再回退 default。
-        const userVal = runSettings.comfyParams?.[field.id];
+        const userVal = comfyRunParamValue(runSettings, field);
         const boxText = index === 0 ? (prompt ?? '') : '';
         if(String(boxText).trim() !== ''){
             values[field.id] = boxText;
@@ -13784,7 +14318,7 @@ async function buildComfyWorkflowJobPayload(node, runSettings, prompt, refs){
  if(comfyRandomEnabledField(field) && smartComfyRandomActiveFor(runSettings, field.id)){
  values[field.id] = smartComfyRandomValue(field);
  } else {
- values[field.id] = runSettings.comfyParams?.[field.id] ?? field.default;
+ values[field.id] = comfyRunParamValue(runSettings, field) ?? field.default;
  }
     });
     const overrides = {};
@@ -15495,6 +16029,8 @@ try {
         if(event.data?.type === 'providers-changed' || event.data?.type === 'workflows-changed' || event.data?.type === 'comfy-instances-changed'){
             await refreshSmartConfigFromSettings();
         }
+        // 工作流配置页点了「重载」→ 画布侧清内存缓存重新读盘（换版本后两边立刻一致）
+        if(event.data?.type === 'comfy-workflow-reloaded'){ comfyReloadOnBroadcast(event.data.name).catch(() => {}); }
         if(event.data?.type === 'app-config-changed') refreshCanvasAgentConfig().catch(() => {});
         if(event.data?.type === 'asset_library_updated') handleAssetLibraryUpdatedMessage(event.data);
         if(event.data?.type === 'prompt_library_updated') handlePromptLibraryUpdatedMessage(event.data);

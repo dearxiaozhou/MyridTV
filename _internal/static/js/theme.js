@@ -23,7 +23,7 @@
         const link = document.createElement('link');
         link.id = 'studio-application-palette';
         link.rel = 'stylesheet';
-        link.href = '/static/css/application-palette.css?cb=card-hover-seven-v01318';
+        link.href = '/static/css/application-palette.css?cb=wfparam-skin4';
         const interactions = document.querySelector('link[href*="canvas-interaction-style.css"]');
         document.head.insertBefore(link, interactions || null);
     }

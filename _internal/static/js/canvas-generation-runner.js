@@ -11,6 +11,8 @@ async function runGeneration(){
     const node = deps.selectedNode();
     if(!node) return;
     if(node.type === 'smart-speech') return global.CanvasSpeech.run(node);
+    // 批量生成节点：composer 的运行钮等于「批量生成」，不能走单节点链路
+    if(node.type === 'smart-loop' && global.CanvasBatchGenerate?.runBatch) return global.CanvasBatchGenerate.runBatch(node);
     const previewSettings=deps.smartSettingsForNode(node);
     if(previewSettings.engine==='blender'&&previewSettings.previzOutput==='motion'&&global.CanvasOfflinePrevis?.prepare){
         try{if(!await global.CanvasOfflinePrevis.prepare(node))return;}catch(error){deps.toast(error.message);return;}

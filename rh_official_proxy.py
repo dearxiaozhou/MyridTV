@@ -274,7 +274,7 @@ write_static_app_config(json.dumps(APP_CONFIG, ensure_ascii=False, indent=2))
 TASKS = {}
 TASKS_LOCK = threading.Lock()
 PERSISTENT_TASKS_FILE = USER_DATA_DIR / "data" / "canvas_tasks.json"
-STATIC_VERSION = "2026.10.23.e2efix1"
+STATIC_VERSION = "2026.10.25.btn-theme8"
 OUTPUT_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 # Windows 版 Python 的 mimetypes 不带 webp，猜不出来会回落成
 # application/octet-stream，浏览器按未知类型拒绝渲染（风格缩略图会全变空白）。
@@ -915,6 +915,10 @@ def rename_workflow_record(name, new_name):
     return myridtv_workflow_assets.rename_workflow_record(name, new_name)
 
 
+def reload_workflow_from_source(name, source_path=None, workflow=None):
+    return myridtv_workflow_assets.reload_workflow_from_source(name, source_path, workflow)
+
+
 def parse_workflow_route(request_path):
     return myridtv_workflow_assets.parse_workflow_route(request_path)
 
@@ -1243,6 +1247,8 @@ myridtv_workflow_assets.configure(
         'ASSETS_DIR': lambda: ASSETS_DIR,
         # 重命名工作流时需连带改写画布里的引用
         'CANVAS_DIR': lambda: USER_DATA_DIR / "data" / "canvases",
+        # 记「源文件放在哪些目录」用（comfy_source_dirs.json）
+        'USER_DATA_DIR': lambda: USER_DATA_DIR,
     },
 )
 
@@ -1733,6 +1739,42 @@ myridtv_mcp.configure(MCP_BASE)
 MCP_TOOLS = myridtv_mcp.MCP_TOOLS
 def _mcp_handle(name, args):
     return myridtv_mcp._mcp_handle(name, args)
+
+
+# ── RH 生图任务并发闸门（2026-10-27） ────────────────────────────────────────
+# 背景：前端单节点一次提交就是 count 个请求（上限 8），批量节点再乘目标数，
+# 后端原本每个请求即起一根线程全并发压向上游。并发本身不至于失败，但一旦上游
+# 开始掐连接，全线程池在同一个瞬间重试会把瞬时失败放大成整批失败。
+# 闸门只约束「同时跑」的任务数，不改变对外 API 契约：请求仍然立刻返回 task_id。
+try:
+    _RH_MAX_PARALLEL_TASKS = int(os.environ.get("MYRIDTV_RH_MAX_PARALLEL") or "3")
+except Exception:
+    _RH_MAX_PARALLEL_TASKS = 3
+_RH_MAX_PARALLEL_TASKS = max(1, min(8, _RH_MAX_PARALLEL_TASKS))
+_RH_TASK_QUEUE_TIMEOUT_SEC = 1800.0   # 与前端 POLL 超时同量级，排队超时的任务直接判失败
+_RH_TASK_SLOTS = threading.BoundedSemaphore(_RH_MAX_PARALLEL_TASKS)
+
+
+def start_rh_image_task(task_id, payload):
+    """在并发闸门内起一根后台线程跑 run_task（原 :2542 的直起线程）。
+
+    拿不到槽位就排队等待；排队超过 30 分钟按失败收尾并写明原因，
+    避免任务无限挂起（前端会一直轮询到自己的 10min 上限，没有 feedback）。
+    """
+    def _runner():
+        if not _RH_TASK_SLOTS.acquire(timeout=_RH_TASK_QUEUE_TIMEOUT_SEC):
+            update_task_state(
+                task_id, status="failed", completed_at=time.time(),
+                error=f"排队超时：当前同时运行的 RH 任务已满 {_RH_MAX_PARALLEL_TASKS} 个，"
+                      f"等待超过 {int(_RH_TASK_QUEUE_TIMEOUT_SEC)}s 仍未拿到执行槽位。",
+            )
+            return
+        try:
+            run_task(task_id, payload)
+        finally:
+            _RH_TASK_SLOTS.release()
+
+    threading.Thread(target=_runner, daemon=True, name=f"rh-task-{task_id}").start()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -2533,7 +2575,7 @@ class Handler(BaseHTTPRequestHandler):
             "node_id": str(payload.get("node_id") or "").strip(),
             "node_title": str(payload.get("node_title") or "").strip(),
         }, persistent=True)
-        threading.Thread(target=run_task, args=(task_id, payload), daemon=True).start()
+        start_rh_image_task(task_id, payload)
         self._send(200, {"task_id": task_id})
         return
 
@@ -2973,6 +3015,22 @@ class Handler(BaseHTTPRequestHandler):
             return True
         return False
 
+    def _postc_21(self, request_path, payload, canvas_route, canvas_id, workflow_route, workflow_name):
+        """do_POST 谓词链 #21：工作流「从源文件重载」（workflow_route == "reload-source"）。
+
+        老王 2026-10-26：重载不该只是重读 app 自己那份副本，要去源文件拉新版本覆盖。
+        没有源 / 源文件没了 → 回 409 + need_source，前端弹窗让老王手动指定。
+        """
+        if workflow_route == "reload-source":
+            result = reload_workflow_from_source(
+                workflow_name,
+                (payload or {}).get("source_path"),
+                (payload or {}).get("workflow"),
+            )
+            self._send(200 if result.get("ok") else 409, result)
+            return True
+        return False
+
     _POST_CONDS = [
         "_postc_00",
         "_postc_01",
@@ -2995,6 +3053,7 @@ class Handler(BaseHTTPRequestHandler):
         "_postc_18",
         "_postc_19",
         "_postc_20",
+        "_postc_21",
     ]
 
     def do_POST(self):
