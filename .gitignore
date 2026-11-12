@@ -17,6 +17,7 @@ webview2/
 
 # ============ 构建产物 / 打包暂存（由脚本重建） ============
 installer/build/
+installer/build_old_bak/
 installer/release-unsigned/
 release/
 # .NET 中间产物：含本机绝对路径（project.assets.json 等），不可入库

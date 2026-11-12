@@ -3,12 +3,9 @@
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.WcsRhModelAliases = api;
 })(typeof window !== 'undefined' ? window : globalThis, function () {
-  const RH_DEFAULT_MODEL_DISPLAY_NAMES = {
-    'rhart-image-g-2/image-to-image': 'RH-G-2-低价图生图',
-    'rhart-image-g-2/text-to-image': 'RH-G-2-低价文生图',
-    'rhart-image-g-2-official/text-to-image': 'RH-G-2-文生图官方稳定版',
-    'rhart-image-g-2-official/image-to-image': 'RH-G-2-图生图官方稳定版',
-  };
+  // 出厂不含任何预置模型别名（开源版裸装，显示名由用户在 provider 配置里自行维护）。
+  // 保留空对象是为了让 canonicalize / repair 逻辑对旧数据仍能按原值透传。
+  const RH_DEFAULT_MODEL_DISPLAY_NAMES = {};
 
   const RH_MODEL_VALUE_BY_DISPLAY_NAME = Object.fromEntries(
     Object.entries(RH_DEFAULT_MODEL_DISPLAY_NAMES).map(([model, label]) => [label, model])

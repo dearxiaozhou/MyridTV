@@ -87,40 +87,18 @@ const VOLCENGINE_DEFAULT_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3';
 const VOLCENGINE_DEFAULT_PROJECT_NAME = 'default';
 const VOLCENGINE_DEFAULT_REGION = 'cn-beijing';
 const CODEX_APP_ICON = '/static/images/codex-native.png';
-const VOLCENGINE_DEFAULT_VIDEO_MODELS = [
-    'doubao-seedance-2-0-260128',
-    'doubao-seedance-2-0-fast-260128',
-    'doubao-seedance-1-5-pro-251215',
-    'doubao-seedance-1-0-pro-250528',
-    'doubao-seedance-1-0-lite-t2v-250428',
-    'doubao-seedance-1-0-lite-i2v-250428'
-];
-const MS_BUILTIN_IMAGE_MODELS = [
-    'Tongyi-MAI/Z-Image-Turbo',
-    'Qwen/Qwen-Image-2512',
-    'Qwen/Qwen-Image-Edit-2511',
-    'black-forest-labs/FLUX.2-klein-9B'
-];
+// 开源版裸装：预置模型清单全部留空，由用户自行拉取/填写。
+const VOLCENGINE_DEFAULT_VIDEO_MODELS = [];
+const MS_BUILTIN_IMAGE_MODELS = [];
 const RH_DEFAULT_BASE_URL = 'https://www.runninghub.ai';
 const EXAMPLE_BASE_URL = 'https://api.example.com/v1';
 const CODEX_LOCAL_UPSTREAM = 'codex://local';
 const CODEX_LOCAL_DEFAULT_MODEL = 'codex-default';
-const RH_DEFAULT_IMAGE_MODELS = [
-  'seedream-v5-lite/text-to-image',
-  'seedream-v5-lite/image-to-image',
-  'rhart-image-g-2/text-to-image',
-    'rhart-image-g-2/image-to-image',
-    'rhart-image-g-2-official/text-to-image',
-    'rhart-image-g-2-official/image-to-image',
-    'rhart-image-n-pro-official/edit',
-    'rhart-image/f-2-klein-9b/text-to-image',
-  'rhart-image/f-2-klein-9b/edit',
-  'rhart-image-v1-official/text-to-image'
-];
+const RH_DEFAULT_IMAGE_MODELS = [];
 const RH_MODEL_ALIASES = window.WcsRhModelAliases || null;
 const RH_DEFAULT_MODEL_DISPLAY_NAMES = RH_MODEL_ALIASES?.RH_DEFAULT_MODEL_DISPLAY_NAMES || {};
-const JIMENG_DEFAULT_IMAGE_MODELS = ['5.0', '4.6', '4.5', '4.1', '4.0', '3.1', '3.0'];
-const JIMENG_DEFAULT_VIDEO_MODELS = ['seedance2.0fast_vip', 'seedance2.0_vip'];
+const JIMENG_DEFAULT_IMAGE_MODELS = [];
+const JIMENG_DEFAULT_VIDEO_MODELS = [];
 const JIMENG_LEGACY_IMAGE_MODELS = new Set(['jimeng-image-2k', 'jimeng-image-4k']);
 const JIMENG_LEGACY_VIDEO_MODELS = new Set(['jimeng-video-720p', 'jimeng-video-1080p']);
 const APP_CONFIG_DEFAULTS = {

@@ -8,13 +8,7 @@
     "image_edit_endpoint": "",
     "enabled": true,
     "primary": false,
-    "image_models": [
-      "seedream-v5-lite/text-to-image",
-      "seedream-v5-lite/image-to-image",
-      "rhart-image-g-2-official/text-to-image",
-      "rhart-image-g-2-official/image-to-image",
-      "rhart-image-n-pro-official/edit"
-    ],
+    "image_models": [],
     "chat_models": [],
     "video_models": [],
     "model_display_names": {},
@@ -33,23 +27,9 @@
     "image_edit_endpoint": "",
     "enabled": true,
     "primary": false,
-    "image_models": [
-      "doubao-seedream-3-0-t2i-250415",
-      "doubao-seedream-4-0-250828",
-      "doubao-seedream-4-5-251128",
-      "doubao-seedream-5-0-260128"
-    ],
+    "image_models": [],
     "chat_models": [],
-    "video_models": [
-      "doubao-seedance-1-0-lite-i2v-250428",
-      "doubao-seedance-1-0-lite-t2v-250428",
-      "doubao-seedance-1-0-pro-250528",
-      "doubao-seedance-1-0-pro-fast-251015",
-      "doubao-seedance-1-5-pro-251215",
-      "doubao-seedance-2-0-260128",
-      "doubao-seedance-2-0-fast-260128",
-      "doubao-seedance-2-0-mini-260615"
-    ],
+    "video_models": [],
     "model_display_names": {},
     "model_protocols": {},
     "ms_loras": [],

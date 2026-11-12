@@ -3,12 +3,8 @@
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.WcsProviderModelDisplay = api;
 })(typeof window !== 'undefined' ? window : globalThis, function () {
-  const RH_DEFAULT_MODEL_DISPLAY_NAMES = {
-    'rhart-image-g-2/image-to-image': 'RH-G-2-低价图生图',
-    'rhart-image-g-2/text-to-image': 'RH-G-2-低价文生图',
-    'rhart-image-g-2-official/text-to-image': 'RH-G-2-文生图官方稳定版',
-    'rhart-image-g-2-official/image-to-image': 'RH-G-2-图生图官方稳定版',
-  };
+  // 出厂不含预置模型别名；实际显示名优先取 provider.model_display_names（用户数据）。
+  const RH_DEFAULT_MODEL_DISPLAY_NAMES = {};
 
   function resolveProviderRecord(providers, providerId) {
     const id = String(providerId || '').trim();
