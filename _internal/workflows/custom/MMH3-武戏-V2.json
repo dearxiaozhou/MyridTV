@@ -5,7 +5,9 @@
     },
     "class_type": "LoadAudio",
     "_meta": {
-      "title": "加载音频"
+      "title": "加载音频",
+      "cnr_id": "comfy-core",
+      "ver": "0.39.2"
     }
   },
   "15": {
@@ -14,16 +16,20 @@
     },
     "class_type": "LoadAudio",
     "_meta": {
-      "title": "加载音频"
+      "title": "加载音频",
+      "cnr_id": "comfy-core",
+      "ver": "0.39.2"
     }
   },
   "19": {
     "inputs": {
-      "image": "10-16-06.png"
+      "image": "Agent 生成_13.png"
     },
     "class_type": "LoadImage",
     "_meta": {
-      "title": "加载图像"
+      "title": "加载图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
     }
   },
   "23": {
@@ -32,7 +38,9 @@
     },
     "class_type": "LoadImage",
     "_meta": {
-      "title": "加载图像"
+      "title": "加载图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
     }
   },
   "25": {
@@ -48,7 +56,9 @@
     },
     "class_type": "VHS_LoadVideo",
     "_meta": {
-      "title": "Load Video (Upload) 🎥🅥🅗🅢"
+      "title": "Load Video (Upload) 🎥🅥🅗🅢",
+      "cnr_id": "comfyui-videohelpersuite",
+      "ver": "4d907bee61e92c2e65af3bd6383a4e4d356126d1"
     }
   },
   "36": {
@@ -57,7 +67,9 @@
     },
     "class_type": "VAELoader",
     "_meta": {
-      "title": "加载VAE"
+      "title": "加载VAE",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
     }
   },
   "37": {
@@ -66,7 +78,9 @@
     },
     "class_type": "VAELoader",
     "_meta": {
-      "title": "加载VAE"
+      "title": "加载VAE",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
     }
   },
   "38": {
@@ -77,7 +91,9 @@
     },
     "class_type": "CLIPLoader",
     "_meta": {
-      "title": "加载CLIP"
+      "title": "加载CLIP",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
     }
   },
   "43": {
@@ -86,7 +102,9 @@
     },
     "class_type": "LoadImage",
     "_meta": {
-      "title": "加载图像"
+      "title": "加载图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
     }
   },
   "49": {
@@ -95,7 +113,9 @@
     },
     "class_type": "LoadImage",
     "_meta": {
-      "title": "加载图像"
+      "title": "加载图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
     }
   },
   "50": {
@@ -104,7 +124,9 @@
     },
     "class_type": "LoadImage",
     "_meta": {
-      "title": "加载图像"
+      "title": "加载图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
     }
   },
   "51": {
@@ -113,7 +135,9 @@
     },
     "class_type": "LoadImage",
     "_meta": {
-      "title": "加载图像"
+      "title": "加载图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
     }
   },
   "53": {
@@ -127,17 +151,21 @@
     },
     "class_type": "LoraLoaderModelOnly",
     "_meta": {
-      "title": "LoRA加载器（仅模型）"
+      "title": "LoRA加载器（仅模型）",
+      "cnr_id": "comfy-core",
+      "ver": "0.39.2"
     }
   },
   "192": {
     "inputs": {
-      "unet_name": "minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors",
+      "unet_name": "minimax_h3_ref2va_pruned_fp8_scaled.safetensors",
       "weight_dtype": "default"
     },
     "class_type": "UNETLoader",
     "_meta": {
-      "title": "UNet加载器"
+      "title": "UNet加载器",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
     }
   },
   "250": {
@@ -150,18 +178,22 @@
     },
     "class_type": "ComfyMathExpression",
     "_meta": {
-      "title": "数学表达式"
+      "title": "数学表达式",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
     }
   },
   "252": {
     "inputs": {
       "aspect_ratio": "16:9 (Widescreen)",
-      "megapixels": 0.6,
+      "megapixels": 0.8,
       "multiple": 32
     },
     "class_type": "ResolutionSelector",
     "_meta": {
-      "title": "分辨率选择器"
+      "title": "分辨率选择器",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
     }
   },
   "253": {
@@ -177,7 +209,9 @@
     },
     "class_type": "VAEDecode",
     "_meta": {
-      "title": "VAE解码"
+      "title": "VAE解码",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.0"
     }
   },
   "254": {
@@ -193,7 +227,9 @@
     },
     "class_type": "VAEDecodeAudio",
     "_meta": {
-      "title": "VAE解码（音频）"
+      "title": "VAE解码（音频）",
+      "cnr_id": "comfy-core",
+      "ver": "0.39.2"
     }
   },
   "255": {
@@ -202,16 +238,20 @@
     },
     "class_type": "KSamplerSelect",
     "_meta": {
-      "title": "K采样器选择"
+      "title": "K采样器选择",
+      "cnr_id": "comfy-core",
+      "ver": "0.39.2"
     }
   },
   "259": {
     "inputs": {
-      "value": 10
+      "value": 5
     },
     "class_type": "PrimitiveFloat",
     "_meta": {
-      "title": "视频时长（秒）"
+      "title": "视频时长（秒）",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
     }
   },
   "261": {
@@ -226,16 +266,20 @@
     },
     "class_type": "BasicScheduler",
     "_meta": {
-      "title": "基本调度器"
+      "title": "基本调度器",
+      "cnr_id": "comfy-core",
+      "ver": "0.39.2"
     }
   },
   "263": {
     "inputs": {
-      "text": "风格锁定：\n35mm电影定焦镜头，自然透视，轻微景深，自然胶片颗粒。CG电影质感，游戏过场动画风格，极致细节、真实材质微观纹理与次表面散射。自然外光、低饱和、克制冷色调。无 HDR、无暖橙色调。画幅：16:9\n\n主体定义：\n<Subject1>图片1作为角色“独孤残”的视觉锚定 本段他不说话，全程只做出经脉运功与失控的身体反应，不得生成任何台词、不得有任何口型动作。\n<Subject2>图片2作为场景“废弃宗门后山练功场场景”的视觉锚定\n\n[Shot 1]\n全景、援慢推进运镜，独孤残盘膝坐在练功场中央修炼准备突破。一层黑+少量暗淡红色能量气流从他身上散发缓慢上升。他双目低垂，呼吸绵长，双手在胸前轮转换印——起手剑指，旋即拇指扣中指结成子午印，再抱圆成罗汉印，三式一气呵成，每一式都精准定格半拍；随着印诀变换，他体内内力外放，衣袍下摆与鬓发被自身涌起的气机掀得向上扬起，以他为中心数米范围内的落叶被无形气机牵引离地浮空——不是被风吹散，而是绕着他向心力旋转，越靠近身体的树叶旋得越快，在地面汇成一道绕足的落叶旋涡，地面沙尘以他为圆心缓缓铺开一圈气纹。推至近景时看到独孤残面目狰狞，显然是运功走火入魔的前兆，面部的青筋开始慢慢突起，眼角先流出一点点黑色的血液。\n\n禁止项\n\n文字/UI/水印/Logo/角标/可读文字/真实UI\n\n【强制声明】\n\n无背景音乐,仅保留环境音与人声和音效;画面禁字幕/文字/水印/Logo;禁止可读文字(指画面字幕文字,不含人声台词)"
+      "text": "参考图片1：镜头向上摇，雾气在立着的板片之间缓缓流动，越远的板片越淡；下方那个小小的背影人物向石碑走去，衣角被风轻轻吹动，脚边影子不动；体积光从雾里慢慢透出，冷灰色调保持不变，整体近乎静止、只有细微的呼吸感。"
     },
     "class_type": "Text",
     "_meta": {
-      "title": "Text"
+      "title": "Text",
+      "aux_id": "TFL-TFL/ComfyUI_Text_Translation",
+      "ver": "495f9773dd3651a366ebac664fc4b0f301e9b1b3"
     }
   },
   "265": {
@@ -289,10 +333,6 @@
         "50",
         0
       ],
-      "ref_images.ref_image_5": [
-        "51",
-        0
-      ],
       "ref_videos.ref_video_0": [
         "25",
         0
@@ -304,32 +344,44 @@
       "ref_audios.ref_audio_1": [
         "15",
         0
+      ],
+      "ref_images.ref_image_5": [
+        "51",
+        0
       ]
     },
     "class_type": "MiniMaxH3ReferenceToVideo",
     "_meta": {
-      "title": "MiniMax H3 参考转视频"
+      "title": "MiniMax H3 参考转视频",
+      "cnr_id": "comfy-core",
+      "ver": "0.39.2"
     }
   },
   "307": {
     "inputs": {},
     "class_type": "忽略多组孤海",
     "_meta": {
-      "title": "忽略多组 孤海"
+      "title": "忽略多组 孤海",
+      "aux_id": "goohai/Goohaitools-comfyui",
+      "ver": "78dcaf74e21dd30b1a1439b7c44bd5c17018ffa9"
     }
   },
   "308": {
     "inputs": {},
     "class_type": "忽略多组孤海",
     "_meta": {
-      "title": "忽略多组 孤海"
+      "title": "忽略多组 孤海",
+      "aux_id": "goohai/Goohaitools-comfyui",
+      "ver": "78dcaf74e21dd30b1a1439b7c44bd5c17018ffa9"
     }
   },
   "309": {
     "inputs": {},
     "class_type": "忽略多组孤海",
     "_meta": {
-      "title": "忽略多组 孤海"
+      "title": "忽略多组 孤海",
+      "aux_id": "goohai/Goohaitools-comfyui",
+      "ver": "78dcaf74e21dd30b1a1439b7c44bd5c17018ffa9"
     }
   },
   "328": {
@@ -341,7 +393,9 @@
     },
     "class_type": "ConditioningZeroOut",
     "_meta": {
-      "title": "条件零化"
+      "title": "条件零化",
+      "cnr_id": "comfy-core",
+      "ver": "0.39.2"
     }
   },
   "329": {
@@ -363,20 +417,24 @@
     },
     "class_type": "ModelPreviewOverrideKJ",
     "_meta": {
-      "title": "Model Preview Override"
+      "title": "Model Preview Override",
+      "cnr_id": "comfyui-kjnodes",
+      "ver": "daa2bee6951527ed5600fa0c7263a1154ffbf630"
     }
   },
   "331": {
     "inputs": {
       "attention": "comfy kitchen attention",
       "model": [
-        "400",
+        "343",
         0
       ]
     },
     "class_type": "ModelAttentionBackend",
     "_meta": {
-      "title": "ModelAttentionBackend"
+      "title": "模型注意力后端",
+      "cnr_id": "comfy-core",
+      "ver": "0.39.2"
     }
   },
   "332": {
@@ -397,7 +455,9 @@
     },
     "class_type": "BlockSparseAttention",
     "_meta": {
-      "title": "块稀疏注意力"
+      "title": "模型稀疏注意力",
+      "cnr_id": "comfy-core",
+      "ver": "0.39.2"
     }
   },
   "333": {
@@ -411,14 +471,85 @@
     },
     "class_type": "MiniMaxH3SigmaShift",
     "_meta": {
-      "title": "MiniMax H3 Sigma Shift"
+      "title": "MiniMax H3 Sigma Shift",
+      "cnr_id": "comfy-core",
+      "ver": "0.39.2"
+    }
+  },
+  "342": {
+    "inputs": {
+      "lora_name": "H3_Combat_V2.safetensors",
+      "strength_model": 0.6500000000000001,
+      "model": [
+        "400",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器（仅模型）",
+      "cnr_id": "comfy-core",
+      "ver": "0.39.2"
+    }
+  },
+  "343": {
+    "inputs": {
+      "lora_name": "motion_speed_slider_mmh3_v1.1.safetensors",
+      "strength_model": [
+        "366",
+        0
+      ],
+      "model": [
+        "345",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器（仅模型）",
+      "cnr_id": "comfy-core",
+      "ver": "0.39.2"
+    }
+  },
+  "344": {
+    "inputs": {
+      "lora_name": "Motion_Repair_V2.safetensors",
+      "strength_model": 0.3500000000000001,
+      "model": [
+        "342",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器（仅模型）",
+      "cnr_id": "comfy-core",
+      "ver": "0.39.2"
+    }
+  },
+  "345": {
+    "inputs": {
+      "lora_name": "H3_Fight_Flow_V1.safetensors",
+      "strength_model": 0.3500000000000001,
+      "model": [
+        "344",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器（仅模型）",
+      "cnr_id": "comfy-core",
+      "ver": "0.39.2"
     }
   },
   "363": {
     "inputs": {},
     "class_type": "忽略多组孤海",
     "_meta": {
-      "title": "忽略多组 孤海"
+      "title": "忽略多组 孤海",
+      "aux_id": "goohai/Goohaitools-comfyui",
+      "ver": "78dcaf74e21dd30b1a1439b7c44bd5c17018ffa9"
     }
   },
   "364": {
@@ -444,12 +575,27 @@
     },
     "class_type": "VHS_VideoCombine",
     "_meta": {
-      "title": "Video Combine 🎥🅥🅗🅢"
+      "title": "Video Combine 🎥🅥🅗🅢",
+      "cnr_id": "comfyui-videohelpersuite",
+      "ver": "4d907bee61e92c2e65af3bd6383a4e4d356126d1"
+    }
+  },
+  "366": {
+    "inputs": {
+      "值": 3,
+      "output_type": "int",
+      "ghs_ui": null
+    },
+    "class_type": "GoohaiUniversalSlider",
+    "_meta": {
+      "title": "速度滑块（-10 - +10）",
+      "aux_id": "goohai/Goohaitools-comfyui",
+      "ver": "78dcaf74e21dd30b1a1439b7c44bd5c17018ffa9"
     }
   },
   "397": {
     "inputs": {
-      "seed": 258756921655707,
+      "seed": 161733073805151,
       "cfg": 1,
       "transition_step": 6,
       "lowres_scale": 0.6000000000000001,
@@ -490,7 +636,9 @@
     },
     "class_type": "SelfLiftH3Sampler",
     "_meta": {
-      "title": "SelfLift Progressive Sampler (MiniMax H3)"
+      "title": "SelfLift Progressive Sampler (MiniMax H3)",
+      "aux_id": "facok/comfyui-SelfLift",
+      "ver": "835c3cf7919410f71f414688f049c6ca497789d0"
     }
   },
   "400": {
@@ -504,7 +652,9 @@
     },
     "class_type": "LoraLoaderModelOnly",
     "_meta": {
-      "title": "LoRA加载器（仅模型）"
+      "title": "LoRA加载器（仅模型）",
+      "cnr_id": "comfy-core",
+      "ver": "0.39.2"
     }
   }
 }
