@@ -1,0 +1,22 @@
+# MyridTV 运行时依赖（Windows x64 / CPython 3.10）
+#
+# 仓库 _internal/ 内已内置便携 Python 运行时与下列库（vendored），
+# 正常克隆后可跳过安装直接运行；本文件用于重建或升级环境时参考。
+# 注意：vendored 二进制按 cp310-win_amd64 编译，换 Python 版本需重新编译依赖。
+
+websockets==16.0
+pydantic==2.13.4
+pydantic-core==2.46.4
+click==8.3.3
+Pillow==12.2.0
+certifi
+charset-normalizer
+httptools
+pywebview
+pythonnet
+PyYAML
+mcp
+
+# 仅构建/签名阶段需要（打包、更新包签名）
+ecdsa
+cryptography
