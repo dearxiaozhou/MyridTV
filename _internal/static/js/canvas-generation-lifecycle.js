@@ -31,7 +31,7 @@
     function owns(node, id) { return !!node && !!id && node.generationAttemptId === id; }
     function isCurrent(node, id) { return owns(node,id) && node.generationState !== 'cancelled'; }
     function transition(node, id, state) {
-        if (!isCurrent(node,id) || !['queued','running'].includes(state)) return false;
+        if (!isCurrent(node,id) || !['queued','running','starting'].includes(state)) return false;
         if (['succeeded','failed'].includes(node.generationState)) return false;
         node.generationState = state;
         return true;

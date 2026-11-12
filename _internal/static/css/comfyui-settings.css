@@ -592,15 +592,31 @@ html.studio-theme-dark body {
 .comfy-instance-row {
     width:100% !important;
     min-width:0 !important;
-    min-height:34px !important;
-    display:grid !important;
-    grid-template-columns:18px minmax(0,1fr) 24px !important;
-    align-items:center !important;
+    display:flex !important;
+    flex-direction:column !important;
     gap:6px !important;
-    padding:4px !important;
+    padding:6px !important;
     border:1px solid var(--wf-v2-line) !important;
     border-radius:4px !important;
     background:var(--wf-v2-panel-3) !important;
+}
+.ci-field {
+    width:100% !important;
+    min-width:0 !important;
+    display:flex !important;
+    align-items:center !important;
+    gap:6px !important;
+}
+.ci-field.ci-url {
+    display:grid !important;
+    grid-template-columns:18px minmax(0,1fr) 24px !important;
+}
+.ci-label {
+    color:var(--wf-v2-faint) !important;
+    font-size:10px !important;
+    font-weight:900 !important;
+    flex:0 0 auto !important;
+    text-align:left !important;
 }
 .comfy-instance-index {
     color:var(--wf-v2-faint) !important;
@@ -619,6 +635,18 @@ html.studio-theme-dark body {
     font-family:ui-monospace, Menlo, Consolas, monospace !important;
     font-size:12px !important;
     font-weight:800 !important;
+}
+.comfy-path-input {
+    flex:1 !important;
+    min-width:0 !important;
+    width:100% !important;
+    height:26px !important;
+    padding:0 8px !important;
+    overflow:hidden !important;
+    text-overflow:ellipsis !important;
+    font-family:ui-monospace, Menlo, Consolas, monospace !important;
+    font-size:11px !important;
+    font-weight:700 !important;
 }
 .comfy-instance-row .opt-del {
     width:24px !important;
@@ -932,7 +960,10 @@ html:not(.studio-theme-dark) .nodes-toggle {
 .mini-card,
 .mini-image-drop {
     border-color:transparent !important;
-    background:var(--x-hover-bg) !important;
+    /* 2026-11-03 老王：这些是常驻大面积衬底，不能用 --x-hover-bg（hover 交互色，
+       obsidian 等主题下带明显主题色调，铺大面积会盖过面板的中性底）。改用面板次级
+       填充 --x-soft：跟随主题明暗、保持中性，hover 色只留给真正的 hover 态。 */
+    background:var(--x-soft) !important;
 }
 
 .workflow-card.active {

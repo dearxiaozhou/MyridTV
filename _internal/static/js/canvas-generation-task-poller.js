@@ -26,7 +26,7 @@
                         message:task.message
                     });
                 }
-                if(task.status === 'failed' || task.status === 'cancelled') throw new Error(task.error || deps.translate('smart.errRunFailed'));
+                if(task.status === 'failed' || task.status === 'cancelled') throw new Error(task.error_hint ? `${task.error_hint}（原文：${task.error || ''}）` : (task.error || deps.translate('smart.errRunFailed')));
             }
             throw new Error(deps.translate('smart.errRunTimeout'));
         })();

@@ -7,11 +7,21 @@
     <title>API+在线工作流配置</title>
     <script>
         (function(){
+            // 首帧主题：读 theme.js 主键 studio_theme_id（7 主题 id），先挂 data-studio-theme 与明暗类，
+            // 不等 theme.js 加载 —— 避免页面首帧停在上次明暗模式而不是当前主题；theme.js 起来后兜底纠正。
+            // 未知 id 照设 dataset（design-tokens 无对应块则回落默认变量），明暗类按「非 light 即 dark」。
             try {
-                var theme = localStorage.getItem('studio_theme') || localStorage.getItem('canvas_theme') || 'dark';
-                if(theme === 'dark') {
-                    document.documentElement.classList.add('studio-theme-dark');
+                var id = localStorage.getItem('studio_theme_id')
+                      || localStorage.getItem('studio_theme')
+                      || localStorage.getItem('canvas_theme') || 'dark';
+                document.documentElement.dataset.studioTheme = id;
+                if(id === 'light'){
+                    document.documentElement.classList.add('theme-light');
+                    document.documentElement.classList.remove('theme-dark','studio-theme-dark');
+                } else {
                     document.documentElement.classList.add('theme-dark');
+                    document.documentElement.classList.add('studio-theme-dark');
+                    document.documentElement.classList.remove('theme-light');
                 }
             } catch(e) {}
         })();

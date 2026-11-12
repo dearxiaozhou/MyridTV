@@ -276,7 +276,7 @@
         rows = rows.slice().sort((a,b) => Number(b.created_at || 0) - Number(a.created_at || 0));
         let changed = false;
         for(const node of orphans){
-            const row = rows.find(j => j && ['running','queued'].includes(j.status)
+            const row = rows.find(j => j && ['running','queued','starting'].includes(j.status)
                 && j.meta && String(j.meta.node_id || '') === String(node.id)
                 && String(j.job_id || '') !== String(node.comfyLastCancelledJobId || ''));
             if(row){
@@ -300,7 +300,7 @@
     }
     async function syncComfyJobStatusOnce(node){
         // queued 也要管：否则任务停在排队阶段、promise 链又断了时，没人把它推进到 running/收尾
-        if(!node || !node.comfyJobId || !['running', 'queued'].includes(node.comfyStatus)) return false;
+        if(!node || !node.comfyJobId || !['running', 'queued', 'starting'].includes(node.comfyStatus)) return false;
         const jobId = node.comfyJobId, attempt = node.generationAttemptId;
         const isCurrent = () => node.comfyJobId === jobId && (!attempt || global.CanvasGenerationLifecycle.isCurrent(node,attempt));
         let job;
@@ -333,7 +333,7 @@
         }
         // 状态必须写回：promise 链断了只剩 supervisor 在轮询时，不写回的话节点会永远停在
         // 提交那一刻的 queued，「排队中 · 第 N 位」一直挂着，哪怕它其实已经在跑了。
-        if(['running', 'queued'].includes(st)) node.comfyStatus = st;
+        if(['running', 'queued', 'starting'].includes(st)) node.comfyStatus = st;
         node.comfyProgress = Number(job.progress || node.comfyProgress || 0);
         // 后端 FIFO 队列位次：-1=已出队/完成/历史恢复，>0=前方还有几个（从 1 起）
         node.comfyQueuePosition = Number(job.queue_position ?? -1);
@@ -371,8 +371,8 @@
         if(comfyJobSupervisorTimer) return;
         comfyJobSupervisorTimer = setInterval(async () => {
             const all = deps.getNodes() || [];
-            const active = all.filter(n => n.comfyJobId && ['running', 'queued'].includes(n.comfyStatus));
-            const orphaned = all.filter(n => !n.comfyJobId && ['running', 'queued'].includes(n.comfyStatus));
+            const active = all.filter(n => n.comfyJobId && ['running', 'queued', 'starting'].includes(n.comfyStatus));
+            const orphaned = all.filter(n => !n.comfyJobId && ['running', 'queued', 'starting'].includes(n.comfyStatus));
             if(!active.length && !orphaned.length){ stopComfyJobSupervisor(); return; }
             if(orphaned.length){ try { await rebindOrphanComfyNodes(orphaned); } catch(_) {} }
             for(const n of active){

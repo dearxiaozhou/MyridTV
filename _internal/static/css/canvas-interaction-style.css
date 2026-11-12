@@ -14,30 +14,30 @@
   html body :is(.canvas-dock-item:hover,.canvas-dock-item.active) .canvas-dock-icon,
   html body .create-card:hover .create-card-icon,
   html body .smart-image-name-label:hover {
-    background:var(--x-hover-bg) !important; color:var(--x-text) !important; border-color:var(--x-selected-line) !important;
+    background:var(--x-hover-strong, var(--x-hover-bg)) !important; color:var(--x-text) !important; border-color:var(--x-selected-line) !important;
   }
   html body .shared-native-select[hidden] { display:none !important; }
   html body .shared-native-select-option.keyboard-active:not(:disabled):not([aria-selected="true"]) {
-    background:var(--x-hover-bg) !important; color:var(--x-text) !important;
+    background:var(--x-hover-strong, var(--x-hover-bg)) !important; color:var(--x-text) !important;
     border-color:var(--x-selected-line) !important; box-shadow:inset 0 0 0 1px var(--x-selected-ring) !important;
   }
   html body :is(.agent-select-btn[aria-expanded="true"],.agent-select-opt:hover):not(:disabled) {
-    background:var(--x-hover-bg) !important; color:var(--x-text) !important; border-color:var(--x-selected-line) !important;
+    background:var(--x-hover-strong, var(--x-hover-bg)) !important; color:var(--x-text) !important; border-color:var(--x-selected-line) !important;
   }
   html body .canvas-color-swatch:is(.active,:hover) {
     border-color:var(--x-selected-line) !important; box-shadow:0 0 0 2px var(--x-selected-ring) !important;
   }
   html body .prompt-input:focus { border-color:var(--x-selected-line) !important; }
-  html body :is(button,[role="button"],.gate-icon-btn,.gate-back-link,.gate-sort-btn,.tree-row,.nav-row):not(:disabled):not([aria-disabled="true"]):not(.tc-btn-danger):not(.danger):not(.danger-btn):not(.btn-danger):not(.delete-btn):not(.node-delete):not(.mini-x):not(.canvas-delete):not(.tb-winclose):not(.is-running):not(.is-stop):not(.is-ap-running):not(.canvas-pin-btn):not(.audio-play-button):not(.canvas-color-swatch):not(.speech-generate):not(.primary):not(.save-btn):not(.run-btn):not(.api-page-save-btn):not(.api-link-btn):not(#agentSendBtn):not(.agent-send):not(.smart-agent-send):not(.is-saved):not(.canvas-open):not(.active):not(.selected):not([aria-selected="true"]):not([aria-pressed="true"]):not(.pv-inline-top .shared-native-select-trigger):hover,
+  html body :is(button,[role="button"],.gate-icon-btn,.gate-back-link,.gate-sort-btn,.tree-row,.nav-row):not(:disabled):not([aria-disabled="true"]):not(.tc-btn-danger):not(.danger):not(.danger-btn):not(.btn-danger):not(.delete-btn):not(.node-delete):not(.mini-x):not(.canvas-delete):not(.tb-winclose):not(.is-running):not(.is-stop):not(.is-ap-running):not(.is-wf-cloud):not(.canvas-pin-btn):not(.audio-play-button):not(.canvas-color-swatch):not(.speech-generate):not(.primary):not(.save-btn):not(.run-btn):not(.api-page-save-btn):not(.api-link-btn):not(#agentSendBtn):not(.agent-send):not(.smart-agent-send):not(.is-saved):not(.canvas-open):not(.active):not(.selected):not([aria-selected="true"]):not([aria-pressed="true"]):not(.pv-inline-top .shared-native-select-trigger):hover,
   html body :is(.shared-native-select-trigger,.smart-pill,.speech-picker,.filter-preset-trigger,.tb-menu)[aria-expanded="true"]:not(.pv-inline-top .shared-native-select-trigger),
   html body .tb-menu.open {
-    background:var(--x-hover-bg) !important; color:var(--x-text) !important;
+    background:var(--x-hover-strong, var(--x-hover-bg)) !important; color:var(--x-text) !important;
     border-color:var(--x-selected-line) !important; box-shadow:inset 0 0 0 1px var(--x-selected-ring) !important;
   }
   html body :is(button.active,button[aria-pressed="true"],[role="tab"].active,[role="tab"][aria-selected="true"],
     [role="option"][aria-selected="true"],.dock-pill.active,.workflow-card.active,.provider-card.active,
     .tree-row.active,.nav-row.active,.picker-cat-tab.active,.tc-view-tab.active,.canvas-bottom-button.active,
-    .unified-option.active,.canvas-input-mode-toggle.is-objects,.style-filter-tab.active):not(:disabled):not(.canvas-pin-btn):not(.canvas-color-swatch):not(.audio-play-button):not(.is-running):not(.is-stop):not(.is-ap-running):not(.tc-btn-danger) {
+    .unified-option.active,.canvas-input-mode-toggle.is-objects,.style-filter-tab.active):not(:disabled):not(.canvas-pin-btn):not(.canvas-color-swatch):not(.audio-play-button):not(.is-running):not(.is-stop):not(.is-ap-running):not(.is-wf-cloud):not(.tc-btn-danger) {
     background:var(--x-selected-fill) !important; color:var(--x-selected-text) !important;
     border-color:var(--x-selected-line) !important; box-shadow:inset 0 0 0 1px var(--x-selected-ring) !important;
   }
@@ -45,15 +45,15 @@
     border-color:var(--x-selected-line) !important; box-shadow:0 0 0 1px var(--x-selected-ring) !important;
   }
   html body :is(.action-btn.save-btn,.api-page-save-btn,.api-link-btn,.asset-btn.primary,
-    .ar-btn.primary,.run-btn,.save-btn,.speech-generate,#agentSendBtn,.agent-send,.smart-agent-send):not(:disabled):not(.is-running):not(.is-stop):not(.is-ap-running):hover {
+    .ar-btn.primary,.run-btn,.save-btn,.speech-generate,#agentSendBtn,.agent-send,.smart-agent-send):not(:disabled):not(.is-running):not(.is-stop):not(.is-ap-running):not(.is-wf-cloud):hover {
     background:var(--x-accent-hover) !important; color:var(--x-strong-text) !important; border-color:var(--x-accent-hover) !important;
   }
   html body :is(.action-btn.save-btn,.api-page-save-btn,.api-link-btn,.asset-btn.primary,
-    .ar-btn.primary,.run-btn,.save-btn,.speech-generate,#agentSendBtn,.agent-send,.smart-agent-send):not(.is-running):not(.is-stop):not(.is-ap-running) :is(span,i,svg) {
+    .ar-btn.primary,.run-btn,.save-btn,.speech-generate,#agentSendBtn,.agent-send,.smart-agent-send):not(.is-running):not(.is-stop):not(.is-ap-running):not(.is-wf-cloud) :is(span,i,svg) {
     color:inherit !important;
   }
   html body :is(.action-btn.save-btn,.api-page-save-btn,.api-link-btn,.asset-btn.primary,
-    .ar-btn.primary,.run-btn,.save-btn,.speech-generate,#agentSendBtn,.agent-send,.smart-agent-send):not(.is-running):not(.is-stop):not(.is-ap-running) svg { stroke:currentColor !important; }
+    .ar-btn.primary,.run-btn,.save-btn,.speech-generate,#agentSendBtn,.agent-send,.smart-agent-send):not(.is-running):not(.is-stop):not(.is-ap-running):not(.is-wf-cloud) svg { stroke:currentColor !important; }
   html body :is(.tc-btn-danger,.danger-btn,.btn-danger,.delete-btn,.node-delete,.mini-x,.asset-btn.danger):not(:disabled):hover {
     background:var(--x-danger-soft) !important; color:var(--x-danger) !important;
     border-color:var(--x-danger) !important; box-shadow:inset 0 0 0 1px var(--x-danger) !important;
@@ -67,12 +67,12 @@
   html body :is(button,input,select,textarea):disabled { opacity:.5 !important; }
 }
 /* Library close buttons are border controls; retain a visible neutral hover edge. */
-.style-popover .filter-preset-close:hover {background:var(--x-hover-bg);color:var(--x-text);border-color:var(--x-selected-line);box-shadow:inset 0 0 0 1px var(--x-selected-ring);}
+.style-popover .filter-preset-close:hover {background:var(--x-hover-strong, var(--x-hover-bg));color:var(--x-text);border-color:var(--x-selected-line);box-shadow:inset 0 0 0 1px var(--x-selected-ring);}
 .style-popover :is(.filter-preset-close,.shot-categories button):focus-visible {outline:2px solid var(--x-selected-line);outline-offset:2px;}
 :is(button.active, [role="tab"].active, [role="tab"][aria-selected="true"],
     button[aria-pressed="true"], [role="button"].active,
     [role="option"].selected, [role="option"][aria-selected="true"],
-    .canvas-input-mode-toggle.is-objects):not(:disabled):not([aria-disabled="true"]):not(.tc-btn-danger):not(.danger):not(.is-running):not(.is-stop):not(.is-ap-running):not(.canvas-color-swatch):not(.canvas-pin-btn):not(.audio-play-button) {
+    .canvas-input-mode-toggle.is-objects):not(:disabled):not([aria-disabled="true"]):not(.tc-btn-danger):not(.danger):not(.is-running):not(.is-stop):not(.is-ap-running):not(.is-wf-cloud):not(.canvas-color-swatch):not(.canvas-pin-btn):not(.audio-play-button) {
   color: var(--x-selected-text) !important;
   background: var(--x-selected-fill) !important;
   border-color: var(--x-selected-line) !important;
@@ -214,7 +214,7 @@ html body.prism-canvas-page #canvasGate .gate-head-actions .smart-create-btn {
 html body.prism-canvas-page #canvasGate .gate-head-actions .gate-icon-btn:hover:not(:disabled),
 html body.prism-canvas-page #canvasGate .gate-head-actions .smart-create-btn:hover:not(:disabled) {
   color: var(--x-text) !important;
-  background:var(--x-hover-bg) !important;
+  background:var(--x-hover-strong, var(--x-hover-bg)) !important;
   border-color: var(--x-selected-line) !important;
   box-shadow: inset 0 0 0 1px var(--x-selected-ring) !important;
 }
@@ -243,7 +243,7 @@ html body.prism-canvas-page #canvasGate .gate-back-link {
 
 html body.prism-canvas-page #canvasGate .gate-back-link:hover:not(:disabled) {
   color: var(--x-text) !important;
-  background:var(--x-hover-bg) !important;
+  background:var(--x-hover-strong, var(--x-hover-bg)) !important;
   border-color: var(--x-selected-line) !important;
   box-shadow: inset 0 0 0 1px var(--x-selected-ring) !important;
 }
@@ -346,7 +346,7 @@ html body.prism-canvas-page #canvasGate.trash-mode .canvas-cancel-btn {
 }
 
 html body.prism-canvas-page #canvasGate.trash-mode .canvas-cancel-btn:hover:not(:disabled) {
-  background:var(--x-hover-bg) !important;
+  background:var(--x-hover-strong, var(--x-hover-bg)) !important;
   border-color: var(--x-selected-line) !important;
   box-shadow: inset 0 0 0 1px var(--x-selected-ring) !important;
 }
@@ -397,7 +397,7 @@ html body .comfy-layout .composer-card .prompt-input:active {
    component styles. Primary, destructive, running, pin, and swatch states keep their
    own semantic treatment. */
 html body .shell:not(.no-canvas) :is(button, [role="button"], [role="option"]):not(:disabled):not([aria-disabled="true"]):not(:is(.active, .selected, .is-active, .is-selected, [aria-pressed="true"], [aria-selected="true"], .canvas-input-mode-toggle.is-objects)):not(:is(.primary, .primary-btn, .save-btn, .danger, .tc-btn-danger, .run-btn, .loop-smart-run, .cascade-run-btn, .is-running, .is-stop, .is-ap-running, .canvas-pin-btn, .canvas-color-swatch, .canvas-dock-item, .canvas-bottom-button)):not(:is(.mini-x, .node-delete, .image-delete, .canvas-group-delete, [data-agent-ref-remove], .loop-smart-token-remove, .mention-image-token-remove, .style-tile-del, .style-token-x, .input-thumb-unset, .canvas-agent-history-delete, .canvas-agent-quote-card-close, .smart-image-meta-delete, .loop-smart-icon-btn)):not(:is(.canvas-agent-toggle, .canvas-agent-ic-main, .canvas-agent-send, .canvas-agent-edit-send, .canvas-agent-history-newchat, .canvas-agent-message-action.primary, .canvas-agent-bs-pick.done)):not(:is(.danger, .node-delete, .style-tile-del, .mini-x.node-delete, .loop-smart-token-remove, .mention-image-token-remove, .canvas-agent-history-delete, .canvas-agent-artifacts-clear, .smart-image-meta-delete, [data-agent-ref-remove], .loop-smart-icon-btn[data-loop-prompt-delete], .asset-mini-btn[data-delete-asset])):hover {
-  background-color: var(--x-hover-bg) !important;
+  background-color: var(--x-hover-strong, var(--x-hover-bg)) !important;
   color: var(--x-text) !important;
   border-color: var(--x-selected-line) !important;
 }
@@ -408,7 +408,7 @@ html body .shell:not(.no-canvas)
   :is(button[aria-expanded="true"], [role="button"][aria-expanded="true"],
       .canvas-title-dropdown.open, .smart-control.pinned > .smart-pill,
       .agent-select-btn[aria-expanded="true"]) {
-  background-color: var(--x-hover-bg) !important;
+  background-color: var(--x-hover-strong, var(--x-hover-bg)) !important;
   color: var(--x-text) !important;
   border-color: var(--x-selected-line) !important;
   box-shadow: inset 0 0 0 1px var(--x-selected-ring) !important;
@@ -423,14 +423,14 @@ html body .shell:not(.no-canvas) .canvas-title-dropdown.open {
    edge so hover/open still reads as the same interactive state as other controls. */
 html body .shell:not(.no-canvas) .composer .smart-control.pinned > .smart-pill,
 html body .shell:not(.no-canvas) .composer .unified-picker-pill[aria-expanded="true"] {
-  background-color: var(--x-hover-bg) !important;
+  background-color: var(--x-hover-strong, var(--x-hover-bg)) !important;
   border-color: transparent !important;
   box-shadow: inset 0 0 0 1px var(--x-selected-line) !important;
 }
 
 
 html body .shell:not(.no-canvas) select:not(:disabled):is(:hover, :focus, :focus-visible) {
-  background-color: var(--x-hover-bg) !important;
+  background-color: var(--x-hover-strong, var(--x-hover-bg)) !important;
   border-color: var(--x-selected-line) !important;
 }
 
@@ -468,7 +468,7 @@ html body :is(.action-btn, .asset-btn, .asset-icon-btn,
    generic button rule. Keep the card edge, open-row actions, and keyboard focus
    on the same neutral-hover/green-selection tokens in both themes. */
 html body.prism-canvas-page .gate-list .canvas-item:not(.active):hover {
-  background: var(--x-hover-bg) !important;
+  background: var(--x-hover-strong, var(--x-hover-bg)) !important;
   background-image: none !important;
   border: 1px solid var(--x-selected-line) !important;
   box-shadow: 0 0 0 1px var(--x-selected-ring), var(--x-sh-2) !important;
@@ -492,7 +492,7 @@ html body.prism-canvas-page .gate-list .canvas-item.active
 html body.prism-canvas-page .gate-list .canvas-item
   :is(.canvas-card-copy-id, .canvas-card-edit, .canvas-card-export, .canvas-preview-mark):not(:disabled):hover {
   color: var(--x-text) !important;
-  background: var(--x-hover-bg) !important;
+  background: var(--x-hover-strong, var(--x-hover-bg)) !important;
   border-color: var(--x-selected-line) !important;
   box-shadow: inset 0 0 0 1px var(--x-selected-ring) !important;
 }
@@ -536,6 +536,7 @@ html body .audio-play-button {
   background: var(--x-strong) !important;
   color: var(--x-strong-text) !important;
   box-shadow: var(--x-sh-2) !important;
+  transform: none !important;
   cursor: pointer;
   transition: transform var(--x-dur-fast) var(--x-ease),
     filter var(--x-dur-fast) var(--x-ease),
@@ -555,20 +556,22 @@ html body .audio-play-button:not(:disabled):hover {
   border-color: var(--x-selected-line) !important;
   box-shadow: inset 0 0 0 1px var(--x-selected-ring), var(--x-sh-2) !important;
   filter: brightness(1.04);
-  transform: translateY(-1px);
+  transform: none !important;
 }
 
 html body .media-audio-player .audio-play-button:not(:disabled):hover {
-  transform: translateX(-50%) translateY(-1px);
+  /* Centering uses auto margins, so interaction states never replace a
+     positioning transform and cannot shift the hit target sideways. */
+  transform: none !important;
 }
 
 html body .audio-play-button:not(:disabled):active {
   filter: brightness(.98);
-  transform: scale(.96);
+  transform: none !important;
 }
 
 html body .media-audio-player .audio-play-button:not(:disabled):active {
-  transform: translateX(-50%) scale(.96);
+  transform: none !important;
 }
 
 html body .audio-play-button:focus-visible {
@@ -610,7 +613,7 @@ html body .dynamic-params .setting-check.active .check-box::after {
    只用 inset 描边显示绿边；选中态继续由独立的绿色填充表示。 */
 html body :is(.canvas-preview-mark, .canvas-dock-item, .canvas-bottom-button):not(:disabled):not([aria-disabled="true"]):not(.active):hover {
   color: var(--x-text) !important;
-  background: var(--x-hover-bg) !important;
+  background: var(--x-hover-strong, var(--x-hover-bg)) !important;
   border-color: var(--x-selected-line) !important;
   box-shadow: inset 0 0 0 1px var(--x-selected-line) !important;
 }
@@ -651,7 +654,7 @@ html body .shell:not(.no-canvas) .canvas-title-cap:has(
    .graph-zoom-pill 是显示件、不可点，不参与 hover 统一。 */
 html body .graph-ctrl-btn:not([aria-disabled="true"]):hover {
   color: var(--x-text) !important;
-  background: var(--x-hover-bg) !important;
+  background: var(--x-hover-strong, var(--x-hover-bg)) !important;
   border-color: var(--x-selected-line) !important;
   box-shadow: inset 0 0 0 1px var(--x-selected-line) !important;
 }
@@ -777,7 +780,7 @@ html body :is(
 .shared-native-select-trigger:hover:not(:disabled),
 .shared-native-select-trigger[aria-expanded="true"]:not(:disabled) {
   border-color: var(--x-selected-line);
-  background: var(--x-hover-bg);
+  background: var(--x-hover-strong, var(--x-hover-bg));
   color: var(--x-text);
 }
 
@@ -830,7 +833,7 @@ html body :is(
 .protocol-selector-wrap .shared-native-select-trigger--protocol:hover:not(:disabled),
 .protocol-selector-wrap .shared-native-select-trigger--protocol[aria-expanded="true"]:not(:disabled) {
   border: 0;
-  background: var(--x-hover-bg);
+  background: var(--x-hover-strong, var(--x-hover-bg));
 }
 
 .mod-row .shared-native-select-trigger--model {
@@ -847,7 +850,7 @@ html body :is(
 .mod-row .shared-native-select-trigger--model:hover:not(:disabled),
 .mod-row .shared-native-select-trigger--model[aria-expanded="true"]:not(:disabled) {
   border-color: var(--x-selected-line) !important;
-  background: var(--x-hover-bg) !important;
+  background: var(--x-hover-strong, var(--x-hover-bg)) !important;
 }
 
 /* 提示词节点 LLM 排：原生 select 被升级成 .shared-native-select 控件，
@@ -922,7 +925,7 @@ html.studio-theme-dark .prompt-node-tools .shared-native-select-trigger {
 .shared-native-select-option:hover:not(:disabled),
 .shared-native-select-option.keyboard-active:not(:disabled) {
   border-color: var(--x-selected-line);
-  background: var(--x-hover-bg);
+  background: var(--x-hover-strong, var(--x-hover-bg));
   color: var(--x-text);
   box-shadow: inset 0 0 0 1px var(--x-selected-ring);
 }
@@ -967,7 +970,7 @@ html.studio-theme-dark .prompt-node-tools .shared-native-select-trigger {
 /* Homepage backend address: neutral copy action with a visible inset focus/hover edge. */
 html body.prism-canvas-page #gateBackendInfo:is(:hover, :focus-visible) {
   color:var(--x-text) !important;
-  background:var(--x-hover-bg) !important;
+  background:var(--x-hover-strong, var(--x-hover-bg)) !important;
   box-shadow:inset 0 0 0 1px var(--x-selected-line) !important;
   border-radius:6px;
 }
@@ -977,17 +980,90 @@ html body.prism-canvas-page #gateBackendInfo:is(:hover, :focus-visible) {
 
 /* Offline previs uses the shared field dropdown, including dynamically added roster rows. */
 html body .pv-plugin-dialog .shared-native-select-trigger:not(:disabled){background:var(--x-soft);color:var(--x-text);border-color:var(--x-line)}
-html body .pv-plugin-dialog .shared-native-select-trigger:not(:disabled):is(:hover,[aria-expanded="true"]){background:var(--x-hover-bg);color:var(--x-text);border-color:var(--x-selected-line)}
+html body .pv-plugin-dialog .shared-native-select-trigger:not(:disabled):is(:hover,[aria-expanded="true"]){background:var(--x-hover-strong, var(--x-hover-bg));color:var(--x-text);border-color:var(--x-selected-line)}
 
 /* Inline previs top controls: neutral hover/focus stay in the shared interaction layer. */
-html body .pv-inline-top .pv-top-control:is(:hover,:focus-within){border-color:var(--x-selected-line);background:var(--x-hover-bg);color:var(--x-text)}
+html body .pv-inline-top .pv-top-control:is(:hover,:focus-within){border-color:var(--x-selected-line);background:var(--x-soft);color:var(--x-text)}
 /* The enclosing field owns the single edge, including keyboard focus and open state. */
-html body .pv-inline-top .pv-top-control:has(.shared-native-select-trigger[aria-expanded="true"]){border-color:var(--x-selected-line);background:var(--x-hover-bg);color:var(--x-text)}
-@layer studio-interaction {
+html body .pv-inline-top .pv-top-control:has(.shared-native-select-trigger[aria-expanded="true"]){border-color:var(--x-selected-line);background:var(--x-soft);color:var(--x-text)}
+@layer studio-theme {
   html body .pv-inline-top .shared-native-select-trigger,
   html body .pv-inline-top .shared-native-select-trigger:is(:hover,:focus-visible,[aria-expanded="true"]){border:0 !important;box-shadow:none !important;outline:none !important;background:transparent !important;color:inherit !important}
+  html body .pv-inline-top .pv-top-control:is(:hover,:focus-within),
+  html body .pv-inline-top .pv-top-control:has(.shared-native-select-trigger[aria-expanded="true"]){background:var(--x-soft) !important;box-shadow:none !important}
 }
 
 /* Asset authoring is one two-state button, distinct from neutral hover. */
 html body .pv-inline-top .pv-assets-toggle[aria-pressed="true"]{background:var(--x-selected-fill);color:var(--x-selected-text);border-color:var(--x-selected-line);box-shadow:inset 0 0 0 1px var(--x-selected-ring)}
-html body .pv-inline-top .pv-assets-toggle[aria-pressed="false"]:hover{background:var(--x-hover-bg);color:var(--x-text);border-color:var(--x-selected-line)}
+html body .pv-inline-top .pv-assets-toggle[aria-pressed="false"]:hover{background:var(--x-hover-strong, var(--x-hover-bg));color:var(--x-text);border-color:var(--x-selected-line)}
+
+/* 2026-10-27 老王：「小按钮 hover 浅浅/没反应，统一成深色」根因修复（终版）。
+   病灶：application-palette.css 在 @layer studio-palette 给这批中性控件铺了基础态
+   var(--x-soft) !important，把不带 important 或层级更低的 hover 全压死。
+   层序陷阱（实测三轮才挖出）：本库 @layer 顺序按【首次出现】定——
+   design-tokens 先声明 theme，smart-canvas.css:477 的 studio-palette 块早于
+   canvas-interaction-style 的 studio-interaction 块 → 实际顺序 theme < palette < interaction。
+   important 反转：theme 层 important 最强，未分层 important 反而垫底。
+   所以本规则必须写进 @layer studio-theme（层已预声明，后开的块挂同一层），
+   再叠 :not 链特异性 (0,30+) 碾压基础态 (0,2,2)。
+   另记：:not(...) 与 :is(:hover,...) 之间绝不能有换行空格（=后代组合器，整条静默失配）。
+   danger/accent/active/运行态各有专属档，照旧排除。
+   2026-10-29 二改：白名单写法天生会漏（.asset-tab 写错过一次，tc-view-tab/previz-llm-toggle
+   等 12 个类漏过一轮），猜不完用户会点到哪个按钮。改成【全量兜底】——button / [role=button]
+   直接覆盖，原白名单保留只用于 span/div 实现的伪按钮（.dock-icon/.rh-key-item 之类）；
+   排除链同步扩到旧版验证过的完整档（danger/删除类/accent 发送类/已保存态），避免误伤专属配色。 */
+@layer studio-theme {
+  html body :is(button, [role="button"], [role="tab"], [role="option"], [role="menuitem"], .smart-pill, .upload-node-btn, .canvas-bottom-button, .agent-select-btn, .shared-native-select-trigger, .canvas-agent-test-btn, .unified-option, .agent-select-opt, .canvas-dock-item, .canvas-back-btn, .canvas-title-dropdown, .smart-crop-action, .smart-node-action, .tb-menu, .speech-picker, .filter-preset-trigger, .canvas-agent-icon-btn, .asset-tab, .canvas-asset-tab, .style-tile, .tc-view-tab, .prompt-template-tab, .model-protocol-select, .canvas-agent-suggestion-key, .dock-icon, .dock-toggle, .canvas-card-icon, .menu-btn, .picker-cat-tab, .canvas-cover-btn, .previz-llm-toggle, .rh-key-item):not(:disabled):not([aria-disabled="true"]):is(:hover, [aria-expanded="true"]):not(.active):not(.selected):not(.is-on):not(.is-objects):not(.primary):not(.run-btn):not(.save-btn):not(.loop-smart-run):not(.cascade-run-btn):not(.danger):not(.danger-btn):not(.btn-danger):not(.delete-btn):not(.tc-btn-danger):not(.mini-x):not(.node-delete):not(.image-delete):not(.canvas-delete):not(.tb-winclose):not(.style-tile-del):not(.is-running):not(.is-stop):not(.is-ap-running):not(.is-wf-cloud):not(.canvas-pin-btn):not(.canvas-color-swatch):not(.audio-play-button):not(.speech-generate):not(.api-page-save-btn):not(.api-link-btn):not(#agentSendBtn):not(.agent-send):not(.smart-agent-send):not(.is-saved):not(.canvas-open):not([aria-selected="true"]):not([aria-pressed="true"]):not(.pv-inline-top .shared-native-select-trigger) {
+    background:var(--x-hover-strong, var(--x-hover-bg)) !important;
+    color:var(--x-text) !important;
+    border-color:var(--x-selected-line) !important;
+    /* 关键：这批按钮 border-width 是 0，光给 border-color 等于白写。
+       用 outline 画出「深底 + 1px 亮边」——就是老王那张「好的」的样子。
+       选 outline 而不是 box-shadow：不占布局、不覆盖按钮原有的阴影/光环。 */
+    outline:1px solid var(--x-selected-line) !important;
+    outline-offset:-1px !important;
+  }
+  /* ── 选中态统一（2026-10-29 老王：「鼠标指针交互对了，点击选中还是不对」）──
+     病根：全站选中态走 --x-selected-fill = rgba(强调色,.13)。它是【替换】而非叠加底色，
+     在深色画布上叠出来仍近黑 —— 点选后视觉比 hover 还弱，观感就是「点了又掉回原样」。
+     hover 现在是「实色深底 + 1px 亮边」，选中必须比它更强，否则交互层级是反的。
+     这里只叠加强底 + 亮边，源头 82 条 .active 规则的字体/尺寸语义原样保留；
+     要全局回调只改 design-tokens 里那 7 个 --x-selected-strong。 */
+  html body :is(button, [role="button"], [role="tab"], [role="option"], [role="menuitem"], .smart-pill, .upload-node-btn, .canvas-bottom-button, .agent-select-btn, .shared-native-select-trigger, .canvas-agent-test-btn, .unified-option, .agent-select-opt, .canvas-dock-item, .canvas-back-btn, .canvas-title-dropdown, .smart-crop-action, .smart-node-action, .tb-menu, .speech-picker, .filter-preset-trigger, .canvas-agent-icon-btn, .asset-tab, .canvas-asset-tab, .style-tile, .tc-view-tab, .prompt-template-tab, .model-protocol-select, .canvas-agent-suggestion-key, .dock-icon, .dock-toggle, .canvas-card-icon, .menu-btn, .picker-cat-tab, .canvas-cover-btn, .previz-llm-toggle, .rh-key-item):not(:disabled):not([aria-disabled="true"]):is(.active, [aria-pressed="true"], [aria-selected="true"], .selected, .is-on, .is-objects):not(.primary):not(.run-btn):not(.save-btn):not(.loop-smart-run):not(.cascade-run-btn):not(.danger):not(.danger-btn):not(.btn-danger):not(.delete-btn):not(.tc-btn-danger):not(.mini-x):not(.node-delete):not(.image-delete):not(.canvas-delete):not(.tb-winclose):not(.style-tile-del):not(.is-running):not(.is-stop):not(.is-ap-running):not(.is-wf-cloud):not(.canvas-pin-btn):not(.canvas-color-swatch):not(.audio-play-button):not(.speech-generate):not(.api-page-save-btn):not(.api-link-btn):not(#agentSendBtn):not(.agent-send):not(.smart-agent-send):not(.is-saved):not(.canvas-open):not(.asset-mini-btn):not(.pv-inline-top .shared-native-select-trigger) {
+    background:var(--x-selected-strong, var(--x-selected-fill)) !important;
+    color:var(--x-selected-text) !important;
+    border-color:var(--x-selected-line) !important;
+    outline:1px solid var(--x-selected-line) !important;
+    outline-offset:-1px !important;
+  }
+  /* 选中态 + 悬停：底不变（避免点完一悬停底色跳档，像掉回去），靠 box-shadow 内描边
+     提到强调色文字档做「还能再点」的反馈。走 box-shadow 而非 outline-color：
+     上一条规则已用 !important 钉死 outline，特异性碾压，改 outline 赢不了；
+     box-shadow 上一条没声明，不存在竞争。 */
+  html body :is(button, [role="button"], [role="tab"], [role="option"], [role="menuitem"], .smart-pill, .upload-node-btn, .canvas-bottom-button, .agent-select-btn, .shared-native-select-trigger, .canvas-agent-test-btn, .unified-option, .agent-select-opt, .canvas-dock-item, .canvas-back-btn, .canvas-title-dropdown, .smart-crop-action, .smart-node-action, .tb-menu, .speech-picker, .filter-preset-trigger, .canvas-agent-icon-btn, .asset-tab, .canvas-asset-tab, .style-tile, .tc-view-tab, .prompt-template-tab, .model-protocol-select, .canvas-agent-suggestion-key, .dock-icon, .dock-toggle, .canvas-card-icon, .menu-btn, .picker-cat-tab, .canvas-cover-btn, .previz-llm-toggle, .rh-key-item):is(.active, [aria-pressed="true"], [aria-selected="true"], .selected, .is-on, .is-objects):not(:disabled):not([aria-disabled="true"]):hover {
+    box-shadow:inset 0 0 0 1px var(--x-selected-text) !important;
+  }
+  /* 2026-10-29 老王：底部工具簇「开启态」鼠标上去同样纹丝不动 —— 上面那条排除链里的
+     .active / [aria-pressed="true"] 把它们一起排掉了。开启态 hover 到此为止只提亮描边，
+     底色由上面选中态规则锁定，不再换档（否则点完一悬停底色就跳回 hover 档，像掉回去）。 */
+  html body .canvas-bottom-button:is(.active, [aria-pressed="true"]):not(:disabled):hover {
+    background:var(--x-selected-strong, var(--x-selected-fill)) !important;
+    color:var(--x-selected-text) !important;
+    outline:1px solid var(--x-selected-line) !important;
+    outline-offset:-1px !important;
+  }
+
+  /* ── hover 位移自断（2026-10-29 老王：「闪一下又变回原样，没有交互效果」）──
+     病根：项目里 hover 普遍带 translateY(-1px)。鼠标停在按钮【下边缘】时按钮上移
+     1px → 鼠标落到按钮外 → :hover 失配 → 按钮落回 → 鼠标又进来 → 每帧反复，
+     观感就是「亮一下立刻熄灭」。CDP 实证：底边 -1px 处 hover 命中率 1/38，
+     注入 *{transform:none} 后立刻回到 38/38；而 .active 态按钮因规则写成
+     :hover:not(.active) 不含位移，同一位置始终 38/38 —— 完美对照。
+     前八轮探针全把鼠标放在按钮正中心，所以一次都没复现。
+
+     治法：按钮类 hover 一律不做几何位移（颜色足够表达反馈）。只排除真正靠
+     hover 缩放做视觉的翻页箭头；伪元素（.port:hover::after 等）不受影响。 */
+  html body :is(button, [role="button"], [role="tab"], [role="option"], [role="menuitem"], .smart-pill, .canvas-bottom-button, .canvas-dock-item, .smart-node-action, .smart-crop-action, .canvas-agent-chip, .canvas-agent-ic-main, .canvas-agent-ic-opt, .unified-option, .agent-select-opt, .tc-view-tab, .prompt-template-tab, .canvas-asset-tab, .picker-cat-tab, .menu-btn, .canvas-cover-btn, .rh-key-item, .canvas-agent-suggestion-key, .dock-icon, .dock-toggle, .canvas-card-icon, .previz-llm-toggle, .model-protocol-select, .canvas-title-cap, .direct-option, .canvas-title-dropdown, .canvas-back-btn, .smart-back):hover:not(.preview-nav-btn) {
+    transform:none !important;
+  }
+}

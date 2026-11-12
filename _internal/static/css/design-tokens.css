@@ -112,6 +112,7 @@ html:not(.studio-theme-dark) body {
   --x-card: #ffffff !important;                     /* 卡片 / 节点 */
   --x-soft: #f3f7f5 !important;                     /* 次级填充：hover / 输入框 */
   --x-hover-bg: #e2ece6 !important;                /* Neutral interactive hover / expanded fill */
+  --x-hover-strong: #cfe0d6 !important;   /* 中性按钮 hover 加强档（比 hover-bg 重一级）*/
   --x-soft-2: #e6eeea !important;                   /* 更深一级填充 */
   --x-line: #d2ded7 !important;                     /* 常规描边 */
   --x-line-strong: #a9bfb1 !important;              /* 强调描边 / 分隔线 */
@@ -157,6 +158,7 @@ html:not(.studio-theme-dark) body {
 
   --x-selected-line: #257c61 !important;
   --x-selected-fill: rgba(37,124,97,.10) !important;
+  --x-selected-strong: #b7dbc9 !important;   /* 选中态实色加强档（替代 .13 半透明蒙层）*/
   --x-selected-text: #20654f !important;
   --x-snap-guide: #257c61 !important;
   --x-snap-guide-halo: rgba(255,255,255,.9) !important;
@@ -205,6 +207,7 @@ body.theme-dark {
   --x-card: #23292d !important;
   --x-soft: #1b2125 !important;
   --x-hover-bg: #2e393f !important;
+  --x-hover-strong: #3c4a52 !important;   /* 中性按钮 hover 加强档（比 hover-bg 重一级）*/
   --x-soft-2: #2b3338 !important;
   --x-line: #364148 !important;
   --x-line-strong: #53636b !important;
@@ -239,6 +242,7 @@ body.theme-dark {
 
   --x-selected-line: #7ed6bd !important;
   --x-selected-fill: rgba(126,214,189,.13) !important;
+  --x-selected-strong: #2e5248 !important;   /* 选中态实色加强档（替代 .13 半透明蒙层）*/
   --x-selected-text: #9fe8d2 !important;
   --x-snap-guide: #7ed6bd !important;
   --x-snap-guide-halo: rgba(21,25,28,.8) !important;
@@ -578,6 +582,7 @@ html body select:not([multiple]):not([size])::-ms-expand {
     --x-soft: #24211e !important;
     --x-soft-2: #332d28 !important;
     --x-hover-bg: #39312a !important;
+    --x-hover-strong: #4a4038 !important;   /* 中性按钮 hover 加强档（比 hover-bg 重一级）*/
     --x-line: #484038 !important;
     --x-line-strong: #6a5c4d !important;
     --x-grid: #39332d !important;
@@ -595,6 +600,7 @@ html body select:not([multiple]):not([size])::-ms-expand {
     --x-accent: #dabb8a !important;
     --x-selected-line: #dabb8a !important;
     --x-selected-fill: rgba(218,187,138,.13) !important;
+    --x-selected-strong: #57462f !important;   /* 选中态实色加强档（替代 .13 半透明蒙层）*/
     --x-selected-ring: rgba(218,187,138,.26) !important;
     --x-focus: rgba(218,187,138,.40) !important;
     --x-snap-guide: #dabb8a !important;
@@ -616,6 +622,7 @@ html body select:not([multiple]):not([size])::-ms-expand {
     --x-soft: #121417 !important;
     --x-soft-2: #23242b !important;
     --x-hover-bg: #292334 !important;
+    --x-hover-strong: #3a3148 !important;   /* 中性按钮 hover 加强档（比 hover-bg 重一级）*/
     --x-line: #353940 !important;
     --x-line-strong: #686070 !important;
     --x-grid: #252a31 !important;
@@ -633,6 +640,7 @@ html body select:not([multiple]):not([size])::-ms-expand {
     --x-accent: #b474ff !important;
     --x-selected-line: #b474ff !important;
     --x-selected-fill: rgba(180,116,255,.13) !important;
+    --x-selected-strong: #4b3a66 !important;   /* 选中态实色加强档（替代 .13 半透明蒙层）*/
     --x-selected-ring: rgba(180,116,255,.26) !important;
     --x-focus: rgba(180,116,255,.40) !important;
     --x-snap-guide: #b474ff !important;
@@ -654,6 +662,7 @@ html body select:not([multiple]):not([size])::-ms-expand {
     --x-soft: #ffedf5 !important;
     --x-soft-2: #f9e2ec !important;
     --x-hover-bg: #ffe1ef !important;
+    --x-hover-strong: #ffc9e2 !important;   /* 中性按钮 hover 加强档（比 hover-bg 重一级）*/
     --x-line: #edc6da !important;
     --x-line-strong: #c994af !important;
     --x-grid: #efd4e2 !important;
@@ -671,6 +680,7 @@ html body select:not([multiple]):not([size])::-ms-expand {
     --x-accent: #d92c83 !important;
     --x-selected-line: #d92c83 !important;
     --x-selected-fill: rgba(217,44,131,.13) !important;
+    --x-selected-strong: #ffc2dc !important;   /* 选中态实色加强档（替代 .13 半透明蒙层）*/
     --x-selected-ring: rgba(217,44,131,.26) !important;
     --x-focus: rgba(217,44,131,.40) !important;
     --x-snap-guide: #d92c83 !important;
@@ -692,6 +702,7 @@ html body select:not([multiple]):not([size])::-ms-expand {
     --x-soft: #161e18 !important;
     --x-soft-2: #233028 !important;
     --x-hover-bg: #2c3a30 !important;
+    --x-hover-strong: #3a4c40 !important;   /* 中性按钮 hover 加强档（比 hover-bg 重一级）*/
     --x-line: #2e3a31 !important;
     --x-line-strong: #48584c !important;
     --x-grid: #28332b !important;
@@ -709,6 +720,7 @@ html body select:not([multiple]):not([size])::-ms-expand {
     --x-accent: #8fd3a8 !important;
     --x-selected-line: #8fd3a8 !important;
     --x-selected-fill: rgba(143,211,168,.13) !important;
+    --x-selected-strong: #3d6250 !important;   /* 选中态实色加强档（替代 .13 半透明蒙层）*/
     --x-selected-ring: rgba(143,211,168,.26) !important;
     --x-focus: rgba(143,211,168,.40) !important;
     --x-snap-guide: #8fd3a8 !important;
@@ -730,6 +742,7 @@ html body select:not([multiple]):not([size])::-ms-expand {
     --x-soft: #f3eee3 !important;
     --x-soft-2: #ebe4d6 !important;
     --x-hover-bg: #e7dfce !important;
+    --x-hover-strong: #d8cdb6 !important;   /* 中性按钮 hover 加强档（比 hover-bg 重一级）*/
     --x-line: #e5dfd2 !important;
     --x-line-strong: #c9bfa8 !important;
     --x-grid: #eae3d5 !important;
@@ -747,6 +760,7 @@ html body select:not([multiple]):not([size])::-ms-expand {
     --x-accent: #b0823e !important;
     --x-selected-line: #b0823e !important;
     --x-selected-fill: rgba(176,130,62,.13) !important;
+    --x-selected-strong: #cbbc9c !important;   /* 选中态实色加强档（替代 .13 半透明蒙层）*/
     --x-selected-ring: rgba(176,130,62,.26) !important;
     --x-focus: rgba(176,130,62,.40) !important;
     --x-snap-guide: #b0823e !important;

@@ -897,7 +897,7 @@
     function batchHasInflight(list) {
         return (list || []).some(function (n) {
             return Boolean(n && (n.pending > 0 || n.running || n.apiRunning || n.jimengPending ||
-                n.comfyStatus === 'running' || n.comfyStatus === 'queued' ||
+                n.comfyStatus === 'running' || n.comfyStatus === 'queued' || n.comfyStatus === 'starting' ||
                 (Array.isArray(n.pendingTasks) && n.pendingTasks.length)));
         });
     }

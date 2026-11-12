@@ -99,6 +99,9 @@
     .params-bar,.api-param-bar,.comfy-params,.rh-params,.node-head,.tc-toolbar,.tc-header,.tc-params) {
     background-color:var(--x-card) !important; color:var(--x-text) !important; border-color:var(--x-line) !important;
   }
+  /* 2026-10-28 老王：运行中的节点不要亮边框 —— 本层上面这条会压掉 smart-canvas.css
+     里未分层的 transparent important（important 规则同层后声明胜出），这里同层补一刀。 */
+  html body .image-node.comfy-running { border-color:transparent !important; }
   /* Canvas project stripes and media covers retain their own identity. */
   /* Approved soft taper: full viewport width, bright 3px center, faint thin ends.
      This sibling stays outside the scrolling list and cannot intercept input. */
@@ -171,15 +174,24 @@
   }
   html body .dock-icon { color:var(--x-muted) !important; }
   html body :is(.action-btn.save-btn,.api-page-save-btn,.api-link-btn,.asset-btn.primary,
-    .ar-btn.primary,.run-btn,.save-btn,.speech-generate,#agentSendBtn,.agent-send,.smart-agent-send):not(:disabled):not(.is-running):not(.is-stop):not(.is-ap-running) {
+    .ar-btn.primary,.run-btn,.save-btn,.speech-generate,#agentSendBtn,.agent-send,.smart-agent-send):not(:disabled):not(.is-running):not(.is-stop):not(.is-ap-running):not(.is-wf-cloud) {
     background:var(--x-strong) !important; color:var(--x-strong-text) !important; border-color:var(--x-strong) !important;
   }
   /* Explicit semantic exceptions, never converted into neutral mint actions. */
   html body :is(.tc-btn-danger,.danger-btn,.asset-btn.danger,.ar-btn.danger,.btn-danger) {
     background:var(--x-danger-soft) !important; color:var(--x-danger) !important; border-color:var(--x-danger) !important;
   }
-  html body :is(.run-btn,.speech-generate):is(.is-running,.is-stop,.is-ap-running) {
-    color:var(--x-danger) !important; background:var(--x-danger-soft) !important; border-color:var(--x-danger) !important;
+  /* 2026-10-28 老王定调：运行按钮只两种 —— ① 可暂停（玫红实底 + 亮粉波纹 + 方块）② 狂转（荧光绿实底 + 亮薄荷波纹 + loader）。
+     两种都是**实色状态底**，不是「语义浅底 + 深色字」那套：运行态要在暗底上撞色跳出来，
+     被 danger-soft 铺成淡红就等于没了。 */
+  html body :is(.run-btn,.speech-generate):is(.is-stop):not(.is-wf-cloud):not(.is-ap-running) {
+    color:#fff !important; background:var(--run-red-grad, #FF2D55) !important; border-color:var(--run-red, #FF2D55) !important;
+  }
+  /* 狂转（绿底 + 扩散波纹）必须在**本层**里补一条，否则会被上面同层更早的通用按钮规则铺成 --x-soft：
+     本层 important 强于未分层 important（层序 important 反转），smart-canvas.css 里那条写死主色的规则单独赢不了。
+     2026-10-28 老王：主色改绿，与暂停的玫红对应 —— 蓝 #378ADD 已退役。 */
+  html body :is(.run-btn,.speech-generate):is(.is-running,.is-wf-cloud,.is-ap-running):not(.is-stop) {
+    background:var(--run-go-grad, #12D66B) !important; color:#fff !important; border-color:var(--run-go, #12D66B) !important;
   }
   html body .tb-winclose:hover { background:var(--x-danger) !important; color:var(--x-media-overlay-text) !important; }
   /* 2026-10-25 老王：「复刻图片节点那一套」—— 批量卡片参数 pill 不再用自绘 select trigger

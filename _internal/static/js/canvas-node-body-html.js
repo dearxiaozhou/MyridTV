@@ -259,7 +259,7 @@ function nodeBodyHtml(node, layout){
     // 2026-09-23：comfyStatus queued/running 的节点（级联槽位等没有 pending 标志）也走加载占位，
     // 不能掉进下面的「空节点上传占位」—— 否则会出现一个大黑窗 + 三个幽灵图标 + 排队徽标的怪状态，
     // 且尺寸沿用节点上次的 w/h，看起来就是「点开排队节点窗口变大」。
-    const comfyBusy = node.comfyStatus === 'queued' || node.comfyStatus === 'running';
+    const comfyBusy = node.comfyStatus === 'queued' || node.comfyStatus === 'running' || node.comfyStatus === 'starting';
     if((node.queued || comfyBusy) && imgs.length === 0 && !node.pending){
         return `<div class="loading-cell single queued" style="width:${layout.width}px;height:${layout.height}px">${deps.comfyNodeProgressBarHtml(node)}</div>`;
     }

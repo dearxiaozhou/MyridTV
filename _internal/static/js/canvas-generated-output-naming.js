@@ -182,6 +182,10 @@ function nodeRunElapsedMs(node){
 }
 function runTimePillHtml(node){
     if(!node || node.runTimerHidden || node.type === 'smart-prompt') return '';
+    // 正在启动 ComfyUI：节点正中显示「正在启动…」，沿用 running 类（齿轮自转 + 进度环）作动效
+    if(node.comfyStatus === 'starting'){
+        return `<span class="run-time-pill running" data-run-timer="${deps.escapeHtml(node.id)}"><i class="run-wave"></i><span class="run-time-text">正在启动…</span></span>`;
+    }
     // 2026-09-23：comfyStatus==='running' 也要算运行中 —— 级联槽位等路径创建的节点没有
     // pending/running 标志，只带 comfyStatus，漏掉它会导致「正在跑的节点计时 pill 消失」。
     const running = Boolean(node.pending || node.running || node.jimengPending || node.comfyStatus === 'running');
@@ -190,10 +194,35 @@ function runTimePillHtml(node){
     // 2026-09-23：ComfyUI 排队中不走计时 —— 那段时间 ComfyUI 还没开工，跑秒没有意义，
     // 也会让人误以为「等了这么久还没出图是生成慢」。排队位次由节点底部徽标显示。
     if(node.comfyStatus === 'queued'){
-        return `<span class="run-time-pill queued" data-run-timer="${deps.escapeHtml(node.id)}">排队中</span>`;
+        return `<span class="run-time-pill queued" data-run-timer="${deps.escapeHtml(node.id)}"><i class="run-wave"></i><span class="run-time-text">排队中</span></span>`;
     }
-    const cls = running ? '' : ' done';
-    return `<span class="run-time-pill${cls}" data-run-timer="${deps.escapeHtml(node.id)}">${formatRunDuration(nodeRunElapsedMs(node))}</span>`;
+    const cls = running ? ' running' : ' done';
+    // 2026-10-28 老王：本地工作流带真实进度 —— 有确定百分比时环画成进度弧（缺的那截就是还没跑完），
+    // 拿不到百分比的（云端 RH 等 comfyIndeterminate）才保持匀速狂转。
+    const determinate = running && pillDeterminate(node);
+    const style = determinate ? ` style="--run-deg:${pillProgressDeg(node).toFixed(1)}deg"` : '';
+    // 结构固定为 <i.run-wave> + <span.run-time-text>：
+    // 外圈第二层波纹必须是**常驻**子元素，计时只改 span 的文字。
+    // 若直接写 el.textContent，子元素会被每拍销毁重建 → 波纹动画每秒重头开始，等于永远停在第一帧。
+    return `<span class="run-time-pill${cls}${determinate ? ' determinate' : ''}" data-run-timer="${deps.escapeHtml(node.id)}"${style}><i class="run-wave"></i><span class="run-time-text">${formatRunDuration(nodeRunElapsedMs(node))}</span></span>`;
+}
+// 只改文字节点，绝不碰 pill 的子元素（保波纹动画连续）。兼容升级瞬间已渲染的旧结构：退化成整串赋值。
+function setPillText(el, text){
+    const span = el.querySelector('.run-time-text');
+    if(span) span.textContent = text;
+    else el.textContent = text;
+}
+// 真进度判定：必须有明确运行态 + 后端给出 0..100 的百分比（不含 indeterminate 标记）。
+// 云端 RH 无精确进度 → false → 走狂转，不会假装自己知道画到几成了。
+function pillDeterminate(node){
+    if(!node || node.comfyIndeterminate || node.comfyStatus !== 'running') return false;
+    const p = Number(node.comfyProgress);
+    return Number.isFinite(p) && p > 0;
+}
+// 进度角：0..100% → 0..360deg。conic-gradient 从 -90deg（12 点）顺时针画。
+function pillProgressDeg(node){
+    const p = Math.max(0, Math.min(100, Number(node && node.comfyProgress) || 0));
+    return p * 3.6;
 }
 // comfy 轮询期间的轻量 DOM 更新：只动进度条/状态类/计时pill/运行按钮，避免全量 deps.render() 重建节点
 // 导致选中/hover 每 900ms 丢失（「选中一下又没了」bug）。
@@ -232,8 +261,9 @@ function updateComfyNodeLiveState(node, job){
     // 排队 ≠ 运行：queued 只给「排队中 · 第 N 位」徽标 + 静态描边，不显示进度、不跑流光。
     // （以前把 queued 也算进 running，排在队尾的节点会亮蓝框 + 进度环空转，看着像在生成。）
     const isQueued = node.comfyStatus === 'queued';
-    const running = node.comfyStatus === 'running';
+    const running = node.comfyStatus === 'running' || node.comfyStatus === 'starting';
     el.classList.toggle('comfy-running', running);
+    el.classList.toggle('comfy-starting', node.comfyStatus === 'starting');
     el.classList.toggle('comfy-queued', isQueued);
     el.setAttribute('data-comfy-status', node.comfyStatus || '');
     // 排队位次：只在「还在队列里等待」时挂属性，由 CSS ::after 渲染成「排队中 · 第 N 位」。
@@ -244,20 +274,11 @@ function updateComfyNodeLiveState(node, job){
     } else {
         el.removeAttribute('data-comfy-queue');
     }
-    // 进度环：running 时确保存在并按当前进度沿边框绘制；否则移除
-    let bar = el.querySelector(':scope > .comfy-node-progress');
-    if(running){
-        if(!bar){
-            el.insertAdjacentHTML('beforeend', comfyNodeProgressBarHtml(node, {width: el.clientWidth, height: el.clientHeight}));
-            bar = el.querySelector(':scope > .comfy-node-progress');
-        }
-        syncNodeProgressRing(bar, el, node);
-        // 兼容旧版底部直条（若 DOM 里还有）：宽度一并同步，避免两种形态不同步
-        const fill = bar && bar.querySelector('.comfy-node-progress-fill');
-        if(fill) fill.style.width = Math.max(0, Math.min(100, Number(node.comfyProgress || 0))) + '%';
-    } else if(bar){
-        bar.remove();
-    }
+    // 进度环：2026-10-28 老王定稿 —— 进度只走节点正中的胶囊环（--run-deg）。
+    // 贴边 SVG 环看起来像亮边框（且路径从底边中点逆时针起步），整个退役：
+    // running 时若 DOM 里还有旧环（热更新前的残留），摘掉。
+    const oldBar = el.querySelector(':scope > .comfy-node-progress');
+    if(oldBar) oldBar.remove();
     // 运行期提示 / 失败原因：挂一条顶部横幅（底部已被「排队中 · 第 N 位」徽标占了）。
     // 以前失败只体现在「转圈停了」，用户不知道是显存炸了还是工作流填错。
     const noteText = node.comfyError ? ('失败：' + node.comfyError) : (node.comfyNotice || '');
@@ -323,13 +344,9 @@ function syncNodeProgressRing(bar, host, node){
     const pct = Math.max(0, Math.min(100, Number(progress) || 0));
     const arc = bar.querySelector('.comfy-node-progress-path');
     if(arc) arc.setAttribute('stroke-dashoffset', String(indeterminate ? 0 : (100 - pct)));
-    // 点状流光：determinate 时由 mask 裁到 [0, pct]（只有已跑过的那段有光点）；
-    // indeterminate 时 mask 整圈放开，光点沿整圈逆时针流动表示「运行中」。
-    const maskPath = bar.querySelector('.comfy-node-progress-mask');
-    if(maskPath){
-        maskPath.setAttribute('d', d);
-        maskPath.setAttribute('stroke-dashoffset', String(indeterminate ? 0 : (100 - Math.max(pct, 2.5))));
-    }
+    // 2026-10-27 老王：走马灯（点状流光 flow 路径 + mask）实测 8 环 6 秒 6936 次 Paint/283ms，
+    // 同页关动画只剩 30 次——dashoffset 几何动画逐帧重画整圈，GPU 大头，已全部拆除。
+    // indeterminate 的「运行中」改由整圈进度弧 opacity 呼吸表达（免费，见 conn 同款铁律）。
     // 头部亮点：determinate 时跟着当前进度停在进度弧末端（0% / 100% 时不显示）；indeterminate 不显示
     const dot = bar.querySelector('.comfy-node-progress-dot');
     if(dot && arc){
@@ -354,21 +371,21 @@ function syncNodeProgressRing(bar, host, node){
 // indeterminate（云端 RH-api 等无精确进度的运行）：整圈流光一直跑，不锁定百分比。
 function comfyNodeProgressBarHtml(node, size){
     if(!node || !['running', 'queued'].includes(node.comfyStatus)) return '';
+    // 2026-10-28 老王：贴边 SVG 进度环退役 —— 看起来像亮边框、起点也在底边中点。
+    // 进度统一走节点正中的胶囊环（runTimePillHtml 的 --run-deg），这里恒返回空串，
+    // 渲染层（canvas-node-body-html 的三处调用）与轮询层就都再也插不进来了。
+    return '';
     const indeterminate = Boolean(node.comfyIndeterminate);
     const progress = Math.max(0, Math.min(100, Number(node.comfyProgress || 0)));
     const box = size || deps.nodeRect(node) || {};
     const d = nodeProgressRingPath(box.width, box.height, 10);
-    const maskId = 'cnring-' + deps.uid('ring'); // 随机 id：多个节点的 mask 不打架
     const arcOffset = indeterminate ? 0 : (100 - progress);
-    const maskOffset = indeterminate ? 0 : (100 - Math.max(progress, 2.5));
-    return `<div class="comfy-node-progress" data-progress="${progress}">
+    // 2026-10-27 老王：走马灯（点状流光 flow + mask）实测 GPU 大头（8 环 6s 6936 次 Paint），
+    // 拆除。indeterminate 运行态=整圈弧 opacity 呼吸（CSS .is-indeterminate 规则）。
+    return `<div class="comfy-node-progress${indeterminate ? ' is-indeterminate' : ''}" data-progress="${progress}">
         <svg class="comfy-node-progress-ring" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
-            <defs><mask id="${maskId}" maskUnits="userSpaceOnUse">
-                <path class="comfy-node-progress-mask" d="${d}" pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="${maskOffset}" />
-            </mask></defs>
             <path class="comfy-node-progress-track-path" d="${d}" pathLength="100" />
             <path class="comfy-node-progress-path" d="${d}" pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="${arcOffset}" />
-            <path class="comfy-node-progress-flow" d="${d}" pathLength="100" mask="url(#${maskId})" />
             <circle class="comfy-node-progress-dot" r="3.4" cx="0" cy="0" />
         </svg>
     </div>`;
@@ -390,23 +407,43 @@ function hideRunTimerForNode(node){
 }
 function refreshRunTimerPills(){
     // active 判定与 runTimePillHtml 同口径：comfyStatus queued/running 的节点（无 pending 标志的级联槽位）也要让秒表继续走
-    const active = D("nodes").some(n => n.type !== 'smart-prompt' && !n.runTimerHidden && (n.pending || n.running || n.jimengPending || n.runFinishedAt || n.comfyStatus === 'queued' || n.comfyStatus === 'running'));
+    const active = D("nodes").some(n => n.type !== 'smart-prompt' && !n.runTimerHidden && (n.pending || n.running || n.jimengPending || n.runFinishedAt || n.comfyStatus === 'queued' || n.comfyStatus === 'running' || n.comfyStatus === 'starting'));
     document.querySelectorAll('[data-run-timer]').forEach(el => {
         const node = D("nodes").find(n => n.id === el.dataset.runTimer);
         if(!node || node.runTimerHidden || node.type === 'smart-prompt') {
             el.remove();
             return;
         }
+        // 正在启动 ComfyUI：节点正中显示「正在启动…」（沿用 running 类让齿轮自转），不计时
+        if(node.comfyStatus === 'starting'){
+            setPillText(el, '正在启动…');
+            el.classList.add('running');
+            el.classList.remove('queued','done');
+            el.classList.remove('determinate');
+            el.style.removeProperty('--run-deg');
+            return;
+        }
         // 排队中不计时：显示「排队中」占位，等后端真正开工（job.started_at）后自动切回秒数
         if(node.comfyStatus === 'queued'){
-            el.textContent = '排队中';
+            setPillText(el, '排队中');
             el.classList.add('queued');
             el.classList.remove('done');
+            el.classList.remove('running');   // 2026-10-28：居中金环只在真正跑的时候出现
+            el.classList.remove('determinate');
+            el.style.removeProperty('--run-deg');
             return;
         }
         el.classList.remove('queued');
-        el.textContent = formatRunDuration(nodeRunElapsedMs(node));
+        // 2026-10-28：running 类决定「居中大圈」还是「右上角小字」，必须每拍跟着状态走，
+        // 否则跑完的节点会一直顶着中间那圈（done 与 running 同时存在时居中样式会赢）。
+        el.classList.toggle('running', Boolean(node.pending || node.running || node.jimengPending || node.comfyStatus === 'running'));
+        setPillText(el, formatRunDuration(nodeRunElapsedMs(node)));
         el.classList.toggle('done', Boolean(!node.pending && !node.running && !node.jimengPending && node.runFinishedAt));
+        // 2026-10-28：本地工作流按真实进度走弧，其余保持狂转。每拍只改一个 CSS 变量。
+        const det = pillDeterminate(node);
+        el.classList.toggle('determinate', det);
+        if(det) el.style.setProperty('--run-deg', pillProgressDeg(node).toFixed(1) + 'deg');
+        else el.style.removeProperty('--run-deg');
     });
     if(active && !runTimerInterval) runTimerInterval = setInterval(refreshRunTimerPills, 1000);
     if(!active && runTimerInterval){ clearInterval(runTimerInterval); runTimerInterval = null; }

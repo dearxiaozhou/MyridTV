@@ -4242,7 +4242,7 @@ function preserveNodeCardForRun(node, s=node?.runSettings || {}){
 }
 function syncNodeCardToSpec(node){
     const s = node?.runSettings || {};
-    if(!isSmartImageNode(node) || node.running || node.apiRunning || node.pending || node.jimengPending || ['running','queued'].includes(node.comfyStatus) || s.engine === 'comfy' || s.engine === 'blender') return false;
+    if(!isSmartImageNode(node) || node.running || node.apiRunning || node.pending || node.jimengPending || ['running','queued','starting'].includes(node.comfyStatus) || s.engine === 'comfy' || s.engine === 'blender') return false;
     let size;
     if(s.apiKind === 'video'){
         const match = String(s.videoAspect || '16:9').match(/^(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)$/);
@@ -4255,11 +4255,17 @@ function syncNodeCardToSpec(node){
     if(!(size?.width > 0 && size?.height > 0)) return false;
     const ratio = size.width / size.height;
     const longSide = Math.max(Number(node.cardSize?.width) || EMPTY_UPLOAD_NODE_WIDTH, Number(node.cardSize?.height) || EMPTY_UPLOAD_NODE_HEIGHT);
+    const prevW = Math.round(Number(node.w) || 0);
+    const prevH = Math.round(Number(node.h) || 0);
     node.cardSize = {width:Math.round(ratio >= 1 ? longSide : longSide * ratio),height:Math.round(ratio >= 1 ? longSide / ratio : longSide)};
     node.cardSizing = 'spec';
     node.w = node.cardSize.width;
     node.h = node.cardSize.height;
-    return true;
+    // 2026-10-29：尺寸没变就别让调用方 render() 整张画布。
+    // 改分辨率档（4k→2k，比例不变）时卡片尺寸只差 1px 取整误差，原来无条件 return true
+    // 会白重绘一次 —— 重绘换掉 composer DOM，参数弹层跟着消失（老王报的「选一次就关」）。
+    // 1px 容差：视觉无感，却能把「换分辨率档」从重绘里摘出去，只有真改比例才重绘。
+    return Math.abs(node.w - prevW) > 1 || Math.abs(node.h - prevH) > 1;
 }
 function imageLayout(images, scale=1, node=null){
     // 2026-10-10：Agent/MCP 建的生成节点没有 cardSize，成功后按图片自然尺寸落 520×293，
@@ -4926,9 +4932,29 @@ function syncImageSpecControl(){
     control.querySelectorAll('[data-smart-param="quality"]').forEach(btn => btn.classList.toggle('active', btn.dataset.smartValue === quality));
     control.querySelectorAll('[data-smart-param="count"]').forEach(btn => btn.classList.toggle('active', Number(btn.dataset.smartValue) === count));
 }
+function pinImageSpecPopover(force){
+    const ctrl = dynamicParams?.querySelector('.image-spec-control');
+    if(!ctrl) return;
+    if(!force && ctrl.classList.contains('pinned')) return;
+    ctrl.setAttribute('data-param-popover', '');
+    if(window.CanvasParamEvents && typeof window.CanvasParamEvents.setPopoverOpen === 'function'){
+        // 复用事件层那套：pinned 类 + aria-expanded + 视口边缘修正（fitPopover）
+        window.CanvasParamEvents.setPopoverOpen(ctrl, true);
+    } else {
+        ctrl.classList.add('pinned');
+        const pill = ctrl.querySelector(':scope > .smart-pill');
+        if(pill) pill.setAttribute('aria-expanded', 'true');
+    }
+}
 function setImageSpecSetting(key, value){
     const prevRatio = settings.ratio;
     const prevResolution = settings.resolution;
+    // 2026-10-29 老王：「图片参数」窗口选一次分辨率/比例就自动关，画质却能保持。
+    // 病根：persistActiveSmartSettings 里规格键(nodeCardSpecKey)变化会 syncNodeCardToSpec + render()，
+    // 而 nodeCardSpecKey 含 ratio / resolution，不含 quality / count —— 所以只有前两者重建 composer，
+    // 控件 DOM 被换掉、.pinned 丢失，弹层当场消失。
+    // 这里在变更前记住开合态，等 setDynamicSetting（含内部 render）跑完再重新钉住。
+    const wasPinned = !!dynamicParams?.querySelector('.image-spec-control.pinned');
     setDynamicSetting(key, value, {keepLayout:true});
     // 自定义输入行只在 ratio/resolution 切到/切离 custom 时才需要重建布局
     const needRerender = (key === 'ratio' && (value === 'custom' || prevRatio === 'custom'))
@@ -4936,10 +4962,12 @@ function setImageSpecSetting(key, value){
     if(needRerender){
         renderDynamicParams();
         // 重建后弹层会被一并关掉；重新钉住，让用户直接看到刚出现的自定义输入行
-        const ctrl = dynamicParams?.querySelector('.image-spec-control');
-        if(ctrl) ctrl.classList.add('pinned');
+        pinImageSpecPopover(true);
     }
-    else syncImageSpecControl();
+    else {
+        syncImageSpecControl();
+        if(wasPinned) pinImageSpecPopover(false);
+    }
 }
 function renderVideoToggleControl(key, label) {
     return CanvasParamControls.renderVideoToggleControl.apply(null, arguments);
@@ -8414,7 +8442,7 @@ function renderSmartCanvasLog(){
                     <span class="log-chip">${escapeHtml(formatRunDuration(log.runMs || 0))}</span>
                 </div>
                 <div class="log-subline">${subParts.map(part => `<span title="${escapeAttr(part)}">${escapeHtml(part)}</span>`).join('')}</div>
-                ${log.error ? `<div class="log-error" title="${escapeAttr(log.error)}">${escapeHtml(log.error)}</div>` : ''}
+                ${log.error ? `<div class="log-error" title="${escapeAttr(log.error)}">${escapeHtml(log.errorHint ? log.errorHint + '（原文：' + log.error + '）' : log.error)}</div>` : ''}
                 <div class="log-prompt" title="${escapeAttr(log.prompt || tr('canvas.noPromptMeta'))}" data-prompt="${escapeAttr(log.prompt || '')}">${escapeHtml(log.prompt || tr('canvas.noPromptMeta'))}</div>
             </div>
             <div class="log-thumbs">${thumbs}</div>
@@ -8837,7 +8865,7 @@ const title = isTable ? '镜头表' : node.type === 'smart-prompt' ? 'Prompt' : 
         const isJimengPending = Boolean(node.jimengPending && node.jimengPending.submitId && imgs.length === 0);
         // comfyBusy：comfyStatus queued/running 的节点（级联槽位等无 pending 标志）按忙碌渲染，
         // 不算空节点（否则会渲染成上传占位大黑窗）、尺寸走 pending 档而不是 empty 档。
-        const comfyBusy = !isJimengPending && (node.comfyStatus === 'queued' || node.comfyStatus === 'running') && imgs.length === 0;
+        const comfyBusy = !isJimengPending && (node.comfyStatus === 'queued' || node.comfyStatus === 'running' || node.comfyStatus === 'starting') && imgs.length === 0;
         const isQueued = Boolean((node.queued || node.comfyStatus === 'queued') && imgs.length === 0 && !node.pending && !isJimengPending);
         const isEmpty = isImageNode && imgs.length === 0 && !node.pending && !isQueued && !isJimengPending && !comfyBusy;
         const isHistory = isHistoryGroupNode(node);
@@ -11693,8 +11721,19 @@ function bindInputThumbHoverActions(node, items){
     });
 }
 // 悬停缩略图：显示大图（与提示词框里 @ 引用 token 悬停同一个预览框）
+// 2026-10-28 老王：预览框只靠 mouseleave 关闭是不够的 —— 点 ✕ 剪断/屏蔽输入时整个缩略图行会被
+// innerHTML 重建，被悬停的锚点元素直接从 DOM 移除，浏览器不会补发 mouseleave，预览就永久驻留。
+// 因此记住锚点，在重建后和鼠标移动时统一校验「锚点还活着吗」，断开就关。
+var mentionPreviewAnchor = null;
+function syncMentionPreviewAnchor(){
+    if(!mentionPreview || mentionPreview.style.display !== 'block') return;
+    if(!mentionPreviewAnchor) return;                 // 来源未知（@ token 等），不擅自关
+    if(mentionPreviewAnchor.isConnected) return;
+    hideInputThumbHoverPreview();
+}
 function showInputThumbHoverPreview(el, url, kind){
     if(!mentionPreview || !url) return;
+    mentionPreviewAnchor = el;
     let media = mentionPreview.querySelector('img,video');
     const isVideo = kind === 'video';
     if(isVideo && media?.tagName?.toLowerCase() !== 'video'){
@@ -11726,12 +11765,19 @@ function showInputThumbHoverPreview(el, url, kind){
 }
 function hideInputThumbHoverPreview(){
     if(!mentionPreview) return;
+    mentionPreviewAnchor = null;
     mentionPreview.style.display = 'none';
     const media = mentionPreview.querySelector('img,video');
     media?.pause?.();
     media?.removeAttribute('src');
     media?.load?.();
 }
+// 兜底哨兵：切节点/切画布/整块重渲染都会连锚点一起干掉，同样不补发 mouseleave。
+// 只在预览确实打开时才读一次内联 display，鼠标移动的开销可以忽略。
+document.addEventListener('mousemove', () => {
+    if(!mentionPreview || mentionPreview.style.display !== 'block') return;
+    syncMentionPreviewAnchor();
+}, {capture:true, passive:true});
 // 2026-10-19 老王：屏蔽的输入不再占缩略图行的位（不渲染灰卡），改在行右端出一个「已屏蔽 X」胶囊，点它恢复该张。
 function inputThumbBlockedChipsHtml(blockedItems){
     if(!blockedItems?.length) return '';
@@ -11776,6 +11822,7 @@ function renderInputThumbsRow(node){
     if(!displayItems.length && !textItems.length){
         inputThumbsRow.innerHTML = `${videoQuickActions}${unblockActions}${objectRefActions}`;
         inputThumbsRow.classList.toggle('has-items', Boolean(videoQuickActions || unblockActions || objectRefActions));
+        syncMentionPreviewAnchor();
         bindInputThumbVideoActions();
         bindCanvasObjectRefActions(node);
         bindInputThumbBlockedChips(node, blockedItems);
@@ -11817,6 +11864,7 @@ function renderInputThumbsRow(node){
     // ComfyUI 缩略图只显示上游素材本身，不额外添加说明文字。
     const textThumbsHtml = textItems.map((item, index) => inputTextThumbHtml(item, index)).join('');
     inputThumbsRow.innerHTML = `<div class="input-thumb-list">${thumbsHtml}${textThumbsHtml}</div>${unblockActions}${videoQuickActions}${objectRefActions}`;
+    syncMentionPreviewAnchor();
     bindInputThumbsDrag(node, displayItems);
     bindInputThumbVideoActions();
     bindCanvasObjectRefActions(node);
@@ -13449,7 +13497,7 @@ function syncRunButtonAvailability(node=selectedNode()){
     // 'running'（同文件 460/467/499）。而 submitComfyWorkflowJob 的 900ms 轮询第一轮就会把
     // comfyStatus 覆写成后端即时值（20112 行）—— 只认 running 的话，点下运行后按钮要么压根不亮、
     // 要么只亮一瞬就灭，看起来就是"动效不到 1 秒就变回来，但后台还在跑"。
-    const isComfyRunning = Boolean(node && node.comfyJobId && ['running', 'queued'].includes(node.comfyStatus));
+    const isComfyRunning = Boolean(node && node.comfyJobId && ['running', 'queued', 'starting'].includes(node.comfyStatus));
     // 2026-10-05 老王定调：运行按钮分两种动效，按「工作流类 / 非工作流类」分，不按布局 class 分。
     //   工作流类（comfy 本地 + runninghub 云端）→ 红态 is-running/is-stop，节点侧配进度环 + 流光。
     //   其余（api / volcengine / blender 3D预演）→ 蓝色波纹 is-ap-running。
@@ -15784,6 +15832,7 @@ promptInput.addEventListener('click', event => {
 promptInput.addEventListener('mouseover', event => {
     const token = event.target.closest?.('.mention-image-token');
     if(!token) return;
+    mentionPreviewAnchor = token;
     let media = mentionPreview.querySelector('img,video');
     const isVideo = token.dataset.kind === 'video' || isVideoMediaItem({url:token.dataset.url, kind:token.dataset.kind});
     if(isVideo && media?.tagName?.toLowerCase() !== 'video'){
@@ -15813,13 +15862,7 @@ promptInput.addEventListener('mouseover', event => {
     mentionPreview.style.display = 'block';
 });
 promptInput.addEventListener('mouseout', event => {
-    if(event.target.closest?.('.mention-image-token')){
-        mentionPreview.style.display = 'none';
-        const media = mentionPreview.querySelector('img,video');
-        media?.pause?.();
-        media?.removeAttribute('src');
-        media?.load?.();
-    }
+    if(event.target.closest?.('.mention-image-token')) hideInputThumbHoverPreview();
 });
 mentionPicker.addEventListener('mousedown', event => event.stopPropagation());
 document.addEventListener('click', event => {

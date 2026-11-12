@@ -121,12 +121,12 @@ html.theme-light body #saveBtn.action-btn.save-btn:hover:not(:disabled) {
   border-color: var(--light-primary-hover) !important;
   color: #fff !important;
 }
-html.theme-light body #runBtn.run-btn:not(.is-running):not(.is-stop):not(.is-ap-running) {
+html.theme-light body #runBtn.run-btn:not(.is-running):not(.is-stop):not(.is-ap-running):not(.is-wf-cloud) {
   background: var(--light-primary) !important;
   border-color: var(--light-primary) !important;
   color: #fff !important;
 }
-html.theme-light body #runBtn.run-btn:not(.is-running):not(.is-stop):not(.is-ap-running):hover {
+html.theme-light body #runBtn.run-btn:not(.is-running):not(.is-stop):not(.is-ap-running):not(.is-wf-cloud):hover {
   background: var(--light-primary-hover) !important;
   border-color: var(--light-primary-hover) !important;
 }
@@ -193,9 +193,9 @@ html.theme-light .canvas-add-toggle:hover .canvas-dock-icon {
   box-shadow: inset 0 0 0 1px var(--x-selected-ring);
 }
 /* 删除按钮底色已统一走 var(--card)，不再按 theme-light 硬编码 */
-html.theme-light .comfy-layout .run-btn:not(.is-running):not(.is-stop):not(.is-ap-running),
-html.theme-light .api-single-row .composer-actions .run-btn:not(.is-running):not(.is-stop):not(.is-ap-running),
-html.theme-light .api-video-row .composer-actions .run-btn:not(.is-running):not(.is-stop):not(.is-ap-running) {
+html.theme-light .comfy-layout .run-btn:not(.is-running):not(.is-stop):not(.is-ap-running):not(.is-wf-cloud),
+html.theme-light .api-single-row .composer-actions .run-btn:not(.is-running):not(.is-stop):not(.is-ap-running):not(.is-wf-cloud),
+html.theme-light .api-video-row .composer-actions .run-btn:not(.is-running):not(.is-stop):not(.is-ap-running):not(.is-wf-cloud) {
   background: #f8fbff;
 }
 

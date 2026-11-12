@@ -5,12 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>主页背景</title>
     <script>
-        (function () {
-            // 仅做防闪：默认深色先垫上 class，真实主题交给 theme.js 应用（含命名主题与浅色）。
+        (function(){
+            // 首帧主题：读 theme.js 主键 studio_theme_id（7 主题 id），先挂 data-studio-theme 与明暗类，
+            // 不等 theme.js 加载 —— 避免页面首帧停在上次明暗模式而不是当前主题；theme.js 起来后兜底纠正。
+            // 未知 id 照设 dataset（design-tokens 无对应块则回落默认变量），明暗类按「非 light 即 dark」。
             try {
-                var theme = localStorage.getItem('studio_theme') || localStorage.getItem('canvas_theme') || 'dark';
-                document.documentElement.classList.toggle('studio-theme-dark', theme === 'dark');
-            } catch (e) {}
+                var id = localStorage.getItem('studio_theme_id')
+                      || localStorage.getItem('studio_theme')
+                      || localStorage.getItem('canvas_theme') || 'dark';
+                document.documentElement.dataset.studioTheme = id;
+                if(id === 'light'){
+                    document.documentElement.classList.add('theme-light');
+                    document.documentElement.classList.remove('theme-dark','studio-theme-dark');
+                } else {
+                    document.documentElement.classList.add('theme-dark');
+                    document.documentElement.classList.add('studio-theme-dark');
+                    document.documentElement.classList.remove('theme-light');
+                }
+            } catch(e) {}
         })();
     </script>
     <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.06.29.9"></script>

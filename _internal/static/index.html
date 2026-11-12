@@ -7,11 +7,26 @@
   <link rel="icon" href="/static/images/myrid-icon.png" type="image/png">
   <title>MyridTV</title>
   <script>
-    (function () {
-      var theme = localStorage.getItem('studio_theme') || localStorage.getItem('canvas_theme') || 'dark';
-      document.documentElement.classList.toggle('studio-theme-dark', theme === 'dark');
-    })();
-  </script>
+        (function(){
+            // 首帧主题：读 theme.js 主键 studio_theme_id（7 主题 id），先挂 data-studio-theme 与明暗类，
+            // 不等 theme.js 加载 —— 避免页面首帧停在上次明暗模式而不是当前主题；theme.js 起来后兜底纠正。
+            // 未知 id 照设 dataset（design-tokens 无对应块则回落默认变量），明暗类按「非 light 即 dark」。
+            try {
+                var id = localStorage.getItem('studio_theme_id')
+                      || localStorage.getItem('studio_theme')
+                      || localStorage.getItem('canvas_theme') || 'dark';
+                document.documentElement.dataset.studioTheme = id;
+                if(id === 'light'){
+                    document.documentElement.classList.add('theme-light');
+                    document.documentElement.classList.remove('theme-dark','studio-theme-dark');
+                } else {
+                    document.documentElement.classList.add('theme-dark');
+                    document.documentElement.classList.add('studio-theme-dark');
+                    document.documentElement.classList.remove('theme-light');
+                }
+            } catch(e) {}
+        })();
+    </script>
   <script src="/static/js/theme.js?cb=card-hover-seven-v01317&v=2026.10.25.btn-theme8"></script>
   <script src="/static/js/i18n.js?v=2026.10.25.btn-theme8"></script>
   <style>
@@ -605,6 +620,44 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
     .tb-winbtn[data-max="1"] .ico-max { display: none; }
     .tb-winbtn[data-max="1"] .ico-restore { display: block; }
 
+    /* ===== 2026-11-03：顶部菜单可收起（整条标题栏收起）=====
+       折叠键放在最小化左边，且留在 .tb-winbtns 之外 —— 三键的宽度/热区仍与壳层原生按钮严格对齐。
+       点折叠：整条 #tb-bar 上移出视口、舞台顶边补回 31px；原按钮位置留一颗半透明还原键，
+       平时很淡，鼠标停上去才变实，点它把标题栏拉回来。 */
+    .tb-winbtn.tb-barcol { flex: 0 0 auto; width: 34px; height: 100%; }
+    #tb-bar { transition: transform .2s cubic-bezier(.4,0,.2,1), opacity .16s ease; }
+    .stage { transition: top .2s cubic-bezier(.4,0,.2,1), background .3s ease; }
+    body.tb-bar-collapsed #tb-bar { transform: translateY(-100%); opacity: 0; pointer-events: none; }
+    body.tb-bar-collapsed .stage { top: 0; }
+    .tb-bar-restore {
+      position: fixed; z-index: 601; display: none;
+      top: 3px; right: calc(var(--tb-btn-w, 138px) + 6px);
+      width: 28px; height: 22px; padding: 0;
+      align-items: center; justify-content: center;
+      border: 1px solid rgba(148, 163, 184, .22); border-radius: 6px;
+      background: rgba(28, 28, 28, .30); color: #E5E7EB;
+      opacity: .42; cursor: default;
+      transition: opacity .16s ease, background .16s ease, border-color .16s ease;
+    }
+    html.theme-light .tb-bar-restore {
+      background: rgba(255, 255, 255, .55); color: #0F172A; border-color: rgba(15, 23, 42, .14);
+    }
+    body.tb-bar-collapsed .tb-bar-restore { display: inline-flex; }
+    .tb-bar-restore:hover { opacity: 1; background: rgba(28, 28, 28, .78); border-color: rgba(148, 163, 184, .45); }
+    html.theme-light .tb-bar-restore:hover { background: rgba(255, 255, 255, .95); border-color: rgba(15, 23, 42, .22); }
+    .tb-bar-restore svg { width: 11px; height: 11px; display: block; }
+
+    /* ===== ComfyUI 状态灯（2026-11-03，折叠键前）=====
+       ComfyUI 官方 logo（C 形 mark）单色渲染，颜色由状态类驱动：绿=运行中 / 红=未启动 / 黄=启动中(自转)。
+       状态由 JS 每 3s 轮询 /api/comfyui/status；点击打开 ComfyUI 设置弹窗。 */
+    .tb-winbtn.tb-comfy { flex: 0 0 auto; width: 34px; height: 100%; }
+    .tb-winbtn.tb-comfy svg { width: 15px; height: 15px; }
+    #tb-btn-comfy { color: #ef4444; }
+    #tb-btn-comfy.tb-comfy-ok { color: #22c55e; }
+    #tb-btn-comfy.tb-comfy-starting { color: #eab308; }
+    #tb-btn-comfy.tb-comfy-starting svg { animation: tb-comfy-spin 1.2s linear infinite; }
+    @keyframes tb-comfy-spin { to { transform: rotate(360deg); } }
+
     /* ===== 设置类页面弹窗（2026-10-16 老王：所有窗口用弹窗，不挤掉主页面）=====
        全屏遮罩 + 居中面板 + 头部右上角关闭键；iframe 仍加载原页面 URL（同源），
        主题/语言经 postMessage 同步。遮罩/面板 z-index 低于标题栏（600）→ 菜单与窗口键可用。 */
@@ -643,7 +696,7 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
 
   </style>
 <link rel="stylesheet" href="/static/css/light-theme-trial.css?v=interaction-audit-v0105c">
-<link rel="stylesheet" href="/static/css/canvas-interaction-style.css?cb=card-hover-seven-v01317&v=2026.10.25.btn-theme8">
+<link rel="stylesheet" href="/static/css/canvas-interaction-style.css?cb=audio-center-no-transform-v0166&v=2026.10.25.btn-theme8">
 </head>
 <body>
   <div id="update-notice" role="status" aria-live="polite"><span id="update-notice-text">界面更新已就绪</span><button type="button" id="update-refresh">刷新界面</button><button type="button" class="secondary" id="update-later">稍后</button></div>
@@ -654,6 +707,12 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
       <img class="tb-app-icon" src="/static/images/myrid-mark.svg" alt="" draggable="false">
       <div class="tb-menus" id="tb-menus"></div>
       <div class="tb-flex" id="tb-flex" title="拖动移动窗口 · 双击最大化 / 还原"></div>
+      <button type="button" class="tb-winbtn tb-comfy" id="tb-btn-comfy" title="ComfyUI：检查中…" aria-label="ComfyUI 状态">
+        <svg viewBox="0 0 600 600" class="ico-comfy" aria-hidden="true"><path fill="currentColor" d="M464.4 450.3q1.6-5.4 1.6-11.2a39.3 39.3 0 0 0-39.4-39.2H249.9a17 17 0 0 1-16.5-21.8l47.5-164.8c2-7.3 8.7-12.6 16.6-12.6l177.3-.2c37.4 0 69-25.1 78.4-59.3L580 49.3q1.4-5 1.4-10.3c0-21.5-17.6-39-39.3-39H327.5a81.5 81.5 0 0 0-78.3 58.8l-18 62.6a17 17 0 0 1-16.6 12.4H163c-37 0-68.1 24.4-78 57.9L20 416.9q-1.4 5-1.4 10.6a39.3 39.3 0 0 0 39.5 39.2h50.6a17.2 17.2 0 0 1 16.6 21.9l-18 62a39 39 0 0 0 37.8 49.3h214.6c37.3 0 68.8-25 78.4-59.1l26-90.4z"/></svg>
+      </button>
+      <button type="button" class="tb-winbtn tb-barcol" id="tb-btn-barcol" title="收起顶部菜单" aria-label="收起顶部菜单">
+        <svg viewBox="0 0 10 10" class="ico-barcol" aria-hidden="true"><path d="M0.5 1.5 H9.5" stroke="currentColor" stroke-width="1" fill="none"/><path d="M2.4 8.3 L5 5.7 L7.6 8.3" stroke="currentColor" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
       <div class="tb-winbtns" id="tb-winbtns">
         <button type="button" class="tb-winbtn" id="tb-btn-min" title="最小化">
           <svg viewBox="0 0 10 10" class="ico-min" aria-hidden="true"><path d="M0 6.5 H10" stroke="currentColor" stroke-width="1" fill="none"/></svg>
@@ -667,6 +726,10 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
         </button>
       </div>
     </div>
+    <!-- 2026-11-03：标题栏收起后的还原键。位置对齐折叠键原位（右起 --tb-btn-w + 6px），半透明常驻。 -->
+    <button type="button" id="tb-bar-restore" class="tb-bar-restore" title="展开顶部菜单" aria-label="展开顶部菜单">
+      <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0.5 1.5 H9.5" stroke="currentColor" stroke-width="1" fill="none"/><path d="M2.4 5.4 L5 8 L7.6 5.4" stroke="currentColor" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
     <!-- 设置类页面弹窗：不挤掉主页面；关闭键在面板右上角，Esc / 点遮罩同样可关（绑定见下方 init） -->
     <div id="tb-page-overlay" class="tb-page-overlay"></div>
     <section id="tb-page-panel" class="tb-page-panel" aria-label="页面弹窗">
@@ -690,7 +753,7 @@ transition: opacity 0.22s ease, visibility 0.22s ease;
 
     <!-- 2026-10-16：底部 dock 移除，页面导航改由自绘 HTML 标题栏（#tb-bar，菜单数据见下方 TB_MENUS）承担；
          版本号仅保留在这个隐藏节点里，供更新提示逻辑读取当前版本，可见版本见菜单「关于 → 关于 MyridTV」。 -->
-    <span class="app-version" hidden>版本：V0.16.4</span>
+    <span class="app-version" hidden>版本：V0.16.7</span>
   </main>
 
   <!-- 任务运行控制台（task-console） -->
@@ -1723,7 +1786,9 @@ document.addEventListener('DOMContentLoaded', function () {
       'win.min': '最小化',
       'win.max': '最大化',
       'win.restore': '还原',
-      'win.close': '关闭'
+      'win.close': '关闭',
+      'win.barCollapse': '收起顶部菜单',
+      'win.barExpand': '展开顶部菜单'
     },
     en: {
       'menu.canvas': 'Canvas',
@@ -1755,7 +1820,9 @@ document.addEventListener('DOMContentLoaded', function () {
       'win.min': 'Minimize',
       'win.max': 'Maximize',
       'win.restore': 'Restore',
-      'win.close': 'Close'
+      'win.close': 'Close',
+      'win.barCollapse': 'Hide title bar',
+      'win.barExpand': 'Show title bar'
     }
   };
 
@@ -2057,6 +2124,34 @@ document.addEventListener('DOMContentLoaded', function () {
     if (btnMin) btnMin.title = tbT('win.min');
     if (btnMax) btnMax.title = (btnMax.dataset.max === '1') ? tbT('win.restore') : tbT('win.max');
     if (btnClose) btnClose.title = tbT('win.close');
+    tbSyncBarCol();
+  }
+
+  /* 2026-11-03：顶部菜单可收起（整条标题栏）。
+     收起态 body.tb-bar-collapsed：#tb-bar 上移出视口、舞台顶边归零，原位（折叠键坐标）
+     留一颗半透明还原键，点它把标题栏拉回来。状态只存内存，重开窗口默认展开。 */
+  function tbBarCollapsed() {
+    return document.body.classList.contains('tb-bar-collapsed');
+  }
+  function tbSyncBarCol() {
+    var collapsed = tbBarCollapsed();
+    var btn = document.getElementById('tb-btn-barcol');
+    var chip = document.getElementById('tb-bar-restore');
+    // 注意：这里不能用 aria-expanded —— canvas-interaction-style.css 把
+    // button[aria-expanded="true"] 当「下拉已展开」渲染成青绿选中底，窗口键会被染色。
+    if (btn) {
+      btn.title = collapsed ? tbT('win.barExpand') : tbT('win.barCollapse');
+      btn.setAttribute('aria-label', btn.title);
+    }
+    if (chip) {
+      chip.title = tbT('win.barExpand');
+      chip.setAttribute('aria-label', chip.title);
+    }
+  }
+  function tbSetBarCollapsed(on) {
+    if (on && openId) closeAll();
+    document.body.classList.toggle('tb-bar-collapsed', !!on);
+    tbSyncBarCol();
   }
 
   // 壳层在窗口最大化/还原时回调（WM_SIZE 状态变化），切换最大化按钮字形
@@ -2161,6 +2256,57 @@ document.addEventListener('DOMContentLoaded', function () {
     if (btnMin) btnMin.addEventListener('click', function (ev) { ev.stopPropagation(); tbShell('win|minimize'); });
     if (btnMax) btnMax.addEventListener('click', function (ev) { ev.stopPropagation(); tbShell('win|maximize-toggle'); });
     if (btnClose) btnClose.addEventListener('click', function (ev) { ev.stopPropagation(); tbShell('win|close'); });
+    // 顶部菜单收起 / 还原（2026-11-03）
+    var btnBarCol = document.getElementById('tb-btn-barcol');
+    var chipBarRestore = document.getElementById('tb-bar-restore');
+    if (btnBarCol) btnBarCol.addEventListener('click', function (ev) { ev.stopPropagation(); tbSetBarCollapsed(true); });
+    if (chipBarRestore) chipBarRestore.addEventListener('click', function (ev) { ev.stopPropagation(); tbSetBarCollapsed(false); });
+    // ComfyUI 状态灯（2026-11-03）：3s 轮询，绿=运行中 / 黄=启动中 / 红=未启动。
+    // 2026-11-03 老王：点击 = 启动 / 退出 ComfyUI——红灯点击启动（后台拉起，黄灯转圈），
+    // 绿灯点击退出（杀端口监听进程），黄灯（启动中）点击忽略。
+    var tbComfyState = { online: false, launching: false };
+    function tbComfyApply(st) {
+      var btnComfyEl = document.getElementById('tb-btn-comfy');
+      if (!btnComfyEl) return;
+      var online = !!(st && st.online), launching = !!(st && st.launching);
+      tbComfyState.online = online;
+      tbComfyState.launching = launching;
+      btnComfyEl.classList.toggle('tb-comfy-ok', online);
+      btnComfyEl.classList.toggle('tb-comfy-starting', !online && launching);
+      btnComfyEl.classList.toggle('tb-comfy-off', !online && !launching);
+      var tip = online ? 'ComfyUI：运行中（点击退出）'
+        : (launching ? 'ComfyUI：启动中…' : 'ComfyUI：未启动（点击启动）');
+      btnComfyEl.title = tip;
+      btnComfyEl.setAttribute('aria-label', tip);
+    }
+    function tbComfyPoll() {
+      fetch('/api/comfyui/status', { cache: 'no-store' })
+        .then(function (r) { return r.json(); })
+        .then(function (d) { tbComfyApply(d); })
+        .catch(function () { tbComfyApply({ online: false, launching: false }); });
+    }
+    tbComfyPoll();
+    setInterval(tbComfyPoll, 3000);
+    var btnComfy = document.getElementById('tb-btn-comfy');
+    if (btnComfy) btnComfy.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      if (tbComfyState.launching) return;  // 启动中：忽略
+      if (tbComfyState.online) {
+        fetch('/api/comfyui/stop', { method: 'POST' });
+        return;
+      }
+      // 未启动：乐观亮黄灯，后台拉起；没配路径时后端会给出明确提示
+      tbComfyApply({ online: false, launching: true });
+      fetch('/api/comfyui/start', { method: 'POST' })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d && d.ok === false) {
+            tbComfyApply({ online: false, launching: false });
+            alert(d.error || 'ComfyUI 启动失败');
+          }
+        })
+        .catch(function () { tbComfyApply({ online: false, launching: false }); });
+    });
     // 页面弹窗：右上角 × / 点遮罩关闭（Esc 见下方 keydown）
     var btnPageClose = document.getElementById('tb-page-close');
     if (btnPageClose) btnPageClose.addEventListener('click', function (ev) { ev.stopPropagation(); closePagePopup(); });

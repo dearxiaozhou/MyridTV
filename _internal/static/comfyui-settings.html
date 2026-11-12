@@ -7,9 +7,17 @@
     <title>工作流设置</title>
     <script>
         (function(){
+            // 首帧主题：读 theme.js 的主键 studio_theme_id（7 主题 id），
+            // 先把 data-studio-theme 与明暗类挂上 —— 不等 theme.js 加载，避免本页停在 dark。
+            // 未知的 id 也照设（design-tokens 无对应块则回落默认变量，theme.js 起来后纠正）。
             try {
-                var theme = localStorage.getItem('studio_theme') || localStorage.getItem('canvas_theme') || 'dark';
-                if(theme === 'dark') {
+                var id = localStorage.getItem('studio_theme_id')
+                      || localStorage.getItem('studio_theme')
+                      || localStorage.getItem('canvas_theme') || 'dark';
+                document.documentElement.dataset.studioTheme = id;
+                if(id === 'light'){
+                    document.documentElement.classList.add('theme-light');
+                } else {
                     document.documentElement.classList.add('studio-theme-dark');
                     document.documentElement.classList.add('theme-dark');
                 }
@@ -39,17 +47,14 @@
             <div class="layout">
                 <aside class="sidebar">
                     <div class="side-card workflow-panel workflow-panel-comfy">
-                        <div class="side-title">ComfyUI 后端地址</div>
+                        <div class="side-title">ComfyUI 本地路径</div>
                         <div id="comfyInstancesList" style="display:flex;flex-direction:column;gap:6px"></div>
-                        <button class="upload-btn" type="button" onclick="addComfyInstance()">
-                            <i data-lucide="plus" class="w-3.5 h-3.5"></i><span>添加后端</span>
-                        </button>
                         <div style="display:flex;gap:6px">
                             <button class="upload-btn" type="button" onclick="saveComfyInstances()" style="flex:1;border-style:solid;background:var(--panel);color:var(--text);border-color:var(--text)">
                                 <i data-lucide="save" class="w-3.5 h-3.5"></i><span>保存</span>
                             </button>
                         </div>
-                        <div style="font-size:10.5px;color:var(--faint);line-height:1.55;font-weight:600">格式：<span style="font-family:ui-monospace,Menlo,monospace">host:port</span>（如 <span style="font-family:ui-monospace,Menlo,monospace">127.0.0.1:8188</span>）</div>
+                        <div title="运行工作流时若 ComfyUI 未启动，软件会按此目录自动拉起并继续任务（默认连接 127.0.0.1:8188）" style="font-size:10.5px;color:var(--faint);line-height:1.5;font-weight:600">示例：D:\ComfyUI</div>
                     </div>
 
                     <div class="side-card workflow-panel workflow-panel-comfy">

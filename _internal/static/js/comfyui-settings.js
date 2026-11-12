@@ -432,41 +432,39 @@ function syncMiniTestNodes(){
     persistMiniTestNodes();
 }
 
-// —— ComfyUI 后端地址管理 ——
+// —— ComfyUI 本地路径（简化：只填一个路径，url/启动命令后端自动处理）——
 let comfyInstances = [];
+function _normalizeComfyInstance(item){
+    if(typeof item === 'string') return { path: item };
+    return { path: item?.path || '' };
+}
 async function loadComfyInstances(){
     try {
         const data = await fetch('/api/comfyui/instances').then(r => r.json());
-        comfyInstances = Array.isArray(data.instances) ? data.instances : [];
+        comfyInstances = (Array.isArray(data.instances) ? data.instances : []).map(_normalizeComfyInstance);
         renderComfyInstances();
     } catch(e){ console.error(e); }
 }
 function renderComfyInstances(){
     const el = document.getElementById('comfyInstancesList');
     if(!el) return;
-    el.innerHTML = comfyInstances.map((addr, i) => `
+    const it = comfyInstances[0] || { path:'' };
+    el.innerHTML = `
         <div class="comfy-instance-row">
-            <span class="comfy-instance-index">${i + 1}</span>
-            <input class="small-input comfy-instance-input" type="text" value="${escapeAttr(addr)}" placeholder="host:port" oninput="updateComfyInstance(${i}, this.value)">
-            <button class="opt-del" type="button" onclick="removeComfyInstance(${i})" title="删除"><i data-lucide="x" class="w-3 h-3"></i></button>
-        </div>
-    `).join('');
+            <div class="ci-field ci-path">
+                <span class="ci-label">路径</span>
+                <input class="small-input comfy-path-input" type="text" value="${escapeAttr(it.path)}" placeholder="ComfyUI 安装目录，如 D:/ComfyUI" oninput="updateComfyInstance(0, 'path', this.value)">
+            </div>
+        </div>`;
     refreshIcons();
 }
-function addComfyInstance(){
-    comfyInstances = [...comfyInstances, ''];
-    renderComfyInstances();
-}
-function updateComfyInstance(index, value){
-    comfyInstances[index] = value;
-}
-function removeComfyInstance(index){
-    comfyInstances = comfyInstances.filter((_, i) => i !== index);
-    renderComfyInstances();
+function updateComfyInstance(index, field, value){
+    if(!comfyInstances[index]) comfyInstances[index] = { path:'' };
+    comfyInstances[index][field] = value;
 }
 async function saveComfyInstances(){
-    const cleaned = comfyInstances.map(s => String(s||'').trim()).filter(Boolean);
-    if(!cleaned.length){ alert('请至少填一个 ComfyUI 后端地址'); return; }
+    const path = String(comfyInstances[0]?.path || '').trim();
+    const cleaned = path ? [{ path }] : [];
     setStatus('保存中...');
     try {
         const res = await fetch('/api/comfyui/instances', {
@@ -476,11 +474,11 @@ async function saveComfyInstances(){
         });
         if(!res.ok) throw new Error((await res.json()).detail || '保存失败');
         const data = await res.json();
-        comfyInstances = data.instances || cleaned;
+        comfyInstances = (data.instances || cleaned).map(_normalizeComfyInstance);
         renderComfyInstances();
         try { new BroadcastChannel('studio-api').postMessage({ type: 'comfy-instances-changed' }); } catch(e) {}
         try { window.parent?.postMessage({ type: 'comfy-instances-changed' }, '*'); } catch(e) {}
-        setStatus('ComfyUI 后端地址已保存');
+        setStatus(cleaned.length ? 'ComfyUI 本地路径已保存' : '已清除本地路径（运行前需手动启动 ComfyUI）');
     } catch(e){
         alert(e.message || '保存失败');
         setStatus('保存失败');
