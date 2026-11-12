@@ -14,6 +14,7 @@ volcengine_ark_api_key / upload_cloud_media_direct / _task_console_is_cancelled�
 + LOG_FILE getter。主文件对块外仍调用的函数留同名薄代理，调用点不改。
 """
 import base64
+import hashlib
 import json
 import mimetypes
 import os
@@ -120,25 +121,214 @@ def volcengine_video_media_url(source_url):
     return str(uploaded.get("url") or "").strip()
 
 
-def volcengine_image_media_url(source_url, max_bytes=12 * 1024 * 1024):
+VOLC_IMAGE_MAX_BYTES = 30 * 1024 * 1024
+VOLC_IMAGE_INLINE_SAFE_BYTES = 1536 * 1024
+VOLC_IMAGE_INLINE_BUDGET_BYTES = 6 * 1024 * 1024
+VOLC_REHOST_CACHE_TTL = 1800.0
+VOLC_REQUEST_BODY_WARN_BYTES = 24 * 1024 * 1024
+VOLC_RESOLUTION_MIN_LONG_EDGE = {"480p": 854, "720p": 1280, "1080p": 1920, "2k": 2048, "4k": 3840}
+_VOLC_REHOST_CACHE = {}
+_VOLC_REHOST_LOCK = threading.Lock()
+
+
+def _volcengine_min_long_edge(resolution=""):
+    """参考图长边下限 = 输出档位所需长边。低于这个数，输出就是在放大糊图。"""
+    return int(VOLC_RESOLUTION_MIN_LONG_EDGE.get(str(resolution or "").strip().lower(), 1280))
+
+
+def _volcengine_rehost_cache_get(key):
+    if not key:
+        return ""
+    now = time.time()
+    with _VOLC_REHOST_LOCK:
+        item = _VOLC_REHOST_CACHE.get(key)
+        if item and item[1] < now:
+            _VOLC_REHOST_CACHE.pop(key, None)
+            item = None
+    return str((item or ("", 0))[0] or "")
+
+
+def _volcengine_rehost_cache_put(key, url):
+    if not key or not url:
+        return
+    with _VOLC_REHOST_LOCK:
+        _VOLC_REHOST_CACHE[key] = (url, time.time() + VOLC_REHOST_CACHE_TTL)
+        if len(_VOLC_REHOST_CACHE) > 128:
+            for old_key, _ in sorted(_VOLC_REHOST_CACHE.items(), key=lambda kv: kv[1][1])[:32]:
+                _VOLC_REHOST_CACHE.pop(old_key, None)
+
+
+def _volcengine_ark_files_upload_bytes(raw, file_name, content_type):
+    """POST https://ark.cn-beijing.volces.com/api/v3/files（purpose=user_data）。
+
+    官方口径：单图 ≤30MB、边长 [300,6000]、宽高比 [0.4,2.5]，请求体 ≤64MB 且
+    「大文件请勿使用 Base64 编码」。所以本地大图的正解是上传换直链，而不是压缩。
+    返回 (url, error)。"""
+    key = str(_r_volcengine_ark_api_key() or "").strip()
+    if not key:
+        return "", "缺少火山方舟 API Key"
+    data = myridtv_http.request_multipart_json(
+        "https://ark.cn-beijing.volces.com/api/v3/files",
+        fields={"purpose": "user_data"},
+        files=[{"name": "file", "filename": str(file_name or "reference.jpg"),
+                "content_type": str(content_type or "application/octet-stream"), "data": raw}],
+        headers={"Authorization": f"Bearer {key}"},
+        timeout=120,
+    )
+    url = ""
+    if isinstance(data, dict):
+        url = str(data.get("url") or data.get("downloadUrl") or data.get("fileUrl") or "").strip()
+    if not re.match(r"^https?://", url, re.I):
+        return "", f"未返回直链：{str(data)[:120]}"
+    return url, ""
+
+
+def _volcengine_rehost_image_bytes(raw, file_name, content_type, cache_key=""):
+    """本地/内嵌大图 → 公网直链（绕开 base64）：方舟 Files 优先，公共图床兜底。失败返回 ''。"""
+    cached = _volcengine_rehost_cache_get(cache_key)
+    if cached:
+        return cached
+    errors = []
+    try:
+        url, err = _volcengine_ark_files_upload_bytes(raw, file_name, content_type)
+        if url:
+            _volcengine_rehost_cache_put(cache_key, url)
+            append_log(_log_file(), f"volcengine reference rehosted via ark files name={str(file_name)[:60]} {len(raw)/1048576:.2f}MB url={url[:80]}")
+            return url
+        errors.append(f"ark:{err or 'empty'}")
+    except Exception as exc:
+        errors.append(f"ark:{str(exc)[:100]}")
+    for service in ("litterbox", "temp"):
+        try:
+            url = myridtv_media_localize.upload_cloud_media_bytes(raw, file_name, content_type, service=service)
+            if url and re.match(r"^https?://", str(url), re.I):
+                _volcengine_rehost_cache_put(cache_key, str(url))
+                append_log(_log_file(), f"volcengine reference rehosted via {service} name={str(file_name)[:60]} url={str(url)[:80]}")
+                return str(url)
+        except Exception as exc:
+            errors.append(f"{service}:{str(exc)[:80]}")
+    append_log(_log_file(), f"volcengine reference rehost failed, fallback to inline name={str(file_name)[:60]}: {'; '.join(errors)[:200]}")
+    return ""
+
+
+def _shrink_image_bytes_for_data_url(raw: bytes, file_name="", content_type="",
+                                     budget_bytes=0, min_long_edge=1280) -> bytes:
+    """参考图内嵌前的分级瘦身（2026-10-28 重写：只在必须内嵌时才动，且**质量优先、
+    分辨率兜底**）。
+
+    老版「>2MB 就砍到长边 2048」会把 1080p/4k 参考图压糊（火山其实允许 30MB、
+    边长 6000）。现在：先把 JPEG 质量从 92 逐级降到 70，够进预算就停；实在不够
+    才降长边，且**不低于输出档位所需长边**（480p=854 / 720p=1280 / 1080p=1920 /
+    4k=3840）。带 alpha 走 PNG（PNG 无质量档，只能靠尺寸）。压失败原样返回不阻断。"""
+    budget = int(budget_bytes or 0)
+    if budget <= 0 or len(raw) <= budget:
+        return raw
+    try:
+        import io
+        from PIL import Image
+        img = Image.open(io.BytesIO(raw))
+        img.load()
+        has_alpha = "A" in img.getbands() or img.mode in {"P", "LA", "RGBA"}
+        long_edge = max(img.size) or 1
+        floor = max(300, min(int(min_long_edge or 1280), long_edge))
+        try:
+            resample = Image.Resampling.LANCZOS
+        except AttributeError:
+            resample = Image.LANCZOS
+        if has_alpha:
+            best = raw
+            for target in (4096, 3072, 2560, 2048, floor):
+                work = img.convert("RGBA")
+                if target < long_edge:
+                    work.thumbnail((target, target), resample)
+                out = io.BytesIO()
+                work.save(out, "PNG", optimize=True)
+                best = out.getvalue()
+                if len(best) <= budget:
+                    return best
+            return best
+        for quality in (92, 85, 78, 70):
+            out = io.BytesIO()
+            img.convert("RGB").save(out, "JPEG", quality=quality, optimize=True)
+            if len(out.getvalue()) <= budget:
+                return out.getvalue()
+        best = raw
+        for target in (4096, 3072, 2560, 2048, floor):
+            work = img.convert("RGB")
+            if target < long_edge:
+                work.thumbnail((target, target), resample)
+            out = io.BytesIO()
+            work.save(out, "JPEG", quality=82, optimize=True)
+            best = out.getvalue()
+            if len(best) <= budget:
+                return best
+        return best
+    except Exception as exc:
+        append_log(_log_file(), f"volcengine reference shrink skipped: {exc}")
+    return raw
+
+
+def _volcengine_data_url(mime, raw):
+    return f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}"
+
+
+def _volcengine_mime_of_bytes(raw, fallback="image/jpeg"):
+    if raw[:2] == b"\xff\xd8":
+        return "image/jpeg"
+    if raw[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if raw[:4] == b"RIFF" and raw[8:12] == b"WEBP":
+        return "image/webp"
+    return fallback
+
+
+def volcengine_image_media_url(source_url, max_bytes=VOLC_IMAGE_MAX_BYTES, output_resolution=""):
+    """参考图 → 火山 content 可接受的 URL（2026-10-28 三级策略）：
+      ① asset:// / 公网直链 → 原样，零成本零压缩
+      ② 本地或内嵌图超过 1.5MB → 上传换公网直链（方舟 Files → 公共图床），**不压不缩**
+      ③ 上传失败 → 内嵌 base64，仅在超预算时分级瘦身（质量优先、分辨率兜底）
+    """
     text = str(source_url or "").strip()
     if not text:
         return ""
-    if text.lower().startswith("data:image/"):
-        return text
     if text.startswith("asset://"):
         return text
     public_url = volcengine_public_media_url(text)
     if public_url:
         return public_url
-    raw, file_name, content_type = myridtv_media_localize.local_media_source_bytes(text)
+    if text.lower().startswith("data:image/"):
+        try:
+            header, b64 = text.split("base64,", 1)
+            mime = header.replace("data:", "").strip().rstrip(";").strip() or "image/jpeg"
+            raw = base64.b64decode(b64)
+        except Exception:
+            return text
+        file_name = "reference." + (str(mime).split("/")[-1] or "jpg")
+        content_type = mime
+        cache_key = "data:" + hashlib.md5(raw).hexdigest()
+    else:
+        raw, file_name, content_type = myridtv_media_localize.local_media_source_bytes(text)
+        cache_key = f"{text}|{len(raw)}"
     mime = str(content_type or mimetypes.guess_type(file_name)[0] or "").strip().lower()
     if not mime.startswith("image/"):
         return ""
-    if len(raw) > int(max_bytes):
-        raise ApiError(400, f"参考图片过大：{file_name}，请压缩到 12MB 以内。")
-    encoded = base64.b64encode(raw).decode("ascii")
-    return f"data:{mime};base64,{encoded}"
+    limit = int(max_bytes or VOLC_IMAGE_MAX_BYTES)
+    if len(raw) > limit:
+        raise ApiError(400, f"参考图片过大：{file_name or text[:60]}（{len(raw)/1048576:.1f}MB），上限 {limit/1048576:.0f}MB。")
+    if len(raw) <= VOLC_IMAGE_INLINE_SAFE_BYTES:
+        return _volcengine_data_url(mime, raw)
+    rehosted = _volcengine_rehost_image_bytes(raw, file_name, content_type, cache_key=cache_key)
+    if rehosted:
+        return rehosted
+    shrunk = _shrink_image_bytes_for_data_url(
+        raw, file_name=file_name, content_type=content_type,
+        budget_bytes=VOLC_IMAGE_INLINE_BUDGET_BYTES,
+        min_long_edge=_volcengine_min_long_edge(output_resolution),
+    )
+    if len(shrunk) != len(raw):
+        append_log(_log_file(), f"volcengine reference inline shrunk name={str(file_name)[:60]} {len(raw)/1048576:.2f}MB -> {len(shrunk)/1048576:.2f}MB")
+        return _volcengine_data_url(_volcengine_mime_of_bytes(shrunk, mime), shrunk)
+    return _volcengine_data_url(mime, raw)
 
 
 def volcengine_public_media_url(source_url):
@@ -300,16 +490,27 @@ def volcengine_video_content(payload):
     content = [{"type": "text", "text": prompt}]
     reference_mode = str((payload or {}).get("reference_mode") or "").strip().lower()
     force_video_frames = reference_mode in {"frame_extract", "frames", "extract_frames"}
+    resolution = volcengine_normalize_resolution((payload or {}).get("resolution"))
     images = (payload or {}).get("images") or []
+    inline_bytes = 0
     for index, item in enumerate(images):
         source = item if isinstance(item, dict) else {"url": item}
-        media_url = volcengine_image_media_url(source.get("url") or source.get("path") or source.get("src") or "")
+        media_url = volcengine_image_media_url(
+            source.get("url") or source.get("path") or source.get("src") or "",
+            output_resolution=resolution,
+        )
         if media_url:
+            if media_url.lower().startswith("data:"):
+                inline_bytes += len(media_url)
             content.append({
                 "type": "image_url",
                 "image_url": {"url": media_url},
                 "role": volcengine_image_role(source, index, len(images)),
             })
+    if inline_bytes > VOLC_REQUEST_BODY_WARN_BYTES:
+        append_log(_log_file(), f"volcengine video inline payload heavy: {inline_bytes/1048576:.1f}MB base64 "
+                                f"(base64 膨胀后约 {inline_bytes*1.0/1048576:.1f}MB，接近 64MB 请求体上限时火山会判 "
+                                f"failed to parse request body)。建议改用素材库 asset:// 或公网直链。")
     for item in (payload or {}).get("videos") or []:
         source = item if isinstance(item, dict) else {"url": item}
         raw_video_url = source.get("url") or source.get("path") or source.get("src") or ""

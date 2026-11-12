@@ -40,6 +40,7 @@ _ROOT = None
 WHITESPACE_OR_CONTROL_RE = re.compile(r"[\s\x00-\x1f\x7f]")
 _log_file = lambda: None
 _r_comfy_instance_base = None
+_r_ensure_comfy_alive = None
 _r_get_task_state = lambda tid: {}
 _r_local_media_source_bytes = None
 _r_output_asset_kind_for_name = None
@@ -84,13 +85,13 @@ def _matching_upload_media(directory, saved_name, data, original_name=""):
 def configure(user_data_dir, root, assets_dir, log_file_getter,
               comfy_instance_base, get_task_state, local_media_source_bytes,
               output_asset_kind_for_name, output_asset_subdir_for_kind,
-              request_multipart_json, resolve_user_asset_path):
+              request_multipart_json, resolve_user_asset_path, ensure_comfy_alive=None):
     global _USER_DATA_DIR, _ROOT, _ASSETS_DIR, _log_file
     _USER_DATA_DIR = user_data_dir
     _ROOT = root
     global _r_comfy_instance_base, _r_get_task_state, _r_local_media_source_bytes
     global _r_output_asset_kind_for_name, _r_output_asset_subdir_for_kind
-    global _r_request_multipart_json, _r_resolve_user_asset_path
+    global _r_request_multipart_json, _r_resolve_user_asset_path, _r_ensure_comfy_alive
     _ASSETS_DIR = assets_dir
     _log_file = log_file_getter
     _r_comfy_instance_base = comfy_instance_base
@@ -100,6 +101,8 @@ def configure(user_data_dir, root, assets_dir, log_file_getter,
     _r_output_asset_subdir_for_kind = output_asset_subdir_for_kind
     _r_request_multipart_json = request_multipart_json
     _r_resolve_user_asset_path = resolve_user_asset_path
+    # ComfyUI 未启动时的自动拉起兜底（myridtv_comfy.ensure_comfy_alive，宿主注入）
+    _r_ensure_comfy_alive = ensure_comfy_alive
 
 
 def asset_output_dir():
@@ -401,6 +404,9 @@ def handle_comfy_upload(raw_body, content_type):
     if not files:
         raise ApiError(400, "上传请求里没有文件")
     base = _r_comfy_instance_base()
+    # ComfyUI 未启动时先自动拉起（配置了本地路径才会真的拉起；已在线时秒回）
+    if _r_ensure_comfy_alive is not None:
+        _r_ensure_comfy_alive(base)
     uploaded = []
     for file_info in files:
         result = _r_request_multipart_json(

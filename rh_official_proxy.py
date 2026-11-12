@@ -512,6 +512,7 @@ myridtv_media_localize.configure(
     lambda kind: output_asset_subdir_for_kind(kind),
     lambda *a, **k: request_multipart_json(*a, **k),
     lambda url_path: resolve_user_asset_path(url_path),
+    lambda base: myridtv_comfy.ensure_comfy_alive(base),
 )
 
 myridtv_comfy.configure(
@@ -2142,6 +2143,11 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, {"ok": True, "instances": read_comfy_instances()})
         return
 
+    def _get_api_comfyui_status(self):
+        """顶栏 ComfyUI 状态灯轮询接口：online=运行中(绿) / launching=启动中(黄) / 都否=未启动(红)。"""
+        self._send(200, {"ok": True, **myridtv_comfy.comfy_status()})
+        return
+
     def _get_api_comfyui_object_info(self):
         query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
         types = [t.strip() for t in (query.get("types") or [""])[0].split(",") if t.strip()]
@@ -2272,6 +2278,7 @@ class Handler(BaseHTTPRequestHandler):
                 '/api/assets-root': '_get_api_assets_root',
                 '/api/home-bg/list': '_get_api_home_bg_list',
                 '/api/comfyui/instances': '_get_api_comfyui_instances',
+                '/api/comfyui/status': '_get_api_comfyui_status',
                 '/api/comfyui/object-info': '_get_api_comfyui_object_info',
                 '/api/comfyui/queue': '_get_api_comfyui_queue',
                 '/api/comfyui/jobs': '_get_api_comfyui_jobs',
@@ -2744,6 +2751,21 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, {"ok": True, "instances": saved_instances})
         return
 
+    def _post2_api_comfyui_start(self, payload):
+        """顶栏状态灯「启动」：后台线程拉起 ComfyUI，立即返回（黄灯由 launching 标志驱动）。"""
+        thread, err = myridtv_comfy.comfy_start_async()
+        if err:
+            self._send(400, {"ok": False, "error": err})
+            return
+        self._send(200, {"ok": True, "starting": True})
+        return
+
+    def _post2_api_comfyui_stop(self, payload):
+        """顶栏状态灯「退出」：杀掉监听 ComfyUI 端口的进程树。"""
+        result = myridtv_comfy.comfy_stop()
+        self._send(200, {"ok": True, **result})
+        return
+
     def _post2_api_comfyui_auto_expose_media(self, payload):
         """导入/加载工作流时自动暴露素材槽：把未暴露的 LoadImage/LoadAudio 追加进 config。"""
         name = str(payload.get("name") or "").strip()
@@ -2837,6 +2859,8 @@ class Handler(BaseHTTPRequestHandler):
         "/api/comfyui/jobs": "_post2_api_comfyui_jobs",
         "/api/comfyui/compile": "_post2_api_comfyui_compile",
         "/api/comfyui/instances": "_post2_api_comfyui_instances",
+        "/api/comfyui/start": "_post2_api_comfyui_start",
+        "/api/comfyui/stop": "_post2_api_comfyui_stop",
         "/api/open-folder": "_post2_api_open_folder",
     }
 

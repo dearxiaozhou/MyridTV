@@ -63,8 +63,27 @@ def _rh_forced_tls_context(url=""):
     return ctx
 
 
+def _is_direct_host(url=""):
+    """需要强制直连（绕开环境变量代理）的域名：RH + 火山方舟。
+
+    火山 2026-10-27 事故：视频任务带大 body（参考图 base64 内嵌几十 MB）走
+    https_proxy=127.0.0.1:7897，代理抽风掐掉传输 → 网关先回了 task id、
+    body 实际残缺 → 火山异步判 "failed to parse request body"（本地看似
+    提交成功、30 秒后 reconcile 才见 FAILED）。ark 是国内服务，本就不需要代理。
+    """
+    try:
+        host = (urllib.parse.urlparse(str(url or "")).hostname or "").strip().lower()
+    except Exception:
+        return False
+    if not host:
+        return False
+    if host == "volces.com" or host.endswith(".volces.com") or "volces" in host:
+        return True
+    return _is_rh_host(url)
+
+
 def _rh_urlopen(url, req, timeout, ssl_ctx):
-    """RH 主机直连、其它主机维持默认（含环境变量代理）。
+    """RH/火山主机直连、其它维持默认（含环境变量代理）。
 
     2026-10-27 真事故：本机用户级环境变量设了 https_proxy=http://127.0.0.1:7897，
     而该端口只做明文 HTTP 转发、不接 HTTPS 的 CONNECT 隧道。urllib 的 urlopen 默认
@@ -73,10 +92,10 @@ def _rh_urlopen(url, req, timeout, ssl_ctx):
     后台一条任务记录都没有（请求压根没到 RH）。实测复现：直连 5/5 HTTP 200、
     http_proxy 走同一端口 5/5 200、https_proxy 走同一端口 3/3 EOF。
 
-    ProxyHandler({}) 显式空代理即可绕过；只作用于 RH 主机，LLM 供应商 / 火山 / 本地
-    ComfyUI 这些可能确实需要代理出海的调用保持原行为不动。
+    ProxyHandler({}) 显式空代理即可绕过；作用于 RH + 火山方舟主机（见 _is_direct_host），
+    其它 LLM 供应商 / 本地 ComfyUI 这些可能确实需要代理出海的调用保持原行为不动。
     """
-    if not _is_rh_host(url):
+    if not _is_direct_host(url):
         return urllib.request.urlopen(req, timeout=timeout, context=ssl_ctx)
     opener = urllib.request.build_opener(
         urllib.request.ProxyHandler({}),

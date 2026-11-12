@@ -15,6 +15,11 @@ import re
 import threading
 import time
 
+try:
+    import myridtv_error_hints
+except Exception:
+    myridtv_error_hints = None
+
 TASKS = {}
 TASKS_LOCK = None
 TASK_STORE = None
@@ -84,6 +89,16 @@ def update_task_state(task_id, **updates):
     with TASKS_LOCK:
         current = dict(TASKS.get(safe_id) or {})
         current.update(updates)
+        # 2026-10-27 老王：失败报错统一配中文解释（error_hint），随 state 进
+        # 任务 API / 画布日志面板 / 前端 toast。规则见 myridtv_error_hints。
+        if myridtv_error_hints is not None and current.get("status") == "failed":
+            err = str(current.get("error") or "")
+            if err:
+                hint = myridtv_error_hints.explain_task_error(err)
+                if hint:
+                    current["error_hint"] = hint
+                else:
+                    current.pop("error_hint", None)
         TASKS[safe_id] = current
         if current.get("persistent"):
             persist_tasks_locked(safe_id)

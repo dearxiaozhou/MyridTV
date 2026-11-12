@@ -92,6 +92,7 @@ def configure(user_data_dir, poll_timeout, log_file_getter,
         asset_saver=comfy_output_asset_url,
         cache_path=_USER_DATA_DIR / "cache" / "comfy_object_info.json",
         job_store_path=_USER_DATA_DIR / "data" / "comfy_jobs.json",
+        ensure_alive=ensure_comfy_alive,
     )
 
 
@@ -104,12 +105,270 @@ def write_comfy_instances(instances):
 def comfy_instance_base():
     instances = _r_read_comfy_instances()
     raw = instances[0] if instances else "127.0.0.1:8188"
+    if isinstance(raw, dict):
+        raw = raw.get("url") or ""
     base = str(raw or "").strip()
     if not base:
         base = "127.0.0.1:8188"
     if not re.match(r"^https?://", base, re.I):
         base = "http://" + base
     return base.rstrip("/")
+
+
+# --------------------------------------------------------------------------
+# ComfyUI 自动拉起（实例配置了本地路径时，连接不上就先拉起再继续任务）
+# --------------------------------------------------------------------------
+import socket as _socket
+import subprocess as _subprocess
+import shutil as _shutil
+
+_COMFY_LAUNCH_LOCK = threading.Lock()
+_COMFY_LAUNCHED = set()  # base -> 本进程已尝试拉起过（避免重复 Popen）
+# 自动拉起进行中标记（顶栏状态灯的「启动中」黄灯数据源）
+_COMFY_LAUNCH_STATE = {"launching": False}
+
+
+def _parse_host_port(base):
+    """'http://127.0.0.1:8188/' -> ('127.0.0.1', 8188)"""
+    s = str(base or "").strip().rstrip("/")
+    if not re.match(r"^https?://", s, re.I):
+        s = "http://" + s
+    parsed = urllib.parse.urlparse(s)
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or 8188
+    return host, port
+
+
+def _comfy_port_open(host, port, timeout=1.5):
+    try:
+        with _socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def _find_bundled_python(comfy_dir):
+    """只找随 ComfyUI 分发/项目自带的 python（便携版 / 独立包 / venv），不做系统兜底。"""
+    d = Path(comfy_dir)
+    for c in (
+        d / "python_embeded" / "python.exe",
+        d / "python" / "python.exe",          # 独立包变体（如 F:/ComfyUI/python）
+        d / "venv" / "Scripts" / "python.exe",
+        d / ".venv" / "Scripts" / "python.exe",
+    ):
+        if c.is_file():
+            return str(c)
+    return None
+
+
+def _find_python(comfy_dir):
+    """自带 python 优先，系统 python 仅作最后兜底。"""
+    return _find_bundled_python(comfy_dir) or _shutil.which("python") or _shutil.which("python3")
+
+
+def _is_bundled_runtime(py_path, comfy_dir):
+    """python 是否为随 ComfyUI 分发的独立运行时（python_embeded / python 目录）——
+    这类运行时跑 main.py 需要带 --windows-standalone-build（官方 bat 就是这么调的），
+    否则会去找系统目录的依赖而崩。venv / 系统 python 不加。"""
+    try:
+        p = Path(py_path).resolve()
+    except Exception:
+        return False
+    for anchor in (Path(comfy_dir), Path(comfy_dir).parent):
+        try:
+            anchor = anchor.resolve()
+        except Exception:
+            continue
+        for name in ("python_embeded", "python"):
+            runtime_root = anchor / name
+            try:
+                if runtime_root.is_dir() and anchor in p.parents:
+                    return True
+            except Exception:
+                continue
+    return False
+
+
+def _build_launch_cmd(comfy_dir, host, port):
+    """根据本地路径推导 (cwd, args)；识别不了返回 None。
+
+    兼容三种布局：
+      1. 指向启动脚本（.bat/.cmd/.exe）——直接用。
+      2. 标准/独立包目录：run_*.bat / start*.bat / 启动*.bat（中文命名），或 main.py + 自带 python。
+      3. 填了内层源码目录（main.py 所在）而启动环境（bat / python 运行时）在外一层——
+         自动向上一层找（老王的 F:\\ComfyUI\\ComfyUI 就是这种）。"""
+    d = Path(comfy_dir)
+    if not d.exists():
+        return None
+    if d.is_file() and d.suffix.lower() in (".bat", ".cmd", ".exe", ".ps1"):
+        return (str(d.parent), [str(d)])
+    if not d.is_dir():
+        return None
+    # 候选目录：填的目录 + 父层
+    dirs = [d]
+    if d.parent != d:
+        dirs.append(d.parent)
+    # 启动脚本优先：bat 自带正确的环境设置（cwd / standalone 标志 / 端口默认 8188）
+    for cur in dirs:
+        for pat in ("run_*.bat", "run_*.cmd", "start*.bat", "start*.cmd",
+                    "启动*.bat", "启动*.cmd"):
+            hits = sorted(cur.glob(pat))
+            if hits:
+                return (str(cur), [str(hits[0])])
+    # main.py + 自带 python（当前层找不到运行时就看父层；系统 python 仅作最后兜底）
+    for cur in dirs:
+        main_py = cur / "main.py"
+        if not main_py.is_file():
+            continue
+        py = (_find_bundled_python(cur) or _find_bundled_python(cur.parent)
+              or _shutil.which("python") or _shutil.which("python3"))
+        if not py:
+            continue
+        args = [py, str(main_py), "--listen", host, "--port", str(port)]
+        if _is_bundled_runtime(py, cur):
+            args.append("--windows-standalone-build")
+        return (str(cur), args)
+    return None
+
+
+def ensure_comfy_alive(base):
+    """访问 ComfyUI 前确保其在线。后端自动拉起逻辑（仅依赖配置里的本地路径）：
+
+    - 端口已通：直接返回（最快路径，已开着时不闪「正在启动」）。
+    - 不通且配了本地路径：自动探测启动方式（main.py / run_*.bat）拉起，轮询等就绪（最多 90s）。
+    - 不通且没配路径：什么也不做，交给上层按原逻辑报错。
+
+    拉起失败 / 端口冲突时抛 RuntimeError（会透传到前端节点失败提示）。"""
+    host, port = _parse_host_port(base)
+    if _comfy_port_open(host, port):
+        return True
+    # 只取第一个配置了本地路径的实例（简化后只需填一个路径）
+    instances = _r_read_comfy_instances()
+    path = ""
+    for it in instances:
+        p = str((it or {}).get("path") or "").strip()
+        if p:
+            path = p
+            break
+    if not path:
+        return True
+
+    with _COMFY_LAUNCH_LOCK:
+        if _comfy_port_open(host, port):
+            return True
+        # 子进程输出重定向到 DEVNULL（避免继承父进程管道导致调用方无法退出 / 管道泄漏），
+        # 并进入独立进程组，不随本进程信号一并被终止。
+        _launch_stdout = _subprocess.DEVNULL
+        _launch_stderr = _subprocess.DEVNULL
+        _launch_flags = getattr(_subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        built = _build_launch_cmd(path, host, port)
+        if not built:
+            raise RuntimeError(
+                f"ComfyUI 本地路径无法识别启动方式：{path}\n"
+                f"请填启动脚本（如 启动ComfyUI.bat / run_nvidia_gpu.bat）所在的目录，"
+                f"或含 main.py 的 ComfyUI 目录。"
+            )
+        cwd, args = built
+        append_log(_log_file(), f"comfy auto-launch: cwd={cwd} args={args}")
+        _subprocess.Popen(args, cwd=cwd, stdout=_launch_stdout, stderr=_launch_stderr, creationflags=_launch_flags)
+        _COMFY_LAUNCHED.add(base)
+        _COMFY_LAUNCH_STATE["launching"] = True
+
+    # 轮询等端口就绪（最多 90s）；期间顶栏状态灯亮黄（comfy_status.launching）
+    try:
+        deadline = time.time() + 90
+        while time.time() < deadline:
+            if _comfy_port_open(host, port, timeout=2):
+                append_log(_log_file(), f"comfy auto-launch ready: {base}")
+                return True
+            time.sleep(1.5)
+        raise RuntimeError(
+            f"已尝试自动拉起 ComfyUI（{path}），但 {host}:{port} 在 90 秒内仍未就绪。"
+            f"请手动启动 ComfyUI 后重试，或检查日志。"
+        )
+    finally:
+        _COMFY_LAUNCH_STATE["launching"] = False
+
+
+def comfy_status():
+    """ComfyUI 在线状态（顶栏状态灯轮询用，轻量、不打日志）：
+    online=端口已通（绿灯）；launching=自动拉起进行中（黄灯）；都不满足=未启动（红灯）。"""
+    try:
+        host, port = _parse_host_port(comfy_instance_base())
+        online = _comfy_port_open(host, port, timeout=0.6)
+    except Exception:
+        online = False
+    return {"online": bool(online), "launching": bool(_COMFY_LAUNCH_STATE.get("launching"))}
+
+
+def comfy_start_async():
+    """顶栏状态灯「启动」：后台线程拉起 ComfyUI（不阻塞 HTTP，黄灯立即亮起）。
+    返回 (thread, error)；已在线时返回 (None, None)（前端靠轮询看到绿灯）。"""
+    path = ""
+    for it in _r_read_comfy_instances():
+        p = str((it or {}).get("path") or "").strip()
+        if p:
+            path = p
+            break
+    if not path:
+        return None, "未配置 ComfyUI 本地路径，请先到「工作流设置」里填写"
+    base = comfy_instance_base()
+    host, port = _parse_host_port(base)
+    if _comfy_port_open(host, port, timeout=0.6):
+        return None, None
+
+    _COMFY_LAUNCH_STATE["launching"] = True  # 先亮黄灯（ensure 内部会再置一次，finally 统一复位）
+
+    def _worker():
+        try:
+            ensure_comfy_alive(base)
+        except Exception:
+            pass  # 失败原因已落日志；launching 由 ensure 的 finally 复位 → 前端回落红灯
+
+    t = threading.Thread(target=_worker, daemon=True, name="comfy-ui-toggle-start")
+    t.start()
+    return t, None
+
+
+def _pid_listening_on_port(port):
+    """返回监听指定 TCP 端口的进程 PID（netstat 解析），找不到返回 None。"""
+    try:
+        raw = _subprocess.run(
+            ["netstat", "-ano", "-p", "TCP"],
+            capture_output=True, timeout=10,
+        ).stdout or b""
+    except Exception:
+        return None
+    # 中文 Windows 的 netstat 输出是 GBK（表头「活动连接」等），utf-8 直接解会炸
+    try:
+        out = raw.decode("gbk", errors="replace")
+    except Exception:
+        out = raw.decode("utf-8", errors="replace")
+    for line in out.splitlines():
+        parts = line.split()
+        # TCP    127.0.0.1:8188    0.0.0.0:0    LISTENING    1234
+        if len(parts) >= 5 and parts[3].upper() == "LISTENING":
+            local = parts[1]
+            if local.rsplit(":", 1)[-1] == str(port):
+                return parts[4]
+    return None
+
+
+def comfy_stop():
+    """顶栏状态灯「退出」：杀掉监听 ComfyUI 端口的进程树（/T 带走子进程）。
+    按 PID 精确制导，不按映像名乱杀——别人家的 python 进程不受影响。"""
+    host, port = _parse_host_port(comfy_instance_base())
+    pid = _pid_listening_on_port(port)
+    if not pid:
+        return {"stopped": False}
+    try:
+        # 不带 text=True：中文 Windows 的 taskkill 输出是 GBK，utf-8 解码会在 reader 线程炸
+        _subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                        capture_output=True, timeout=15)
+    except Exception:
+        return {"stopped": False}
+    append_log(_log_file(), f"comfy stop: killed pid={pid} listening on {host}:{port}")
+    return {"stopped": True, "pid": pid}
 
 
 def comfy_request_json(base, path, method="GET", payload=None, timeout=120):
@@ -125,6 +384,19 @@ def comfy_request_json(base, path, method="GET", payload=None, timeout=120):
         # 与 comfy_flow_service._request_json 同口径，复用同一份实现（不另抄一遍）：
         # ComfyUI 的 node_errors 在错误响应体里，丢掉就只剩「HTTP Error 400」。
         raise RuntimeError(comfy_flow_service._http_error_detail(exc)) from None
+    except urllib.error.URLError as exc:
+        # 连接失败（ComfyUI 未启动）：尝试自动拉起后再重试一次
+        try:
+            ensure_comfy_alive(base)
+        except Exception as launch_err:
+            raise RuntimeError(f"ComfyUI 连接失败且自动拉起未成功：{launch_err}") from None
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                body = response.read()
+        except urllib.error.HTTPError as he:
+            raise RuntimeError(comfy_flow_service._http_error_detail(he)) from None
+        except Exception as retry_err:
+            raise RuntimeError(f"ComfyUI 已尝试拉起但连接仍失败：{retry_err}") from None
     return json.loads(body.decode("utf-8") or "{}")
 
 

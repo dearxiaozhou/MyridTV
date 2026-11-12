@@ -763,14 +763,25 @@ def read_comfy_instances():
 
 
 def normalize_comfy_instances(instances):
+    """实例统一规范化为 {url, path, launch} 字典（保留旧字段形状，便于后端直读）。
+
+    简化后只需填 ComfyUI 本地路径（path），url/launch 一律留空由后端自动处理：
+    - url 留空 → 连接地址固定默认 127.0.0.1:8188（comfy_instance_base 兜底）。
+    - launch 留空 → 后端按 path 自动探测 main.py / run_*.bat 拉起。
+    仅保留带 path 的条目（其余忽略）。兼容历史纯字符串写法（视为 path）。"""
     safe = []
     seen = set()
     for item in instances if isinstance(instances, list) else []:
-        text = str(item or "").strip()
-        if not text or text in seen:
+        if isinstance(item, dict):
+            path = str(item.get("path") or "").strip()
+        elif isinstance(item, str):
+            path = item.strip()
+        else:
+            path = ""
+        if not path or path in seen:
             continue
-        seen.add(text)
-        safe.append(text)
+        seen.add(path)
+        safe.append({"url": "", "path": path, "launch": ""})
     return safe
 
 

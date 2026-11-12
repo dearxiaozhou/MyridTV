@@ -390,6 +390,7 @@ def record_agent_generation_task_log(task_id, state):
             "refs": node.get("runPromptRefs") or [],
             "runMs": max(0, int((completed - created) * 1000)),
             "error": error_text,
+            "errorHint": str(state.get("error_hint") or ""),
         }
         saved = myridtv_agent_state._agent_http("PUT", "/api/canvases/{}".format(urllib.parse.quote(cid)),
                                               {"logs": [entry] + logs, "base_updated_at": canvas.get("updated_at")}, timeout=30)

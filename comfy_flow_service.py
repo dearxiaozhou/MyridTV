@@ -27,6 +27,7 @@ STATUS_DONE = "done"
 STATUS_ERROR = "error"
 STATUS_CANCELLED = "cancelled"
 STATUS_GONE = "gone"  # 后端重启过，任务记录已丢失
+STATUS_STARTING = "starting"  # ComfyUI 未在线、正在（或即将）自动拉起
 
 JOB_TTL_SECONDS = 3600
 JOB_KEEP_LIMIT = 60
@@ -73,17 +74,20 @@ _BASE_PROVIDER = None
 _ASSET_SAVER = None
 _OBJECT_INFO_CACHE_PATH = None
 _DEFAULT_BASE = "http://127.0.0.1:8188"
+_ENSURE_ALIVE = None  # 可选：ComfyUI 未在线时拉起它（由宿主 myridtv_comfy 注入）
 
 
-def configure(base_provider=None, asset_saver=None, cache_path=None, job_store_path=None):
+def configure(base_provider=None, asset_saver=None, cache_path=None, job_store_path=None, ensure_alive=None):
     """宿主（rh_official_proxy）在启动时注入环境相关的能力。"""
-    global _BASE_PROVIDER, _ASSET_SAVER, _OBJECT_INFO_CACHE_PATH
+    global _BASE_PROVIDER, _ASSET_SAVER, _OBJECT_INFO_CACHE_PATH, _ENSURE_ALIVE
     if base_provider is not None:
         _BASE_PROVIDER = base_provider
     if asset_saver is not None:
         _ASSET_SAVER = asset_saver
     if cache_path is not None:
         _OBJECT_INFO_CACHE_PATH = cache_path
+    if ensure_alive is not None:
+        _ENSURE_ALIVE = ensure_alive
     if job_store_path is not None:
         # 任务记录落盘：进程重启后才知道「之前提交过哪些 prompt_id」，
         # 前端才能按 prompt_id 把 ComfyUI 已经跑完的结果认领回画布节点。
@@ -197,6 +201,21 @@ def _request_json(path, method="GET", payload=None, timeout=120):
             return json.loads(response.read().decode("utf-8") or "{}")
     except urllib.error.HTTPError as exc:
         raise RuntimeError(_http_error_detail(exc)) from None
+    except urllib.error.URLError as exc:
+        # 连接失败（ComfyUI 未启动）：若注册了自动拉起守卫，先拉起再重试一次
+        if _ENSURE_ALIVE is not None:
+            try:
+                _ENSURE_ALIVE(comfy_base())
+            except Exception as launch_err:
+                raise RuntimeError(f"ComfyUI 连接失败且自动拉起未成功：{launch_err}") from None
+            try:
+                with urllib.request.urlopen(request, timeout=timeout) as response:
+                    return json.loads(response.read().decode("utf-8") or "{}")
+            except urllib.error.HTTPError as he:
+                raise RuntimeError(_http_error_detail(he)) from None
+            except Exception as retry_err:
+                raise RuntimeError(f"ComfyUI 已尝试拉起但连接仍失败：{retry_err}") from None
+        raise
 
 
 def _is_vram_error(message):
@@ -487,11 +506,18 @@ def _compose_comfy_progress(job, node_pct):
 
 
 class ComfyJob:
-    def __init__(self, job_id, workflow_name, prompt, client_id="", meta=None):
+    def __init__(self, job_id, workflow_name, prompt, client_id="", meta=None,
+                 workflow_record=None, overrides=None, modes=None, prefs=None):
         self.id = job_id
         self.workflow_name = workflow_name
         self.prompt = prompt
         self.client_id = client_id
+        # 延迟编译所需的原材料：worker 在「确保 ComfyUI 在线」之后才编译，
+        # 这样「正在启动 ComfyUI」这个真实状态才能通过 job 状态通道透传给前端。
+        self.workflow_record = workflow_record
+        self.overrides = overrides
+        self.modes = modes
+        self.prefs = prefs
         # 提交参数快照（overrides/modes/refs 计数等），供任务控制台展示"当时提交了什么"
         self.meta = meta if isinstance(meta, dict) else {}
         self.status = STATUS_QUEUED
@@ -632,8 +658,10 @@ class JobManager:
         except Exception:
             pass
 
-    def submit(self, workflow_name, prompt, client_id="", node_titles=None, meta=None):
-        job = ComfyJob(uuid.uuid4().hex[:12], workflow_name, prompt, client_id, meta=meta)
+    def submit(self, workflow_name, prompt, client_id="", node_titles=None, meta=None,
+               workflow_record=None, overrides=None, modes=None, prefs=None):
+        job = ComfyJob(uuid.uuid4().hex[:12], workflow_name, prompt, client_id, meta=meta,
+                      workflow_record=workflow_record, overrides=overrides, modes=modes, prefs=prefs)
         job.node_titles = dict(node_titles or {})
         with self._lock:
             self._jobs[job.id] = job
@@ -861,10 +889,47 @@ class JobManager:
     def _run(self, job):
         # 只有被 worker 从队列里取出来的任务才会走到这里，
         # 所以「还在 _queue 里」= 排队中(queued)，「进了 _run」= 运行中(running)。
-        node_titles = job.node_titles or {}
-        client_id = job.client_id or uuid.uuid4().hex
         close_stream = None
         try:
+            # —— 阶段一：确保 ComfyUI 在线（未启动则自动拉起），期间 job 呈 starting 态 ——
+            if _ENSURE_ALIVE is not None:
+                try:
+                    job.status = STATUS_STARTING
+                    job.notice = "正在启动 ComfyUI…"
+                    self._save()
+                    _ENSURE_ALIVE(comfy_base())
+                    job.notice = ""
+                except Exception as launch_err:
+                    job.status = STATUS_ERROR
+                    job.error = "ComfyUI 连接失败且自动拉起未成功：" + str(launch_err)[:300]
+                    job.finished_at = time.time()
+                    return
+            # —— 阶段二：编译 prompt（需要 object_info，此时 ComfyUI 已在线）——
+            if job.prompt is None:
+                if not isinstance(job.workflow_record, dict) or not isinstance(job.workflow_record.get("workflow"), dict):
+                    job.status = STATUS_ERROR
+                    job.error = "工作流为空，无法编译"
+                    job.finished_at = time.time()
+                    return
+                try:
+                    from comfy_flow_compiler import describe_workflow
+                    object_info = load_object_info()
+                    job.prompt, report = compile_prompt(
+                        job.workflow_record.get("workflow"), job.overrides, job.modes, object_info)
+                    titles = {}
+                    for item in describe_workflow(job.workflow_record.get("workflow"), object_info, job.prefs):
+                        titles[item["id"]] = item["title"]
+                    job.node_titles = titles
+                    job.report = report
+                    job.meta["node_titles"] = {str(k): str(v) for k, v in titles.items()}
+                    job.meta["params_flat"] = _flatten_overrides(job.overrides, titles)
+                except Exception as exc:
+                    job.status = STATUS_ERROR
+                    job.error = "工作流编译失败：" + str(exc)[:300]
+                    job.finished_at = time.time()
+                    return
+            node_titles = job.node_titles or {}
+            client_id = job.client_id or uuid.uuid4().hex
             def on_message(message):
                 if not isinstance(message, dict):
                     return
@@ -1045,34 +1110,31 @@ MANAGER = JobManager()
 
 
 def submit_job(workflow_record, overrides=None, modes=None, prefs=None, client_id="", meta=None):
-    """编译 + 提交，返回 job 字典。工作流图在这里被改写成最终 prompt。"""
-    from comfy_flow_compiler import describe_workflow  # 局部导入保持模块边界清晰
-
+    """提交 ComfyUI 工作流：先建 job（状态 queued）立即返回，编译与（必要时）拉起 ComfyUI
+    延后到后台 worker 执行 —— 这样「正在启动 ComfyUI」这个真实状态才能通过 job 状态通道
+    透传给前端，而不是卡在 HTTP 请求里。"""
     workflow = workflow_record.get("workflow") if isinstance(workflow_record, dict) else None
     if not isinstance(workflow, dict) or not workflow:
         raise CompileError("工作流为空")
-    object_info = load_object_info()
-    prompt, report = compile_prompt(workflow, overrides, modes, object_info)
-    titles = {}
-    for item in describe_workflow(workflow, object_info, prefs):
-        titles[item["id"]] = item["title"]
     job_meta = {
         "overrides": _compact_param_map(overrides),
         "modes": dict(modes or {}),
         "prefs": dict(prefs or {}),
-        "node_titles": {str(k): str(v) for k, v in (titles or {}).items()},
-        "params_flat": _flatten_overrides(overrides, titles),
+        "node_titles": {},
+        "params_flat": _flatten_overrides(overrides, {}),
     }
     if isinstance(meta, dict):
         job_meta.update(meta)
     job = MANAGER.submit(
         str(workflow_record.get("name") or ""),
-        prompt,
+        None,  # prompt 延迟到 worker（先确保 ComfyUI 在线再编译）
         client_id,
-        node_titles=titles,
         meta=job_meta,
+        workflow_record=workflow_record,
+        overrides=overrides,
+        modes=modes,
+        prefs=prefs,
     )
-    job.report = report
     return job
 
 
